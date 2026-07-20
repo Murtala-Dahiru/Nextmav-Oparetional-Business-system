@@ -18,6 +18,8 @@ import {
   Sparkles, ArrowUpRight, ArrowDownRight, CircleDot, Briefcase,
 } from 'lucide-react';
 
+import { toast } from 'sonner';
+
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -46,7 +48,7 @@ const kpiIconMap: Record<string, React.ElementType> = {
 
 const kpiIconBgMap: Record<string, string> = {
   DollarSign: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400',
-  Users: 'bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400',
+  Users: 'bg-teal-100 text-teal-600 dark:bg-teal-950 dark:text-teal-400',
   Target: 'bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
   TrendingUp: 'bg-violet-100 text-violet-600 dark:bg-violet-950 dark:text-violet-400',
   FolderKanban: 'bg-teal-100 text-teal-600 dark:bg-teal-950 dark:text-teal-400',
@@ -66,18 +68,18 @@ const activityIconMap: Record<string, React.ElementType> = {
 
 const activityColorMap: Record<string, string> = {
   deal: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400',
-  task: 'bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400',
+  task: 'bg-cyan-100 text-cyan-600 dark:bg-cyan-950 dark:text-cyan-400',
   invoice: 'bg-violet-100 text-violet-600 dark:bg-violet-950 dark:text-violet-400',
   lead: 'bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
   ticket: 'bg-rose-100 text-rose-600 dark:bg-rose-950 dark:text-rose-400',
   hr: 'bg-teal-100 text-teal-600 dark:bg-teal-950 dark:text-teal-400',
-  project: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400',
+  project: 'bg-cyan-100 text-cyan-600 dark:bg-cyan-950 dark:text-cyan-400',
   message: 'bg-pink-100 text-pink-600 dark:bg-pink-950 dark:text-pink-400',
 };
 
 const moduleColorMap: Record<string, string> = {
   CRM: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
-  Projects: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
+  Projects: 'bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-400',
   Finance: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400',
   Support: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400',
   HR: 'bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-400',
@@ -86,7 +88,7 @@ const moduleColorMap: Record<string, string> = {
 
 const statusColorMap: Record<string, string> = {
   active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800',
-  completed: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400 border-blue-200 dark:border-blue-800',
+  completed: 'bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-400 border-teal-200 dark:border-teal-800',
   'on-hold': 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400 border-amber-200 dark:border-amber-800',
   planning: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400 border-violet-200 dark:border-violet-800',
 };
@@ -396,7 +398,7 @@ export default function DashboardModule() {
           <Card className="h-full rounded-xl">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-base">
-                <Briefcase className="h-5 w-5 text-indigo-600" />
+                <Briefcase className="h-5 w-5 text-teal-600" />
                 Active Projects
                 <Badge variant="secondary" className="ml-auto text-xs">
                   {activeProjects.length}
@@ -410,7 +412,7 @@ export default function DashboardModule() {
                     project.progress >= 75
                       ? 'bg-emerald-500'
                       : project.progress >= 50
-                        ? 'bg-blue-500'
+                        ? 'bg-teal-500'
                         : project.progress >= 25
                           ? 'bg-amber-500'
                           : 'bg-rose-500';
@@ -419,7 +421,7 @@ export default function DashboardModule() {
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-3 min-w-0">
                           <Avatar className="h-8 w-8 shrink-0">
-                            <AvatarFallback className="text-xs font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400">
+                            <AvatarFallback className="text-xs font-semibold bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-400">
                               {getInitials(project.name)}
                             </AvatarFallback>
                           </Avatar>
@@ -533,7 +535,7 @@ export default function DashboardModule() {
               </CardTitle>
             </CardHeader>
             <CardContent className="px-2">
-              <ScrollArea className="max-h-80 px-4">
+              <ScrollArea className="max-h-80 overflow-hidden px-4">
                 <div className="space-y-1">
                   {activities.map((activity, idx) => {
                     const ActIcon = activityIconMap[activity.type] || CircleDot;
@@ -618,6 +620,7 @@ export default function DashboardModule() {
                 <Button
                   variant="outline"
                   className="h-auto flex flex-col items-center gap-2.5 rounded-xl border-dashed border-2 py-5 hover:border-emerald-400 hover:bg-emerald-50/50 hover:text-emerald-700 dark:hover:border-emerald-600 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-400"
+                  onClick={() => toast.success('New lead form opened')}
                 >
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400">
                     <UserPlus className="h-5 w-5" />
@@ -628,6 +631,7 @@ export default function DashboardModule() {
                 <Button
                   variant="outline"
                   className="h-auto flex flex-col items-center gap-2.5 rounded-xl border-dashed border-2 py-5 hover:border-teal-400 hover:bg-teal-50/50 hover:text-teal-700 dark:hover:border-teal-600 dark:hover:bg-teal-950/30 dark:hover:text-teal-400"
+                  onClick={() => toast.success('New project created')}
                 >
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-100 text-teal-600 dark:bg-teal-950 dark:text-teal-400">
                     <FolderKanban className="h-5 w-5" />
@@ -638,6 +642,7 @@ export default function DashboardModule() {
                 <Button
                   variant="outline"
                   className="h-auto flex flex-col items-center gap-2.5 rounded-xl border-dashed border-2 py-5 hover:border-emerald-400 hover:bg-emerald-50/50 hover:text-emerald-700 dark:hover:border-emerald-600 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-400"
+                  onClick={() => toast.success('New invoice created')}
                 >
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400">
                     <FileText className="h-5 w-5" />
@@ -648,6 +653,7 @@ export default function DashboardModule() {
                 <Button
                   variant="outline"
                   className="h-auto flex flex-col items-center gap-2.5 rounded-xl border-dashed border-2 py-5 hover:border-teal-400 hover:bg-teal-50/50 hover:text-teal-700 dark:hover:border-teal-600 dark:hover:bg-teal-950/30 dark:hover:text-teal-400"
+                  onClick={() => toast.success('Meeting scheduler opened')}
                 >
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-100 text-teal-600 dark:bg-teal-950 dark:text-teal-400">
                     <CalendarClock className="h-5 w-5" />

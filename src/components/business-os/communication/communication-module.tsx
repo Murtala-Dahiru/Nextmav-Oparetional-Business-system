@@ -4,7 +4,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Hash, Lock, User, Search, Send, Paperclip, SmilePlus,
@@ -21,6 +21,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 import { channels, messages } from '@/lib/mock-data';
+import { toast } from 'sonner';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ const channelTypeColor = {
 } as const;
 
 const avatarColors = [
-  'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500', 'bg-indigo-500',
+  'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500', 'bg-cyan-600',
   'bg-violet-500', 'bg-rose-500', 'bg-amber-500', 'bg-sky-500',
 ];
 
@@ -66,9 +67,16 @@ function getAvatarColor(name: string): string {
 export default function CommunicationModule() {
   const [activeChannelId, setActiveChannelId] = useState(channels[0].id);
   const [messageInput, setMessageInput] = useState('');
+  const [channelSearch, setChannelSearch] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const activeChannel = channels.find((c) => c.id === activeChannelId)!;
+  const filteredChannels = useMemo(() => {
+    if (!channelSearch.trim()) return channels;
+    const q = channelSearch.toLowerCase();
+    return channels.filter((c) => c.name.toLowerCase().includes(q));
+  }, [channelSearch]);
+
+  const activeChannel = filteredChannels.find((c) => c.id === activeChannelId)!;
   const channelMessages = messages.filter((m) => m.channelId === activeChannelId);
   const pinnedMessages = channelMessages.filter((m) => m.isPinned);
 
@@ -106,6 +114,8 @@ export default function CommunicationModule() {
               <Input
                 placeholder="Search channels..."
                 className="h-8 pl-8 text-sm bg-background border-border"
+                value={channelSearch}
+                onChange={(e) => setChannelSearch(e.target.value)}
               />
             </div>
           </div>
@@ -120,7 +130,7 @@ export default function CommunicationModule() {
                 Channels
               </button>
 
-              {channels.map((channel) => {
+              {filteredChannels.map((channel) => {
                 const Icon = channelTypeIcon[channel.type];
                 const isActive = channel.id === activeChannelId;
                 return (
@@ -450,7 +460,7 @@ export default function CommunicationModule() {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
-                      if (messageInput.trim()) setMessageInput('');
+                      if (messageInput.trim()) { setMessageInput(''); toast.success('Message sent'); }
                     }
                   }}
                 />
@@ -484,7 +494,7 @@ export default function CommunicationModule() {
                   <Button
                     size="icon"
                     className="h-7 w-7 bg-emerald-500 hover:bg-emerald-600 text-white rounded-md"
-                    onClick={() => { if (messageInput.trim()) setMessageInput(''); }}
+                    onClick={() => { if (messageInput.trim()) { setMessageInput(''); toast.success('Message sent'); } }}
                   >
                     <Send className="h-3.5 w-3.5" />
                   </Button>

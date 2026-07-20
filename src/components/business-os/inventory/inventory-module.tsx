@@ -32,6 +32,7 @@ import {
 
 import { products } from '@/lib/mock-data';
 import type { ProductItem } from '@/types';
+import { toast } from 'sonner';
 
 /* ---- helpers ---- */
 
@@ -44,7 +45,7 @@ function formatCurrency(v: number) {
 const categoryStyles: Record<string, string> = {
   Software: 'bg-teal-100 text-teal-700 border border-teal-200',
   Services: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
-  Support: 'bg-blue-100 text-blue-700 border border-blue-200',
+  Support: 'bg-cyan-100 text-cyan-700 border border-cyan-200',
 };
 
 /* ---- animation variants ---- */
@@ -177,17 +178,17 @@ export default function InventoryModule() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Inventory Management</h1>
-          <p className="text-sm text-gray-500 mt-1">Track products, warehouses, and suppliers</p>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">Inventory Management</h1>
+          <p className="text-sm text-muted-foreground mt-1">Track products, warehouses, and suppliers</p>
         </div>
-        <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
+        <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => toast.success('New product form opened')}>
           <Plus className="mr-2 h-4 w-4" />
           Add Product
         </Button>
       </div>
 
       <Tabs defaultValue="products" className="space-y-6">
-        <TabsList className="bg-white border border-gray-200 p-1">
+        <TabsList className="bg-background border border-border p-1">
           <TabsTrigger value="products" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <Package className="mr-2 h-4 w-4" />
             Products
@@ -207,60 +208,60 @@ export default function InventoryModule() {
           {/* Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <motion.div variants={itemVariants}>
-              <Card className="border border-gray-200 hover:shadow-md transition-shadow">
+              <Card className="border border-border hover:shadow-md transition-shadow">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-teal-50">
                       <Box className="h-5 w-5 text-teal-600" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-gray-900">{products.length}</p>
-                      <p className="text-xs text-gray-500">Total Products</p>
+                      <p className="text-2xl font-bold text-foreground">{products.length}</p>
+                      <p className="text-xs text-muted-foreground">Total Products</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <Card className="border border-gray-200 hover:shadow-md transition-shadow">
+              <Card className="border border-border hover:shadow-md transition-shadow">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-emerald-50">
                       <Package className="h-5 w-5 text-emerald-600" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-gray-900">{activeProducts}</p>
-                      <p className="text-xs text-gray-500">Active</p>
+                      <p className="text-2xl font-bold text-foreground">{activeProducts}</p>
+                      <p className="text-xs text-muted-foreground">Active</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <Card className="border border-gray-200 hover:shadow-md transition-shadow">
+              <Card className="border border-border hover:shadow-md transition-shadow">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-blue-50">
-                      <Layers className="h-5 w-5 text-blue-600" />
+                    <div className="p-2 rounded-lg bg-cyan-50">
+                      <Layers className="h-5 w-5 text-cyan-600" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-gray-900">{uniqueCategories}</p>
-                      <p className="text-xs text-gray-500">Categories</p>
+                      <p className="text-2xl font-bold text-foreground">{uniqueCategories}</p>
+                      <p className="text-xs text-muted-foreground">Categories</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <Card className="border border-gray-200 hover:shadow-md transition-shadow">
+              <Card className="border border-border hover:shadow-md transition-shadow">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-amber-50">
                       <DollarSign className="h-5 w-5 text-amber-600" />
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-gray-900">${(totalValue / 1_000_000).toFixed(1)}M</p>
-                      <p className="text-xs text-gray-500">Total Value</p>
+                      <p className="text-2xl font-bold text-foreground">${(totalValue / 1_000_000).toFixed(1)}M</p>
+                      <p className="text-xs text-muted-foreground">Total Value</p>
                     </div>
                   </div>
                 </CardContent>
@@ -269,11 +270,11 @@ export default function InventoryModule() {
           </div>
 
           {/* Filters */}
-          <Card className="border border-gray-200">
+          <Card className="border border-border">
             <CardContent className="p-4">
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search by name or SKU..."
                     value={searchQuery}
@@ -283,7 +284,7 @@ export default function InventoryModule() {
                 </div>
                 <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                   <SelectTrigger className="w-[180px]">
-                    <Tag className="mr-2 h-4 w-4 text-gray-400" />
+                    <Tag className="mr-2 h-4 w-4 text-muted-foreground" />
                     <SelectValue placeholder="Category" />
                   </SelectTrigger>
                   <SelectContent>
@@ -299,21 +300,22 @@ export default function InventoryModule() {
           </Card>
 
           {/* Products Table */}
-          <Card className="border border-gray-200">
+          <Card className="border border-border">
             <CardContent className="p-0">
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50/80">
-                    <TableHead className="font-semibold text-gray-600">Product Name</TableHead>
-                    <TableHead className="font-semibold text-gray-600">SKU</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Category</TableHead>
-                    <TableHead className="font-semibold text-gray-600 text-right">Price</TableHead>
-                    <TableHead className="font-semibold text-gray-600 text-right">Cost</TableHead>
-                    <TableHead className="font-semibold text-gray-600 text-right">Margin</TableHead>
-                    <TableHead className="font-semibold text-gray-600 text-right">Stock</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Unit</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Status</TableHead>
-                    <TableHead className="font-semibold text-gray-600 w-[50px]">Actions</TableHead>
+                  <TableRow className="bg-muted/40">
+                    <TableHead className="font-semibold text-muted-foreground">Product Name</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">SKU</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Category</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground text-right">Price</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground text-right">Cost</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground text-right">Margin</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground text-right">Stock</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Unit</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Status</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground w-[50px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -322,15 +324,15 @@ export default function InventoryModule() {
                     const isLowStock = product.stock < 100;
                     return (
                       <TableRow key={product.id} className="hover:bg-emerald-50/30 transition-colors">
-                        <TableCell className="font-medium text-gray-900">{product.name}</TableCell>
+                        <TableCell className="font-medium text-foreground">{product.name}</TableCell>
                         <TableCell className="font-mono text-sm text-teal-700">{product.sku}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={cn('text-xs font-medium', categoryStyles[product.category] || 'bg-gray-100 text-gray-700 border border-gray-200')}>
+                          <Badge variant="outline" className={cn('text-xs font-medium', categoryStyles[product.category] || 'bg-gray-100 text-foreground border border-border')}>
                             {product.category}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right text-sm font-medium">{formatCurrency(product.price)}</TableCell>
-                        <TableCell className="text-right text-sm text-gray-500">{formatCurrency(product.cost)}</TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">{formatCurrency(product.cost)}</TableCell>
                         <TableCell className="text-right">
                           <span className={cn(
                             'text-sm font-semibold',
@@ -346,20 +348,20 @@ export default function InventoryModule() {
                             )}
                             <span className={cn(
                               'text-sm font-medium',
-                              isLowStock ? 'text-amber-600' : 'text-gray-700',
+                              isLowStock ? 'text-amber-600' : 'text-foreground',
                             )}>
                               {product.stock.toLocaleString()}
                             </span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm text-gray-500 capitalize">{product.unit}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground capitalize">{product.unit}</TableCell>
                         <TableCell>
                           <Badge
                             className={cn(
                               'text-xs font-medium',
                               product.isActive
                                 ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-gray-100 text-gray-500',
+                                : 'bg-gray-100 text-muted-foreground',
                             )}
                           >
                             {product.isActive ? 'Active' : 'Inactive'}
@@ -369,17 +371,17 @@ export default function InventoryModule() {
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <MoreVertical className="h-4 w-4 text-gray-400" />
+                                <MoreVertical className="h-4 w-4 text-muted-foreground" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem className="text-emerald-600">
+                              <DropdownMenuItem className="text-emerald-600" onClick={() => toast.info(`Viewing ${product.name}`)}>
                                 <Eye className="mr-2 h-4 w-4" />View
                               </DropdownMenuItem>
-                              <DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => toast.info(`Editing ${product.name}`)}>
                                 <Edit className="mr-2 h-4 w-4" />Edit
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-red-600">
+                              <DropdownMenuItem className="text-red-600" onClick={() => toast.error(`${product.name} deleted`)}>
                                 <Trash2 className="mr-2 h-4 w-4" />Delete
                               </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -390,13 +392,14 @@ export default function InventoryModule() {
                   })}
                   {filteredProducts.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8 text-gray-400">
+                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                         No products match your filters.
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -414,7 +417,7 @@ export default function InventoryModule() {
                   animate="visible"
                   transition={{ delay: i * 0.08 }}
                 >
-                  <Card className="border border-gray-200 hover:shadow-lg hover:border-emerald-200 transition-all h-full">
+                  <Card className="border border-border hover:shadow-lg hover:border-emerald-200 transition-all h-full">
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600">
@@ -422,24 +425,24 @@ export default function InventoryModule() {
                         </div>
                         <Badge className="bg-emerald-100 text-emerald-700 text-xs font-medium">Active</Badge>
                       </div>
-                      <CardTitle className="text-lg font-semibold text-gray-900 mt-3">
+                      <CardTitle className="text-lg font-semibold text-foreground mt-3">
                         {wh.name}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <MapPin className="h-4 w-4 text-gray-400" />
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <MapPin className="h-4 w-4 text-muted-foreground" />
                         {wh.location}
                       </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <User className="h-4 w-4 text-gray-400" />
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <User className="h-4 w-4 text-muted-foreground" />
                         {wh.manager}
                       </div>
                       <Separator />
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-gray-700">Capacity</span>
-                          <span className="text-sm text-gray-500">
+                          <span className="text-sm font-medium text-foreground">Capacity</span>
+                          <span className="text-sm text-muted-foreground">
                             {wh.itemCount.toLocaleString()} / {wh.capacity.toLocaleString()} items
                           </span>
                         </div>
@@ -452,11 +455,11 @@ export default function InventoryModule() {
                               : '[&>div]:bg-emerald-500',
                           )}
                         />
-                        <p className="text-xs text-gray-400 mt-1.5">
+                        <p className="text-xs text-muted-foreground mt-1.5">
                           {capacityPercent.toFixed(0)}% utilized
                         </p>
                       </div>
-                      <Button variant="outline" className="w-full border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-sm">
+                      <Button variant="outline" className="w-full border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-sm" onClick={() => toast.info(`Viewing ${wh.name} details`)}>
                         View Details
                         <ChevronRight className="ml-1 h-4 w-4" />
                       </Button>
@@ -471,24 +474,25 @@ export default function InventoryModule() {
         {/* ===== TAB 3: SUPPLIERS ===== */}
         <TabsContent value="suppliers" className="space-y-6">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">{suppliers.length} suppliers on record</p>
-            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
+            <p className="text-sm text-muted-foreground">{suppliers.length} suppliers on record</p>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => toast.success('New supplier form opened')}>
               <Plus className="mr-2 h-4 w-4" />
               Add Supplier
             </Button>
           </div>
 
-          <Card className="border border-gray-200">
+          <Card className="border border-border">
             <CardContent className="p-0">
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50/80">
-                    <TableHead className="font-semibold text-gray-600">Name</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Contact Person</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Email</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Phone</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Status</TableHead>
-                    <TableHead className="font-semibold text-gray-600 text-right">Products</TableHead>
+                  <TableRow className="bg-muted/40">
+                    <TableHead className="font-semibold text-muted-foreground">Name</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Contact Person</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Email</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Phone</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Status</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground text-right">Products</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -499,19 +503,19 @@ export default function InventoryModule() {
                           <div className="p-2 rounded-lg bg-teal-50">
                             <Building2 className="h-4 w-4 text-teal-600" />
                           </div>
-                          <span className="font-medium text-gray-900">{supplier.name}</span>
+                          <span className="font-medium text-foreground">{supplier.name}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm text-gray-700">{supplier.contactPerson}</TableCell>
+                      <TableCell className="text-sm text-foreground">{supplier.contactPerson}</TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                          <Mail className="h-3.5 w-3.5 text-gray-400" />
+                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                          <Mail className="h-3.5 w-3.5 text-muted-foreground" />
                           {supplier.email}
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                          <Phone className="h-3.5 w-3.5 text-gray-400" />
+                        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                          <Phone className="h-3.5 w-3.5 text-muted-foreground" />
                           {supplier.phone}
                         </div>
                       </TableCell>
@@ -520,18 +524,19 @@ export default function InventoryModule() {
                           'text-xs font-medium',
                           supplier.isActive
                             ? 'bg-emerald-100 text-emerald-700'
-                            : 'bg-gray-100 text-gray-500',
+                            : 'bg-gray-100 text-muted-foreground',
                         )}>
                           {supplier.isActive ? 'Active' : 'Inactive'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right font-medium text-gray-900">
+                      <TableCell className="text-right font-medium text-foreground">
                         {supplier.productsCount}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

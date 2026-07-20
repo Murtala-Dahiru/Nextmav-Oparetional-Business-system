@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback, useSyncExternalStore } from 'react';
 import { useTheme } from 'next-themes';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -83,9 +83,7 @@ export function Header() {
   const {
     activeModule,
     sidebarOpen,
-    sidebarCollapsed,
     setSidebarOpen,
-    setSidebarCollapsed,
     notifications,
     unreadCount,
     markNotificationRead,
@@ -93,19 +91,17 @@ export function Header() {
   } = useAppStore();
 
   const { theme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
   const [searchValue, setSearchValue] = useState('');
   const [notifOpen, setNotifOpen] = useState(false);
 
   const count = unreadCount();
 
-  // Use ref to track mount state to avoid setState in effect
-  const mountedRef = useRef(false);
-  if (typeof window !== 'undefined' && !mountedRef.current) {
-    mountedRef.current = true;
-    // Schedule state update outside of render
-    queueMicrotask(() => setMounted(true));
-  }
+  // Track hydration state without setState-in-effect
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
   const handleSearchKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -140,16 +136,6 @@ export function Header() {
           className="shrink-0 lg:hidden"
           onClick={toggleSidebar}
           aria-label="Toggle sidebar"
-        >
-          <Menu className="size-5" />
-        </Button>
-
-        <Button
-          variant="ghost"
-          size="icon"
-          className="hidden lg:shrink-0 lg:flex"
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          aria-label="Collapse sidebar"
         >
           <Menu className="size-5" />
         </Button>
@@ -236,87 +222,74 @@ export function Header() {
             align="end"
             sideOffset={8}
             className="w-80 p-0"
+            onOpenAutoFocus={(e) => e.preventDefault()}
           >
-            <AnimatePresence>
-              {notifOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                  transition={{ duration: 0.15, ease: 'easeOut' }}
+            {notifOpen && (
+            <div>
+            <div className="flex items-center justify-between px-4 py-3">
+              <h4 className="text-sm font-semibold">Notifications</h4>
+              {count > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/40"
+                  onClick={() => markAllNotificationsRead()}
                 >
-                  {/* Header */}
-                  <div className="flex items-center justify-between px-4 py-3">
-                    <h4 className="text-sm font-semibold">Notifications</h4>
-                    {count > 0 && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs text-teal-600 hover:text-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/40"
-                        onClick={() => markAllNotificationsRead()}
-                      >
-                        <CheckCheck className="size-3.5 mr-1" />
-                        Mark all read
-                      </Button>
-                    )}
-                  </div>
-                  <Separator />
-
-                  {/* List */}
-                  <ScrollArea className="h-[320px]">
-                    {notifications.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                        <Bell className="size-8 mb-2 opacity-40" />
-                        <p className="text-sm">No notifications</p>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col">
-                        {notifications.map((notif, index) => (
-                          <motion.button
-                            key={notif.id}
-                            initial={{ opacity: 0, x: -12 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{
-                              duration: 0.15,
-                              delay: index * 0.03,
-                            }}
-                            className={cn(
-                              'flex items-start gap-3 px-4 py-3 w-full text-left hover:bg-muted/60 transition-colors border-b border-border/50 last:border-b-0'
-                            )}
-                            onClick={() => markNotificationRead(notif.id)}
-                          >
-                            <div className="mt-0.5 shrink-0">
-                              <NotificationIcon type={notif.type} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p
-                                  className={cn(
-                                    'text-sm truncate',
-                                    !notif.isRead && 'font-semibold'
-                                  )}
-                                >
-                                  {notif.title}
-                                </p>
-                                {!notif.isRead && (
-                                  <span className="size-2 rounded-full bg-teal-500 shrink-0" />
-                                )}
-                              </div>
-                              <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
-                                {notif.message}
-                              </p>
-                              <p className="text-[10px] text-muted-foreground/70 mt-1">
-                                {notif.createdAt}
-                              </p>
-                            </div>
-                          </motion.button>
-                        ))}
-                      </div>
-                    )}
-                  </ScrollArea>
-                </motion.div>
+                  <CheckCheck className="size-3.5 mr-1" />
+                  Mark all read
+                </Button>
               )}
-            </AnimatePresence>
+            </div>
+            <Separator />
+
+            {/* List */}
+            <ScrollArea className="h-[320px]">
+              {notifications.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <Bell className="size-8 mb-2 opacity-40" />
+                  <p className="text-sm">No notifications</p>
+                </div>
+              ) : (
+                <div className="flex flex-col">
+                  {notifications.map((notif, index) => (
+                    <button
+                      key={notif.id}
+                      className={cn(
+                        'flex items-start gap-3 px-4 py-3 w-full text-left hover:bg-muted/60 transition-colors border-b border-border/50 last:border-b-0'
+                      )}
+                      onClick={() => markNotificationRead(notif.id)}
+                    >
+                      <div className="mt-0.5 shrink-0">
+                        <NotificationIcon type={notif.type} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p
+                            className={cn(
+                              'text-sm truncate',
+                              !notif.isRead && 'font-semibold'
+                            )}
+                          >
+                            {notif.title}
+                          </p>
+                          {!notif.isRead && (
+                            <span className="size-2 rounded-full bg-teal-500 shrink-0" />
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                          {notif.message}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground/70 mt-1">
+                          {notif.createdAt}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+            </div>
+            )}
           </PopoverContent>
         </Popover>
 

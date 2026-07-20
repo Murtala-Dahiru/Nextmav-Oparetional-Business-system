@@ -27,6 +27,7 @@ import { Separator } from '@/components/ui/separator';
 
 import { workflows } from '@/lib/mock-data';
 import type { WorkflowItem } from '@/types';
+import { toast } from 'sonner';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -50,7 +51,7 @@ function timeAgo(d: string) {
 
 const triggerColors: Record<string, string> = {
   'Lead Created': 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
-  'Schedule (Daily)': 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  'Schedule (Daily)': 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
   'Task Created': 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
   'Employee Created': 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   'Schedule (Hourly)': 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
@@ -120,6 +121,9 @@ function WorkflowsTab() {
     setItems((prev) =>
       prev.map((w) => (w.id === id ? { ...w, isActive: !w.isActive } : w)),
     );
+    const item = items.find(w => w.id === id);
+    const name = item?.name ?? 'Workflow';
+    toast.success(item?.isActive ? `"${name}" deactivated` : `"${name}" activated`);
   };
 
   return (
@@ -128,7 +132,7 @@ function WorkflowsTab() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: 'Active Workflows', value: activeCount, icon: Zap, accent: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/40' },
-          { label: 'Total Executions', value: totalExec.toLocaleString(), icon: Activity, accent: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/40' },
+          { label: 'Total Executions', value: totalExec.toLocaleString(), icon: Activity, accent: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/40' },
           { label: 'Success Rate', value: '94.2%', icon: CheckCircle2, accent: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/40' },
         ].map((s) => (
           <motion.div key={s.label} variants={fadeUp} initial="hidden" animate="visible" custom={0}>
@@ -158,11 +162,11 @@ function WorkflowsTab() {
             className="pl-9"
           />
         </div>
-        <Button variant="outline" size="sm" className="gap-2">
+        <Button variant="outline" size="sm" className="gap-2" onClick={() => toast.info('Filter panel opened')}>
           <Filter className="w-4 h-4" />
           Filter
         </Button>
-        <Button size="sm" className="gap-2 bg-teal-600 hover:bg-teal-700 text-white">
+        <Button size="sm" className="gap-2 bg-teal-600 hover:bg-teal-700 text-white" onClick={() => toast.success('New workflow created')}>
           <Plus className="w-4 h-4" />
           New Workflow
         </Button>
@@ -221,11 +225,11 @@ function WorkflowsTab() {
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1">
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={() => toast.info(`Editing "${w.name}"`)}>
                       <Pencil className="w-3 h-3" />
                       Edit
                     </Button>
-                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300">
+                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300" onClick={() => toast.success(`Running "${w.name}"...`)}>
                       <Play className="w-3 h-3" />
                       Run
                     </Button>
@@ -410,13 +414,13 @@ function WorkflowBuilderTab() {
 
                             {/* Actions */}
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toast.info('Step details')}>
                                 <Eye className="w-3.5 h-3.5" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toast.info('Editing step')}>
                                 <Pencil className="w-3.5 h-3.5" />
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600">
+                              <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600" onClick={() => toast.error('Step removed')}>
                                 <XCircle className="w-3.5 h-3.5" />
                               </Button>
                             </div>
@@ -529,11 +533,11 @@ function WorkflowBuilderTab() {
               Click on any step to configure its properties
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" className="gap-2">
+              <Button variant="outline" size="sm" className="gap-2" onClick={() => toast.info('Test run started...')}>
                 <TestTube className="w-4 h-4" />
                 Test Run
               </Button>
-              <Button size="sm" className="gap-2 bg-teal-600 hover:bg-teal-700 text-white">
+              <Button size="sm" className="gap-2 bg-teal-600 hover:bg-teal-700 text-white" onClick={() => toast.success('Workflow saved')}>
                 <Save className="w-4 h-4" />
                 Save Workflow
               </Button>
@@ -592,7 +596,7 @@ function ExecutionHistoryTab() {
         {[
           { label: 'Total Runs', value: '656', icon: Activity, accent: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/40' },
           { label: 'Success Rate', value: '94.2%', icon: CheckCircle2, accent: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/40' },
-          { label: 'Avg Duration', value: '2.3s', icon: Timer, accent: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/40' },
+          { label: 'Avg Duration', value: '2.3s', icon: Timer, accent: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/40' },
           { label: 'Failed', value: '38', icon: XCircle, accent: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-950/40' },
         ].map((s, i) => (
           <motion.div key={s.label} variants={fadeUp} initial="hidden" animate="visible" custom={i}>
@@ -632,6 +636,7 @@ function ExecutionHistoryTab() {
       {/* Table */}
       <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={4}>
         <Card className="border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="bg-gray-50/80 dark:bg-gray-900/50 hover:bg-gray-50/80 dark:hover:bg-gray-900/50">
@@ -686,6 +691,7 @@ function ExecutionHistoryTab() {
               })}
             </TableBody>
           </Table>
+          </div>
         </Card>
       </motion.div>
     </div>

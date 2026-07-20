@@ -18,6 +18,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 import { calendarEvents } from '@/lib/mock-data';
+import { toast } from 'sonner';
 
 // ─── Types & Helpers ─────────────────────────────────────────────────────────
 
@@ -205,7 +206,7 @@ export default function CalendarModule() {
                 })}
               </div>
               <Separator orientation="vertical" className="h-6 mx-1" />
-              <Button size="sm" className="h-8 bg-emerald-500 hover:bg-emerald-600 text-white gap-1.5">
+              <Button size="sm" className="h-8 bg-emerald-500 hover:bg-emerald-600 text-white gap-1.5" onClick={() => toast.success('New event created')}>
                 <Plus className="h-4 w-4" />
                 New Event
               </Button>
@@ -356,6 +357,7 @@ export default function CalendarModule() {
                   <Button
                     size="sm"
                     className="mt-3 h-8 bg-emerald-500 hover:bg-emerald-600 text-white gap-1"
+                    onClick={() => toast.success('New event created')}
                   >
                     <Plus className="h-3.5 w-3.5" />
                     Add Event

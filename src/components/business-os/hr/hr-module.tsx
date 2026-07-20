@@ -27,6 +27,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
+import { toast } from 'sonner';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 import { employees } from '@/lib/mock-data';
@@ -53,11 +54,11 @@ function getInitials(firstName: string, lastName: string) {
 const departmentColors: Record<string, string> = {
   Executive: 'bg-amber-500 text-white',
   Product: 'bg-violet-500 text-white',
-  Engineering: 'bg-blue-500 text-white',
+  Engineering: 'bg-cyan-500 text-white',
   Design: 'bg-pink-500 text-white',
   Sales: 'bg-emerald-500 text-white',
   'Human Resources': 'bg-teal-500 text-white',
-  Finance: 'bg-indigo-500 text-white',
+  Finance: 'bg-teal-500 text-white',
   Support: 'bg-orange-500 text-white',
   Marketing: 'bg-cyan-500 text-white',
 };
@@ -122,7 +123,7 @@ const leaveRequests: LeaveRequest[] = [
 
 /* ---- mock payroll data ---- */
 
-const PIE_COLORS = ['#10b981', '#6366f1', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#ef4444', '#14b8a6'];
+const PIE_COLORS = ['#10b981', '#14b8a6', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#ef4444', '#0d9488'];
 
 /* ---- shared sub-components ---- */
 
@@ -165,7 +166,7 @@ function TabHeader({ title, description, actionLabel, actionIcon: ActionIcon }: 
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
       {actionLabel && (
-        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white mt-2 sm:mt-0 w-fit gap-1.5">
+        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white mt-2 sm:mt-0 w-fit gap-1.5" onClick={() => toast.success(`${actionLabel} created`)}>
           {ActionIcon && <ActionIcon className="h-4 w-4" />}
           {actionLabel}
         </Button>
@@ -231,7 +232,7 @@ function EmployeesTab() {
         <StatCard icon={Users} label="Total Employees" value="248" accent="bg-teal-500/10 text-teal-600" />
         <StatCard icon={UserCheck} label="Active" value="235" accent="bg-emerald-500/10 text-emerald-600" />
         <StatCard icon={CalendarOff} label="On Leave" value="8" accent="bg-amber-500/10 text-amber-600" />
-        <StatCard icon={UserRound} label="New Hires" value="5" accent="bg-blue-500/10 text-blue-600" />
+        <StatCard icon={UserRound} label="New Hires" value="5" accent="bg-cyan-500/10 text-cyan-600" />
       </div>
 
       {/* search & filter */}
@@ -260,6 +261,7 @@ function EmployeesTab() {
 
       {/* table */}
       <div className="rounded-lg border border-border/50 overflow-hidden">
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -307,6 +309,7 @@ function EmployeesTab() {
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
     </div>
   );
@@ -325,7 +328,7 @@ function AttendanceTab() {
     present: { cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400', label: 'Present' },
     absent: { cls: 'bg-red-500/15 text-red-700 dark:text-red-400', label: 'Absent' },
     late: { cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-400', label: 'Late' },
-    'on-leave': { cls: 'bg-blue-500/15 text-blue-700 dark:text-blue-400', label: 'On Leave' },
+    'on-leave': { cls: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400', label: 'On Leave' },
   };
 
   return (
@@ -347,7 +350,7 @@ function AttendanceTab() {
         <StatCard icon={UserCheck} label="Present" value="18" accent="bg-emerald-500/10 text-emerald-600" />
         <StatCard icon={UserX} label="Absent" value="2" accent="bg-red-500/10 text-red-600" />
         <StatCard icon={Clock} label="Late" value="3" accent="bg-amber-500/10 text-amber-600" />
-        <StatCard icon={CalendarOff} label="On Leave" value="1" accent="bg-blue-500/10 text-blue-600" />
+        <StatCard icon={CalendarOff} label="On Leave" value="1" accent="bg-cyan-500/10 text-cyan-600" />
       </div>
 
       {/* grid of cards */}
@@ -437,6 +440,7 @@ function LeaveManagementTab() {
 
       {/* leave requests table */}
       <div className="rounded-lg border border-border/50 overflow-hidden">
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -490,10 +494,10 @@ function LeaveManagementTab() {
                   <TableCell className="text-right">
                     {lr.status === 'pending' && (
                       <div className="flex items-center justify-end gap-1">
-                        <Button size="sm" variant="ghost" className="h-7 px-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10">
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10" onClick={() => toast.success(`Leave request approved for ${lr.employee.firstName} ${lr.employee.lastName}`)}>
                           <CheckCircle2 className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-500/10">
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-500/10" onClick={() => toast.error(`Leave request rejected for ${lr.employee.firstName} ${lr.employee.lastName}`)}>
                           <XCircle className="h-4 w-4" />
                         </Button>
                       </div>
@@ -504,6 +508,7 @@ function LeaveManagementTab() {
             })}
           </TableBody>
         </Table>
+        </div>
       </div>
     </div>
   );
@@ -593,6 +598,7 @@ function PayrollTab() {
 
         {/* payroll table */}
         <div className="rounded-lg border border-border/50 overflow-hidden">
+          <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -652,6 +658,7 @@ function PayrollTab() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </div>
       </div>
     </div>

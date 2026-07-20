@@ -28,6 +28,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
+import { toast } from 'sonner';
 
 import {
   leadsByStatus, salesBySource, revenueChart, projects,
@@ -225,10 +226,10 @@ function TabHeader({ title, description }: { title: string; description: string 
         <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
       </div>
       <div className="flex gap-2">
-        <Button variant="outline" size="sm" className="gap-1.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40">
+        <Button variant="outline" size="sm" className="gap-1.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40" onClick={() => toast.success('PDF report exported')}>
           <FileDown className="h-4 w-4" /> PDF
         </Button>
-        <Button variant="outline" size="sm" className="gap-1.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40">
+        <Button variant="outline" size="sm" className="gap-1.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40" onClick={() => toast.success('Excel report exported')}>
           <FileSpreadsheet className="h-4 w-4" /> Excel
         </Button>
       </div>
@@ -583,6 +584,7 @@ function SalesTab() {
             <CardDescription>Highest value opportunities in your pipeline</CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="border-gray-100 dark:border-gray-800 hover:bg-transparent">
@@ -615,6 +617,7 @@ function SalesTab() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       </motion.div>
@@ -823,6 +826,7 @@ function FinancialTab() {
             <CardDescription>Key financial metrics for the current quarter</CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="border-gray-100 dark:border-gray-800 hover:bg-transparent">
@@ -873,6 +877,7 @@ function FinancialTab() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       </motion.div>
@@ -954,6 +959,7 @@ function FinancialTab() {
             <CardDescription>Outstanding and overdue invoices with aging buckets</CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="border-gray-100 dark:border-gray-800 hover:bg-transparent">
@@ -995,6 +1001,7 @@ function FinancialTab() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       </motion.div>

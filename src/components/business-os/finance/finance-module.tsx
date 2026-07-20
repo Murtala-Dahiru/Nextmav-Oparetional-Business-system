@@ -4,7 +4,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   DollarSign, TrendingUp, TrendingDown, AlertTriangle, CreditCard,
@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
+import { toast } from 'sonner';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -75,7 +76,7 @@ const budgetData = [
 
 const invoiceStatusStyles: Record<string, string> = {
   draft: 'bg-gray-100 text-gray-600 border border-gray-200',
-  sent: 'bg-blue-50 text-blue-700 border border-blue-200',
+  sent: 'bg-teal-50 text-teal-700 border border-teal-200',
   paid: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
   overdue: 'bg-red-50 text-red-700 border border-red-200',
   cancelled: 'bg-gray-50 text-gray-500 border border-gray-200',
@@ -108,7 +109,7 @@ const fadeUp = {
 function OverviewTab() {
   const kpis = [
     { label: 'Total Revenue', value: '$445,000', change: 12.5, icon: DollarSign, color: 'text-emerald-600 bg-emerald-50' },
-    { label: 'Outstanding', value: '$206,000', change: -3.2, icon: CreditCard, color: 'text-blue-600 bg-blue-50' },
+    { label: 'Outstanding', value: '$206,000', change: -3.2, icon: CreditCard, color: 'text-teal-600 bg-teal-50' },
     { label: 'Overdue', value: '$96,000', change: 8.1, icon: AlertTriangle, color: 'text-red-600 bg-red-50' },
     { label: 'Expenses', value: '$46,400', change: -5.4, icon: Receipt, color: 'text-amber-600 bg-amber-50' },
   ];
@@ -312,7 +313,7 @@ function InvoicesTab() {
   const summaryCards = [
     { label: 'Total Invoices', value: formatCurrency(summary.total), color: 'text-emerald-600 bg-emerald-50' },
     { label: 'Paid', value: formatCurrency(summary.paid), color: 'text-green-600 bg-green-50' },
-    { label: 'Pending', value: formatCurrency(summary.pending), color: 'text-blue-600 bg-blue-50' },
+    { label: 'Pending', value: formatCurrency(summary.pending), color: 'text-cyan-600 bg-cyan-50' },
     { label: 'Overdue', value: formatCurrency(summary.overdue), color: 'text-red-600 bg-red-50' },
     { label: 'Draft', value: formatCurrency(summary.draft), color: 'text-gray-600 bg-gray-50' },
   ];
@@ -392,10 +393,10 @@ function InvoicesTab() {
                   <TableCell className="text-sm text-muted-foreground">{inv.paidAt ? formatDate(inv.paidAt) : '—'}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => toast.info('Viewing invoice')}>
                         <Eye className="h-4 w-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => toast.success('Invoice downloaded')}>
                         <Download className="h-4 w-4" />
                       </Button>
                     </div>
@@ -651,7 +652,7 @@ export default function FinanceModule() {
           <h1 className="text-xl font-bold tracking-tight">Finance</h1>
           <p className="text-sm text-muted-foreground">Manage invoices, expenses, and budgets</p>
         </div>
-        <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm">
+        <Button className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm" onClick={() => toast.success('New invoice created')}>
           <DollarSign className="h-4 w-4 mr-2" />
           New Invoice
         </Button>

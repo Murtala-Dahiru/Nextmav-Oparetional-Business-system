@@ -4,7 +4,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search, Plus, FolderOpen, Folder, FileText, ChevronRight,
@@ -23,6 +23,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import {
   Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
+import { toast } from 'sonner';
 
 // ─── Types & Data ───────────────────────────────────────────────────────────
 
@@ -163,7 +164,7 @@ function getInitials(name: string): string {
 }
 
 const avatarColors = [
-  'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500', 'bg-indigo-500',
+  'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500', 'bg-cyan-600',
   'bg-violet-500', 'bg-rose-500', 'bg-amber-500', 'bg-sky-500',
 ];
 
@@ -183,6 +184,25 @@ export default function WorkspaceModule() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [starred, setStarred] = useState<Set<string>>(new Set(['d-welcome', 'd-values']));
+
+  // Filter folder tree based on search query
+  const filteredTree = useMemo(() => {
+    if (!searchQuery.trim()) return folderTree;
+    const q = searchQuery.toLowerCase();
+    return folderTree
+      .map((folder) => {
+        const filteredChildren = folder.children.filter(
+          (child) =>
+            child.name.toLowerCase().includes(q) ||
+            (child as DocumentItem).tags?.some((tag: string) => tag.toLowerCase().includes(q)),
+        );
+        if (folder.name.toLowerCase().includes(q) || filteredChildren.length > 0) {
+          return { ...folder, children: filteredChildren.length > 0 ? filteredChildren : folder.children };
+        }
+        return null;
+      })
+      .filter((f): f is FolderItem => f !== null);
+  }, [searchQuery]);
 
   const toggleFolder = (folderId: string) => {
     setExpandedFolders((prev) => {
@@ -221,7 +241,7 @@ export default function WorkspaceModule() {
   const renderTreeItem = (item: TreeItem, depth: number = 0) => {
     if (item.icon === 'folder') {
       const folder = item as FolderItem;
-      const isExpanded = expandedFolders.has(folder.id);
+      const isExpanded = expandedFolders.has(folder.id) || !!searchQuery.trim();
       return (
         <div key={folder.id}>
           <motion.button
@@ -316,7 +336,7 @@ export default function WorkspaceModule() {
               </div>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toast.success('New folder created')}>
                     <Plus className="h-4 w-4" />
                   </Button>
                 </TooltipTrigger>
@@ -339,7 +359,7 @@ export default function WorkspaceModule() {
           {/* Tree */}
           <ScrollArea className="flex-1">
             <div className="p-2 space-y-0.5">
-              {folderTree.map((folder) => renderTreeItem(folder as unknown as TreeItem))}
+              {filteredTree.map((folder) => renderTreeItem(folder as unknown as TreeItem))}
             </div>
           </ScrollArea>
 
@@ -447,7 +467,7 @@ export default function WorkspaceModule() {
                 <TooltipContent>More</TooltipContent>
               </Tooltip>
               <Separator orientation="vertical" className="h-6 mx-1" />
-              <Button size="sm" className="h-8 bg-emerald-500 hover:bg-emerald-600 text-white gap-1.5">
+              <Button size="sm" className="h-8 bg-emerald-500 hover:bg-emerald-600 text-white gap-1.5" onClick={() => toast.success('New page created')}>
                 <Plus className="h-3.5 w-3.5" />
                 New Page
               </Button>
@@ -604,6 +624,7 @@ export default function WorkspaceModule() {
                           <Button
                             size="sm"
                             className="h-7 px-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs"
+                            onClick={() => toast.success('Comment posted')}
                           >
                             Comment
                           </Button>

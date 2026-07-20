@@ -1,0 +1,753 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { clsx, type ClassValue } from 'clsx';
+     4→     4→import { twMerge } from 'tailwind-merge';
+     5→     5→function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
+     6→     6→
+     7→     7→import { useState } from 'react';
+     8→     8→import { motion, AnimatePresence } from 'framer-motion';
+     9→     9→import {
+    10→    10→  Zap, Play, Pencil, ArrowDown, GitBranch, UserPlus,
+    11→    11→  ListPlus, Bell, Clock, Mail, Plus, Search,
+    12→    12→  CheckCircle2, XCircle, Timer, Activity, ChevronRight,
+    13→    13→  Workflow, Eye, Save, TestTube, GripVertical, Filter,
+    14→    14→  ArrowRight, Sparkles, Layers, MousePointerClick,
+    15→    15→} from 'lucide-react';
+    16→    16→
+    17→    17→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+    18→    18→import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
+    19→    19→import { Badge } from '@/components/ui/badge';
+    20→    20→import { Button } from '@/components/ui/button';
+    21→    21→import { Input } from '@/components/ui/input';
+    22→    22→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    23→    23→import { Switch } from '@/components/ui/switch';
+    24→    24→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+    25→    25→import { ScrollArea } from '@/components/ui/scroll-area';
+    26→    26→import { Separator } from '@/components/ui/separator';
+    27→    27→
+    28→    28→import { workflows } from '@/lib/mock-data';
+    29→    29→import type { WorkflowItem } from '@/types';
+    30→    30→import { toast } from 'sonner';
+    31→    31→
+    32→    32→/* ------------------------------------------------------------------ */
+    33→    33→/*  Helpers                                                            */
+    34→    34→/* ------------------------------------------------------------------ */
+    35→    35→
+    36→    36→function formatDateTime(d: string) {
+    37→    37→  return new Date(d).toLocaleString('en-US', {
+    38→    38→    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    39→    39→  });
+    40→    40→}
+    41→    41→
+    42→    42→function timeAgo(d: string) {
+    43→    43→  const diff = Date.now() - new Date(d).getTime();
+    44→    44→  const mins = Math.floor(diff / 60000);
+    45→    45→  if (mins < 60) return `${mins}m ago`;
+    46→    46→  const hrs = Math.floor(mins / 60);
+    47→    47→  if (hrs < 24) return `${hrs}h ago`;
+    48→    48→  const days = Math.floor(hrs / 24);
+    49→    49→  return `${days}d ago`;
+    50→    50→}
+    51→    51→
+    52→    52→const triggerColors: Record<string, string> = {
+    53→    53→  'Lead Created': 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
+    54→    54→  'Schedule (Daily)': 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
+    55→    55→  'Task Created': 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+    56→    56→  'Employee Created': 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    57→    57→  'Schedule (Hourly)': 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+    58→    58→};
+    59→    59→
+    60→    60→/* Mini flow preview steps per workflow */
+    61→    61→const flowSteps: Record<string, [string, string, string]> = {
+    62→    62→  w1: ['Lead Created', 'Assign Team', 'Send Email'],
+    63→    63→  w2: ['Daily Check', 'Find Overdue', 'Notify Team'],
+    64→    64→  w3: ['Task Created', 'Find Assignee', 'Push Notify'],
+    65→    65→  w4: ['Employee Joined', 'Create Tasks', 'Welcome Email'],
+    66→    66→  w5: ['Hourly Check', 'Check SLA', 'Alert Channel'],
+    67→    67→};
+    68→    68→
+    69→    69→/* ------------------------------------------------------------------ */
+    70→    70→/*  Fade-up animation variant                                          */
+    71→    71→/* ------------------------------------------------------------------ */
+    72→    72→
+    73→    73→const fadeUp = {
+    74→    74→  hidden: { opacity: 0, y: 18 },
+    75→    75→  visible: (i: number) => ({
+    76→    76→    opacity: 1, y: 0,
+    77→    77→    transition: { delay: i * 0.06, duration: 0.4, ease: 'easeOut' },
+    78→    78→  }),
+    79→    79→};
+    80→    80→
+    81→    81→/* ------------------------------------------------------------------ */
+    82→    82→/*  MiniFlowPreview                                                    */
+    83→    83→/* ------------------------------------------------------------------ */
+    84→    84→
+    85→    85→function MiniFlowPreview({ workflowId }: { workflowId: string }) {
+    86→    86→  const steps = flowSteps[workflowId] ?? ['Trigger', 'Action', 'Action'];
+    87→    87→  return (
+    88→    88→    <div className="flex items-center gap-1 mt-3">
+    89→    89→      {steps.map((label, i) => (
+    90→    90→        <div key={i} className="flex items-center gap-1">
+    91→    91→          {i > 0 && (
+    92→    92→            <ArrowRight className="w-3 h-3 text-gray-300 dark:text-gray-600 flex-shrink-0" />
+    93→    93→          )}
+    94→    94→          <span className="inline-flex items-center gap-1 rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap border border-gray-200 dark:border-gray-700">
+    95→    95→            {label}
+    96→    96→          </span>
+    97→    97→        </div>
+    98→    98→      ))}
+    99→    99→    </div>
+   100→   100→  );
+   101→   101→}
+   102→   102→
+   103→   103→/* ------------------------------------------------------------------ */
+   104→   104→/*  Tab 1 – Workflows                                                  */
+   105→   105→/* ------------------------------------------------------------------ */
+   106→   106→
+   107→   107→function WorkflowsTab() {
+   108→   108→  const [items, setItems] = useState<WorkflowItem[]>(workflows);
+   109→   109→  const [search, setSearch] = useState('');
+   110→   110→
+   111→   111→  const filtered = items.filter(
+   112→   112→    (w) =>
+   113→   113→      w.name.toLowerCase().includes(search.toLowerCase()) ||
+   114→   114→      w.description.toLowerCase().includes(search.toLowerCase()),
+   115→   115→  );
+   116→   116→
+   117→   117→  const activeCount = items.filter((w) => w.isActive).length;
+   118→   118→  const totalExec = items.reduce((s, w) => s + w.executionCount, 0);
+   119→   119→
+   120→   120→  const toggleWorkflow = (id: string) => {
+   121→   121→    setItems((prev) =>
+   122→   122→      prev.map((w) => (w.id === id ? { ...w, isActive: !w.isActive } : w)),
+   123→   123→    );
+   124→   124→    const item = items.find(w => w.id === id);
+   125→   125→    const name = item?.name ?? 'Workflow';
+   126→   126→    toast.success(item?.isActive ? `"${name}" deactivated` : `"${name}" activated`);
+   127→   127→  };
+   128→   128→
+   129→   129→  return (
+   130→   130→    <div className="space-y-6">
+   131→   131→      {/* Summary cards */}
+   132→   132→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   133→   133→        {[
+   134→   134→          { label: 'Active Workflows', value: activeCount, icon: Zap, accent: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/40' },
+   135→   135→          { label: 'Total Executions', value: totalExec.toLocaleString(), icon: Activity, accent: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/40' },
+   136→   136→          { label: 'Success Rate', value: '94.2%', icon: CheckCircle2, accent: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/40' },
+   137→   137→        ].map((s) => (
+   138→   138→          <motion.div key={s.label} variants={fadeUp} initial="hidden" animate="visible" custom={0}>
+   139→   139→            <Card className="border-0 shadow-sm">
+   140→   140→              <CardContent className="flex items-center gap-4 p-5">
+   141→   141→                <div className={cn('flex items-center justify-center w-11 h-11 rounded-xl', s.bg)}>
+   142→   142→                  <s.icon className={cn('w-5 h-5', s.accent)} />
+   143→   143→                </div>
+   144→   144→                <div>
+   145→   145→                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{s.label}</p>
+   146→   146→                  <p className="text-2xl font-bold mt-0.5">{s.value}</p>
+   147→   147→                </div>
+   148→   148→              </CardContent>
+   149→   149→            </Card>
+   150→   150→          </motion.div>
+   151→   151→        ))}
+   152→   152→      </div>
+   153→   153→
+   154→   154→      {/* Search + filter bar */}
+   155→   155→      <div className="flex items-center gap-3">
+   156→   156→        <div className="relative flex-1 max-w-sm">
+   157→   157→          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+   158→   158→          <Input
+   159→   159→            placeholder="Search workflows..."
+   160→   160→            value={search}
+   161→   161→            onChange={(e) => setSearch(e.target.value)}
+   162→   162→            className="pl-9"
+   163→   163→          />
+   164→   164→        </div>
+   165→   165→        <Button variant="outline" size="sm" className="gap-2" onClick={() => toast.info('Filter panel opened')}>
+   166→   166→          <Filter className="w-4 h-4" />
+   167→   167→          Filter
+   168→   168→        </Button>
+   169→   169→        <Button size="sm" className="gap-2 bg-teal-600 hover:bg-teal-700 text-white" onClick={() => toast.success('New workflow created')}>
+   170→   170→          <Plus className="w-4 h-4" />
+   171→   171→          New Workflow
+   172→   172→        </Button>
+   173→   173→      </div>
+   174→   174→
+   175→   175→      {/* Workflow cards grid */}
+   176→   176→      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   177→   177→        {filtered.map((w, i) => (
+   178→   178→          <motion.div
+   179→   179→            key={w.id}
+   180→   180→            variants={fadeUp}
+   181→   181→            initial="hidden"
+   182→   182→            animate="visible"
+   183→   183→            custom={i}
+   184→   184→          >
+   185→   185→            <Card className="group hover:shadow-md transition-shadow border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+   186→   186→              <CardContent className="p-5">
+   187→   187→                <div className="flex items-start justify-between gap-3">
+   188→   188→                  <div className="flex items-start gap-3 min-w-0">
+   189→   189→                    <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-teal-50 dark:bg-teal-950/50 flex-shrink-0 mt-0.5">
+   190→   190→                      <Workflow className="w-4.5 h-4.5 text-teal-600 dark:text-teal-400" />
+   191→   191→                    </div>
+   192→   192→                    <div className="min-w-0">
+   193→   193→                      <div className="flex items-center gap-2">
+   194→   194→                        <span className={cn('w-2 h-2 rounded-full flex-shrink-0', w.isActive ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600')} />
+   195→   195→                        <h3 className="font-semibold text-sm truncate">{w.name}</h3>
+   196→   196→                      </div>
+   197→   197→                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{w.description}</p>
+   198→   198→                    </div>
+   199→   199→                  </div>
+   200→   200→                  <Switch
+   201→   201→                    checked={w.isActive}
+   202→   202→                    onCheckedChange={() => toggleWorkflow(w.id)}
+   203→   203→                  />
+   204→   204→                </div>
+   205→   205→
+   206→   206→                <div className="flex items-center gap-2 mt-3">
+   207→   207→                  <Badge variant="secondary" className={cn('text-[10px] font-medium px-2 py-0', triggerColors[w.trigger] ?? 'bg-gray-100 text-gray-600')}>
+   208→   208→                    {w.trigger}
+   209→   209→                  </Badge>
+   210→   210→                </div>
+   211→   211→
+   212→   212→                <MiniFlowPreview workflowId={w.id} />
+   213→   213→
+   214→   214→                <Separator className="my-3" />
+   215→   215→
+   216→   216→                <div className="flex items-center justify-between">
+   217→   217→                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+   218→   218→                    <span className="flex items-center gap-1">
+   219→   219→                      <Play className="w-3 h-3" />
+   220→   220→                      {w.executionCount} runs
+   221→   221→                    </span>
+   222→   222→                    <span className="flex items-center gap-1">
+   223→   223→                      <Clock className="w-3 h-3" />
+   224→   224→                      {timeAgo(w.lastRun)}
+   225→   225→                    </span>
+   226→   226→                  </div>
+   227→   227→                  <div className="flex items-center gap-1">
+   228→   228→                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1" onClick={() => toast.info(`Editing "${w.name}"`)}>
+   229→   229→                      <Pencil className="w-3 h-3" />
+   230→   230→                      Edit
+   231→   231→                    </Button>
+   232→   232→                    <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1 text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300" onClick={() => toast.success(`Running "${w.name}"...`)}>
+   233→   233→                      <Play className="w-3 h-3" />
+   234→   234→                      Run
+   235→   235→                    </Button>
+   236→   236→                  </div>
+   237→   237→                </div>
+   238→   238→              </CardContent>
+   239→   239→            </Card>
+   240→   240→          </motion.div>
+   241→   241→        ))}
+   242→   242→      </div>
+   243→   243→    </div>
+   244→   244→  );
+   245→   245→}
+   246→   246→
+   247→   247→/* ------------------------------------------------------------------ */
+   248→   248→/*  Tab 2 – Workflow Builder (the star of the show)                    */
+   249→   249→/* ------------------------------------------------------------------ */
+   250→   250→
+   251→   251→interface BuilderStep {
+   252→   252→  id: string;
+   253→   253→  type: 'trigger' | 'condition' | 'action' | 'delay';
+   254→   254→  label: string;
+   255→   255→  description: string;
+   256→   256→  icon: React.ReactNode;
+   257→   257→}
+   258→   258→
+   259→   259→const sampleSteps: BuilderStep[] = [
+   260→   260→  { id: 's1', type: 'trigger', label: 'When: Lead Created', description: 'Fires when a new lead enters the CRM', icon: <Zap className="w-4 h-4" /> },
+   261→   261→  { id: 's2', type: 'condition', label: 'If: Source = Website', description: 'Only continue for website-sourced leads', icon: <GitBranch className="w-4 h-4" /> },
+   262→   262→  { id: 's3', type: 'action', label: 'Assign to: Sales Team', description: 'Route the lead to the sales queue', icon: <UserPlus className="w-4 h-4" /> },
+   263→   263→  { id: 's4', type: 'action', label: 'Create Follow-up Task', description: 'Auto-generate a follow-up task for the sales rep', icon: <ListPlus className="w-4 h-4" /> },
+   264→   264→  { id: 's5', type: 'action', label: 'Notify Manager', description: 'Send real-time notification to the sales manager', icon: <Bell className="w-4 h-4" /> },
+   265→   265→  { id: 's6', type: 'delay', label: 'Wait: 24 hours', description: 'Pause before sending reminder', icon: <Clock className="w-4 h-4" /> },
+   266→   266→  { id: 's7', type: 'action', label: 'Send Reminder Email', description: 'Dispatch automated reminder to assigned rep', icon: <Mail className="w-4 h-4" /> },
+   267→   267→];
+   268→   268→
+   269→   269→const stepTypeStyles: Record<BuilderStep['type'], { border: string; bg: string; iconBg: string; iconColor: string; badge: string }> = {
+   270→   270→  trigger: {
+   271→   271→    border: 'border-l-teal-500',
+   272→   272→    bg: 'bg-teal-50/50 dark:bg-teal-950/20',
+   273→   273→    iconBg: 'bg-teal-100 dark:bg-teal-900/50',
+   274→   274→    iconColor: 'text-teal-600 dark:text-teal-400',
+   275→   275→    badge: 'bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300',
+   276→   276→  },
+   277→   277→  condition: {
+   278→   278→    border: 'border-l-amber-500',
+   279→   279→    bg: 'bg-amber-50/50 dark:bg-amber-950/20',
+   280→   280→    iconBg: 'bg-amber-100 dark:bg-amber-900/50',
+   281→   281→    iconColor: 'text-amber-600 dark:text-amber-400',
+   282→   282→    badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300',
+   283→   283→  },
+   284→   284→  action: {
+   285→   285→    border: 'border-l-emerald-500',
+   286→   286→    bg: 'bg-emerald-50/50 dark:bg-emerald-950/20',
+   287→   287→    iconBg: 'bg-emerald-100 dark:bg-emerald-900/50',
+   288→   288→    iconColor: 'text-emerald-600 dark:text-emerald-400',
+   289→   289→    badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300',
+   290→   290→  },
+   291→   291→  delay: {
+   292→   292→    border: 'border-l-purple-500',
+   293→   293→    bg: 'bg-purple-50/50 dark:bg-purple-950/20',
+   294→   294→    iconBg: 'bg-purple-100 dark:bg-purple-900/50',
+   295→   295→    iconColor: 'text-purple-600 dark:text-purple-400',
+   296→   296→    badge: 'bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300',
+   297→   297→  },
+   298→   298→};
+   299→   299→
+   300→   300→const paletteItems = [
+   301→   301→  { type: 'trigger' as const, label: 'Trigger', icon: <Zap className="w-4 h-4" />, desc: 'Start the workflow' },
+   302→   302→  { type: 'condition' as const, label: 'Condition', icon: <GitBranch className="w-4 h-4" />, desc: 'Branch on logic' },
+   303→   303→  { type: 'action' as const, label: 'Action', icon: <Zap className="w-4 h-4" />, desc: 'Do something' },
+   304→   304→  { type: 'delay' as const, label: 'Delay', icon: <Clock className="w-4 h-4" />, desc: 'Wait before next' },
+   305→   305→];
+   306→   306→
+   307→   307→function WorkflowBuilderTab() {
+   308→   308→  const [workflowName, setWorkflowName] = useState('New Lead Assignment');
+   309→   309→  const [triggerType, setTriggerType] = useState('event');
+   310→   310→
+   311→   311→  return (
+   312→   312→    <div className="space-y-6">
+   313→   313→      {/* Builder header */}
+   314→   314→      <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={0}>
+   315→   315→        <Card className="border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-sm">
+   316→   316→          <CardContent className="p-5">
+   317→   317→            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+   318→   318→              <div className="flex-1 min-w-0 space-y-1">
+   319→   319→                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Workflow Name</label>
+   320→   320→                <Input
+   321→   321→                  value={workflowName}
+   322→   322→                  onChange={(e) => setWorkflowName(e.target.value)}
+   323→   323→                  className="text-lg font-semibold h-10 border-0 border-b rounded-none focus-visible:ring-0 px-0 bg-transparent"
+   324→   324→                />
+   325→   325→              </div>
+   326→   326→              <div className="space-y-1 w-full sm:w-56">
+   327→   327→                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Trigger Type</label>
+   328→   328→                <Select value={triggerType} onValueChange={setTriggerType}>
+   329→   329→                  <SelectTrigger className="h-10">
+   330→   330→                    <SelectValue />
+   331→   331→                  </SelectTrigger>
+   332→   332→                  <SelectContent>
+   333→   333→                    <SelectItem value="event">Event-Based</SelectItem>
+   334→   334→                    <SelectItem value="schedule">Schedule</SelectItem>
+   335→   335→                    <SelectItem value="manual">Manual</SelectItem>
+   336→   336→                    <SelectItem value="webhook">Webhook</SelectItem>
+   337→   337→                  </SelectContent>
+   338→   338→                </Select>
+   339→   339→              </div>
+   340→   340→            </div>
+   341→   341→          </CardContent>
+   342→   342→        </Card>
+   343→   343→      </motion.div>
+   344→   344→
+   345→   345→      {/* Builder canvas + palette */}
+   346→   346→      <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-6">
+   347→   347→        {/* Canvas */}
+   348→   348→        <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={1}>
+   349→   349→          <Card className="border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-sm overflow-hidden">
+   350→   350→            <CardHeader className="pb-3 px-5 pt-4">
+   351→   351→              <div className="flex items-center justify-between">
+   352→   352→                <div className="flex items-center gap-2">
+   353→   353→                  <Layers className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+   354→   354→                  <CardTitle className="text-sm font-semibold">Workflow Steps</CardTitle>
+   355→   355→                </div>
+   356→   356→                <Badge variant="outline" className="text-[10px] font-medium">
+   357→   357→                  {sampleSteps.length} steps
+   358→   358→                </Badge>
+   359→   359→              </div>
+   360→   360→            </CardHeader>
+   361→   361→            <CardContent className="px-5 pb-6">
+   362→   362→              <div className="relative flex flex-col items-center">
+   363→   363→                {/* Start node */}
+   364→   364→                <motion.div
+   365→   365→                  initial={{ scale: 0.8, opacity: 0 }}
+   366→   366→                  animate={{ scale: 1, opacity: 1 }}
+   367→   367→                  transition={{ delay: 0.1 }}
+   368→   368→                  className="w-10 h-10 rounded-full bg-teal-600 dark:bg-teal-500 flex items-center justify-center shadow-lg shadow-teal-600/20 mb-0"
+   369→   369→                >
+   370→   370→                  <Play className="w-4 h-4 text-white fill-white" />
+   371→   371→                </motion.div>
+   372→   372→
+   373→   373→                {/* Connector line */}
+   374→   374→                <div className="w-px h-6 bg-gradient-to-b from-teal-500 to-teal-300 dark:from-teal-400 dark:to-teal-600" />
+   375→   375→
+   376→   376→                {/* Steps */}
+   377→   377→                <div className="w-full max-w-xl space-y-0">
+   378→   378→                  {sampleSteps.map((step, i) => {
+   379→   379→                    const style = stepTypeStyles[step.type];
+   380→   380→                    return (
+   381→   381→                      <motion.div
+   382→   382→                        key={step.id}
+   383→   383→                        initial={{ opacity: 0, x: -20 }}
+   384→   384→                        animate={{ opacity: 1, x: 0 }}
+   385→   385→                        transition={{ delay: 0.15 + i * 0.08, duration: 0.4, ease: 'easeOut' }}
+   386→   386→                      >
+   387→   387→                        <div className={cn(
+   388→   388→                          'group relative rounded-xl border border-gray-200 dark:border-gray-800 border-l-[4px] bg-white dark:bg-gray-950',
+   389→   389→                          'hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-black/20 transition-all duration-200',
+   390→   390→                          'hover:-translate-y-0.5',
+   391→   391→                          style.border,
+   392→   392→                        )}>
+   393→   393→                          <CardContent className="flex items-start gap-3 p-4">
+   394→   394→                            {/* Drag handle */}
+   395→   395→                            <div className="opacity-0 group-hover:opacity-100 transition-opacity pt-0.5 cursor-grab">
+   396→   396→                              <GripVertical className="w-4 h-4 text-gray-300 dark:text-gray-600" />
+   397→   397→                            </div>
+   398→   398→
+   399→   399→                            {/* Icon */}
+   400→   400→                            <div className={cn('flex items-center justify-center w-9 h-9 rounded-lg flex-shrink-0', style.iconBg)}>
+   401→   401→                              <span className={style.iconColor}>{step.icon}</span>
+   402→   402→                            </div>
+   403→   403→
+   404→   404→                            {/* Content */}
+   405→   405→                            <div className="flex-1 min-w-0">
+   406→   406→                              <div className="flex items-center gap-2 mb-0.5">
+   407→   407→                                <span className={cn('text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded', style.badge)}>
+   408→   408→                                  {step.type}
+   409→   409→                                </span>
+   410→   410→                              </div>
+   411→   411→                              <h4 className="font-semibold text-sm">{step.label}</h4>
+   412→   412→                              <p className="text-xs text-muted-foreground mt-0.5">{step.description}</p>
+   413→   413→                            </div>
+   414→   414→
+   415→   415→                            {/* Actions */}
+   416→   416→                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+   417→   417→                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toast.info('Step details')}>
+   418→   418→                                <Eye className="w-3.5 h-3.5" />
+   419→   419→                              </Button>
+   420→   420→                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toast.info('Editing step')}>
+   421→   421→                                <Pencil className="w-3.5 h-3.5" />
+   422→   422→                              </Button>
+   423→   423→                              <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600" onClick={() => toast.error('Step removed')}>
+   424→   424→                                <XCircle className="w-3.5 h-3.5" />
+   425→   425→                              </Button>
+   426→   426→                            </div>
+   427→   427→                          </CardContent>
+   428→   428→                        </div>
+   429→   429→
+   430→   430→                        {/* Connector to next step */}
+   431→   431→                        {i < sampleSteps.length - 1 && (
+   432→   432→                          <div className="flex justify-center py-1">
+   433→   433→                            <div className="flex flex-col items-center">
+   434→   434→                              <div className="w-px h-4 bg-gradient-to-b from-gray-300 to-gray-200 dark:from-gray-700 dark:to-gray-800" />
+   435→   435→                              <div className="w-6 h-6 rounded-full bg-gray-100 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 flex items-center justify-center">
+   436→   436→                                <ArrowDown className="w-3 h-3 text-gray-400 dark:text-gray-500" />
+   437→   437→                              </div>
+   438→   438→                              <div className="w-px h-4 bg-gradient-to-b from-gray-200 to-gray-300 dark:from-gray-800 dark:to-gray-700" />
+   439→   439→                            </div>
+   440→   440→                          </div>
+   441→   441→                        )}
+   442→   442→                      </motion.div>
+   443→   443→                    );
+   444→   444→                  })}
+   445→   445→                </div>
+   446→   446→
+   447→   447→                {/* End connector */}
+   448→   448→                <div className="w-px h-6 bg-gradient-to-b from-emerald-400 to-emerald-300 dark:from-emerald-600 dark:to-emerald-500" />
+   449→   449→
+   450→   450→                {/* End node */}
+   451→   451→                <motion.div
+   452→   452→                  initial={{ scale: 0.8, opacity: 0 }}
+   453→   453→                  animate={{ scale: 1, opacity: 1 }}
+   454→   454→                  transition={{ delay: 0.7 }}
+   455→   455→                  className="w-10 h-10 rounded-full bg-emerald-600 dark:bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-600/20"
+   456→   456→                >
+   457→   457→                  <CheckCircle2 className="w-4 h-4 text-white" />
+   458→   458→                </motion.div>
+   459→   459→              </div>
+   460→   460→            </CardContent>
+   461→   461→          </Card>
+   462→   462→        </motion.div>
+   463→   463→
+   464→   464→        {/* Right side palette */}
+   465→   465→        <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={2}>
+   466→   466→          <Card className="border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-sm sticky top-6">
+   467→   467→            <CardHeader className="pb-3 px-4 pt-4">
+   468→   468→              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+   469→   469→                <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+   470→   470→                Step Palette
+   471→   471→              </CardTitle>
+   472→   472→            </CardHeader>
+   473→   473→            <CardContent className="px-4 pb-4 space-y-2">
+   474→   474→              {paletteItems.map((item) => {
+   475→   475→                const style = stepTypeStyles[item.type];
+   476→   476→                return (
+   477→   477→                  <motion.button
+   478→   478→                    key={item.type}
+   479→   479→                    whileHover={{ scale: 1.02 }}
+   480→   480→                    whileTap={{ scale: 0.98 }}
+   481→   481→                    className={cn(
+   482→   482→                      'w-full flex items-center gap-3 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-3 text-left',
+   483→   483→                      'hover:border-teal-400 hover:bg-teal-50/50 dark:hover:bg-teal-950/20',
+   484→   484→                      'transition-colors cursor-pointer group',
+   485→   485→                    )}
+   486→   486→                  >
+   487→   487→                    <div className={cn('flex items-center justify-center w-8 h-8 rounded-md', style.iconBg)}>
+   488→   488→                      <span className={style.iconColor}>{item.icon}</span>
+   489→   489→                    </div>
+   490→   490→                    <div className="flex-1 min-w-0">
+   491→   491→                      <p className="text-xs font-semibold">{item.label}</p>
+   492→   492→                      <p className="text-[10px] text-muted-foreground">{item.desc}</p>
+   493→   493→                    </div>
+   494→   494→                    <Plus className="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:text-teal-500 transition-colors" />
+   495→   495→                  </motion.button>
+   496→   496→                );
+   497→   497→              })}
+   498→   498→
+   499→   499→              <Separator className="my-3" />
+   500→   500→
+   501→   501→              <div className="space-y-2">
+   502→   502→                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-1">Quick Add</p>
+   503→   503→                {['HTTP Request', 'If/Else', 'Loop', 'Set Variable'].map((q) => (
+   504→   504→                  <button
+   505→   505→                    key={q}
+   506→   506→                    className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+   507→   507→                  >
+   508→   508→                    <Plus className="w-3 h-3" />
+   509→   509→                    {q}
+   510→   510→                  </button>
+   511→   511→                ))}
+   512→   512→              </div>
+   513→   513→
+   514→   514→              <Separator className="my-3" />
+   515→   515→
+   516→   516→              <div className="rounded-lg bg-gradient-to-br from-teal-50 to-emerald-50 dark:from-teal-950/30 dark:to-emerald-950/30 border border-teal-200/60 dark:border-teal-800/40 p-3">
+   517→   517→                <p className="text-xs font-semibold text-teal-700 dark:text-teal-300 mb-1">💡 Tip</p>
+   518→   518→                <p className="text-[10px] text-teal-600/80 dark:text-teal-400/80 leading-relaxed">
+   519→   519→                  Drag steps from the palette or click to add them to your workflow canvas.
+   520→   520→                </p>
+   521→   521→              </div>
+   522→   522→            </CardContent>
+   523→   523→          </Card>
+   524→   524→        </motion.div>
+   525→   525→      </div>
+   526→   526→
+   527→   527→      {/* Bottom action bar */}
+   528→   528→      <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={3}>
+   529→   529→        <Card className="border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-sm">
+   530→   530→          <CardContent className="flex items-center justify-between p-4">
+   531→   531→            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+   532→   532→              <MousePointerClick className="w-3.5 h-3.5" />
+   533→   533→              Click on any step to configure its properties
+   534→   534→            </div>
+   535→   535→            <div className="flex items-center gap-2">
+   536→   536→              <Button variant="outline" size="sm" className="gap-2" onClick={() => toast.info('Test run started...')}>
+   537→   537→                <TestTube className="w-4 h-4" />
+   538→   538→                Test Run
+   539→   539→              </Button>
+   540→   540→              <Button size="sm" className="gap-2 bg-teal-600 hover:bg-teal-700 text-white" onClick={() => toast.success('Workflow saved')}>
+   541→   541→                <Save className="w-4 h-4" />
+   542→   542→                Save Workflow
+   543→   543→              </Button>
+   544→   544→            </div>
+   545→   545→          </CardContent>
+   546→   546→        </Card>
+   547→   547→      </motion.div>
+   548→   548→    </div>
+   549→   549→  );
+   550→   550→}
+   551→   551→
+   552→   552→/* ------------------------------------------------------------------ */
+   553→   553→/*  Tab 3 – Execution History                                          */
+   554→   554→/* ------------------------------------------------------------------ */
+   555→   555→
+   556→   556→interface ExecutionRecord {
+   557→   557→  id: string;
+   558→   558→  workflowName: string;
+   559→   559→  status: 'running' | 'completed' | 'failed';
+   560→   560→  startedAt: string;
+   561→   561→  completedAt: string;
+   562→   562→  duration: string;
+   563→   563→  triggerData: string;
+   564→   564→}
+   565→   565→
+   566→   566→const executionHistory: ExecutionRecord[] = [
+   567→   567→  { id: 'e1', workflowName: 'New Lead Assignment', status: 'completed', startedAt: '2026-07-20T10:30:00Z', completedAt: '2026-07-20T10:30:02Z', duration: '2.1s', triggerData: '{"leadId":"l-901","name":"BrightWay Corp","source":"website"}' },
+   568→   568→  { id: 'e2', workflowName: 'Task Assignment Notification', status: 'completed', startedAt: '2026-07-20T10:15:00Z', completedAt: '2026-07-20T10:15:01Z', duration: '1.4s', triggerData: '{"taskId":"t-342","assignee":"John Smith","priority":"high"}' },
+   569→   569→  { id: 'e3', workflowName: 'Invoice Overdue Alert', status: 'running', startedAt: '2026-07-20T10:00:00Z', completedAt: '—', duration: '—', triggerData: '{"checkType":"daily","overdueInvoices":3}' },
+   570→   570→  { id: 'e4', workflowName: 'SLA Breach Warning', status: 'failed', startedAt: '2026-07-20T09:45:00Z', completedAt: '2026-07-20T09:45:05Z', duration: '5.2s', triggerData: '{"ticketId":"tk-088","slaMinutesLeft":15,"priority":"critical"}' },
+   571→   571→  { id: 'e5', workflowName: 'Welcome New Employee', status: 'completed', startedAt: '2026-07-20T09:30:00Z', completedAt: '2026-07-20T09:30:03Z', duration: '3.0s', triggerData: '{"employeeId":"emp-045","name":"Amanda Wilson","dept":"Engineering"}' },
+   572→   572→  { id: 'e6', workflowName: 'New Lead Assignment', status: 'completed', startedAt: '2026-07-20T09:15:00Z', completedAt: '2026-07-20T09:15:02Z', duration: '1.8s', triggerData: '{"leadId":"l-900","name":"TechStart Inc","source":"referral"}' },
+   573→   573→  { id: 'e7', workflowName: 'Task Assignment Notification', status: 'completed', startedAt: '2026-07-20T09:00:00Z', completedAt: '2026-07-20T09:00:01Z', duration: '1.2s', triggerData: '{"taskId":"t-341","assignee":"Sarah Chen","priority":"medium"}' },
+   574→   574→  { id: 'e8', workflowName: 'Invoice Overdue Alert', status: 'failed', startedAt: '2026-07-20T08:30:00Z', completedAt: '2026-07-20T08:30:04Z', duration: '4.1s', triggerData: '{"checkType":"daily","overdueInvoices":5}' },
+   575→   575→  { id: 'e9', workflowName: 'New Lead Assignment', status: 'completed', startedAt: '2026-07-20T08:15:00Z', completedAt: '2026-07-20T08:15:02Z', duration: '1.9s', triggerData: '{"leadId":"l-899","name":"CloudNine","source":"website"}' },
+   576→   576→  { id: 'e10', workflowName: 'Welcome New Employee', status: 'completed', startedAt: '2026-07-20T08:00:00Z', completedAt: '2026-07-20T08:00:03Z', duration: '2.7s', triggerData: '{"employeeId":"emp-044","name":"James Lee","dept":"Design"}' },
+   577→   577→];
+   578→   578→
+   579→   579→const statusConfig: Record<ExecutionRecord['status'], { badge: string; dot: string; label: string }> = {
+   580→   580→  running: { badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', dot: 'bg-amber-500 animate-pulse', label: 'Running' },
+   581→   581→  completed: { badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300', dot: 'bg-emerald-500', label: 'Completed' },
+   582→   582→  failed: { badge: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300', dot: 'bg-red-500', label: 'Failed' },
+   583→   583→};
+   584→   584→
+   585→   585→function ExecutionHistoryTab() {
+   586→   586→  const [filterStatus, setFilterStatus] = useState<string>('all');
+   587→   587→
+   588→   588→  const filtered = executionHistory.filter(
+   589→   589→    (e) => filterStatus === 'all' || e.status === filterStatus,
+   590→   590→  );
+   591→   591→
+   592→   592→  return (
+   593→   593→    <div className="space-y-6">
+   594→   594→      {/* Summary */}
+   595→   595→      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+   596→   596→        {[
+   597→   597→          { label: 'Total Runs', value: '656', icon: Activity, accent: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/40' },
+   598→   598→          { label: 'Success Rate', value: '94.2%', icon: CheckCircle2, accent: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/40' },
+   599→   599→          { label: 'Avg Duration', value: '2.3s', icon: Timer, accent: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/40' },
+   600→   600→          { label: 'Failed', value: '38', icon: XCircle, accent: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-950/40' },
+   601→   601→        ].map((s, i) => (
+   602→   602→          <motion.div key={s.label} variants={fadeUp} initial="hidden" animate="visible" custom={i}>
+   603→   603→            <Card className="border-0 shadow-sm">
+   604→   604→              <CardContent className="flex items-center gap-4 p-5">
+   605→   605→                <div className={cn('flex items-center justify-center w-11 h-11 rounded-xl', s.bg)}>
+   606→   606→                  <s.icon className={cn('w-5 h-5', s.accent)} />
+   607→   607→                </div>
+   608→   608→                <div>
+   609→   609→                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{s.label}</p>
+   610→   610→                  <p className="text-2xl font-bold mt-0.5">{s.value}</p>
+   611→   611→                </div>
+   612→   612→              </CardContent>
+   613→   613→            </Card>
+   614→   614→          </motion.div>
+   615→   615→        ))}
+   616→   616→      </div>
+   617→   617→
+   618→   618→      {/* Filter bar */}
+   619→   619→      <div className="flex items-center gap-3">
+   620→   620→        <Select value={filterStatus} onValueChange={setFilterStatus}>
+   621→   621→          <SelectTrigger className="w-44">
+   622→   622→            <SelectValue placeholder="Filter status" />
+   623→   623→          </SelectTrigger>
+   624→   624→          <SelectContent>
+   625→   625→            <SelectItem value="all">All Statuses</SelectItem>
+   626→   626→            <SelectItem value="completed">Completed</SelectItem>
+   627→   627→            <SelectItem value="running">Running</SelectItem>
+   628→   628→            <SelectItem value="failed">Failed</SelectItem>
+   629→   629→          </SelectContent>
+   630→   630→        </Select>
+   631→   631→        <span className="text-xs text-muted-foreground">
+   632→   632→          Showing {filtered.length} of {executionHistory.length} records
+   633→   633→        </span>
+   634→   634→      </div>
+   635→   635→
+   636→   636→      {/* Table */}
+   637→   637→      <motion.div variants={fadeUp} initial="hidden" animate="visible" custom={4}>
+   638→   638→        <Card className="border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 shadow-sm overflow-hidden">
+   639→   639→          <Table>
+   640→   640→            <TableHeader>
+   641→   641→              <TableRow className="bg-gray-50/80 dark:bg-gray-900/50 hover:bg-gray-50/80 dark:hover:bg-gray-900/50">
+   642→   642→                <TableHead className="text-xs font-semibold uppercase tracking-wider">Workflow</TableHead>
+   643→   643→                <TableHead className="text-xs font-semibold uppercase tracking-wider">Status</TableHead>
+   644→   644→                <TableHead className="text-xs font-semibold uppercase tracking-wider">Started</TableHead>
+   645→   645→                <TableHead className="text-xs font-semibold uppercase tracking-wider">Completed</TableHead>
+   646→   646→                <TableHead className="text-xs font-semibold uppercase tracking-wider">Duration</TableHead>
+   647→   647→                <TableHead className="text-xs font-semibold uppercase tracking-wider">Trigger Data</TableHead>
+   648→   648→              </TableRow>
+   649→   649→            </TableHeader>
+   650→   650→            <TableBody>
+   651→   651→              {filtered.map((record, i) => {
+   652→   652→                const cfg = statusConfig[record.status];
+   653→   653→                return (
+   654→   654→                  <motion.tr
+   655→   655→                    key={record.id}
+   656→   656→                    initial={{ opacity: 0 }}
+   657→   657→                    animate={{ opacity: 1 }}
+   658→   658→                    transition={{ delay: 0.05 * i }}
+   659→   659→                    className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50/50 dark:hover:bg-gray-900/30 transition-colors"
+   660→   660→                  >
+   661→   661→                    <TableCell className="py-3">
+   662→   662→                      <div className="flex items-center gap-2">
+   663→   663→                        <Workflow className="w-4 h-4 text-teal-600 dark:text-teal-400 flex-shrink-0" />
+   664→   664→                        <span className="text-sm font-medium">{record.workflowName}</span>
+   665→   665→                      </div>
+   666→   666→                    </TableCell>
+   667→   667→                    <TableCell className="py-3">
+   668→   668→                      <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full', cfg.badge)}>
+   669→   669→                        <span className={cn('w-1.5 h-1.5 rounded-full', cfg.dot)} />
+   670→   670→                        {cfg.label}
+   671→   671→                      </span>
+   672→   672→                    </TableCell>
+   673→   673→                    <TableCell className="py-3 text-xs text-muted-foreground">{formatDateTime(record.startedAt)}</TableCell>
+   674→   674→                    <TableCell className="py-3 text-xs text-muted-foreground">{record.completedAt === '—' ? '—' : formatDateTime(record.completedAt)}</TableCell>
+   675→   675→                    <TableCell className="py-3">
+   676→   676→                      <span className={cn(
+   677→   677→                        'text-xs font-mono font-medium',
+   678→   678→                        record.status === 'failed' ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground',
+   679→   679→                      )}>
+   680→   680→                        {record.duration}
+   681→   681→                      </span>
+   682→   682→                    </TableCell>
+   683→   683→                    <TableCell className="py-3">
+   684→   684→                      <code className="text-[10px] font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded text-muted-foreground max-w-[240px] truncate block">
+   685→   685→                        {record.triggerData}
+   686→   686→                      </code>
+   687→   687→                    </TableCell>
+   688→   688→                  </motion.tr>
+   689→   689→                );
+   690→   690→              })}
+   691→   691→            </TableBody>
+   692→   692→          </Table>
+   693→   693→        </Card>
+   694→   694→      </motion.div>
+   695→   695→    </div>
+   696→   696→  );
+   697→   697→}
+   698→   698→
+   699→   699→/* ------------------------------------------------------------------ */
+   700→   700→/*  Main Automation Module                                             */
+   701→   701→/* ------------------------------------------------------------------ */
+   702→   702→
+   703→   703→export default function AutomationModule() {
+   704→   704→  return (
+   705→   705→    <div className="h-full flex flex-col overflow-hidden">
+   706→   706→      <Tabs defaultValue="workflows" className="flex flex-col flex-1 overflow-hidden">
+   707→   707→        <div className="px-6 pt-6 pb-0">
+   708→   708→          <div className="flex items-center justify-between mb-4">
+   709→   709→            <div>
+   710→   710→              <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+   711→   711→                <Zap className="w-6 h-6 text-teal-600 dark:text-teal-400" />
+   712→   712→                Automation
+   713→   713→              </h1>
+   714→   714→              <p className="text-sm text-muted-foreground mt-1">
+   715→   715→                Build and manage workflows to automate your business processes
+   716→   716→              </p>
+   717→   717→            </div>
+   718→   718→          </div>
+   719→   719→          <TabsList className="bg-gray-100 dark:bg-gray-900 p-1">
+   720→   720→            <TabsTrigger value="workflows" className="gap-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:dark:bg-gray-950 data-[state=active]:shadow-sm">
+   721→   721→              <Workflow className="w-3.5 h-3.5" />
+   722→   722→              Workflows
+   723→   723→            </TabsTrigger>
+   724→   724→            <TabsTrigger value="builder" className="gap-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:dark:bg-gray-950 data-[state=active]:shadow-sm">
+   725→   725→              <GitBranch className="w-3.5 h-3.5" />
+   726→   726→              Workflow Builder
+   727→   727→            </TabsTrigger>
+   728→   728→            <TabsTrigger value="history" className="gap-2 text-xs font-medium data-[state=active]:bg-white data-[state=active]:dark:bg-gray-950 data-[state=active]:shadow-sm">
+   729→   729→              <Activity className="w-3.5 h-3.5" />
+   730→   730→              Execution History
+   731→   731→            </TabsTrigger>
+   732→   732→          </TabsList>
+   733→   733→        </div>
+   734→   734→
+   735→   735→        <ScrollArea className="flex-1 mt-4">
+   736→   736→          <div className="px-6 pb-8">
+   737→   737→            <AnimatePresence mode="wait">
+   738→   738→              <TabsContent value="workflows" className="mt-0">
+   739→   739→                <WorkflowsTab />
+   740→   740→              </TabsContent>
+   741→   741→              <TabsContent value="builder" className="mt-0">
+   742→   742→                <WorkflowBuilderTab />
+   743→   743→              </TabsContent>
+   744→   744→              <TabsContent value="history" className="mt-0">
+   745→   745→                <ExecutionHistoryTab />
+   746→   746→              </TabsContent>
+   747→   747→            </AnimatePresence>
+   748→   748→          </div>
+   749→   749→        </ScrollArea>
+   750→   750→      </Tabs>
+   751→   751→    </div>
+   752→   752→  );
+   753→   753→}

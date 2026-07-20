@@ -67,6 +67,7 @@ import {
 
 import { files } from '@/lib/mock-data';
 import type { FileItem } from '@/types';
+import { toast } from 'sonner';
 
 /* -------------------------------------------------------------------------- */
 /*  Helpers                                                                    */
@@ -124,29 +125,29 @@ const folderData: FolderCard[] = [
 
 function getFileIcon(mimeType: string) {
   if (mimeType === 'application/pdf') {
-    return { icon: FileText, color: 'text-red-500', bg: 'bg-red-50' };
+    return { icon: FileText, color: 'text-red-500', bg: 'bg-red-50 dark:bg-red-950/30' };
   }
   if (mimeType.startsWith('image/')) {
-    return { icon: Image, color: 'text-green-500', bg: 'bg-green-50' };
+    return { icon: Image, color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-950/30' };
   }
   if (mimeType.includes('spreadsheet') || mimeType.includes('sheet')) {
-    return { icon: FileSpreadsheet, color: 'text-emerald-500', bg: 'bg-emerald-50' };
+    return { icon: FileSpreadsheet, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-950/30' };
   }
   if (mimeType.includes('word') || mimeType.includes('document')) {
-    return { icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50' };
+    return { icon: FileText, color: 'text-teal-500', bg: 'bg-teal-50 dark:bg-teal-950/30' };
   }
-  return { icon: File, color: 'text-slate-400', bg: 'bg-slate-50' };
+  return { icon: File, color: 'text-slate-400', bg: 'bg-slate-50 dark:bg-slate-950/30' };
 }
 
 function getCategoryBadgeColor(category: string): string {
   const map: Record<string, string> = {
-    Finance: 'bg-emerald-100 text-emerald-700',
-    Marketing: 'bg-purple-100 text-purple-700',
-    Sales: 'bg-blue-100 text-blue-700',
-    Product: 'bg-amber-100 text-amber-700',
-    General: 'bg-slate-100 text-slate-700',
-    Engineering: 'bg-cyan-100 text-cyan-700',
-    HR: 'bg-rose-100 text-rose-700',
+    Finance: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    Marketing: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+    Sales: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
+    Product: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    General: 'bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300',
+    Engineering: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
+    HR: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
   };
   return map[category] ?? 'bg-slate-100 text-slate-700';
 }
@@ -310,7 +311,8 @@ export default function FilesModule() {
   /* ---- LIST VIEW ---- */
   function renderListView() {
     return (
-      <div className="rounded-xl border border-slate-200 overflow-hidden">
+      <div className="rounded-xl border border-slate-200 dark:border-border overflow-hidden">
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="bg-slate-50/80 hover:bg-slate-50">
@@ -353,10 +355,10 @@ export default function FilesModule() {
                   <td className="text-sm text-slate-500">—</td>
                   <td className="pr-5 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-emerald-600">
+                      <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-emerald-600" onClick={() => toast.success('Share link copied')}>
                         <Share2 className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-red-500">
+                      <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-red-500" onClick={() => toast.error('Folder deleted')}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
@@ -407,13 +409,13 @@ export default function FilesModule() {
                   <td className="text-sm text-slate-500">{file.createdAt}</td>
                   <td className="pr-5 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-emerald-600">
+                      <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-emerald-600" onClick={() => toast.success('File downloaded')}>
                         <Download className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-emerald-600">
+                      <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-emerald-600" onClick={() => toast.success('Share link copied')}>
                         <Share2 className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-red-500">
+                      <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-red-500" onClick={() => toast.error('File deleted')}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
@@ -423,6 +425,7 @@ export default function FilesModule() {
             })}
           </TableBody>
         </Table>
+        </div>
       </div>
     );
   }
@@ -465,7 +468,7 @@ export default function FilesModule() {
               placeholder="Search files…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 w-48 h-9 text-sm bg-white"
+              className="pl-8 w-48 h-9 text-sm bg-background border-border"
             />
           </div>
 
@@ -534,6 +537,7 @@ export default function FilesModule() {
             variant="outline"
             size="sm"
             className="h-9 gap-1.5 text-slate-600 border-slate-200 hover:border-emerald-300 hover:text-emerald-700"
+            onClick={() => toast.success('New folder created')}
           >
             <FolderPlus className="w-4 h-4" />
             New Folder
@@ -543,6 +547,7 @@ export default function FilesModule() {
           <Button
             size="sm"
             className="h-9 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-200"
+            onClick={() => toast.success('File upload started')}
           >
             <Upload className="w-4 h-4" />
             Upload
@@ -551,7 +556,7 @@ export default function FilesModule() {
       </div>
 
       {/* ── Storage Usage Bar ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-white rounded-xl border border-slate-200 p-4">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 bg-background dark:bg-card rounded-xl border border-border p-4">
         <div className="flex items-center gap-2 text-sm text-slate-600 shrink-0">
           <HardDrive className="w-4 h-4 text-emerald-600" />
           <span className="font-medium">
@@ -585,7 +590,7 @@ export default function FilesModule() {
       </div>
 
       {/* ── Bottom Info Bar ── */}
-      <div className="flex items-center justify-between bg-white rounded-xl border border-slate-200 px-5 py-3">
+      <div className="flex items-center justify-between bg-background dark:bg-card rounded-xl border border-border px-5 py-3">
         <div className="flex items-center gap-4">
           <span className="text-sm text-slate-600 font-medium">
             {totalItems} {totalItems === 1 ? 'item' : 'items'}

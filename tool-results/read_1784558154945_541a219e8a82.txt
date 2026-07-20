@@ -1,0 +1,568 @@
+     1→'use client';
+     2→
+     3→import { clsx, type ClassValue } from 'clsx';
+     4→import { twMerge } from 'tailwind-merge';
+     5→function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
+     6→
+     7→import { useState, useMemo } from 'react';
+     8→import { motion } from 'framer-motion';
+     9→import {
+    10→  Plus, Search, LayoutGrid, List, FolderKanban, GanttChart,
+    11→  Clock, Users, DollarSign, CalendarDays, ArrowUpDown,
+    12→  CheckCircle2, Circle, AlertCircle, Eye,
+    13→} from 'lucide-react';
+    14→
+    15→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+    16→import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
+    17→import { Button } from '@/components/ui/button';
+    18→import { Input } from '@/components/ui/input';
+    19→import { ScrollArea } from '@/components/ui/scroll-area';
+    20→import { toast } from 'sonner';
+    21→import { toast } from 'sonner';
+    22→
+    23→import { projects, projectTasks } from '@/lib/mock-data';
+    24→import type { ProjectItem, ProjectTaskItem } from '@/types';
+    25→
+    26→/* ---- helpers ---- */
+    27→
+    28→function formatCurrency(v: number) {
+    29→  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v);
+    30→}
+    31→
+    32→function formatDate(d: string) {
+    33→  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    34→}
+    35→
+    36→function getInitials(name: string) {
+    37→  return name
+    38→    .split(' ')
+    39→    .map((w) => w[0])
+    40→    .join('')
+    41→    .toUpperCase()
+    42→    .slice(0, 2);
+    43→}
+    44→
+    45→const priorityColors: Record<string, string> = {
+    46→  critical: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800',
+    47→  high: 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800',
+    48→  medium: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
+    49→  low: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/40 dark:text-green-300 dark:border-green-800',
+    50→};
+    51→
+    52→const statusColors: Record<string, string> = {
+    53→  todo: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700',
+    54→  'in-progress': 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800',
+    55→  review: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
+    56→  done: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/40 dark:text-green-300 dark:border-green-800',
+    57→};
+    58→
+    59→const projectStatusColors: Record<string, string> = {
+    60→  active: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800',
+    61→  completed: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800',
+    62→  'on-hold': 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
+    63→  planning: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800',
+    64→};
+    65→
+    66→const projectBarColors: Record<string, string> = {
+    67→  active: 'bg-emerald-500',
+    68→  completed: 'bg-blue-500',
+    69→  'on-hold': 'bg-amber-400',
+    70→  planning: 'bg-purple-500',
+    71→};
+    72→
+    73→const columnConfig = [
+    74→  { key: 'todo' as const, label: 'To Do', icon: Circle, dotColor: 'bg-gray-400' },
+    75→  { key: 'in-progress' as const, label: 'In Progress', icon: AlertCircle, dotColor: 'bg-blue-400' },
+    76→  { key: 'review' as const, label: 'Review', icon: Eye, dotColor: 'bg-amber-400' },
+    77→  { key: 'done' as const, label: 'Done', icon: CheckCircle2, dotColor: 'bg-green-400' },
+    78→];
+    79→
+    80→/* ---- Sub-components ---- */
+    81→
+    82→function TabHeader({ title, description, actionLabel }: { title: string; description: string; actionLabel: string }) {
+    83→  return (
+    84→    <div className="flex items-center justify-between mb-6">
+    85→      <div>
+    86→        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+    87→        <p className="text-sm text-muted-foreground mt-0.5">{description}</p>
+    88→      </div>
+    89→      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => toast.success(`${actionLabel} created`)}>
+    90→        <Plus className="h-4 w-4 mr-1.5" />{actionLabel}
+    91→      </Button>
+    92→    </div>
+    93→  );
+    94→}
+    95→
+    96→function PriorityBadge({ priority }: { priority: string }) {
+    97→  return (
+    98→    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border', priorityColors[priority] ?? 'bg-gray-100 text-gray-600')}>
+    99→      {priority}
+   100→    </span>
+   101→  );
+   102→}
+   103→
+   104→function StatusBadge({ status }: { status: string }) {
+   105→  return (
+   106→    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border', statusColors[status] ?? 'bg-gray-100 text-gray-600')}>
+   107→      {status === 'in-progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1)}
+   108→    </span>
+   109→  );
+   110→}
+   111→
+   112→function ProjectStatusBadge({ status }: { status: string }) {
+   113→  return (
+   114→    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border', projectStatusColors[status] ?? 'bg-gray-100 text-gray-600')}>
+   115→      {status === 'on-hold' ? 'On Hold' : status.charAt(0).toUpperCase() + status.slice(1)}
+   116→    </span>
+   117→  );
+   118→}
+   119→
+   120→function AvatarInitials({ name }: { name: string }) {
+   121→  const colors = ['bg-teal-500', 'bg-emerald-600', 'bg-cyan-600', 'bg-indigo-500', 'bg-violet-500'];
+   122→  const idx = name.length % colors.length;
+   123→  return (
+   124→    <div className={cn('flex items-center justify-center h-6 w-6 rounded-full text-[10px] font-semibold text-white shrink-0', colors[idx])}>
+   125→      {getInitials(name)}
+   126→    </div>
+   127→  );
+   128→}
+   129→
+   130→function MiniProgressBar({ logged, estimated }: { logged: number; estimated: number }) {
+   131→  const pct = estimated > 0 ? Math.min((logged / estimated) * 100, 100) : 0;
+   132→  return (
+   133→    <div className="flex items-center gap-2">
+   134→      <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+   135→        <div className="h-full bg-teal-500 rounded-full" style={{ width: `${pct}%` }} />
+   136→      </div>
+   137→      <span className="text-[11px] text-muted-foreground whitespace-nowrap">{logged}h/{estimated}h</span>
+   138→    </div>
+   139→  );
+   140→}
+   141→
+   142→/* ---- Kanban Task Card ---- */
+   143→
+   144→function TaskCard({ task }: { task: ProjectTaskItem }) {
+   145→  return (
+   146→    <motion.div
+   147→      initial={{ opacity: 0, y: 8 }}
+   148→      animate={{ opacity: 1, y: 0 }}
+   149→      whileHover={{ y: -2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
+   150→      className="bg-card rounded-lg border border-border p-3 mb-2.5 cursor-pointer transition-colors"
+   151→    >
+   152→      <p className="text-sm font-semibold text-foreground mb-1.5 leading-snug">{task.title}</p>
+   153→      <p className="text-[11px] text-teal-600 font-medium mb-2">{task.projectName}</p>
+   154→      <div className="flex items-center gap-1.5 mb-2.5 flex-wrap">
+   155→        <PriorityBadge priority={task.priority} />
+   156→        {task.tags.map((tag) => (
+   157→          <span key={tag} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-50 text-teal-700 border border-teal-100">
+   158→            {tag}
+   159→          </span>
+   160→        ))}
+   161→      </div>
+   162→      <div className="flex items-center justify-between">
+   163→        <div className="flex items-center gap-1.5">
+   164→          <AvatarInitials name={task.assigneeName} />
+   165→          <span className="text-[11px] text-muted-foreground hidden sm:inline">{task.assigneeName.split(' ')[0]}</span>
+   166→        </div>
+   167→        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+   168→          <span className="flex items-center gap-0.5">
+   169→            <Clock className="h-3 w-3" />{task.loggedHours}h/{task.estimatedHours}h
+   170→          </span>
+   171→          <span className="flex items-center gap-0.5">
+   172→            <CalendarDays className="h-3 w-3" />{new Date(task.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+   173→          </span>
+   174→        </div>
+   175→      </div>
+   176→    </motion.div>
+   177→  );
+   178→}
+   179→
+   180→/* ---- Tab 1: Board (Kanban) ---- */
+   181→
+   182→function BoardTab({ tasks }: { tasks: ProjectTaskItem[] }) {
+   183→  const [search, setSearch] = useState('');
+   184→  const filtered = useMemo(() => {
+   185→    if (!search) return tasks;
+   186→    const q = search.toLowerCase();
+   187→    return tasks.filter(
+   188→      (t) =>
+   189→        t.title.toLowerCase().includes(q) ||
+   190→        t.projectName.toLowerCase().includes(q) ||
+   191→        t.assigneeName.toLowerCase().includes(q)
+   192→    );
+   193→  }, [tasks, search]);
+   194→
+   195→  const columns = useMemo(() => {
+   196→    return columnConfig.map((col) => {
+   197→      const colTasks = filtered.filter((t) => t.status === col.key);
+   198→      const totalHours = colTasks.reduce((s, t) => s + t.estimatedHours, 0);
+   199→      return { ...col, tasks: colTasks, totalHours };
+   200→    });
+   201→  }, [filtered]);
+   202→
+   203→  return (
+   204→    <div>
+   205→      <TabHeader title="Task Board" description="Drag tasks across columns to update their status" actionLabel="New Task" />
+   206→      <div className="relative mb-4">
+   207→        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   208→        <Input placeholder="Search tasks..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 max-w-sm" />
+   209→      </div>
+   210→      <div className="flex gap-4 overflow-x-auto pb-4">
+   211→        {columns.map((col) => (
+   212→          <div key={col.key} className="min-w-[280px] w-[280px] shrink-0">
+   213→            <div className="flex items-center justify-between mb-3 px-1">
+   214→              <div className="flex items-center gap-2">
+   215→                <div className={cn('h-2.5 w-2.5 rounded-full', col.dotColor)} />
+   216→                <span className="text-sm font-semibold text-foreground">{col.label}</span>
+   217→                <span className="text-xs bg-muted text-muted-foreground rounded-full px-2 py-0.5 font-medium">{col.tasks.length}</span>
+   218→              </div>
+   219→              <span className="text-[11px] text-muted-foreground">{col.totalHours}h</span>
+   220→            </div>
+   221→            <div className="bg-muted/40 rounded-xl p-2 min-h-[300px] border border-border">
+   222→              {col.tasks.map((task) => (
+   223→                <TaskCard key={task.id} task={task} />
+   224→              ))}
+   225→              {col.tasks.length === 0 && (
+   226→                <p className="text-xs text-muted-foreground text-center py-8">No tasks</p>
+   227→              )}
+   228→            </div>
+   229→          </div>
+   230→        ))}
+   231→      </div>
+   232→    </div>
+   233→  );
+   234→}
+   235→
+   236→/* ---- Tab 2: List View ---- */
+   237→
+   238→function ListViewTab({ tasks }: { tasks: ProjectTaskItem[] }) {
+   239→  const [search, setSearch] = useState('');
+   240→  const [sortKey, setSortKey] = useState<'priority' | 'dueDate' | 'title'>('priority');
+   241→  const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+   242→
+   243→  const filtered = useMemo(() => {
+   244→    let result = tasks;
+   245→    if (search) {
+   246→      const q = search.toLowerCase();
+   247→      result = result.filter(
+   248→        (t) =>
+   249→          t.title.toLowerCase().includes(q) ||
+   250→          t.projectName.toLowerCase().includes(q) ||
+   251→          t.assigneeName.toLowerCase().includes(q)
+   252→      );
+   253→    }
+   254→    return [...result].sort((a, b) => {
+   255→      if (sortKey === 'priority') return (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9);
+   256→      if (sortKey === 'dueDate') return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+   257→      return a.title.localeCompare(b.title);
+   258→    });
+   259→  }, [tasks, search, sortKey]);
+   260→
+   261→  return (
+   262→    <div>
+   263→      <TabHeader title="Task List" description="View and manage all project tasks in a structured table" actionLabel="New Task" />
+   264→      <div className="flex items-center gap-3 mb-4">
+   265→        <div className="relative flex-1 max-w-sm">
+   266→          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   267→          <Input placeholder="Search tasks..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+   268→        </div>
+   269→        <Button
+   270→          variant="outline"
+   271→          size="sm"
+   272→          onClick={() => setSortKey(sortKey === 'priority' ? 'dueDate' : sortKey === 'dueDate' ? 'title' : 'priority')}
+   273→        >
+   274→          <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" />
+   275→          Sort: {sortKey === 'priority' ? 'Priority' : sortKey === 'dueDate' ? 'Due Date' : 'Title'}
+   276→        </Button>
+   277→      </div>
+   278→      <div className="border rounded-xl overflow-hidden">
+   279→        <Table>
+   280→          <TableHeader>
+   281→            <TableRow className="bg-muted/50 hover:bg-muted/50">
+   282→              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Task</TableHead>
+   283→              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Project</TableHead>
+   284→              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</TableHead>
+   285→              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Priority</TableHead>
+   286→              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Assignee</TableHead>
+   287→              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Due Date</TableHead>
+   288→              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Progress</TableHead>
+   289→              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tags</TableHead>
+   290→            </TableRow>
+   291→          </TableHeader>
+   292→          <TableBody>
+   293→            {filtered.map((task, i) => (
+   294→              <TableRow key={task.id} className={cn('transition-colors', i % 2 === 0 ? 'bg-background' : 'bg-muted/30')}>
+   295→                <TableCell className="py-3">
+   296→                  <span className="text-sm font-semibold text-foreground">{task.title}</span>
+   297→                </TableCell>
+   298→                <TableCell className="py-3">
+   299→                  <span className="text-sm text-teal-600 font-medium">{task.projectName}</span>
+   300→                </TableCell>
+   301→                <TableCell className="py-3">
+   302→                  <StatusBadge status={task.status} />
+   303→                </TableCell>
+   304→                <TableCell className="py-3">
+   305→                  <PriorityBadge priority={task.priority} />
+   306→                </TableCell>
+   307→                <TableCell className="py-3">
+   308→                  <div className="flex items-center gap-2">
+   309→                    <AvatarInitials name={task.assigneeName} />
+   310→                    <span className="text-sm text-foreground">{task.assigneeName}</span>
+   311→                  </div>
+   312→                </TableCell>
+   313→                <TableCell className="py-3">
+   314→                  <span className="text-sm text-muted-foreground">{formatDate(task.dueDate)}</span>
+   315→                </TableCell>
+   316→                <TableCell className="py-3">
+   317→                  <MiniProgressBar logged={task.loggedHours} estimated={task.estimatedHours} />
+   318→                </TableCell>
+   319→                <TableCell className="py-3">
+   320→                  <div className="flex items-center gap-1 flex-wrap">
+   321→                    {task.tags.map((tag) => (
+   322→                      <span key={tag} className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-50 text-teal-700 border border-teal-100">
+   323→                        {tag}
+   324→                      </span>
+   325→                    ))}
+   326→                  </div>
+   327→                </TableCell>
+   328→              </TableRow>
+   329→            ))}
+   330→          </TableBody>
+   331→        </Table>
+   332→      </div>
+   333→    </div>
+   334→  );
+   335→}
+   336→
+   337→/* ---- Tab 3: Projects Grid ---- */
+   338→
+   339→function ProjectsGridTab({ items }: { items: ProjectItem[] }) {
+   340→  const [search, setSearch] = useState('');
+   341→  const filtered = useMemo(() => {
+   342→    if (!search) return items;
+   343→    const q = search.toLowerCase();
+   344→    return items.filter(
+   345→      (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q) || p.ownerName.toLowerCase().includes(q)
+   346→    );
+   347→  }, [items, search]);
+   348→
+   349→  return (
+   350→    <div>
+   351→      <TabHeader title="Projects" description="Overview of all projects and their current progress" actionLabel="New Project" />
+   352→      <div className="relative mb-6 max-w-sm">
+   353→        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   354→        <Input placeholder="Search projects..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+   355→      </div>
+   356→      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+   357→        {filtered.map((project) => (
+   358→          <motion.div
+   359→            key={project.id}
+   360→            whileHover={{ y: -4, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
+   361→            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+   362→            className="bg-white rounded-xl border border-gray-200 p-5 cursor-pointer"
+   363→          >
+   364→            <div className="flex items-start justify-between mb-2">
+   365→              <h4 className="text-base font-semibold text-gray-900 leading-tight pr-2">{project.name}</h4>
+   366→              <ProjectStatusBadge status={project.status} />
+   367→            </div>
+   368→            <p className="text-sm text-muted-foreground mb-3 line-clamp-2 leading-relaxed">{project.description}</p>
+   369→            <div className="flex items-center gap-2 mb-4">
+   370→              <PriorityBadge priority={project.priority} />
+   371→            </div>
+   372→            <div className="mb-4">
+   373→              <div className="flex items-center justify-between text-xs mb-1.5">
+   374→                <span className="text-muted-foreground">Progress</span>
+   375→                <span className={cn('font-semibold', project.progress >= 80 ? 'text-emerald-600' : project.progress >= 50 ? 'text-teal-600' : 'text-amber-600')}>
+   376→                  {project.progress}%
+   377→                </span>
+   378→              </div>
+   379→              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+   380→                <motion.div
+   381→                  initial={{ width: 0 }}
+   382→                  animate={{ width: `${project.progress}%` }}
+   383→                  transition={{ duration: 0.6, ease: 'easeOut' }}
+   384→                  className={cn('h-full rounded-full', project.progress >= 80 ? 'bg-emerald-500' : project.progress >= 50 ? 'bg-teal-500' : 'bg-amber-400')}
+   385→                />
+   386→              </div>
+   387→            </div>
+   388→            <div className="grid grid-cols-3 gap-2 mb-4">
+   389→              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+   390→                <Users className="h-3.5 w-3.5 text-teal-500" />
+   391→                <span>{project.memberCount} members</span>
+   392→              </div>
+   393→              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+   394→                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+   395→                <span>{project.completedTaskCount}/{project.taskCount}</span>
+   396→              </div>
+   397→              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+   398→                <DollarSign className="h-3.5 w-3.5 text-amber-500" />
+   399→                <span>{formatCurrency(project.budget)}</span>
+   400→              </div>
+   401→            </div>
+   402→            <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-gray-100 pt-3">
+   403→              <span className="flex items-center gap-1">
+   404→                <CalendarDays className="h-3 w-3" />{formatDate(project.startDate)}
+   405→              </span>
+   406→              <span className="flex items-center gap-1">
+   407→                <CalendarDays className="h-3 w-3" />{formatDate(project.endDate)}
+   408→              </span>
+   409→            </div>
+   410→            <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-50">
+   411→              <AvatarInitials name={project.ownerName} />
+   412→              <span className="text-xs font-medium text-gray-600">{project.ownerName}</span>
+   413→            </div>
+   414→          </motion.div>
+   415→        ))}
+   416→      </div>
+   417→    </div>
+   418→  );
+   419→}
+   420→
+   421→/* ---- Tab 4: Timeline ---- */
+   422→
+   423→function TimelineTab({ items }: { items: ProjectItem[] }) {
+   424→  const allDates = useMemo(() => {
+   425→    const starts = items.map((p) => new Date(p.startDate).getTime());
+   426→    const ends = items.map((p) => new Date(p.endDate).getTime());
+   427→    return { min: Math.min(...starts), max: Math.max(...ends) };
+   428→  }, [items]);
+   429→
+   430→  const totalSpan = allDates.max - allDates.min;
+   431→
+   432→  function getLeft(startDate: string) {
+   433→    const ms = new Date(startDate).getTime() - allDates.min;
+   434→    return totalSpan > 0 ? (ms / totalSpan) * 100 : 0;
+   435→  }
+   436→
+   437→  function getWidth(startDate: string, endDate: string) {
+   438→    const ms = new Date(endDate).getTime() - new Date(startDate).getTime();
+   439→    return totalSpan > 0 ? Math.max((ms / totalSpan) * 100, 3) : 3;
+   440→  }
+   441→
+   442→  const months = useMemo(() => {
+   443→    const start = new Date(allDates.min);
+   444→    const end = new Date(allDates.max);
+   445→    const result: string[] = [];
+   446→    const current = new Date(start.getFullYear(), start.getMonth(), 1);
+   447→    while (current <= end) {
+   448→      result.push(current.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }));
+   449→      current.setMonth(current.getMonth() + 1);
+   450→    }
+   451→    return result;
+   452→  }, [allDates]);
+   453→
+   454→  return (
+   455→    <div>
+   456→      <TabHeader title="Timeline" description="Visualize project schedules and progress on a Gantt-like timeline" actionLabel="Add Project" />
+   457→      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+   458→        {/* Month header */}
+   459→        <div className="flex border-b border-gray-100">
+   460→          <div className="w-52 shrink-0 px-4 py-3 border-r border-gray-100">
+   461→            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Project</span>
+   462→          </div>
+   463→          <div className="flex-1 flex relative">
+   464→            {months.map((m, i) => {
+   465→              const monthStart = new Date(allDates.min);
+   466→              monthStart.setMonth(monthStart.getMonth() + i);
+   467→              const monthStartMs = monthStart.getTime() - allDates.min;
+   468→              const nextMonth = new Date(monthStart);
+   469→              nextMonth.setMonth(nextMonth.getMonth() + 1);
+   470→              const nextMonthMs = Math.min(nextMonth.getTime() - allDates.min, totalSpan);
+   471→              const widthPct = totalSpan > 0 ? ((nextMonthMs - monthStartMs) / totalSpan) * 100 : 0;
+   472→              return (
+   473→                <div
+   474→                  key={m}
+   475→                  className="flex items-center justify-center text-[11px] text-muted-foreground font-medium border-r border-gray-50 last:border-r-0"
+   476→                  style={{ width: `${widthPct}%` }}
+   477→                >
+   478→                  {m}
+   479→                </div>
+   480→              );
+   481→            })}
+   482→          </div>
+   483→        </div>
+   484→        {/* Rows */}
+   485→        {items.map((project, i) => (
+   486→          <div
+   487→            key={project.id}
+   488→            className={cn('flex items-center border-b border-gray-50 last:border-b-0', i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30')}
+   489→          >
+   490→            <div className="w-52 shrink-0 px-4 py-3.5 border-r border-gray-100">
+   491→              <div className="flex items-center gap-2">
+   492→                <ProjectStatusBadge status={project.status} />
+   493→                <span className="text-sm font-medium text-gray-900 truncate">{project.name}</span>
+   494→              </div>
+   495→            </div>
+   496→            <div className="flex-1 py-3.5 px-2 relative" style={{ minHeight: '44px' }}>
+   497→              <div
+   498→                className="relative h-7 rounded-md overflow-hidden"
+   499→                style={{
+   500→                  position: 'absolute',
+   501→                  left: `${getLeft(project.startDate)}%`,
+   502→                  width: `${getWidth(project.startDate, project.endDate)}%`,
+   503→                  top: '50%',
+   504→                  transform: 'translateY(-50%)',
+   505→                }}
+   506→              >
+   507→                {/* Background bar */}
+   508→                <div className={cn('absolute inset-0 rounded-md opacity-20', projectBarColors[project.status] ?? 'bg-gray-400')} />
+   509→                {/* Progress fill */}
+   510→                <div
+   511→                  className={cn('absolute inset-y-0 left-0 rounded-md', projectBarColors[project.status] ?? 'bg-gray-400')}
+   512→                  style={{ width: `${project.progress}%` }}
+   513→                />
+   514→                {/* Label */}
+   515→                <span className="absolute inset-0 flex items-center px-2 text-[10px] font-semibold text-gray-700 truncate">
+   516→                  {project.progress}% — {formatDate(project.startDate).replace(/,\s*\d{4}$/, '')} to {formatDate(project.endDate).replace(/,\s*\d{4}$/, '')}
+   517→                </span>
+   518→              </div>
+   519→            </div>
+   520→          </div>
+   521→        ))}
+   522→      </div>
+   523→    </div>
+   524→  );
+   525→}
+   526→
+   527→/* ---- Main Module ---- */
+   528→
+   529→export default function ProjectsModule() {
+   530→  return (
+   531→    <div className="h-full flex flex-col">
+   532→      <Tabs defaultValue="board" className="flex-1 flex flex-col">
+   533→        <div className="px-6 pt-5 pb-0">
+   534→          <TabsList className="bg-gray-100 p-1 h-10">
+   535→            <TabsTrigger value="board" className="text-xs gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+   536→              <LayoutGrid className="h-3.5 w-3.5" />Board
+   537→            </TabsTrigger>
+   538→            <TabsTrigger value="list" className="text-xs gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+   539→              <List className="h-3.5 w-3.5" />List View
+   540→            </TabsTrigger>
+   541→            <TabsTrigger value="projects" className="text-xs gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+   542→              <FolderKanban className="h-3.5 w-3.5" />Projects
+   543→            </TabsTrigger>
+   544→            <TabsTrigger value="timeline" className="text-xs gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+   545→              <GanttChart className="h-3.5 w-3.5" />Timeline
+   546→            </TabsTrigger>
+   547→          </TabsList>
+   548→        </div>
+   549→        <ScrollArea className="flex-1">
+   550→          <div className="p-6">
+   551→            <TabsContent value="board" className="mt-0">
+   552→              <BoardTab tasks={projectTasks} />
+   553→            </TabsContent>
+   554→            <TabsContent value="list" className="mt-0">
+   555→              <ListViewTab tasks={projectTasks} />
+   556→            </TabsContent>
+   557→            <TabsContent value="projects" className="mt-0">
+   558→              <ProjectsGridTab items={projects} />
+   559→            </TabsContent>
+   560→            <TabsContent value="timeline" className="mt-0">
+   561→              <TimelineTab items={projects} />
+   562→            </TabsContent>
+   563→          </div>
+   564→        </ScrollArea>
+   565→      </Tabs>
+   566→    </div>
+   567→  );
+   568→}

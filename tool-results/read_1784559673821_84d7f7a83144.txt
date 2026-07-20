@@ -1,0 +1,708 @@
+     1→'use client';
+     2→
+     3→import { clsx, type ClassValue } from 'clsx';
+     4→import { twMerge } from 'tailwind-merge';
+     5→function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
+     6→
+     7→import { useState, useMemo } from 'react';
+     8→import { motion } from 'framer-motion';
+     9→import {
+    10→  Users, Search, UserCheck, UserX, Clock, CalendarOff,
+    11→  Plus, Calendar, DollarSign, TrendingUp, Eye, Shield,
+    12→  CheckCircle2, XCircle, ArrowUpDown, Filter, CalendarDays,
+    13→  ChevronLeft, ChevronRight, Banknote, PieChart, Briefcase,
+    14→  UserRound, AlertCircle, FileCheck, Plane, Heart, Coffee,
+    15→  Baby, ArrowUpRight, BadgeDollarSign,
+    16→} from 'lucide-react';
+    17→import { PieChart as RechartsPie, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+    18→
+    19→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+    20→import {
+    21→  Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
+    22→} from '@/components/ui/table';
+    23→import { Badge } from '@/components/ui/badge';
+    24→import { Button } from '@/components/ui/button';
+    25→import { Input } from '@/components/ui/input';
+    26→import {
+    27→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    28→} from '@/components/ui/select';
+    29→import { Card, CardContent } from '@/components/ui/card';
+    30→import { toast } from 'sonner';
+    31→import { ScrollArea } from '@/components/ui/scroll-area';
+    32→
+    33→import { employees } from '@/lib/mock-data';
+    34→import type { EmployeeItem } from '@/types';
+    35→
+    36→/* ---- helpers ---- */
+    37→
+    38→function formatCurrency(v: number) {
+    39→  return new Intl.NumberFormat('en-US', {
+    40→    style: 'currency', currency: 'USD', maximumFractionDigits: 0,
+    41→  }).format(v);
+    42→}
+    43→
+    44→function formatDate(d: string) {
+    45→  return new Date(d).toLocaleDateString('en-US', {
+    46→    month: 'short', day: 'numeric', year: 'numeric',
+    47→  });
+    48→}
+    49→
+    50→function getInitials(firstName: string, lastName: string) {
+    51→  return `${firstName[0]}${lastName[0]}`;
+    52→}
+    53→
+    54→const departmentColors: Record<string, string> = {
+    55→  Executive: 'bg-amber-500 text-white',
+    56→  Product: 'bg-violet-500 text-white',
+    57→  Engineering: 'bg-blue-500 text-white',
+    58→  Design: 'bg-pink-500 text-white',
+    59→  Sales: 'bg-emerald-500 text-white',
+    60→  'Human Resources': 'bg-teal-500 text-white',
+    61→  Finance: 'bg-indigo-500 text-white',
+    62→  Support: 'bg-orange-500 text-white',
+    63→  Marketing: 'bg-cyan-500 text-white',
+    64→};
+    65→
+    66→const departments = [
+    67→  'All', 'Executive', 'Product', 'Engineering', 'Design',
+    68→  'Sales', 'HR', 'Finance', 'Support', 'Marketing',
+    69→];
+    70→
+    71→/* ---- mock attendance data ---- */
+    72→
+    73→type AttendanceStatus = 'present' | 'absent' | 'late' | 'on-leave';
+    74→
+    75→interface AttendanceRecord {
+    76→  employee: EmployeeItem;
+    77→  clockIn: string;
+    78→  clockOut: string;
+    79→  status: AttendanceStatus;
+    80→}
+    81→
+    82→const attendanceData: AttendanceRecord[] = [
+    83→  { employee: employees[0], clockIn: '08:05 AM', clockOut: '06:10 PM', status: 'present' },
+    84→  { employee: employees[1], clockIn: '08:30 AM', clockOut: '05:45 PM', status: 'present' },
+    85→  { employee: employees[2], clockIn: '09:15 AM', clockOut: '--', status: 'late' },
+    86→  { employee: employees[3], clockIn: '07:55 AM', clockOut: '06:30 PM', status: 'present' },
+    87→  { employee: employees[4], clockIn: '08:10 AM', clockOut: '05:50 PM', status: 'present' },
+    88→  { employee: employees[5], clockIn: '--', clockOut: '--', status: 'absent' },
+    89→  { employee: employees[6], clockIn: '09:20 AM', clockOut: '--', status: 'late' },
+    90→  { employee: employees[7], clockIn: '08:00 AM', clockOut: '05:30 PM', status: 'present' },
+    91→  { employee: employees[8], clockIn: '08:45 AM', clockOut: '--', status: 'present' },
+    92→  { employee: employees[9], clockIn: '--', clockOut: '--', status: 'on-leave' },
+    93→  { employee: employees[10], clockIn: '08:20 AM', clockOut: '06:00 PM', status: 'present' },
+    94→  { employee: employees[11], clockIn: '--', clockOut: '--', status: 'absent' },
+    95→];
+    96→
+    97→/* ---- mock leave requests ---- */
+    98→
+    99→type LeaveType = 'Vacation' | 'Sick' | 'Personal' | 'Maternity';
+   100→type LeaveStatus = 'pending' | 'approved' | 'rejected';
+   101→
+   102→interface LeaveRequest {
+   103→  id: string;
+   104→  employee: EmployeeItem;
+   105→  type: LeaveType;
+   106→  from: string;
+   107→  to: string;
+   108→  days: number;
+   109→  reason: string;
+   110→  status: LeaveStatus;
+   111→}
+   112→
+   113→const leaveRequests: LeaveRequest[] = [
+   114→  { id: 'lr1', employee: employees[0], type: 'Vacation', from: '2026-08-01', to: '2026-08-05', days: 5, reason: 'Family vacation to Hawaii for summer break', status: 'pending' },
+   115→  { id: 'lr2', employee: employees[2], type: 'Sick', from: '2026-07-22', to: '2026-07-23', days: 2, reason: 'Flu symptoms, doctor recommendation to rest', status: 'approved' },
+   116→  { id: 'lr3', employee: employees[5], type: 'Personal', from: '2026-07-28', to: '2026-07-29', days: 2, reason: 'Moving to a new apartment across town', status: 'pending' },
+   117→  { id: 'lr4', employee: employees[7], type: 'Vacation', from: '2026-08-10', to: '2026-08-21', days: 10, reason: 'Annual summer trip with family to Europe', status: 'approved' },
+   118→  { id: 'lr5', employee: employees[9], type: 'Sick', from: '2026-07-20', to: '2026-07-21', days: 2, reason: 'Dental surgery and recovery period', status: 'pending' },
+   119→  { id: 'lr6', employee: employees[4], type: 'Maternity', from: '2026-09-01', to: '2026-12-20', days: 80, reason: 'Maternity leave per company policy', status: 'approved' },
+   120→  { id: 'lr7', employee: employees[6], type: 'Vacation', from: '2026-07-25', to: '2026-07-26', days: 2, reason: 'Attend best friend wedding in Seattle', status: 'rejected' },
+   121→  { id: 'lr8', employee: employees[10], type: 'Personal', from: '2026-08-15', to: '2026-08-15', days: 1, reason: 'Home inspection for refinancing process', status: 'pending' },
+   122→];
+   123→
+   124→/* ---- mock payroll data ---- */
+   125→
+   126→const PIE_COLORS = ['#10b981', '#6366f1', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#ef4444', '#14b8a6'];
+   127→
+   128→/* ---- shared sub-components ---- */
+   129→
+   130→const fadeUp = {
+   131→  initial: { opacity: 0, y: 16 },
+   132→  animate: { opacity: 1, y: 0 },
+   133→  transition: { duration: 0.35 },
+   134→};
+   135→
+   136→function StatCard({ icon: Icon, label, value, accent }: {
+   137→  icon: React.ElementType; label: string; value: string | number; accent?: string;
+   138→}) {
+   139→  return (
+   140→    <motion.div {...fadeUp}>
+   141→      <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+   142→        <CardContent className="flex items-center gap-4 p-5">
+   143→          <div className={cn(
+   144→            'flex h-11 w-11 shrink-0 items-center justify-center rounded-lg',
+   145→            accent ?? 'bg-emerald-500/10 text-emerald-600',
+   146→          )}>
+   147→            <Icon className="h-5 w-5" />
+   148→          </div>
+   149→          <div className="min-w-0">
+   150→            <p className="text-sm text-muted-foreground truncate">{label}</p>
+   151→            <p className="text-2xl font-bold tracking-tight">{value}</p>
+   152→          </div>
+   153→        </CardContent>
+   154→      </Card>
+   155→    </motion.div>
+   156→  );
+   157→}
+   158→
+   159→function TabHeader({ title, description, actionLabel, actionIcon: ActionIcon }: {
+   160→  title: string; description: string; actionLabel?: string; actionIcon?: React.ElementType;
+   161→}) {
+   162→  return (
+   163→    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between mb-6">
+   164→      <div>
+   165→        <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
+   166→        <p className="text-sm text-muted-foreground">{description}</p>
+   167→      </div>
+   168→      {actionLabel && (
+   169→        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white mt-2 sm:mt-0 w-fit gap-1.5" onClick={() => toast.success(`${actionLabel} created`)}>
+   170→          {ActionIcon && <ActionIcon className="h-4 w-4" />}
+   171→          {actionLabel}
+   172→        </Button>
+   173→      )}
+   174→    </div>
+   175→  );
+   176→}
+   177→
+   178→function AvatarInitials({ firstName, lastName, department, size = 'sm' }: {
+   179→  firstName: string; lastName: string; department: string; size?: 'sm' | 'md' | 'lg';
+   180→}) {
+   181→  const sizeMap = { sm: 'h-8 w-8 text-xs', md: 'h-10 w-10 text-sm', lg: 'h-12 w-12 text-base' };
+   182→  return (
+   183→    <div className={cn(
+   184→      'flex items-center justify-center rounded-full font-semibold shrink-0',
+   185→      sizeMap[size],
+   186→      departmentColors[department] ?? 'bg-gray-500 text-white',
+   187→    )}>
+   188→      {getInitials(firstName, lastName)}
+   189→    </div>
+   190→  );
+   191→}
+   192→
+   193→/* ================================================================
+   194→   TAB 1 — EMPLOYEES
+   195→   ================================================================ */
+   196→
+   197→function EmployeesTab() {
+   198→  const [search, setSearch] = useState('');
+   199→  const [dept, setDept] = useState('All');
+   200→
+   201→  const filtered = useMemo(() => {
+   202→    return employees.filter((e) => {
+   203→      const matchSearch =
+   204→        `${e.firstName} ${e.lastName} ${e.email} ${e.jobTitle}`
+   205→          .toLowerCase()
+   206→          .includes(search.toLowerCase());
+   207→      const matchDept =
+   208→        dept === 'All' ||
+   209→        e.department.toLowerCase() === dept.toLowerCase() ||
+   210→        (dept === 'HR' && e.department === 'Human Resources');
+   211→      return matchSearch && matchDept;
+   212→    });
+   213→  }, [search, dept]);
+   214→
+   215→  const statusColor: Record<string, string> = {
+   216→    active: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
+   217→    'on-leave': 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+   218→    inactive: 'bg-red-500/15 text-red-700 dark:text-red-400',
+   219→  };
+   220→
+   221→  return (
+   222→    <div className="space-y-6">
+   223→      <TabHeader
+   224→        title="Employees"
+   225→        description="Manage your organization's workforce and employee directory."
+   226→        actionLabel="Add Employee"
+   227→        actionIcon={Plus}
+   228→      />
+   229→
+   230→      {/* summary cards */}
+   231→      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+   232→        <StatCard icon={Users} label="Total Employees" value="248" accent="bg-teal-500/10 text-teal-600" />
+   233→        <StatCard icon={UserCheck} label="Active" value="235" accent="bg-emerald-500/10 text-emerald-600" />
+   234→        <StatCard icon={CalendarOff} label="On Leave" value="8" accent="bg-amber-500/10 text-amber-600" />
+   235→        <StatCard icon={UserRound} label="New Hires" value="5" accent="bg-blue-500/10 text-blue-600" />
+   236→      </div>
+   237→
+   238→      {/* search & filter */}
+   239→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+   240→        <div className="relative flex-1">
+   241→          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   242→          <Input
+   243→            placeholder="Search employees..."
+   244→            value={search}
+   245→            onChange={(e) => setSearch(e.target.value)}
+   246→            className="pl-9 h-9"
+   247→          />
+   248→        </div>
+   249→        <Select value={dept} onValueChange={setDept}>
+   250→          <SelectTrigger className="w-full sm:w-[180px] h-9">
+   251→            <Filter className="h-4 w-4 mr-1 text-muted-foreground" />
+   252→            <SelectValue placeholder="Department" />
+   253→          </SelectTrigger>
+   254→          <SelectContent>
+   255→            {departments.map((d) => (
+   256→              <SelectItem key={d} value={d}>{d}</SelectItem>
+   257→            ))}
+   258→          </SelectContent>
+   259→        </Select>
+   260→      </div>
+   261→
+   262→      {/* table */}
+   263→      <div className="rounded-lg border border-border/50 overflow-hidden">
+   264→        <Table>
+   265→          <TableHeader>
+   266→            <TableRow className="bg-muted/40 hover:bg-muted/40">
+   267→              <TableHead className="w-[50px]">Avatar</TableHead>
+   268→              <TableHead>Name</TableHead>
+   269→              <TableHead className="hidden md:table-cell">Email</TableHead>
+   270→              <TableHead className="hidden lg:table-cell">Job Title</TableHead>
+   271→              <TableHead>Department</TableHead>
+   272→              <TableHead>Status</TableHead>
+   273→              <TableHead className="hidden sm:table-cell">Hire Date</TableHead>
+   274→              <TableHead className="text-right">Salary</TableHead>
+   275→            </TableRow>
+   276→          </TableHeader>
+   277→          <TableBody>
+   278→            {filtered.map((emp) => (
+   279→              <TableRow key={emp.id} className="group">
+   280→                <TableCell>
+   281→                  <AvatarInitials firstName={emp.firstName} lastName={emp.lastName} department={emp.department} />
+   282→                </TableCell>
+   283→                <TableCell className="font-medium whitespace-nowrap">
+   284→                  {emp.firstName} {emp.lastName}
+   285→                </TableCell>
+   286→                <TableCell className="hidden md:table-cell text-muted-foreground">{emp.email}</TableCell>
+   287→                <TableCell className="hidden lg:table-cell text-muted-foreground">{emp.jobTitle}</TableCell>
+   288→                <TableCell>
+   289→                  <Badge variant="secondary" className="text-xs font-medium">
+   290→                    {emp.department}
+   291→                  </Badge>
+   292→                </TableCell>
+   293→                <TableCell>
+   294→                  <Badge variant="secondary" className={cn('text-xs capitalize', statusColor[emp.status] ?? '')}>
+   295→                    {emp.status === 'on-leave' ? 'On Leave' : emp.status}
+   296→                  </Badge>
+   297→                </TableCell>
+   298→                <TableCell className="hidden sm:table-cell text-muted-foreground">{formatDate(emp.hireDate)}</TableCell>
+   299→                <TableCell className="text-right font-medium tabular-nums">{formatCurrency(emp.salary)}</TableCell>
+   300→              </TableRow>
+   301→            ))}
+   302→            {filtered.length === 0 && (
+   303→              <TableRow>
+   304→                <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+   305→                  No employees found.
+   306→                </TableCell>
+   307→              </TableRow>
+   308→            )}
+   309→          </TableBody>
+   310→        </Table>
+   311→      </div>
+   312→    </div>
+   313→  );
+   314→}
+   315→
+   316→/* ================================================================
+   317→   TAB 2 — ATTENDANCE
+   318→   ================================================================ */
+   319→
+   320→function AttendanceTab() {
+   321→  const today = new Date().toLocaleDateString('en-US', {
+   322→    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+   323→  });
+   324→
+   325→  const statusBadge: Record<AttendanceStatus, { cls: string; label: string }> = {
+   326→    present: { cls: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400', label: 'Present' },
+   327→    absent: { cls: 'bg-red-500/15 text-red-700 dark:text-red-400', label: 'Absent' },
+   328→    late: { cls: 'bg-amber-500/15 text-amber-700 dark:text-amber-400', label: 'Late' },
+   329→    'on-leave': { cls: 'bg-blue-500/15 text-blue-700 dark:text-blue-400', label: 'On Leave' },
+   330→  };
+   331→
+   332→  return (
+   333→    <div className="space-y-6">
+   334→      <TabHeader
+   335→        title="Attendance"
+   336→        description="Track daily employee attendance and working hours."
+   337→        actionLabel="Export Report"
+   338→        actionIcon={ArrowUpRight}
+   339→      />
+   340→
+   341→      <div className="flex items-center gap-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-5 py-3">
+   342→        <CalendarDays className="h-5 w-5 text-emerald-600" />
+   343→        <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">{today}</p>
+   344→      </div>
+   345→
+   346→      {/* summary */}
+   347→      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+   348→        <StatCard icon={UserCheck} label="Present" value="18" accent="bg-emerald-500/10 text-emerald-600" />
+   349→        <StatCard icon={UserX} label="Absent" value="2" accent="bg-red-500/10 text-red-600" />
+   350→        <StatCard icon={Clock} label="Late" value="3" accent="bg-amber-500/10 text-amber-600" />
+   351→        <StatCard icon={CalendarOff} label="On Leave" value="1" accent="bg-blue-500/10 text-blue-600" />
+   352→      </div>
+   353→
+   354→      {/* grid of cards */}
+   355→      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+   356→        {attendanceData.map((rec, i) => {
+   357→          const s = statusBadge[rec.status];
+   358→          return (
+   359→            <motion.div
+   360→              key={rec.employee.id}
+   361→              initial={{ opacity: 0, y: 12 }}
+   362→              animate={{ opacity: 1, y: 0 }}
+   363→              transition={{ duration: 0.3, delay: i * 0.04 }}
+   364→            >
+   365→              <Card className="border-border/50 bg-card/80 backdrop-blur-sm hover:border-emerald-500/30 transition-colors">
+   366→                <CardContent className="flex flex-col items-center gap-3 p-5 text-center">
+   367→                  <AvatarInitials
+   368→                    firstName={rec.employee.firstName}
+   369→                    lastName={rec.employee.lastName}
+   370→                    department={rec.employee.department}
+   371→                    size="lg"
+   372→                  />
+   373→                  <div>
+   374→                    <p className="font-semibold text-sm">{rec.employee.firstName} {rec.employee.lastName}</p>
+   375→                    <p className="text-xs text-muted-foreground mt-0.5">{rec.employee.jobTitle}</p>
+   376→                  </div>
+   377→                  <Badge variant="secondary" className={cn('text-xs font-medium', s.cls)}>
+   378→                    {s.label}
+   379→                  </Badge>
+   380→                  <div className="w-full space-y-2 text-xs border-t pt-3 mt-1">
+   381→                    <div className="flex justify-between">
+   382→                      <span className="text-muted-foreground">Clock In</span>
+   383→                      <span className={rec.clockIn === '--' ? 'text-muted-foreground' : 'font-medium'}>
+   384→                        {rec.clockIn}
+   385→                      </span>
+   386→                    </div>
+   387→                    <div className="flex justify-between">
+   388→                      <span className="text-muted-foreground">Clock Out</span>
+   389→                      <span className={rec.clockOut === '--' ? 'text-muted-foreground' : 'font-medium'}>
+   390→                        {rec.clockOut}
+   391→                      </span>
+   392→                    </div>
+   393→                  </div>
+   394→                </CardContent>
+   395→              </Card>
+   396→            </motion.div>
+   397→          );
+   398→        })}
+   399→      </div>
+   400→    </div>
+   401→  );
+   402→}
+   403→
+   404→/* ================================================================
+   405→   TAB 3 — LEAVE MANAGEMENT
+   406→   ================================================================ */
+   407→
+   408→function LeaveManagementTab() {
+   409→  const leaveStatusColor: Record<LeaveStatus, string> = {
+   410→    pending: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+   411→    approved: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
+   412→    rejected: 'bg-red-500/15 text-red-700 dark:text-red-400',
+   413→  };
+   414→
+   415→  const typeIcon: Record<LeaveType, React.ElementType> = {
+   416→    Vacation: Plane,
+   417→    Sick: Heart,
+   418→    Personal: Coffee,
+   419→    Maternity: Baby,
+   420→  };
+   421→
+   422→  return (
+   423→    <div className="space-y-6">
+   424→      <TabHeader
+   425→        title="Leave Management"
+   426→        description="Review and manage employee leave requests and balances."
+   427→        actionLabel="New Request"
+   428→        actionIcon={Plus}
+   429→      />
+   430→
+   431→      {/* summary */}
+   432→      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+   433→        <StatCard icon={AlertCircle} label="Pending Requests" value="4" accent="bg-amber-500/10 text-amber-600" />
+   434→        <StatCard icon={FileCheck} label="Approved This Month" value="12" accent="bg-emerald-500/10 text-emerald-600" />
+   435→        <StatCard icon={XCircle} label="Rejected" value="2" accent="bg-red-500/10 text-red-600" />
+   436→        <StatCard icon={Shield} label="Leave Balance" value="Varies" accent="bg-teal-500/10 text-teal-600" />
+   437→      </div>
+   438→
+   439→      {/* leave requests table */}
+   440→      <div className="rounded-lg border border-border/50 overflow-hidden">
+   441→        <Table>
+   442→          <TableHeader>
+   443→            <TableRow className="bg-muted/40 hover:bg-muted/40">
+   444→              <TableHead>Employee</TableHead>
+   445→              <TableHead>Type</TableHead>
+   446→              <TableHead className="hidden sm:table-cell">From</TableHead>
+   447→              <TableHead className="hidden sm:table-cell">To</TableHead>
+   448→              <TableHead className="text-center">Days</TableHead>
+   449→              <TableHead className="hidden lg:table-cell">Reason</TableHead>
+   450→              <TableHead>Status</TableHead>
+   451→              <TableHead className="text-right">Actions</TableHead>
+   452→            </TableRow>
+   453→          </TableHeader>
+   454→          <TableBody>
+   455→            {leaveRequests.map((lr) => {
+   456→              const TypeIcon = typeIcon[lr.type];
+   457→              return (
+   458→                <TableRow key={lr.id}>
+   459→                  <TableCell>
+   460→                    <div className="flex items-center gap-2.5">
+   461→                      <AvatarInitials
+   462→                        firstName={lr.employee.firstName}
+   463→                        lastName={lr.employee.lastName}
+   464→                        department={lr.employee.department}
+   465→                      />
+   466→                      <div className="min-w-0">
+   467→                        <p className="font-medium text-sm whitespace-nowrap">
+   468→                          {lr.employee.firstName} {lr.employee.lastName}
+   469→                        </p>
+   470→                        <p className="text-xs text-muted-foreground">{lr.employee.department}</p>
+   471→                      </div>
+   472→                    </div>
+   473→                  </TableCell>
+   474→                  <TableCell>
+   475→                    <div className="flex items-center gap-1.5 text-sm">
+   476→                      <TypeIcon className="h-3.5 w-3.5 text-muted-foreground" />
+   477→                      {lr.type}
+   478→                    </div>
+   479→                  </TableCell>
+   480→                  <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">{formatDate(lr.from)}</TableCell>
+   481→                  <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">{formatDate(lr.to)}</TableCell>
+   482→                  <TableCell className="text-center font-medium">{lr.days}</TableCell>
+   483→                  <TableCell className="hidden lg:table-cell text-muted-foreground text-sm max-w-[200px] truncate">
+   484→                    {lr.reason}
+   485→                  </TableCell>
+   486→                  <TableCell>
+   487→                    <Badge variant="secondary" className={cn('text-xs capitalize', leaveStatusColor[lr.status])}>
+   488→                      {lr.status}
+   489→                    </Badge>
+   490→                  </TableCell>
+   491→                  <TableCell className="text-right">
+   492→                    {lr.status === 'pending' && (
+   493→                      <div className="flex items-center justify-end gap-1">
+   494→                        <Button size="sm" variant="ghost" className="h-7 px-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10" onClick={() => toast.success('Leave request approved')}>
+   495→                          <CheckCircle2 className="h-4 w-4" />
+   496→                        </Button>
+   497→                        <Button size="sm" variant="ghost" className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-500/10" onClick={() => toast.error('Leave request rejected')}>
+   498→                          <XCircle className="h-4 w-4" />
+   499→                        </Button>
+   500→                      </div>
+   501→                    )}
+   502→                  </TableCell>
+   503→                </TableRow>
+   504→              );
+   505→            })}
+   506→          </TableBody>
+   507→        </Table>
+   508→      </div>
+   509→    </div>
+   510→  );
+   511→}
+   512→
+   513→/* ================================================================
+   514→   TAB 4 — PAYROLL
+   515→   ================================================================ */
+   516→
+   517→function PayrollTab() {
+   518→  const payrollRows = employees.slice(0, 8).map((emp) => {
+   519→    const bonus = Math.round(emp.salary * (0.02 + Math.random() * 0.08));
+   520→    const deduction = Math.round(emp.salary * (0.03 + Math.random() * 0.06));
+   521→    const net = emp.salary + bonus - deduction;
+   522→    const status = Math.random() > 0.25 ? 'paid' : 'pending';
+   523→    return { employee: emp, bonus, deduction, net, status };
+   524→  });
+   525→
+   526→  const deptSalaryMap: Record<string, number> = {};
+   527→  employees.forEach((e) => {
+   528→    deptSalaryMap[e.department] = (deptSalaryMap[e.department] || 0) + e.salary;
+   529→  });
+   530→  const pieData = Object.entries(deptSalaryMap).map(([name, value]) => ({ name, value }));
+   531→
+   532→  return (
+   533→    <div className="space-y-6">
+   534→      <TabHeader
+   535→        title="Payroll"
+   536→        description="Manage monthly payroll, bonuses, and salary distributions."
+   537→        actionLabel="Run Payroll"
+   538→        actionIcon={Banknote}
+   539→      />
+   540→
+   541→      {/* summary */}
+   542→      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+   543→        <StatCard icon={DollarSign} label="Total Payroll This Month" value="$892,000" accent="bg-emerald-500/10 text-emerald-600" />
+   544→        <StatCard icon={TrendingUp} label="Average Salary" value="$105,200" accent="bg-teal-500/10 text-teal-600" />
+   545→        <StatCard icon={BadgeDollarSign} label="Bonuses" value="$45,000" accent="bg-amber-500/10 text-amber-600" />
+   546→        <StatCard icon={ArrowUpDown} label="Deductions" value="$32,000" accent="bg-red-500/10 text-red-600" />
+   547→      </div>
+   548→
+   549→      {/* pie chart + table */}
+   550→      <div className="grid gap-6 xl:grid-cols-[340px_1fr]">
+   551→        {/* pie chart */}
+   552→        <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
+   553→          <CardContent className="p-5">
+   554→            <div className="flex items-center gap-2 mb-4">
+   555→              <PieChart className="h-4 w-4 text-emerald-600" />
+   556→              <h3 className="font-semibold text-sm">Salary by Department</h3>
+   557→            </div>
+   558→            <div className="h-[260px]">
+   559→              <ResponsiveContainer width="100%" height="100%">
+   560→                <RechartsPie>
+   561→                  <Pie
+   562→                    data={pieData}
+   563→                    cx="50%"
+   564→                    cy="50%"
+   565→                    innerRadius={55}
+   566→                    outerRadius={95}
+   567→                    paddingAngle={3}
+   568→                    dataKey="value"
+   569→                    stroke="none"
+   570→                  >
+   571→                    {pieData.map((_entry, idx) => (
+   572→                      <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+   573→                    ))}
+   574→                  </Pie>
+   575→                  <Tooltip
+   576→                    formatter={(value: number) => formatCurrency(value)}
+   577→                    contentStyle={{
+   578→                      borderRadius: 8,
+   579→                      border: '1px solid hsl(var(--border))',
+   580→                      backgroundColor: 'hsl(var(--card))',
+   581→                      fontSize: 12,
+   582→                    }}
+   583→                  />
+   584→                  <Legend
+   585→                    iconType="circle"
+   586→                    iconSize={8}
+   587→                    wrapperStyle={{ fontSize: 11 }}
+   588→                  />
+   589→                </RechartsPie>
+   590→              </ResponsiveContainer>
+   591→            </div>
+   592→          </CardContent>
+   593→        </Card>
+   594→
+   595→        {/* payroll table */}
+   596→        <div className="rounded-lg border border-border/50 overflow-hidden">
+   597→          <Table>
+   598→            <TableHeader>
+   599→              <TableRow className="bg-muted/40 hover:bg-muted/40">
+   600→                <TableHead>Employee</TableHead>
+   601→                <TableHead className="hidden sm:table-cell">Department</TableHead>
+   602→                <TableHead className="text-right">Base Salary</TableHead>
+   603→                <TableHead className="text-right hidden md:table-cell">Bonuses</TableHead>
+   604→                <TableHead className="text-right hidden md:table-cell">Deductions</TableHead>
+   605→                <TableHead className="text-right">Net Pay</TableHead>
+   606→                <TableHead>Status</TableHead>
+   607→              </TableRow>
+   608→            </TableHeader>
+   609→            <TableBody>
+   610→              {payrollRows.map((row) => (
+   611→                <TableRow key={row.employee.id}>
+   612→                  <TableCell>
+   613→                    <div className="flex items-center gap-2.5">
+   614→                      <AvatarInitials
+   615→                        firstName={row.employee.firstName}
+   616→                        lastName={row.employee.lastName}
+   617→                        department={row.employee.department}
+   618→                      />
+   619→                      <span className="font-medium text-sm whitespace-nowrap">
+   620→                        {row.employee.firstName} {row.employee.lastName}
+   621→                      </span>
+   622→                    </div>
+   623→                  </TableCell>
+   624→                  <TableCell className="hidden sm:table-cell text-muted-foreground text-sm">
+   625→                    {row.employee.department}
+   626→                  </TableCell>
+   627→                  <TableCell className="text-right tabular-nums text-sm">
+   628→                    {formatCurrency(row.employee.salary)}
+   629→                  </TableCell>
+   630→                  <TableCell className="text-right tabular-nums text-sm hidden md:table-cell text-emerald-600">
+   631→                    +{formatCurrency(row.bonus)}
+   632→                  </TableCell>
+   633→                  <TableCell className="text-right tabular-nums text-sm hidden md:table-cell text-red-500">
+   634→                    -{formatCurrency(row.deduction)}
+   635→                  </TableCell>
+   636→                  <TableCell className="text-right tabular-nums font-medium">
+   637→                    {formatCurrency(row.net)}
+   638→                  </TableCell>
+   639→                  <TableCell>
+   640→                    <Badge
+   641→                      variant="secondary"
+   642→                      className={cn(
+   643→                        'text-xs capitalize',
+   644→                        row.status === 'paid'
+   645→                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+   646→                          : 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+   647→                      )}
+   648→                    >
+   649→                      {row.status}
+   650→                    </Badge>
+   651→                  </TableCell>
+   652→                </TableRow>
+   653→              ))}
+   654→            </TableBody>
+   655→          </Table>
+   656→        </div>
+   657→      </div>
+   658→    </div>
+   659→  );
+   660→}
+   661→
+   662→/* ================================================================
+   663→   MAIN HR MODULE
+   664→   ================================================================ */
+   665→
+   666→export default function HrModule() {
+   667→  return (
+   668→    <div className="flex flex-col gap-2 h-full">
+   669→      <Tabs defaultValue="employees" className="flex flex-col gap-4 flex-1 min-h-0">
+   670→        <TabsList className="bg-muted/60 border border-border/50">
+   671→          <TabsTrigger value="employees" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+   672→            <Users className="h-4 w-4" />
+   673→            Employees
+   674→          </TabsTrigger>
+   675→          <TabsTrigger value="attendance" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+   676→            <Clock className="h-4 w-4" />
+   677→            Attendance
+   678→          </TabsTrigger>
+   679→          <TabsTrigger value="leave" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+   680→            <Calendar className="h-4 w-4" />
+   681→            Leave
+   682→          </TabsTrigger>
+   683→          <TabsTrigger value="payroll" className="gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+   684→            <DollarSign className="h-4 w-4" />
+   685→            Payroll
+   686→          </TabsTrigger>
+   687→        </TabsList>
+   688→
+   689→        <ScrollArea className="flex-1 min-h-0">
+   690→          <div className="pr-4 pb-6">
+   691→            <TabsContent value="employees">
+   692→              <EmployeesTab />
+   693→            </TabsContent>
+   694→            <TabsContent value="attendance">
+   695→              <AttendanceTab />
+   696→            </TabsContent>
+   697→            <TabsContent value="leave">
+   698→              <LeaveManagementTab />
+   699→            </TabsContent>
+   700→            <TabsContent value="payroll">
+   701→              <PayrollTab />
+   702→            </TabsContent>
+   703→          </div>
+   704→        </ScrollArea>
+   705→      </Tabs>
+   706→    </div>
+   707→  );
+   708→}

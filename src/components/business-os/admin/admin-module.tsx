@@ -32,6 +32,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 import { users, roles, companyInfo } from '@/lib/mock-data';
 import type { UserItem, RoleItem } from '@/types';
+import { toast } from 'sonner';
 
 /* ---- helpers ---- */
 
@@ -54,11 +55,11 @@ function formatLastSeen(d: string) {
 const roleColors: Record<string, string> = {
   'Super Admin': 'bg-red-100 text-red-700 border border-red-200',
   Administrator: 'bg-purple-100 text-purple-700 border border-purple-200',
-  Manager: 'bg-blue-100 text-blue-700 border border-blue-200',
+  Manager: 'bg-teal-100 text-teal-700 border border-teal-200',
   Sales: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
   HR: 'bg-teal-100 text-teal-700 border border-teal-200',
   Finance: 'bg-amber-100 text-amber-700 border border-amber-200',
-  Employee: 'bg-gray-100 text-gray-600 border border-gray-200',
+  Employee: 'bg-gray-100 text-muted-foreground border border-border',
   Client: 'bg-cyan-100 text-cyan-700 border border-cyan-200',
 };
 
@@ -77,9 +78,9 @@ const auditLog = [
 
 const actionStyles: Record<string, string> = {
   Created: 'bg-emerald-100 text-emerald-700',
-  Updated: 'bg-blue-100 text-blue-700',
+  Updated: 'bg-teal-100 text-teal-700',
   Deleted: 'bg-red-100 text-red-700',
-  Login: 'bg-gray-100 text-gray-600',
+  Login: 'bg-gray-100 text-muted-foreground',
   Export: 'bg-amber-100 text-amber-700',
 };
 
@@ -148,15 +149,15 @@ export default function AdminModule() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Administration</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage users, roles, settings, and system activity</p>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">Administration</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage users, roles, settings, and system activity</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+          <Button variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => toast.success('Data exported')}>
             <Download className="mr-2 h-4 w-4" />
             Export
           </Button>
-          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
+          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => toast.success('New user form opened')}>
             <Plus className="mr-2 h-4 w-4" />
             Add User
           </Button>
@@ -164,7 +165,7 @@ export default function AdminModule() {
       </div>
 
       <Tabs defaultValue="users" className="space-y-6">
-        <TabsList className="bg-white border border-gray-200 p-1 flex-wrap h-auto">
+        <TabsList className="bg-background border border-border p-1 flex-wrap h-auto">
           <TabsTrigger value="users" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <Users className="mr-2 h-4 w-4" />
             Users
@@ -188,52 +189,52 @@ export default function AdminModule() {
           {/* Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <motion.div variants={itemVariants}>
-              <Card className="border border-gray-200">
+              <Card className="border border-border">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-teal-50"><Users className="h-5 w-5 text-teal-600" /></div>
                     <div>
-                      <p className="text-2xl font-bold text-gray-900">48</p>
-                      <p className="text-xs text-gray-500">Total Users</p>
+                      <p className="text-2xl font-bold text-foreground">48</p>
+                      <p className="text-xs text-muted-foreground">Total Users</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <Card className="border border-gray-200">
+              <Card className="border border-border">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-emerald-50"><UserCheck className="h-5 w-5 text-emerald-600" /></div>
                     <div>
-                      <p className="text-2xl font-bold text-gray-900">{activeCount}</p>
-                      <p className="text-xs text-gray-500">Active</p>
+                      <p className="text-2xl font-bold text-foreground">{activeCount}</p>
+                      <p className="text-xs text-muted-foreground">Active</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <Card className="border border-gray-200">
+              <Card className="border border-border">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-red-50"><UserX className="h-5 w-5 text-red-500" /></div>
                     <div>
-                      <p className="text-2xl font-bold text-gray-900">3</p>
-                      <p className="text-xs text-gray-500">Inactive</p>
+                      <p className="text-2xl font-bold text-foreground">3</p>
+                      <p className="text-xs text-muted-foreground">Inactive</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <Card className="border border-gray-200">
+              <Card className="border border-border">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-emerald-50"><Wifi className="h-5 w-5 text-emerald-600" /></div>
                     <div>
-                      <p className="text-2xl font-bold text-gray-900">{onlineCount}</p>
-                      <p className="text-xs text-gray-500">Online Now</p>
+                      <p className="text-2xl font-bold text-foreground">{onlineCount}</p>
+                      <p className="text-xs text-muted-foreground">Online Now</p>
                     </div>
                   </div>
                 </CardContent>
@@ -242,16 +243,16 @@ export default function AdminModule() {
           </div>
 
           {/* Filters */}
-          <Card className="border border-gray-200">
+          <Card className="border border-border">
             <CardContent className="p-4">
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input placeholder="Search users..." value={userSearch} onChange={e => setUserSearch(e.target.value)} className="pl-9" />
                 </div>
                 <Select value={roleFilter} onValueChange={setRoleFilter}>
                   <SelectTrigger className="w-[180px]">
-                    <Shield className="mr-2 h-4 w-4 text-gray-400" />
+                    <Shield className="mr-2 h-4 w-4 text-muted-foreground" />
                     <SelectValue placeholder="Role" />
                   </SelectTrigger>
                   <SelectContent>
@@ -265,19 +266,19 @@ export default function AdminModule() {
           </Card>
 
           {/* Users Table */}
-          <Card className="border border-gray-200">
-            <CardContent className="p-0">
+          <Card className="border border-border">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50/80">
-                    <TableHead className="font-semibold text-gray-600">User</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Email</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Phone</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Job Title</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Department</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Role</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Status</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Last Seen</TableHead>
+                  <TableRow className="bg-muted/40">
+                    <TableHead className="font-semibold text-muted-foreground">User</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Email</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Phone</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Job Title</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Department</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Role</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Status</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Last Seen</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -288,31 +289,31 @@ export default function AdminModule() {
                           <Avatar className="h-8 w-8">
                             <AvatarFallback className={cn(
                               'text-xs font-semibold text-white',
-                              user.isActive ? 'bg-emerald-600' : 'bg-gray-400',
+                              user.isActive ? 'bg-emerald-600' : 'bg-muted',
                             )}>
                               {getInitials(user.firstName, user.lastName)}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="font-medium text-gray-900">
+                          <span className="font-medium text-foreground">
                             {user.firstName} {user.lastName}
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm text-gray-600">{user.email}</TableCell>
-                      <TableCell className="text-sm text-gray-600">{user.phone}</TableCell>
-                      <TableCell className="text-sm text-gray-700">{user.jobTitle}</TableCell>
-                      <TableCell className="text-sm text-gray-600">{user.department}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{user.email}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{user.phone}</TableCell>
+                      <TableCell className="text-sm text-foreground">{user.jobTitle}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{user.department}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={cn('text-xs font-medium', roleColors[user.roleName] || 'bg-gray-100 text-gray-600 border border-gray-200')}>
+                        <Badge variant="outline" className={cn('text-xs font-medium', roleColors[user.roleName] || 'bg-gray-100 text-muted-foreground border border-border')}>
                           {user.roleName}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge className={cn('text-xs font-medium', user.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500')}>
+                        <Badge className={cn('text-xs font-medium', user.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-muted-foreground')}>
                           {user.isActive ? 'Active' : 'Inactive'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-gray-500">{formatLastSeen(user.lastSeen)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatLastSeen(user.lastSeen)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -324,8 +325,8 @@ export default function AdminModule() {
         {/* ===== TAB 2: ROLES & PERMISSIONS ===== */}
         <TabsContent value="roles" className="space-y-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">{roles.length} roles configured</p>
-            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
+            <p className="text-sm text-muted-foreground">{roles.length} roles configured</p>
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => toast.success('New role created')}>
               <Plus className="mr-2 h-4 w-4" />
               Create Role
             </Button>
@@ -337,7 +338,7 @@ export default function AdminModule() {
               const permissionEntries = Object.entries(role.permissions);
               return (
                 <motion.div key={role.id} variants={itemVariants} initial="hidden" animate="visible" transition={{ delay: i * 0.04 }}>
-                  <Card className="border border-gray-200 hover:border-emerald-200 transition-colors overflow-hidden">
+                  <Card className="border border-border hover:border-emerald-200 transition-colors overflow-hidden">
                     <button
                       className="w-full text-left p-5 flex items-center justify-between bg-transparent border-0 cursor-pointer"
                       onClick={() => setExpandedRole(isExpanded ? null : role.id)}
@@ -348,26 +349,26 @@ export default function AdminModule() {
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <h3 className="font-semibold text-gray-900">{role.name}</h3>
+                            <h3 className="font-semibold text-foreground">{role.name}</h3>
                             {role.isSystem && (
                               <Badge className="bg-teal-100 text-teal-700 text-xs">System</Badge>
                             )}
                           </div>
-                          <p className="text-sm text-gray-500 mt-0.5">{role.description}</p>
+                          <p className="text-sm text-muted-foreground mt-0.5">{role.description}</p>
                           <div className="flex items-center gap-3 mt-2">
-                            <span className="text-xs text-gray-400 flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
                               <Users className="h-3 w-3" />{role.userCount} users
                             </span>
-                            <span className="text-xs text-gray-400 flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
                               <Shield className="h-3 w-3" />{permissionEntries.length} modules
                             </span>
                           </div>
                         </div>
                       </div>
                       {isExpanded ? (
-                        <ChevronUp className="h-5 w-5 text-gray-400" />
+                        <ChevronUp className="h-5 w-5 text-muted-foreground" />
                       ) : (
-                        <ChevronDown className="h-5 w-5 text-gray-400" />
+                        <ChevronDown className="h-5 w-5 text-muted-foreground" />
                       )}
                     </button>
 
@@ -382,14 +383,14 @@ export default function AdminModule() {
                         >
                           <Separator />
                           <div className="p-5">
-                            <p className="text-sm font-medium text-gray-700 mb-3">Permission Matrix</p>
+                            <p className="text-sm font-medium text-foreground mb-3">Permission Matrix</p>
                             <div className="overflow-x-auto">
                               <Table>
                                 <TableHeader>
-                                  <TableRow className="bg-gray-50/80">
-                                    <TableHead className="font-semibold text-gray-600">Module</TableHead>
+                                  <TableRow className="bg-muted/40">
+                                    <TableHead className="font-semibold text-muted-foreground">Module</TableHead>
                                     {permissionLevels.map(level => (
-                                      <TableHead key={level} className="font-semibold text-gray-600 text-center capitalize text-xs">
+                                      <TableHead key={level} className="font-semibold text-muted-foreground text-center capitalize text-xs">
                                         {level}
                                       </TableHead>
                                     ))}
@@ -401,13 +402,13 @@ export default function AdminModule() {
                                     const perms = role.permissions[modKey] || [];
                                     return (
                                       <TableRow key={mod}>
-                                        <TableCell className="font-medium text-sm text-gray-700">{mod}</TableCell>
+                                        <TableCell className="font-medium text-sm text-foreground">{mod}</TableCell>
                                         {permissionLevels.map(level => (
                                           <TableCell key={level} className="text-center">
                                             {perms.includes(level) ? (
                                               <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />
                                             ) : (
-                                              <XCircle className="h-4 w-4 text-gray-300 mx-auto" />
+                                              <XCircle className="h-4 w-4 text-muted-foreground/40 mx-auto" />
                                             )}
                                           </TableCell>
                                         ))}
@@ -431,14 +432,14 @@ export default function AdminModule() {
         {/* ===== TAB 3: COMPANY SETTINGS ===== */}
         <TabsContent value="settings" className="space-y-6">
           {/* General */}
-          <Card className="border border-gray-200">
+          <Card className="border border-border">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Building2 className="h-5 w-5 text-emerald-600" />
                   <CardTitle className="text-base">General Information</CardTitle>
                 </div>
-                <Button variant="outline" size="sm" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+                <Button variant="outline" size="sm" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => toast.info('Editing company information')}>
                   <Edit3 className="mr-2 h-3.5 w-3.5" />Edit
                 </Button>
               </div>
@@ -456,14 +457,14 @@ export default function AdminModule() {
           </Card>
 
           {/* Preferences */}
-          <Card className="border border-gray-200">
+          <Card className="border border-border">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Settings className="h-5 w-5 text-teal-600" />
                   <CardTitle className="text-base">Preferences</CardTitle>
                 </div>
-                <Button variant="outline" size="sm" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+                <Button variant="outline" size="sm" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => toast.info('Editing preferences')}>
                   <Edit3 className="mr-2 h-3.5 w-3.5" />Edit
                 </Button>
               </div>
@@ -479,14 +480,14 @@ export default function AdminModule() {
           </Card>
 
           {/* Branding */}
-          <Card className="border border-gray-200">
+          <Card className="border border-border">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Palette className="h-5 w-5 text-emerald-600" />
                   <CardTitle className="text-base">Branding</CardTitle>
                 </div>
-                <Button variant="outline" size="sm" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+                <Button variant="outline" size="sm" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => toast.info('Editing branding')}>
                   <Edit3 className="mr-2 h-3.5 w-3.5" />Edit
                 </Button>
               </div>
@@ -494,17 +495,17 @@ export default function AdminModule() {
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium text-gray-600">Company Logo</Label>
-                  <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 flex flex-col items-center gap-2 bg-gray-50/50 hover:bg-emerald-50/30 hover:border-emerald-300 transition-colors cursor-pointer">
-                    <Upload className="h-8 w-8 text-gray-400" />
-                    <p className="text-xs text-gray-500">Click to upload</p>
+                  <Label className="text-sm font-medium text-muted-foreground">Company Logo</Label>
+                  <div className="border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center gap-2 bg-muted/50 hover:bg-emerald-50/30 hover:border-emerald-300 transition-colors cursor-pointer">
+                    <Upload className="h-8 w-8 text-muted-foreground" />
+                    <p className="text-xs text-muted-foreground">Click to upload</p>
                   </div>
                 </div>
                 <SettingsField label="Primary Color" value="#059669">
-                  <div className="h-5 w-5 rounded-full bg-emerald-600 border border-gray-200" />
+                  <div className="h-5 w-5 rounded-full bg-emerald-600 border border-border" />
                 </SettingsField>
                 <SettingsField label="Accent Color" value="#0D9488">
-                  <div className="h-5 w-5 rounded-full bg-teal-600 border border-gray-200" />
+                  <div className="h-5 w-5 rounded-full bg-teal-600 border border-border" />
                 </SettingsField>
               </div>
             </CardContent>
@@ -518,22 +519,22 @@ export default function AdminModule() {
               <FileText className="h-5 w-5 text-emerald-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Recent Activity</h3>
-              <p className="text-sm text-gray-500">Showing latest system events and user actions</p>
+              <h3 className="font-semibold text-foreground">Recent Activity</h3>
+              <p className="text-sm text-muted-foreground">Showing latest system events and user actions</p>
             </div>
           </div>
 
-          <Card className="border border-gray-200">
-            <CardContent className="p-0">
+          <Card className="border border-border">
+            <CardContent className="p-0 overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50/80">
-                    <TableHead className="font-semibold text-gray-600">Timestamp</TableHead>
-                    <TableHead className="font-semibold text-gray-600">User</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Action</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Module</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Entity</TableHead>
-                    <TableHead className="font-semibold text-gray-600">IP Address</TableHead>
+                  <TableRow className="bg-muted/40">
+                    <TableHead className="font-semibold text-muted-foreground">Timestamp</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">User</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Action</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Module</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Entity</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">IP Address</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -541,22 +542,22 @@ export default function AdminModule() {
                     const ActionIcon = actionIcons[entry.action] || Eye;
                     return (
                       <TableRow key={entry.id} className="hover:bg-emerald-50/30 transition-colors">
-                        <TableCell className="text-sm text-gray-500 whitespace-nowrap">
+                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                           {new Date(entry.timestamp).toLocaleString('en-US', {
                             month: 'short', day: 'numeric',
                             hour: '2-digit', minute: '2-digit',
                           })}
                         </TableCell>
-                        <TableCell className="font-medium text-gray-900 text-sm">{entry.userName}</TableCell>
+                        <TableCell className="font-medium text-foreground text-sm">{entry.userName}</TableCell>
                         <TableCell>
                           <Badge className={cn('text-xs font-medium', actionStyles[entry.action])}>
                             <ActionIcon className="mr-1 h-3 w-3" />
                             {entry.action}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-sm text-gray-600">{entry.module}</TableCell>
-                        <TableCell className="text-sm text-gray-700 font-medium">{entry.entity}</TableCell>
-                        <TableCell className="font-mono text-xs text-gray-500">{entry.ip}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{entry.module}</TableCell>
+                        <TableCell className="text-sm text-foreground font-medium">{entry.entity}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground">{entry.ip}</TableCell>
                       </TableRow>
                     );
                   })}
@@ -575,9 +576,9 @@ export default function AdminModule() {
 function SettingsField({ label, value, icon: Icon, children }: { label: string; value: string; icon?: React.ElementType; children?: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <Label className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</Label>
-      <div className="flex items-center gap-2 text-sm text-gray-900 font-medium py-1">
-        {children || (Icon ? <Icon className="h-4 w-4 text-gray-400 shrink-0" /> : null)}
+      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</Label>
+      <div className="flex items-center gap-2 text-sm text-foreground font-medium py-1">
+        {children || (Icon ? <Icon className="h-4 w-4 text-muted-foreground shrink-0" /> : null)}
         {value}
       </div>
     </div>

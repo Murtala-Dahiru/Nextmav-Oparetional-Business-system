@@ -15,6 +15,8 @@ import {
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@/components/ui/table';
+import { toast } from 'sonner';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,7 +55,7 @@ function getInitials(name: string) {
 }
 
 const statusColors: Record<LeadItem['status'], string> = {
-  new: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  new: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
   contacted: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
   qualified: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
   proposal: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
@@ -76,7 +78,7 @@ function scoreBarColor(score: number) {
 
 const avatarPalette = [
   'bg-teal-600 text-white',
-  'bg-indigo-600 text-white',
+  'bg-cyan-600 text-white',
   'bg-rose-600 text-white',
   'bg-amber-600 text-white',
   'bg-violet-600 text-white',
@@ -98,7 +100,7 @@ function TabHeader({ title, description }: { title: string; description: string 
         <h2 className="text-lg font-semibold text-foreground">{title}</h2>
         <p className="text-sm text-muted-foreground mt-0.5">{description}</p>
       </div>
-      <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5">
+      <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" onClick={() => toast.success('New item created')}>
         <Plus className="size-4" />
         New
       </Button>
@@ -109,7 +111,7 @@ function TabHeader({ title, description }: { title: string; description: string 
 /* ---- Kanban opportunity card ---- */
 
 function OpportunityCard({ opp, index }: { opp: OpportunityItem; index: number }) {
-  const stageColor = pipeline.stages.find((s) => s.id === opp.stageId)?.color ?? '#6366f1';
+  const stageColor = pipeline.stages.find((s) => s.id === opp.stageId)?.color ?? '#14b8a6';
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -282,7 +284,7 @@ function LeadsView() {
         <span className="text-sm text-muted-foreground ml-auto">Showing {filtered.length} leads</span>
       </div>
 
-      <Table>
+      <div className="overflow-x-auto"><Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead>Name</TableHead>
@@ -322,8 +324,15 @@ function LeadsView() {
               <TableCell className="text-muted-foreground">{formatDate(lead.createdAt)}</TableCell>
             </TableRow>
           ))}
+          {filtered.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                No leads match your filters.
+              </TableCell>
+            </TableRow>
+          )}
         </TableBody>
-      </Table>
+      </Table></div>
     </div>
   );
 }
@@ -355,6 +364,11 @@ function ContactsView() {
         />
       </div>
 
+      {filtered.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-sm text-muted-foreground">No contacts match your search.</p>
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filtered.map((contact, ci) => (
           <motion.div
@@ -418,11 +432,34 @@ function ContactsView() {
 /* ---- Tab 4: Companies ---- */
 
 function CompaniesView() {
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    if (!q) return crmCompanies;
+    return crmCompanies.filter((co) =>
+      `${co.name} ${co.industry} ${co.website} ${co.city} ${co.country}`.toLowerCase().includes(q)
+    );
+  }, [search]);
+
   return (
     <div className="space-y-4">
       <TabHeader title="Companies" description="Track organizations in your CRM" />
 
-      <Table>
+      <div className="flex items-center gap-3">
+        <div className="relative w-64">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            placeholder="Search companies..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8 h-9"
+          />
+        </div>
+        <span className="text-sm text-muted-foreground ml-auto">Showing {filtered.length} companies</span>
+      </div>
+
+      <div className="overflow-x-auto"><Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead>Company</TableHead>
@@ -435,7 +472,7 @@ function CompaniesView() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {crmCompanies.map((co) => (
+          {filtered.map((co) => (
             <TableRow key={co.id}>
               <TableCell>
                 <div className="flex items-center gap-2.5">
@@ -455,8 +492,15 @@ function CompaniesView() {
               <TableCell className="text-muted-foreground">{formatDate(co.createdAt)}</TableCell>
             </TableRow>
           ))}
+          {filtered.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                No companies match your search.
+              </TableCell>
+            </TableRow>
+          )}
         </TableBody>
-      </Table>
+      </Table></div>
     </div>
   );
 }
@@ -464,19 +508,42 @@ function CompaniesView() {
 /* ---- Tab 5: Deals ---- */
 
 function DealsView() {
-  const totalPipeline = opportunities.reduce((a, o) => a + o.value, 0);
-  const weightedValue = opportunities.reduce((a, o) => a + o.value * (o.probability / 100), 0);
-  const avgDeal = totalPipeline / opportunities.length;
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    if (!q) return opportunities;
+    return opportunities.filter((o) =>
+      `${o.name} ${o.companyName} ${o.contactName} ${o.ownerName} ${o.stage}`.toLowerCase().includes(q)
+    );
+  }, [search]);
+
+  const totalPipeline = filtered.reduce((a, o) => a + o.value, 0);
+  const weightedValue = filtered.reduce((a, o) => a + o.value * (o.probability / 100), 0);
+  const avgDeal = filtered.length > 0 ? totalPipeline / filtered.length : 0;
 
   return (
     <div className="space-y-4">
       <TabHeader title="Deals" description="All opportunities and deal pipeline" />
 
+      <div className="flex items-center gap-3">
+        <div className="relative w-64">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            placeholder="Search deals..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-8 h-9"
+          />
+        </div>
+        <span className="text-sm text-muted-foreground ml-auto">Showing {filtered.length} deals</span>
+      </div>
+
       {/* summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: 'Total Pipeline Value', value: formatCurrency(totalPipeline), icon: DollarSign, accent: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/40' },
-          { label: 'Weighted Value', value: formatCurrency(weightedValue), icon: TrendingUp, accent: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-50 dark:bg-indigo-950/40' },
+          { label: 'Weighted Value', value: formatCurrency(weightedValue), icon: TrendingUp, accent: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-950/40' },
           { label: 'Average Deal Size', value: formatCurrency(avgDeal), icon: BarChart3, accent: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/40' },
         ].map((card) => (
           <div key={card.label} className={cn('rounded-xl border border-border p-4', card.bg)}>
@@ -489,7 +556,7 @@ function DealsView() {
         ))}
       </div>
 
-      <Table>
+      <div className="overflow-x-auto"><Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead>Deal</TableHead>
@@ -503,7 +570,7 @@ function DealsView() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {opportunities.map((opp) => {
+          {filtered.map((opp) => {
             const stage = pipeline.stages.find((s) => s.id === opp.stageId);
             return (
               <TableRow key={opp.id}>
@@ -541,8 +608,15 @@ function DealsView() {
               </TableRow>
             );
           })}
+          {filtered.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                No deals match your search.
+              </TableCell>
+            </TableRow>
+          )}
         </TableBody>
-      </Table>
+      </Table></div>
     </div>
   );
 }

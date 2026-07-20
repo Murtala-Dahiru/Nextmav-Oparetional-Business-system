@@ -17,6 +17,7 @@ import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { toast } from 'sonner';
 
 import { projects, projectTasks } from '@/lib/mock-data';
 import type { ProjectItem, ProjectTaskItem } from '@/types';
@@ -41,36 +42,36 @@ function getInitials(name: string) {
 }
 
 const priorityColors: Record<string, string> = {
-  critical: 'bg-red-100 text-red-700 border-red-200',
-  high: 'bg-orange-100 text-orange-700 border-orange-200',
-  medium: 'bg-amber-100 text-amber-700 border-amber-200',
-  low: 'bg-green-100 text-green-700 border-green-200',
+  critical: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/40 dark:text-red-300 dark:border-red-800',
+  high: 'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-900/40 dark:text-orange-300 dark:border-orange-800',
+  medium: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
+  low: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/40 dark:text-green-300 dark:border-green-800',
 };
 
 const statusColors: Record<string, string> = {
-  todo: 'bg-gray-100 text-gray-700 border-gray-200',
-  'in-progress': 'bg-blue-100 text-blue-700 border-blue-200',
-  review: 'bg-amber-100 text-amber-700 border-amber-200',
-  done: 'bg-green-100 text-green-700 border-green-200',
+  todo: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700',
+  'in-progress': 'bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800',
+  review: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
+  done: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/40 dark:text-green-300 dark:border-green-800',
 };
 
 const projectStatusColors: Record<string, string> = {
-  active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  completed: 'bg-blue-100 text-blue-700 border-blue-200',
-  'on-hold': 'bg-amber-100 text-amber-700 border-amber-200',
-  planning: 'bg-purple-100 text-purple-700 border-purple-200',
+  active: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300 dark:border-emerald-800',
+  completed: 'bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800',
+  'on-hold': 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800',
+  planning: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/40 dark:text-purple-300 dark:border-purple-800',
 };
 
 const projectBarColors: Record<string, string> = {
   active: 'bg-emerald-500',
-  completed: 'bg-blue-500',
+  completed: 'bg-teal-500',
   'on-hold': 'bg-amber-400',
   planning: 'bg-purple-500',
 };
 
 const columnConfig = [
   { key: 'todo' as const, label: 'To Do', icon: Circle, dotColor: 'bg-gray-400' },
-  { key: 'in-progress' as const, label: 'In Progress', icon: AlertCircle, dotColor: 'bg-blue-400' },
+  { key: 'in-progress' as const, label: 'In Progress', icon: AlertCircle, dotColor: 'bg-teal-400' },
   { key: 'review' as const, label: 'Review', icon: Eye, dotColor: 'bg-amber-400' },
   { key: 'done' as const, label: 'Done', icon: CheckCircle2, dotColor: 'bg-green-400' },
 ];
@@ -81,10 +82,10 @@ function TabHeader({ title, description, actionLabel }: { title: string; descrip
   return (
     <div className="flex items-center justify-between mb-6">
       <div>
-        <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
         <p className="text-sm text-muted-foreground mt-0.5">{description}</p>
       </div>
-      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => toast.success(`${actionLabel} created`)}>
         <Plus className="h-4 w-4 mr-1.5" />{actionLabel}
       </Button>
     </div>
@@ -93,7 +94,7 @@ function TabHeader({ title, description, actionLabel }: { title: string; descrip
 
 function PriorityBadge({ priority }: { priority: string }) {
   return (
-    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border', priorityColors[priority] ?? 'bg-gray-100 text-gray-600')}>
+    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border', priorityColors[priority] ?? 'bg-muted text-muted-foreground')}>
       {priority}
     </span>
   );
@@ -101,7 +102,7 @@ function PriorityBadge({ priority }: { priority: string }) {
 
 function StatusBadge({ status }: { status: string }) {
   return (
-    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border', statusColors[status] ?? 'bg-gray-100 text-gray-600')}>
+    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border', statusColors[status] ?? 'bg-muted text-muted-foreground')}>
       {status === 'in-progress' ? 'In Progress' : status.charAt(0).toUpperCase() + status.slice(1)}
     </span>
   );
@@ -109,14 +110,14 @@ function StatusBadge({ status }: { status: string }) {
 
 function ProjectStatusBadge({ status }: { status: string }) {
   return (
-    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border', projectStatusColors[status] ?? 'bg-gray-100 text-gray-600')}>
+    <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border', projectStatusColors[status] ?? 'bg-muted text-muted-foreground')}>
       {status === 'on-hold' ? 'On Hold' : status.charAt(0).toUpperCase() + status.slice(1)}
     </span>
   );
 }
 
 function AvatarInitials({ name }: { name: string }) {
-  const colors = ['bg-teal-500', 'bg-emerald-600', 'bg-cyan-600', 'bg-indigo-500', 'bg-violet-500'];
+  const colors = ['bg-teal-500', 'bg-emerald-600', 'bg-cyan-600', 'bg-cyan-500', 'bg-violet-500'];
   const idx = name.length % colors.length;
   return (
     <div className={cn('flex items-center justify-center h-6 w-6 rounded-full text-[10px] font-semibold text-white shrink-0', colors[idx])}>
@@ -129,7 +130,7 @@ function MiniProgressBar({ logged, estimated }: { logged: number; estimated: num
   const pct = estimated > 0 ? Math.min((logged / estimated) * 100, 100) : 0;
   return (
     <div className="flex items-center gap-2">
-      <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+      <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
         <div className="h-full bg-teal-500 rounded-full" style={{ width: `${pct}%` }} />
       </div>
       <span className="text-[11px] text-muted-foreground whitespace-nowrap">{logged}h/{estimated}h</span>
@@ -145,9 +146,9 @@ function TaskCard({ task }: { task: ProjectTaskItem }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
-      className="bg-white rounded-lg border border-gray-200 p-3 mb-2.5 cursor-pointer transition-colors"
+      className="bg-card rounded-lg border border-border p-3 mb-2.5 cursor-pointer transition-colors"
     >
-      <p className="text-sm font-semibold text-gray-900 mb-1.5 leading-snug">{task.title}</p>
+      <p className="text-sm font-semibold text-foreground mb-1.5 leading-snug">{task.title}</p>
       <p className="text-[11px] text-teal-600 font-medium mb-2">{task.projectName}</p>
       <div className="flex items-center gap-1.5 mb-2.5 flex-wrap">
         <PriorityBadge priority={task.priority} />
@@ -211,12 +212,12 @@ function BoardTab({ tasks }: { tasks: ProjectTaskItem[] }) {
             <div className="flex items-center justify-between mb-3 px-1">
               <div className="flex items-center gap-2">
                 <div className={cn('h-2.5 w-2.5 rounded-full', col.dotColor)} />
-                <span className="text-sm font-semibold text-gray-700">{col.label}</span>
-                <span className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5 font-medium">{col.tasks.length}</span>
+                <span className="text-sm font-semibold text-foreground">{col.label}</span>
+                <span className="text-xs bg-muted text-muted-foreground rounded-full px-2 py-0.5 font-medium">{col.tasks.length}</span>
               </div>
               <span className="text-[11px] text-muted-foreground">{col.totalHours}h</span>
             </div>
-            <div className="bg-gray-50/70 rounded-xl p-2 min-h-[300px] border border-gray-100">
+            <div className="bg-muted/40 rounded-xl p-2 min-h-[300px] border border-border">
               {col.tasks.map((task) => (
                 <TaskCard key={task.id} task={task} />
               ))}
@@ -274,24 +275,25 @@ function ListViewTab({ tasks }: { tasks: ProjectTaskItem[] }) {
         </Button>
       </div>
       <div className="border rounded-xl overflow-hidden">
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
-            <TableRow className="bg-gray-50/80 hover:bg-gray-50/80">
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Task</TableHead>
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Project</TableHead>
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</TableHead>
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Priority</TableHead>
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Assignee</TableHead>
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Due Date</TableHead>
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Progress</TableHead>
-              <TableHead className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Tags</TableHead>
+            <TableRow className="bg-muted/50 hover:bg-muted/50">
+              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Task</TableHead>
+              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Project</TableHead>
+              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status</TableHead>
+              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Priority</TableHead>
+              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Assignee</TableHead>
+              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Due Date</TableHead>
+              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Progress</TableHead>
+              <TableHead className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tags</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.map((task, i) => (
-              <TableRow key={task.id} className={cn('transition-colors', i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40')}>
+              <TableRow key={task.id} className={cn('transition-colors', i % 2 === 0 ? 'bg-background' : 'bg-muted/30')}>
                 <TableCell className="py-3">
-                  <span className="text-sm font-semibold text-gray-900">{task.title}</span>
+                  <span className="text-sm font-semibold text-foreground">{task.title}</span>
                 </TableCell>
                 <TableCell className="py-3">
                   <span className="text-sm text-teal-600 font-medium">{task.projectName}</span>
@@ -305,7 +307,7 @@ function ListViewTab({ tasks }: { tasks: ProjectTaskItem[] }) {
                 <TableCell className="py-3">
                   <div className="flex items-center gap-2">
                     <AvatarInitials name={task.assigneeName} />
-                    <span className="text-sm text-gray-700">{task.assigneeName}</span>
+                    <span className="text-sm text-foreground">{task.assigneeName}</span>
                   </div>
                 </TableCell>
                 <TableCell className="py-3">
@@ -325,8 +327,14 @@ function ListViewTab({ tasks }: { tasks: ProjectTaskItem[] }) {
                 </TableCell>
               </TableRow>
             ))}
+            {filtered.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No tasks match your search.</TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
+        </div>
       </div>
     </div>
   );
@@ -357,10 +365,10 @@ function ProjectsGridTab({ items }: { items: ProjectItem[] }) {
             key={project.id}
             whileHover={{ y: -4, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
             transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-            className="bg-white rounded-xl border border-gray-200 p-5 cursor-pointer"
+            className="bg-card rounded-xl border border-border p-5 cursor-pointer"
           >
             <div className="flex items-start justify-between mb-2">
-              <h4 className="text-base font-semibold text-gray-900 leading-tight pr-2">{project.name}</h4>
+              <h4 className="text-base font-semibold text-foreground leading-tight pr-2">{project.name}</h4>
               <ProjectStatusBadge status={project.status} />
             </div>
             <p className="text-sm text-muted-foreground mb-3 line-clamp-2 leading-relaxed">{project.description}</p>
@@ -374,7 +382,7 @@ function ProjectsGridTab({ items }: { items: ProjectItem[] }) {
                   {project.progress}%
                 </span>
               </div>
-              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${project.progress}%` }}
@@ -397,7 +405,7 @@ function ProjectsGridTab({ items }: { items: ProjectItem[] }) {
                 <span>{formatCurrency(project.budget)}</span>
               </div>
             </div>
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-gray-100 pt-3">
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground border-t border-border pt-3">
               <span className="flex items-center gap-1">
                 <CalendarDays className="h-3 w-3" />{formatDate(project.startDate)}
               </span>
@@ -405,9 +413,9 @@ function ProjectsGridTab({ items }: { items: ProjectItem[] }) {
                 <CalendarDays className="h-3 w-3" />{formatDate(project.endDate)}
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-50">
+            <div className="flex items-center gap-2 mt-3 pt-2 border-t border-border">
               <AvatarInitials name={project.ownerName} />
-              <span className="text-xs font-medium text-gray-600">{project.ownerName}</span>
+              <span className="text-xs font-medium text-muted-foreground">{project.ownerName}</span>
             </div>
           </motion.div>
         ))}
@@ -452,11 +460,11 @@ function TimelineTab({ items }: { items: ProjectItem[] }) {
   return (
     <div>
       <TabHeader title="Timeline" description="Visualize project schedules and progress on a Gantt-like timeline" actionLabel="Add Project" />
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
         {/* Month header */}
-        <div className="flex border-b border-gray-100">
-          <div className="w-52 shrink-0 px-4 py-3 border-r border-gray-100">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Project</span>
+        <div className="flex border-b border-border">
+          <div className="w-52 shrink-0 px-4 py-3 border-r border-border">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Project</span>
           </div>
           <div className="flex-1 flex relative">
             {months.map((m, i) => {
@@ -470,7 +478,7 @@ function TimelineTab({ items }: { items: ProjectItem[] }) {
               return (
                 <div
                   key={m}
-                  className="flex items-center justify-center text-[11px] text-muted-foreground font-medium border-r border-gray-50 last:border-r-0"
+                  className="flex items-center justify-center text-[11px] text-muted-foreground font-medium border-r border-border last:border-r-0"
                   style={{ width: `${widthPct}%` }}
                 >
                   {m}
@@ -483,12 +491,12 @@ function TimelineTab({ items }: { items: ProjectItem[] }) {
         {items.map((project, i) => (
           <div
             key={project.id}
-            className={cn('flex items-center border-b border-gray-50 last:border-b-0', i % 2 === 0 ? 'bg-white' : 'bg-gray-50/30')}
+            className={cn('flex items-center border-b border-border last:border-b-0', i % 2 === 0 ? 'bg-background' : 'bg-muted/20')}
           >
-            <div className="w-52 shrink-0 px-4 py-3.5 border-r border-gray-100">
+            <div className="w-52 shrink-0 px-4 py-3.5 border-r border-border">
               <div className="flex items-center gap-2">
                 <ProjectStatusBadge status={project.status} />
-                <span className="text-sm font-medium text-gray-900 truncate">{project.name}</span>
+                <span className="text-sm font-medium text-foreground truncate">{project.name}</span>
               </div>
             </div>
             <div className="flex-1 py-3.5 px-2 relative" style={{ minHeight: '44px' }}>
@@ -510,7 +518,7 @@ function TimelineTab({ items }: { items: ProjectItem[] }) {
                   style={{ width: `${project.progress}%` }}
                 />
                 {/* Label */}
-                <span className="absolute inset-0 flex items-center px-2 text-[10px] font-semibold text-gray-700 truncate">
+                <span className="absolute inset-0 flex items-center px-2 text-[10px] font-semibold text-foreground truncate">
                   {project.progress}% — {formatDate(project.startDate).replace(/,\s*\d{4}$/, '')} to {formatDate(project.endDate).replace(/,\s*\d{4}$/, '')}
                 </span>
               </div>
@@ -529,7 +537,7 @@ export default function ProjectsModule() {
     <div className="h-full flex flex-col">
       <Tabs defaultValue="board" className="flex-1 flex flex-col">
         <div className="px-6 pt-5 pb-0">
-          <TabsList className="bg-gray-100 p-1 h-10">
+          <TabsList className="bg-muted p-1 h-10">
             <TabsTrigger value="board" className="text-xs gap-1.5 data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
               <LayoutGrid className="h-3.5 w-3.5" />Board
             </TabsTrigger>

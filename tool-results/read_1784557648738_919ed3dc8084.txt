@@ -1,0 +1,664 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { clsx, type ClassValue } from 'clsx';
+     4→     4→import { twMerge } from 'tailwind-merge';
+     5→     5→function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
+     6→     6→
+     7→     7→import { motion } from 'framer-motion';
+     8→     8→import {
+     9→     9→  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+    10→    10→  PieChart, Pie, Cell,
+    11→    11→  ResponsiveContainer,
+    12→    12→} from 'recharts';
+    13→    13→import {
+    14→    14→  DollarSign, Users, Target, TrendingUp, FolderKanban, CheckCircle,
+    15→    15→  BarChart3, PieChartIcon, LayoutDashboard, CalendarDays, Activity,
+    16→    16→  Zap, UserPlus, PlusCircle, FileText, CalendarClock, Handshake,
+    17→    17→  CheckCircle2, LifeBuoy, UserCheck, MessageSquare, Clock, MapPin,
+    18→    18→  Sparkles, ArrowUpRight, ArrowDownRight, CircleDot, Briefcase,
+    19→    19→} from 'lucide-react';
+    20→    20→
+    21→    21→import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+    22→    22→import { Badge } from '@/components/ui/badge';
+    23→    23→import { Progress } from '@/components/ui/progress';
+    24→    24→import { ScrollArea } from '@/components/ui/scroll-area';
+    25→    25→import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+    26→    26→import { Button } from '@/components/ui/button';
+    27→    27→
+    28→    28→import {
+    29→    29→  kpiData, revenueChart, salesBySource,
+    30→    30→  activities, projects, calendarEvents,
+    31→    31→  currentUser, companyInfo,
+    32→    32→} from '@/lib/mock-data';
+    33→    33→
+    34→    34→// ─── Constants ──────────────────────────────────────────────────────────────
+    35→    35→
+    36→    36→const PIE_COLORS = ['#10b981', '#14b8a6', '#f59e0b', '#f43f5e', '#8b5cf6'];
+    37→    37→
+    38→    38→const kpiIconMap: Record<string, React.ElementType> = {
+    39→    39→  DollarSign,
+    40→    40→  Users,
+    41→    41→  Target,
+    42→    42→  TrendingUp,
+    43→    43→  FolderKanban,
+    44→    44→  CheckCircle,
+    45→    45→};
+    46→    46→
+    47→    47→const kpiIconBgMap: Record<string, string> = {
+    48→    48→  DollarSign: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400',
+    49→    49→  Users: 'bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400',
+    50→    50→  Target: 'bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
+    51→    51→  TrendingUp: 'bg-violet-100 text-violet-600 dark:bg-violet-950 dark:text-violet-400',
+    52→    52→  FolderKanban: 'bg-teal-100 text-teal-600 dark:bg-teal-950 dark:text-teal-400',
+    53→    53→  CheckCircle: 'bg-rose-100 text-rose-600 dark:bg-rose-950 dark:text-rose-400',
+    54→    54→};
+    55→    55→
+    56→    56→const activityIconMap: Record<string, React.ElementType> = {
+    57→    57→  deal: Handshake,
+    58→    58→  task: CheckCircle2,
+    59→    59→  invoice: DollarSign,
+    60→    60→  lead: UserPlus,
+    61→    61→  ticket: LifeBuoy,
+    62→    62→  hr: UserCheck,
+    63→    63→  project: FolderKanban,
+    64→    64→  message: MessageSquare,
+    65→    65→};
+    66→    66→
+    67→    67→const activityColorMap: Record<string, string> = {
+    68→    68→  deal: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400',
+    69→    69→  task: 'bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400',
+    70→    70→  invoice: 'bg-violet-100 text-violet-600 dark:bg-violet-950 dark:text-violet-400',
+    71→    71→  lead: 'bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
+    72→    72→  ticket: 'bg-rose-100 text-rose-600 dark:bg-rose-950 dark:text-rose-400',
+    73→    73→  hr: 'bg-teal-100 text-teal-600 dark:bg-teal-950 dark:text-teal-400',
+    74→    74→  project: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-400',
+    75→    75→  message: 'bg-pink-100 text-pink-600 dark:bg-pink-950 dark:text-pink-400',
+    76→    76→};
+    77→    77→
+    78→    78→const moduleColorMap: Record<string, string> = {
+    79→    79→  CRM: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
+    80→    80→  Projects: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
+    81→    81→  Finance: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400',
+    82→    82→  Support: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400',
+    83→    83→  HR: 'bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-400',
+    84→    84→  Communication: 'bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-400',
+    85→    85→};
+    86→    86→
+    87→    87→const statusColorMap: Record<string, string> = {
+    88→    88→  active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800',
+    89→    89→  completed: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400 border-blue-200 dark:border-blue-800',
+    90→    90→  'on-hold': 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400 border-amber-200 dark:border-amber-800',
+    91→    91→  planning: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-400 border-violet-200 dark:border-violet-800',
+    92→    92→};
+    93→    93→
+    94→    94→// ─── Helpers ────────────────────────────────────────────────────────────────
+    95→    95→
+    96→    96→function getGreeting(): string {
+    97→    97→  const hour = new Date().getHours();
+    98→    98→  if (hour < 12) return 'Good morning';
+    99→    99→  if (hour < 17) return 'Good afternoon';
+   100→   100→  return 'Good evening';
+   101→   101→}
+   102→   102→
+   103→   103→function formatDate(): string {
+   104→   104→  return new Date().toLocaleDateString('en-US', {
+   105→   105→    weekday: 'long',
+   106→   106→    year: 'numeric',
+   107→   107→    month: 'long',
+   108→   108→    day: 'numeric',
+   109→   109→  });
+   110→   110→}
+   111→   111→
+   112→   112→function timeAgo(dateStr: string): string {
+   113→   113→  const now = new Date();
+   114→   114→  const date = new Date(dateStr);
+   115→   115→  const diffMs = now.getTime() - date.getTime();
+   116→   116→  const diffMin = Math.floor(diffMs / 60000);
+   117→   117→  if (diffMin < 1) return 'Just now';
+   118→   118→  if (diffMin < 60) return `${diffMin}m ago`;
+   119→   119→  const diffHr = Math.floor(diffMin / 60);
+   120→   120→  if (diffHr < 24) return `${diffHr}h ago`;
+   121→   121→  const diffDay = Math.floor(diffHr / 24);
+   122→   122→  return `${diffDay}d ago`;
+   123→   123→}
+   124→   124→
+   125→   125→function formatTime(dateStr: string): string {
+   126→   126→  const date = new Date(dateStr);
+   127→   127→  return date.toLocaleTimeString('en-US', {
+   128→   128→    hour: 'numeric',
+   129→   129→    minute: '2-digit',
+   130→   130→    hour12: true,
+   131→   131→  });
+   132→   132→}
+   133→   133→
+   134→   134→function formatShortDate(dateStr: string): string {
+   135→   135→  const date = new Date(dateStr);
+   136→   136→  return date.toLocaleDateString('en-US', {
+   137→   137→    month: 'short',
+   138→   138→    day: 'numeric',
+   139→   139→  });
+   140→   140→}
+   141→   141→
+   142→   142→function getInitials(name: string): string {
+   143→   143→  return name
+   144→   144→    .split(' ')
+   145→   145→    .map((n) => n[0])
+   146→   146→    .join('')
+   147→   147→    .toUpperCase()
+   148→   148→    .slice(0, 2);
+   149→   149→}
+   150→   150→
+   151→   151→// ─── Custom Tooltip Components ──────────────────────────────────────────────
+   152→   152→
+   153→   153→function CustomBarTooltip({ active, payload, label }: {
+   154→   154→  active?: boolean;
+   155→   155→  payload?: Array<{ name: string; value: number; color: string }>;
+   156→   156→  label?: string;
+   157→   157→}) {
+   158→   158→  if (!active || !payload?.length) return null;
+   159→   159→  return (
+   160→   160→    <div className="rounded-lg border bg-background p-3 shadow-lg">
+   161→   161→      <p className="mb-1 text-sm font-semibold text-foreground">{label}</p>
+   162→   162→      {payload.map((entry, idx) => (
+   163→   163→        <p key={idx} className="text-sm" style={{ color: entry.color }}>
+   164→   164→          {entry.name}: ${entry.value.toLocaleString()}
+   165→   165→        </p>
+   166→   166→      ))}
+   167→   167→    </div>
+   168→   168→  );
+   169→   169→}
+   170→   170→
+   171→   171→function CustomPieTooltip({ active, payload }: {
+   172→   172→  active?: boolean;
+   173→   173→  payload?: Array<{ name: string; value: number; payload: { name: string; value: number } }>;
+   174→   174→}) {
+   175→   175→  if (!active || !payload?.length) return null;
+   176→   176→  return (
+   177→   177→    <div className="rounded-lg border bg-background p-3 shadow-lg">
+   178→   178→      <p className="text-sm font-semibold text-foreground">{payload[0].name}</p>
+   179→   179→      <p className="text-sm text-muted-foreground">{payload[0].value}%</p>
+   180→   180→    </div>
+   181→   181→  );
+   182→   182→}
+   183→   183→
+   184→   184→// ─── Main Component ─────────────────────────────────────────────────────────
+   185→   185→
+   186→   186→export default function DashboardModule() {
+   187→   187→  const activeProjects = projects.filter((p) => p.status === 'active').slice(0, 5);
+   188→   188→  const upcomingEvents = calendarEvents.slice(0, 4);
+   189→   189→
+   190→   190→  return (
+   191→   191→    <div className="space-y-6">
+   192→   192→      {/* ── 1. Welcome Banner ────────────────────────────────────────────── */}
+   193→   193→      <motion.div
+   194→   194→        initial={{ opacity: 0, y: -12 }}
+   195→   195→        animate={{ opacity: 1, y: 0 }}
+   196→   196→        transition={{ duration: 0.5 }}
+   197→   197→        className="relative overflow-hidden rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 p-6 md:p-8 text-white"
+   198→   198→      >
+   199→   199→        {/* Decorative background blobs */}
+   200→   200→        <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-white/10 blur-2xl" />
+   201→   201→        <div className="pointer-events-none absolute -bottom-10 -left-10 h-48 w-48 rounded-full bg-white/5 blur-2xl" />
+   202→   202→
+   203→   203→        <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+   204→   204→          <div className="space-y-2">
+   205→   205→            <p className="text-sm font-medium text-emerald-100">{formatDate()}</p>
+   206→   206→            <h1 className="text-2xl font-bold tracking-tight md:text-3xl">
+   207→   207→              {getGreeting()}, {currentUser.firstName}
+   208→   208→            </h1>
+   209→   209→            <p className="max-w-xl text-emerald-50/80">
+   210→   210→              Welcome back to{' '}
+   211→   211→              <span className="font-semibold text-white">{companyInfo.name}</span>.
+   212→   212→              Here&apos;s what&apos;s happening with your business today.
+   213→   213→            </p>
+   214→   214→          </div>
+   215→   215→          <div className="flex items-center gap-3 self-start rounded-xl bg-white/15 backdrop-blur-sm px-5 py-4">
+   216→   216→            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/20">
+   217→   217→              <CheckCircle className="h-5 w-5" />
+   218→   218→            </div>
+   219→   219→            <div>
+   220→   220→              <p className="text-2xl font-bold leading-none">12</p>
+   221→   221→              <p className="mt-0.5 text-xs text-emerald-100">Tasks due today</p>
+   222→   222→            </div>
+   223→   223→          </div>
+   224→   224→        </div>
+   225→   225→      </motion.div>
+   226→   226→
+   227→   227→      {/* ── Main Grid ────────────────────────────────────────────────────── */}
+   228→   228→      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+   229→   229→        {/* ── 2. KPI Cards (6 cards) ──────────────────────────────────────── */}
+   230→   230→        {kpiData.map((kpi, idx) => {
+   231→   231→          const IconComp = kpiIconMap[kpi.icon] || CircleDot;
+   232→   232→          const isPositive = kpi.change >= 0;
+   233→   233→          return (
+   234→   234→            <motion.div
+   235→   235→              key={kpi.label}
+   236→   236→              initial={{ opacity: 0, y: 16 }}
+   237→   237→              animate={{ opacity: 1, y: 0 }}
+   238→   238→              transition={{ duration: 0.35, delay: idx * 0.06 }}
+   239→   239→              whileHover={{ y: -3, boxShadow: '0 8px 30px rgba(0,0,0,0.08)' }}
+   240→   240→              className="rounded-xl border bg-card p-6 shadow-sm transition-colors"
+   241→   241→            >
+   242→   242→              <div className="flex items-start justify-between">
+   243→   243→                <div
+   244→   244→                  className={cn(
+   245→   245→                    'flex h-10 w-10 items-center justify-center rounded-lg',
+   246→   246→                    kpiIconBgMap[kpi.icon]
+   247→   247→                  )}
+   248→   248→                >
+   249→   249→                  <IconComp className="h-5 w-5" />
+   250→   250→                </div>
+   251→   251→                <div
+   252→   252→                  className={cn(
+   253→   253→                    'inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold',
+   254→   254→                    isPositive
+   255→   255→                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+   256→   256→                      : 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-400'
+   257→   257→                  )}
+   258→   258→                >
+   259→   259→                  {isPositive ? (
+   260→   260→                    <ArrowUpRight className="h-3 w-3" />
+   261→   261→                  ) : (
+   262→   262→                    <ArrowDownRight className="h-3 w-3" />
+   263→   263→                  )}
+   264→   264→                  {Math.abs(kpi.change)}%
+   265→   265→                </div>
+   266→   266→              </div>
+   267→   267→              <div className="mt-4">
+   268→   268→                <p className="text-sm text-muted-foreground">{kpi.label}</p>
+   269→   269→                <p className="mt-1 text-2xl font-bold tracking-tight">{kpi.value}</p>
+   270→   270→              </div>
+   271→   271→              <p className="mt-1 text-xs text-muted-foreground">{kpi.changeLabel}</p>
+   272→   272→            </motion.div>
+   273→   273→          );
+   274→   274→        })}
+   275→   275→
+   276→   276→        {/* ── 3. Revenue Chart (2/3 width) ─────────────────────────────────── */}
+   277→   277→        <motion.div
+   278→   278→          initial={{ opacity: 0, y: 16 }}
+   279→   279→          animate={{ opacity: 1, y: 0 }}
+   280→   280→          transition={{ duration: 0.4, delay: 0.2 }}
+   281→   281→          className="md:col-span-2"
+   282→   282→        >
+   283→   283→          <Card className="h-full rounded-xl">
+   284→   284→            <CardHeader className="pb-2">
+   285→   285→              <CardTitle className="flex items-center gap-2 text-base">
+   286→   286→                <BarChart3 className="h-5 w-5 text-emerald-600" />
+   287→   287→                Revenue Overview
+   288→   288→              </CardTitle>
+   289→   289→            </CardHeader>
+   290→   290→            <CardContent>
+   291→   291→              <ResponsiveContainer width="100%" height={300}>
+   292→   292→                <BarChart data={revenueChart} barGap={4} barCategoryGap="20%">
+   293→   293→                  <CartesianGrid
+   294→   294→                    strokeDasharray="3 3"
+   295→   295→                    vertical={false}
+   296→   296→                    stroke="hsl(var(--border))"
+   297→   297→                  />
+   298→   298→                  <XAxis
+   299→   299→                    dataKey="name"
+   300→   300→                    tickLine={false}
+   301→   301→                    axisLine={false}
+   302→   302→                    tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+   303→   303→                  />
+   304→   304→                  <YAxis
+   305→   305→                    tickLine={false}
+   306→   306→                    axisLine={false}
+   307→   307→                    tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+   308→   308→                    tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
+   309→   309→                  />
+   310→   310→                  <Tooltip
+   311→   311→                    content={<CustomBarTooltip />}
+   312→   312→                    cursor={{ fill: 'hsl(var(--muted))', radius: 4 }}
+   313→   313→                  />
+   314→   314→                  <Legend
+   315→   315→                    iconType="circle"
+   316→   316→                    iconSize={8}
+   317→   317→                    wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }}
+   318→   318→                  />
+   319→   319→                  <Bar
+   320→   320→                    dataKey="value"
+   321→   321→                    name="Revenue"
+   322→   322→                    fill="#10b981"
+   323→   323→                    radius={[4, 4, 0, 0]}
+   324→   324→                    maxBarSize={40}
+   325→   325→                  />
+   326→   326→                  <Bar
+   327→   327→                    dataKey="value2"
+   328→   328→                    name="Expenses"
+   329→   329→                    fill="#14b8a6"
+   330→   330→                    radius={[4, 4, 0, 0]}
+   331→   331→                    maxBarSize={40}
+   332→   332→                  />
+   333→   333→                </BarChart>
+   334→   334→              </ResponsiveContainer>
+   335→   335→            </CardContent>
+   336→   336→          </Card>
+   337→   337→        </motion.div>
+   338→   338→
+   339→   339→        {/* ── 4. Sales by Source (1/3 width) ───────────────────────────────── */}
+   340→   340→        <motion.div
+   341→   341→          initial={{ opacity: 0, y: 16 }}
+   342→   342→          animate={{ opacity: 1, y: 0 }}
+   343→   343→          transition={{ duration: 0.4, delay: 0.25 }}
+   344→   344→        >
+   345→   345→          <Card className="h-full rounded-xl">
+   346→   346→            <CardHeader className="pb-2">
+   347→   347→              <CardTitle className="flex items-center gap-2 text-base">
+   348→   348→                <PieChartIcon className="h-5 w-5 text-teal-600" />
+   349→   349→                Sales by Source
+   350→   350→              </CardTitle>
+   351→   351→            </CardHeader>
+   352→   352→            <CardContent>
+   353→   353→              <ResponsiveContainer width="100%" height={200}>
+   354→   354→                <PieChart>
+   355→   355→                  <Pie
+   356→   356→                    data={salesBySource}
+   357→   357→                    cx="50%"
+   358→   358→                    cy="50%"
+   359→   359→                    innerRadius={55}
+   360→   360→                    outerRadius={80}
+   361→   361→                    paddingAngle={3}
+   362→   362→                    dataKey="value"
+   363→   363→                    strokeWidth={0}
+   364→   364→                  >
+   365→   365→                    {salesBySource.map((_entry, idx) => (
+   366→   366→                      <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+   367→   367→                    ))}
+   368→   368→                  </Pie>
+   369→   369→                  <Tooltip content={<CustomPieTooltip />} />
+   370→   370→                </PieChart>
+   371→   371→              </ResponsiveContainer>
+   372→   372→              <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1.5">
+   373→   373→                {salesBySource.map((item, idx) => (
+   374→   374→                  <div
+   375→   375→                    key={item.name}
+   376→   376→                    className="flex items-center gap-1.5 text-xs text-muted-foreground"
+   377→   377→                  >
+   378→   378→                    <span
+   379→   379→                      className="inline-block h-2.5 w-2.5 rounded-full shrink-0"
+   380→   380→                      style={{ backgroundColor: PIE_COLORS[idx % PIE_COLORS.length] }}
+   381→   381→                    />
+   382→   382→                    {item.name} ({item.value}%)
+   383→   383→                  </div>
+   384→   384→                ))}
+   385→   385→              </div>
+   386→   386→            </CardContent>
+   387→   387→          </Card>
+   388→   388→        </motion.div>
+   389→   389→
+   390→   390→        {/* ── 5. Active Projects (1 col) ──────────────────────────────────── */}
+   391→   391→        <motion.div
+   392→   392→          initial={{ opacity: 0, y: 16 }}
+   393→   393→          animate={{ opacity: 1, y: 0 }}
+   394→   394→          transition={{ duration: 0.4, delay: 0.3 }}
+   395→   395→        >
+   396→   396→          <Card className="h-full rounded-xl">
+   397→   397→            <CardHeader className="pb-2">
+   398→   398→              <CardTitle className="flex items-center gap-2 text-base">
+   399→   399→                <Briefcase className="h-5 w-5 text-indigo-600" />
+   400→   400→                Active Projects
+   401→   401→                <Badge variant="secondary" className="ml-auto text-xs">
+   402→   402→                  {activeProjects.length}
+   403→   403→                </Badge>
+   404→   404→              </CardTitle>
+   405→   405→            </CardHeader>
+   406→   406→            <CardContent>
+   407→   407→              <div className="space-y-4">
+   408→   408→                {activeProjects.map((project) => {
+   409→   409→                  const progressColor =
+   410→   410→                    project.progress >= 75
+   411→   411→                      ? 'bg-emerald-500'
+   412→   412→                      : project.progress >= 50
+   413→   413→                        ? 'bg-blue-500'
+   414→   414→                        : project.progress >= 25
+   415→   415→                          ? 'bg-amber-500'
+   416→   416→                          : 'bg-rose-500';
+   417→   417→                  return (
+   418→   418→                    <div key={project.id} className="group space-y-2">
+   419→   419→                      <div className="flex items-center justify-between gap-2">
+   420→   420→                        <div className="flex items-center gap-3 min-w-0">
+   421→   421→                          <Avatar className="h-8 w-8 shrink-0">
+   422→   422→                            <AvatarFallback className="text-xs font-semibold bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400">
+   423→   423→                              {getInitials(project.name)}
+   424→   424→                            </AvatarFallback>
+   425→   425→                          </Avatar>
+   426→   426→                          <div className="min-w-0">
+   427→   427→                            <p className="truncate text-sm font-medium leading-tight">
+   428→   428→                              {project.name}
+   429→   429→                            </p>
+   430→   430→                            <p className="text-xs text-muted-foreground">
+   431→   431→                              {project.completedTaskCount}/{project.taskCount} tasks
+   432→   432→                            </p>
+   433→   433→                          </div>
+   434→   434→                        </div>
+   435→   435→                        <Badge
+   436→   436→                          variant="outline"
+   437→   437→                          className={cn(
+   438→   438→                            'text-[10px] capitalize shrink-0',
+   439→   439→                            statusColorMap[project.status]
+   440→   440→                          )}
+   441→   441→                        >
+   442→   442→                          {project.status}
+   443→   443→                        </Badge>
+   444→   444→                      </div>
+   445→   445→                      <div className="flex items-center gap-3">
+   446→   446→                        <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-primary/20">
+   447→   447→                          <div
+   448→   448→                            className={cn(
+   449→   449→                              'absolute inset-y-0 left-0 rounded-full transition-all',
+   450→   450→                              progressColor
+   451→   451→                            )}
+   452→   452→                            style={{ width: `${project.progress}%` }}
+   453→   453→                          />
+   454→   454→                        </div>
+   455→   455→                        <span className="w-9 shrink-0 text-right text-xs font-medium tabular-nums">
+   456→   456→                          {project.progress}%
+   457→   457→                        </span>
+   458→   458→                      </div>
+   459→   459→                      <p className="text-xs text-muted-foreground">
+   460→   460→                        Due {formatShortDate(project.endDate)}
+   461→   461→                      </p>
+   462→   462→                    </div>
+   463→   463→                  );
+   464→   464→                })}
+   465→   465→              </div>
+   466→   466→            </CardContent>
+   467→   467→          </Card>
+   468→   468→        </motion.div>
+   469→   469→
+   470→   470→        {/* ── 6. Upcoming Meetings (1 col) ────────────────────────────────── */}
+   471→   471→        <motion.div
+   472→   472→          initial={{ opacity: 0, y: 16 }}
+   473→   473→          animate={{ opacity: 1, y: 0 }}
+   474→   474→          transition={{ duration: 0.4, delay: 0.35 }}
+   475→   475→        >
+   476→   476→          <Card className="h-full rounded-xl">
+   477→   477→            <CardHeader className="pb-2">
+   478→   478→              <CardTitle className="flex items-center gap-2 text-base">
+   479→   479→                <CalendarDays className="h-5 w-5 text-rose-600" />
+   480→   480→                Upcoming Meetings
+   481→   481→              </CardTitle>
+   482→   482→            </CardHeader>
+   483→   483→            <CardContent>
+   484→   484→              <div className="space-y-3">
+   485→   485→                {upcomingEvents.map((event) => (
+   486→   486→                  <div
+   487→   487→                    key={event.id}
+   488→   488→                    className="rounded-lg border-l-4 bg-muted/40 p-3 transition-colors hover:bg-muted/70"
+   489→   489→                    style={{ borderLeftColor: event.color }}
+   490→   490→                  >
+   491→   491→                    <div className="flex items-start justify-between gap-2">
+   492→   492→                      <div className="min-w-0 space-y-1">
+   493→   493→                        <p className="text-sm font-medium leading-tight truncate">
+   494→   494→                          {event.title}
+   495→   495→                        </p>
+   496→   496→                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+   497→   497→                          <span className="inline-flex items-center gap-1">
+   498→   498→                            <Clock className="h-3 w-3" />
+   499→   499→                            {event.allDay
+   500→   500→                              ? 'All day'
+   501→   501→                              : `${formatTime(event.startDate)} – ${formatTime(event.endDate)}`}
+   502→   502→                          </span>
+   503→   503→                          <span className="inline-flex items-center gap-1">
+   504→   504→                            <MapPin className="h-3 w-3" />
+   505→   505→                            {event.location}
+   506→   506→                          </span>
+   507→   507→                        </div>
+   508→   508→                      </div>
+   509→   509→                      <span
+   510→   510→                        className="mt-0.5 inline-block h-2.5 w-2.5 rounded-full shrink-0"
+   511→   511→                        style={{ backgroundColor: event.color }}
+   512→   512→                      />
+   513→   513→                    </div>
+   514→   514→                  </div>
+   515→   515→                ))}
+   516→   516→              </div>
+   517→   517→            </CardContent>
+   518→   518→          </Card>
+   519→   519→        </motion.div>
+   520→   520→
+   521→   521→        {/* ── 7. Recent Activities (full width) ────────────────────────────── */}
+   522→   522→        <motion.div
+   523→   523→          initial={{ opacity: 0, y: 16 }}
+   524→   524→          animate={{ opacity: 1, y: 0 }}
+   525→   525→          transition={{ duration: 0.4, delay: 0.4 }}
+   526→   526→          className="md:col-span-2 lg:col-span-3"
+   527→   527→        >
+   528→   528→          <Card className="rounded-xl">
+   529→   529→            <CardHeader className="pb-2">
+   530→   530→              <CardTitle className="flex items-center gap-2 text-base">
+   531→   531→                <Activity className="h-5 w-5 text-emerald-600" />
+   532→   532→                Recent Activity
+   533→   533→              </CardTitle>
+   534→   534→            </CardHeader>
+   535→   535→            <CardContent className="px-2">
+   536→   536→              <ScrollArea className="max-h-80 px-4">
+   537→   537→                <div className="space-y-1">
+   538→   538→                  {activities.map((activity, idx) => {
+   539→   539→                    const ActIcon = activityIconMap[activity.type] || CircleDot;
+   540→   540→                    return (
+   541→   541→                      <div
+   542→   542→                        key={activity.id}
+   543→   543→                        className={cn(
+   544→   544→                          'group flex items-start gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-muted/50',
+   545→   545→                          idx < activities.length - 1 &&
+   546→   546→                            'border-b border-border/50'
+   547→   547→                        )}
+   548→   548→                      >
+   549→   549→                        {/* Activity type icon */}
+   550→   550→                        <div
+   551→   551→                          className={cn(
+   552→   552→                            'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+   553→   553→                            activityColorMap[activity.type]
+   554→   554→                          )}
+   555→   555→                        >
+   556→   556→                          <ActIcon className="h-4 w-4" />
+   557→   557→                        </div>
+   558→   558→
+   559→   559→                        {/* User avatar */}
+   560→   560→                        <Avatar className="mt-0.5 h-7 w-7 shrink-0">
+   561→   561→                          <AvatarFallback className="text-[10px] font-semibold">
+   562→   562→                            {getInitials(activity.userName)}
+   563→   563→                          </AvatarFallback>
+   564→   564→                        </Avatar>
+   565→   565→
+   566→   566→                        {/* Content */}
+   567→   567→                        <div className="min-w-0 flex-1">
+   568→   568→                          <p className="text-sm">
+   569→   569→                            <span className="font-semibold">
+   570→   570→                              {activity.userName}
+   571→   571→                            </span>{' '}
+   572→   572→                            <span className="text-muted-foreground">
+   573→   573→                              {activity.description}
+   574→   574→                            </span>
+   575→   575→                          </p>
+   576→   576→                          <div className="mt-1 flex flex-wrap items-center gap-2">
+   577→   577→                            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+   578→   578→                              <Clock className="h-3 w-3" />
+   579→   579→                              {timeAgo(activity.createdAt)}
+   580→   580→                            </span>
+   581→   581→                            <Badge
+   582→   582→                              variant="secondary"
+   583→   583→                              className={cn(
+   584→   584→                                'text-[10px] font-medium',
+   585→   585→                                moduleColorMap[activity.module] ||
+   586→   586→                                  'bg-muted text-muted-foreground'
+   587→   587→                              )}
+   588→   588→                            >
+   589→   589→                              {activity.module}
+   590→   590→                            </Badge>
+   591→   591→                          </div>
+   592→   592→                        </div>
+   593→   593→                      </div>
+   594→   594→                    );
+   595→   595→                  })}
+   596→   596→                </div>
+   597→   597→              </ScrollArea>
+   598→   598→            </CardContent>
+   599→   599→          </Card>
+   600→   600→        </motion.div>
+   601→   601→
+   602→   602→        {/* ── 8. Quick Actions (full width) ────────────────────────────────── */}
+   603→   603→        <motion.div
+   604→   604→          initial={{ opacity: 0, y: 16 }}
+   605→   605→          animate={{ opacity: 1, y: 0 }}
+   606→   606→          transition={{ duration: 0.4, delay: 0.45 }}
+   607→   607→          className="md:col-span-2 lg:col-span-3"
+   608→   608→        >
+   609→   609→          <Card className="rounded-xl">
+   610→   610→            <CardHeader className="pb-2">
+   611→   611→              <CardTitle className="flex items-center gap-2 text-base">
+   612→   612→                <Zap className="h-5 w-5 text-amber-500" />
+   613→   613→                Quick Actions
+   614→   614→              </CardTitle>
+   615→   615→            </CardHeader>
+   616→   616→            <CardContent>
+   617→   617→              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   618→   618→                <Button
+   619→   619→                  variant="outline"
+   620→   620→                  className="h-auto flex flex-col items-center gap-2.5 rounded-xl border-dashed border-2 py-5 hover:border-emerald-400 hover:bg-emerald-50/50 hover:text-emerald-700 dark:hover:border-emerald-600 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-400"
+   621→   621→                >
+   622→   622→                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400">
+   623→   623→                    <UserPlus className="h-5 w-5" />
+   624→   624→                  </div>
+   625→   625→                  <span className="text-sm font-medium">New Lead</span>
+   626→   626→                </Button>
+   627→   627→
+   628→   628→                <Button
+   629→   629→                  variant="outline"
+   630→   630→                  className="h-auto flex flex-col items-center gap-2.5 rounded-xl border-dashed border-2 py-5 hover:border-teal-400 hover:bg-teal-50/50 hover:text-teal-700 dark:hover:border-teal-600 dark:hover:bg-teal-950/30 dark:hover:text-teal-400"
+   631→   631→                >
+   632→   632→                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-100 text-teal-600 dark:bg-teal-950 dark:text-teal-400">
+   633→   633→                    <FolderKanban className="h-5 w-5" />
+   634→   634→                  </div>
+   635→   635→                  <span className="text-sm font-medium">Create Project</span>
+   636→   636→                </Button>
+   637→   637→
+   638→   638→                <Button
+   639→   639→                  variant="outline"
+   640→   640→                  className="h-auto flex flex-col items-center gap-2.5 rounded-xl border-dashed border-2 py-5 hover:border-emerald-400 hover:bg-emerald-50/50 hover:text-emerald-700 dark:hover:border-emerald-600 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-400"
+   641→   641→                >
+   642→   642→                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400">
+   643→   643→                    <FileText className="h-5 w-5" />
+   644→   644→                  </div>
+   645→   645→                  <span className="text-sm font-medium">Add Invoice</span>
+   646→   646→                </Button>
+   647→   647→
+   648→   648→                <Button
+   649→   649→                  variant="outline"
+   650→   650→                  className="h-auto flex flex-col items-center gap-2.5 rounded-xl border-dashed border-2 py-5 hover:border-teal-400 hover:bg-teal-50/50 hover:text-teal-700 dark:hover:border-teal-600 dark:hover:bg-teal-950/30 dark:hover:text-teal-400"
+   651→   651→                >
+   652→   652→                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-100 text-teal-600 dark:bg-teal-950 dark:text-teal-400">
+   653→   653→                    <CalendarClock className="h-5 w-5" />
+   654→   654→                  </div>
+   655→   655→                  <span className="text-sm font-medium">Schedule Meeting</span>
+   656→   656→                </Button>
+   657→   657→              </div>
+   658→   658→            </CardContent>
+   659→   659→          </Card>
+   660→   660→        </motion.div>
+   661→   661→      </div>
+   662→   662→    </div>
+   663→   663→  );
+   664→   664→}

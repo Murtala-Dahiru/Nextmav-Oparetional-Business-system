@@ -29,6 +29,7 @@ import { Separator } from '@/components/ui/separator';
 
 import { tickets } from '@/lib/mock-data';
 import type { TicketItem } from '@/types';
+import { toast } from 'sonner';
 
 /* ---- helpers ---- */
 
@@ -46,11 +47,11 @@ const priorityStyles: Record<TicketItem['priority'], string> = {
 };
 
 const statusStyles: Record<TicketItem['status'], string> = {
-  open: 'bg-blue-100 text-blue-700 border border-blue-200',
+  open: 'bg-cyan-100 text-cyan-700 border border-cyan-200',
   'in-progress': 'bg-amber-100 text-amber-700 border border-amber-200',
   pending: 'bg-purple-100 text-purple-700 border border-purple-200',
   resolved: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
-  closed: 'bg-gray-100 text-gray-600 border border-gray-200',
+  closed: 'bg-gray-100 text-muted-foreground border border-border',
 };
 
 /* ---- summary card counts ---- */
@@ -66,11 +67,11 @@ function getStatusCounts(list: TicketItem[]) {
 }
 
 const summaryConfig = [
-  { key: 'open' as const, label: 'Open', icon: CircleDot, color: 'text-blue-600', bg: 'bg-blue-50' },
-  { key: 'in-progress' as const, label: 'In Progress', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
-  { key: 'pending' as const, label: 'Pending', icon: AlertTriangle, color: 'text-purple-600', bg: 'bg-purple-50' },
-  { key: 'resolved' as const, label: 'Resolved', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-  { key: 'closed' as const, label: 'Closed', icon: XCircle, color: 'text-gray-600', bg: 'bg-gray-50' },
+  { key: 'open' as const, label: 'Open', icon: CircleDot, color: 'text-cyan-600 dark:text-cyan-400', bg: 'bg-cyan-50 dark:bg-cyan-950/30' },
+  { key: 'in-progress' as const, label: 'In Progress', icon: Clock, color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+  { key: 'pending' as const, label: 'Pending', icon: AlertTriangle, color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-950/30' },
+  { key: 'resolved' as const, label: 'Resolved', icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+  { key: 'closed' as const, label: 'Closed', icon: XCircle, color: 'text-muted-foreground dark:text-muted-foreground', bg: 'bg-gray-50 dark:bg-gray-950/30' },
 ];
 
 /* ---- knowledge base mock data ---- */
@@ -87,7 +88,7 @@ const knowledgeArticles = [
 const kbCategoryColors: Record<string, string> = {
   Onboarding: 'bg-teal-100 text-teal-700',
   Finance: 'bg-emerald-100 text-emerald-700',
-  Projects: 'bg-blue-100 text-blue-700',
+  Projects: 'bg-cyan-100 text-cyan-700',
   Admin: 'bg-purple-100 text-purple-700',
   Developer: 'bg-orange-100 text-orange-700',
   Reporting: 'bg-amber-100 text-amber-700',
@@ -150,17 +151,17 @@ export default function SupportModule() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Support Desk</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage tickets, knowledge base, and SLA compliance</p>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">Support Desk</h1>
+          <p className="text-sm text-muted-foreground mt-1">Manage tickets, knowledge base, and SLA compliance</p>
         </div>
-        <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
+        <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => toast.success('New ticket created')}>
           <Ticket className="mr-2 h-4 w-4" />
           New Ticket
         </Button>
       </div>
 
       <Tabs defaultValue="tickets" className="space-y-6">
-        <TabsList className="bg-white border border-gray-200 p-1">
+        <TabsList className="bg-background border border-border p-1">
           <TabsTrigger value="tickets" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
             <Ticket className="mr-2 h-4 w-4" />
             Tickets
@@ -183,15 +184,15 @@ export default function SupportModule() {
               const Icon = cfg.icon;
               return (
                 <motion.div key={cfg.key} variants={itemVariants}>
-                  <Card className="border border-gray-200 hover:shadow-md transition-shadow">
+                  <Card className="border border-border hover:shadow-md transition-shadow">
                     <CardContent className="p-4">
                       <div className="flex items-center gap-3">
                         <div className={cn('p-2 rounded-lg', cfg.bg)}>
                           <Icon className={cn('h-5 w-5', cfg.color)} />
                         </div>
                         <div>
-                          <p className="text-2xl font-bold text-gray-900">{counts[cfg.key]}</p>
-                          <p className="text-xs text-gray-500">{cfg.label}</p>
+                          <p className="text-2xl font-bold text-foreground">{counts[cfg.key]}</p>
+                          <p className="text-xs text-muted-foreground">{cfg.label}</p>
                         </div>
                       </div>
                     </CardContent>
@@ -202,11 +203,11 @@ export default function SupportModule() {
           </div>
 
           {/* Filters */}
-          <Card className="border border-gray-200">
+          <Card className="border border-border">
             <CardContent className="p-4">
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search tickets..."
                     value={searchQuery}
@@ -216,7 +217,7 @@ export default function SupportModule() {
                 </div>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-[160px]">
-                    <Filter className="mr-2 h-4 w-4 text-gray-400" />
+                    <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -230,7 +231,7 @@ export default function SupportModule() {
                 </Select>
                 <Select value={priorityFilter} onValueChange={setPriorityFilter}>
                   <SelectTrigger className="w-[160px]">
-                    <AlertTriangle className="mr-2 h-4 w-4 text-gray-400" />
+                    <AlertTriangle className="mr-2 h-4 w-4 text-muted-foreground" />
                     <SelectValue placeholder="Priority" />
                   </SelectTrigger>
                   <SelectContent>
@@ -246,20 +247,21 @@ export default function SupportModule() {
           </Card>
 
           {/* Tickets Table */}
-          <Card className="border border-gray-200">
+          <Card className="border border-border">
             <CardContent className="p-0">
+              <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50/80">
-                    <TableHead className="font-semibold text-gray-600">Ticket #</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Subject</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Priority</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Status</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Category</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Contact</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Assignee</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Created</TableHead>
-                    <TableHead className="font-semibold text-gray-600">Due Date</TableHead>
+                  <TableRow className="bg-muted/40">
+                    <TableHead className="font-semibold text-muted-foreground">Ticket #</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Subject</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Priority</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Status</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Category</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Contact</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Assignee</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Created</TableHead>
+                    <TableHead className="font-semibold text-muted-foreground">Due Date</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -268,7 +270,7 @@ export default function SupportModule() {
                       <TableCell className="font-mono text-sm font-medium text-teal-700">
                         {ticket.ticketNumber}
                       </TableCell>
-                      <TableCell className="font-medium text-gray-900 max-w-[200px] truncate">
+                      <TableCell className="font-medium text-foreground max-w-[200px] truncate">
                         {ticket.subject}
                       </TableCell>
                       <TableCell>
@@ -281,26 +283,27 @@ export default function SupportModule() {
                           {ticket.status.replace('-', ' ')}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-gray-600">{ticket.category}</TableCell>
-                      <TableCell className="text-sm text-gray-700">{ticket.contactName}</TableCell>
-                      <TableCell className="text-sm text-gray-700">
+                      <TableCell className="text-sm text-muted-foreground">{ticket.category}</TableCell>
+                      <TableCell className="text-sm text-foreground">{ticket.contactName}</TableCell>
+                      <TableCell className="text-sm text-foreground">
                         {ticket.assigneeName || (
-                          <span className="text-gray-400 italic">Unassigned</span>
+                          <span className="text-muted-foreground italic">Unassigned</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-sm text-gray-500">{formatDate(ticket.createdAt)}</TableCell>
-                      <TableCell className="text-sm text-gray-500">{formatDate(ticket.dueDate)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(ticket.createdAt)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(ticket.dueDate)}</TableCell>
                     </TableRow>
                   ))}
                   {filteredTickets.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-8 text-gray-400">
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                         No tickets match your filters.
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -308,10 +311,10 @@ export default function SupportModule() {
         {/* ===== TAB 2: KNOWLEDGE BASE ===== */}
         <TabsContent value="knowledge" className="space-y-6">
           <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted-foreground">
               {knowledgeArticles.length} articles available
             </p>
-            <Button variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50">
+            <Button variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => toast.info('Article request submitted')}>
               <HelpCircle className="mr-2 h-4 w-4" />
               Submit Article Request
             </Button>
@@ -328,7 +331,7 @@ export default function SupportModule() {
                   animate="visible"
                   transition={{ delay: i * 0.05 }}
                 >
-                  <Card className="border border-gray-200 hover:shadow-lg hover:border-emerald-200 transition-all cursor-pointer group h-full">
+                  <Card className="border border-border hover:shadow-lg hover:border-emerald-200 transition-all cursor-pointer group h-full">
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600 group-hover:bg-emerald-100 transition-colors">
@@ -338,16 +341,16 @@ export default function SupportModule() {
                           {article.category}
                         </Badge>
                       </div>
-                      <CardTitle className="text-base font-semibold text-gray-900 mt-3 leading-snug">
+                      <CardTitle className="text-base font-semibold text-foreground mt-3 leading-snug">
                         {article.title}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-0">
-                      <p className="text-sm text-gray-500 leading-relaxed line-clamp-2 mb-4">
+                      <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2 mb-4">
                         {article.description}
                       </p>
                       <Separator className="mb-3" />
-                      <div className="flex items-center justify-between text-xs text-gray-400">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <div className="flex items-center gap-1.5">
                           <Eye className="h-3.5 w-3.5" />
                           <span>{article.views.toLocaleString()} views</span>
@@ -372,8 +375,8 @@ export default function SupportModule() {
               <TrendingUp className="h-5 w-5 text-emerald-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">SLA Performance Overview</h3>
-              <p className="text-sm text-gray-500">Current period vs. target metrics</p>
+              <h3 className="font-semibold text-foreground">SLA Performance Overview</h3>
+              <p className="text-sm text-muted-foreground">Current period vs. target metrics</p>
             </div>
           </div>
 
@@ -407,8 +410,8 @@ export default function SupportModule() {
                     <CardContent className="p-5">
                       <div className="flex items-start justify-between mb-3">
                         <div>
-                          <h4 className="font-semibold text-gray-900">{metric.label}</h4>
-                          <p className="text-xs text-gray-500 mt-0.5">{metric.description}</p>
+                          <h4 className="font-semibold text-foreground">{metric.label}</h4>
+                          <p className="text-xs text-muted-foreground mt-0.5">{metric.description}</p>
                         </div>
                         <div className={cn(
                           'flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium',
@@ -426,11 +429,11 @@ export default function SupportModule() {
                       </div>
 
                       <div className="flex items-baseline gap-2 mb-3">
-                        <span className="text-2xl font-bold text-gray-900">
+                        <span className="text-2xl font-bold text-foreground">
                           {metric.unit === '/5' ? `${metric.value}` : metric.value}
                         </span>
-                        <span className="text-sm text-gray-500">{metric.unit}</span>
-                        <span className="text-sm text-gray-400 ml-auto">
+                        <span className="text-sm text-muted-foreground">{metric.unit}</span>
+                        <span className="text-sm text-muted-foreground ml-auto">
                           Target: {metric.target}{metric.unit}
                         </span>
                       </div>
@@ -444,7 +447,7 @@ export default function SupportModule() {
                           )}
                         />
                         <div
-                          className="absolute top-0 h-2.5 w-0.5 bg-gray-400 rounded"
+                          className="absolute top-0 h-2.5 w-0.5 bg-muted-foreground/30 rounded"
                           style={{ left: `${targetPercent}%` }}
                         />
                       </div>
