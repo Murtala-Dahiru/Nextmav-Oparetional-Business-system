@@ -1,7 +1,5 @@
-'use client'
-
-import { AppShell } from '@/components/business-os/app-shell'
+import { AppShell } from '@/components/layout/app-shell';
 
 export default function Home() {
-  return <AppShell />
+  return <AppShell />;
 }
