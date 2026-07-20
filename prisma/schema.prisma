@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,20 +7,989 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ==================== CORE ====================
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  logo        String?
+  industry    String?
+  website     String?
+  phone       String?
+  email       String?
+  address     String?
+  city        String?
+  state       String?
+  country     String?
+  zipCode     String?
+  currency    String   @default("USD")
+  timezone    String   @default("UTC")
+  locale      String   @default("en")
+  isActive    Boolean  @default(true)
+  settings    String   @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  departments Department[]
+  branches    Branch[]
+  users       User[]
+  leads       Lead[] @relation("LeadCompany")
+  contacts    Contact[]
+  crmCompanies CrmCompany[]
 }
 
-model Post {
+model Branch {
   id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
+  name      String
+  address   String?
+  city      String?
+  state     String?
+  country   String?
+  phone     String?
+  email     String?
+  companyId String
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  company   Company  @relation(fields: [companyId], references: [id])
+}
+
+model Department {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  companyId   String
+  parentId    String?
+  headId      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company     Company  @relation(fields: [companyId], references: [id])
+  parent      Department? @relation("DepartmentTree", fields: [parentId], references: [id])
+  children    Department[] @relation("DepartmentTree")
+  head        User?    @relation("DepartmentHead", fields: [headId], references: [id])
+  teams       Team[]
+}
+
+model Team {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  departmentId String
+  leadId       String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department   Department @relation(fields: [departmentId], references: [id])
+  lead         User?     @relation("TeamLead", fields: [leadId], references: [id])
+  members      TeamMember[]
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  joinedAt  DateTime @default(now())
+
+  team      Team     @relation(fields: [teamId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([teamId, userId])
+}
+
+// ==================== USERS & AUTH ====================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  password      String?
+  firstName     String
+  lastName      String
+  avatar        String?
+  phone         String?
+  jobTitle      String?
+  roleId        String
+  companyId     String?
+  departmentId  String?
+  branchId      String?
+  isActive      Boolean   @default(true)
+  isOnline      Boolean   @default(false)
+  lastSeen      DateTime?
+  locale        String    @default("en")
+  timezone      String    @default("UTC")
+  theme         String    @default("system")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  company       Company?
+  department    Department? @relation(fields: [departmentId], references: [id])
+  role          Role      @relation(fields: [roleId], references: [id])
+  teamMemberships TeamMember[]
+  ledTeams      Team[]    @relation("TeamLead")
+  ledDepartment Department? @relation("DepartmentHead")
+
+  activities    Activity[]
+  assignedTasks ProjectTask[] @relation("TaskAssignee")
+  createdTasks  ProjectTask[] @relation("TaskCreator")
+  createdLeads  Lead[] @relation("LeadCreator")
+  assignedLeads Lead[] @relation("LeadAssignee")
+  notes         Note[]
+  sentMessages  Message[] @relation("MessageSender")
+  attendance    Attendance[]
+  leaveRequests LeaveRequest[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+
+  @@index([companyId])
+  @@index([roleId])
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false)
+  permissions String   @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+}
+
+// ==================== CRM ====================
+
+model CrmCompany {
+  id          String   @id @default(cuid())
+  name        String
+  industry    String?
+  website     String?
+  phone       String?
+  email       String?
+  address     String?
+  city        String?
+  state       String?
+  country     String?
+  employeeCount Int?
+  annualRevenue Float?
+  description String?
+  companyId   String
+  ownerId     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company     Company  @relation(fields: [companyId], references: [id])
+  owner       User?    @relation(fields: [ownerId], references: [id])
+  contacts    Contact[]
+  opportunities Opportunity[]
+}
+
+model Contact {
+  id            String   @id @default(cuid())
+  firstName     String
+  lastName      String
+  email         String?
+  phone         String?
+  mobile        String?
+  jobTitle      String?
+  address       String?
+  city          String?
+  state         String?
+  country       String?
+  linkedIn      String?
+  twitter       String?
+  companyId     String?
+  crmCompanyId  String?
+  ownerId       String?
+  source        String?
+  tags          String   @default("[]")
+  customFields  String   @default("{}")
+  notes         String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company       Company?
+  crmCompany    CrmCompany? @relation(fields: [crmCompanyId], references: [id])
+  owner         User?    @relation(fields: [ownerId], references: [id])
+
+  @@index([crmCompanyId])
+  @@index([ownerId])
+}
+
+model Lead {
+  id            String    @id @default(cuid())
+  firstName     String
+  lastName      String
+  email         String?
+  phone         String?
+  company       String?
+  title         String?
+  source        String?
+  status        String    @default("new")
+  score         Int       @default(0)
+  value         Float?
+  ownerId       String?
+  creatorId     String?
+  companyId     String
+  tags          String    @default("[]")
+  customFields  String    @default("{}")
+  notes         String?
+  convertedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  leadCompany  Company   @relation("LeadCompany", fields: [companyId], references: [id])
+  owner         User?     @relation("LeadAssignee", fields: [ownerId], references: [id])
+  creator       User?     @relation("LeadCreator", fields: [creatorId], references: [id])
+  activities    LeadActivity[]
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([companyId])
+}
+
+model LeadActivity {
+  id        String   @id @default(cuid())
+  leadId    String
+  type      String
+  subject   String
+  content   String?
+  userId    String
+  createdAt DateTime @default(now())
+
+  lead      Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+}
+
+model Pipeline {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isDefault   Boolean  @default(false)
+  companyId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stages      PipelineStage[]
+}
+
+model PipelineStage {
+  id          String   @id @default(cuid())
+  name        String
+  order       Int
+  color       String?
+  pipelineId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  pipeline    Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  opportunities Opportunity[]
+
+  @@index([pipelineId])
+}
+
+model Opportunity {
+  id            String    @id @default(cuid())
+  name          String
+  value         Float
+  stageId       String
+  pipelineId    String?
+  contactId     String?
+  crmCompanyId  String?
+  ownerId       String?
+  probability   Int       @default(0)
+  closeDate     DateTime?
+  description   String?
+  source        String?
+  isWon         Boolean   @default(false)
+  isLost        Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  stage         PipelineStage @relation(fields: [stageId], references: [id])
+  contact       Contact?      @relation(fields: [contactId], references: [id])
+  crmCompany    CrmCompany?   @relation(fields: [crmCompanyId], references: [id])
+  owner         User?         @relation(fields: [ownerId], references: [id])
+
+  @@index([stageId])
+  @@index([ownerId])
+}
+
+// ==================== WORKSPACE ====================
+
+model WorkspaceFolder {
+  id          String   @id @default(cuid())
+  name        String
+  parentId    String?
+  companyId   String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent      WorkspaceFolder?  @relation("FolderTree", fields: [parentId], references: [id])
+  children    WorkspaceFolder[]  @relation("FolderTree")
+  pages       WorkspacePage[]
+  creator     User?    @relation(fields: [createdBy], references: [id])
+}
+
+model WorkspacePage {
+  id          String   @id @default(cuid())
+  title       String
+  content     String   @default("")
+  folderId    String?
+  icon        String?
+  status      String   @default("draft")
+  isTemplate  Boolean  @default(false)
+  version     Int      @default(1)
+  companyId   String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  folder      WorkspaceFolder? @relation(fields: [folderId], references: [id])
+  creator     User?    @relation(fields: [createdBy], references: [id])
+  comments    PageComment[]
+
+  @@index([folderId])
+}
+
+model PageComment {
+  id        String   @id @default(cuid())
+  content   String
+  pageId    String
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  page      WorkspacePage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([pageId])
+}
+
+// ==================== PROJECT MANAGEMENT ====================
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  status      String   @default("active")
+  priority    String   @default("medium")
+  startDate   DateTime?
+  endDate     DateTime?
+  budget      Float?
+  progress    Int      @default(0)
+  ownerId     String?
+  companyId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner       User?    @relation(fields: [ownerId], references: [id])
+  milestones  Milestone[]
+  members     ProjectMember[]
+  tasks       ProjectTask[]
+}
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  role      String   @default("member")
+  joinedAt  DateTime @default(now())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User?   @relation(fields: [userId], references: [id])
+
+  @@unique([projectId, userId])
+}
+
+model Milestone {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  dueDate     DateTime?
+  status      String   @default("upcoming")
+  projectId   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model ProjectTask {
+  id            String    @id @default(cuid())
+  title         String
+  description   String?
+  status        String    @default("todo")
+  priority      String    @default("medium")
+  assigneeId    String?
+  creatorId     String?
+  projectId     String?
+  milestoneId   String?
+  parentId      String?
+  dueDate       DateTime?
+  startDate     DateTime?
+  estimatedHours Float?
+  loggedHours   Float     @default(0)
+  order         Int       @default(0)
+  tags          String    @default("[]")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  project       Project?   @relation(fields: [projectId], references: [id])
+  assignee      User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  creator       User?      @relation("TaskCreator", fields: [creatorId], references: [id])
+  milestone     Milestone?  @relation(fields: [milestoneId], references: [id])
+  parent        ProjectTask? @relation("TaskTree", fields: [parentId], references: [id])
+  children      ProjectTask[] @relation("TaskTree")
+  timeLogs      TimeLog[]
+  comments      TaskComment[]
+  checklists    Checklist[]
+
+  @@index([status])
+  @@index([projectId])
+  @@index([assigneeId])
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  content   String
+  taskId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  task      ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([taskId])
+}
+
+model Checklist {
+  id        String   @id @default(cuid())
+  title     String
+  isChecked Boolean  @default(false)
+  taskId    String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  task      ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId])
+}
+
+model TimeLog {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  hours     Float
+  date      DateTime
+  note      String?
+  createdAt DateTime @default(now())
+
+  task      ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([taskId])
+}
+
+// ==================== HR ====================
+
+model Employee {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  employeeId      String   @unique
+  departmentId    String?
+  hireDate        DateTime
+  contractType    String   @default("full-time")
+  salary          Float?
+  bankName        String?
+  bankAccount     String?
+  emergencyName   String?
+  emergencyPhone  String?
+  emergencyRelation String?
+  status          String   @default("active")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user            User     @relation(fields: [userId], references: [id])
+  department      Department? @relation(fields: [departmentId], references: [id])
+  attendance      Attendance[]
+  leaveRequests   LeaveRequest[]
+}
+
+model Attendance {
+  id        String   @id @default(cuid())
+  userId    String
+  date      DateTime
+  clockIn   DateTime?
+  clockOut  DateTime?
+  status    String   @default("present")
+  note      String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+  employee  Employee @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+model LeaveRequest {
+  id          String   @id @default(cuid())
+  userId      String
+  type        String
+  startDate   DateTime
+  endDate     DateTime
+  days        Float
+  reason      String?
+  status      String   @default("pending")
+  approvedBy  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation("LeaveUser", fields: [userId], references: [id])
+  employee    Employee @relation(fields: [userId], references: [id], onDelete: Cascade)
+  approver    User?    @relation("LeaveApprover", fields: [approvedBy], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+model PayrollRecord {
+  id            String   @id @default(cuid())
+  userId        String
+  period        String
+  baseSalary    Float
+  bonuses       Float    @default(0)
+  deductions    Float    @default(0)
+  netPay        Float
+  status        String   @default("pending")
+  paidAt        DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@index([period])
+}
+
+// ==================== FINANCE ====================
+
+model Invoice {
+  id            String    @id @default(cuid())
+  invoiceNumber String    @unique
+  contactId     String?
+  crmCompanyId  String?
+  status        String    @default("draft")
+  subtotal      Float
+  tax           Float     @default(0)
+  total         Float
+  dueDate       DateTime?
+  paidAt        DateTime?
+  notes         String?
+  companyId     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  contact       Contact?    @relation(fields: [contactId], references: [id])
+  crmCompany    CrmCompany? @relation(fields: [crmCompanyId], references: [id])
+  items         InvoiceItem[]
+  payments      Payment[]
+}
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  description String
+  quantity    Int
+  unitPrice   Float
+  total       Float
+
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  invoiceId     String
+  amount        Float
+  method        String?
+  reference     String?
+  status        String   @default("completed")
+  paidAt        DateTime @default(now())
+
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model Expense {
+  id            String   @id @default(cuid())
+  title         String
+  amount        Float
+  category      String?
+  vendor        String?
+  date          DateTime
+  receiptUrl    String?
+  notes         String?
+  approvedBy    String?
+  status        String   @default("pending")
+  companyId     String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([category])
+  @@index([status])
+}
+
+model Budget {
+  id          String   @id @default(cuid())
+  name        String
+  category    String?
+  amount      Float
+  spent       Float    @default(0)
+  period      String
+  startDate   DateTime
+  endDate     DateTime
+  companyId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([period])
+}
+
+// ==================== COMMUNICATION ====================
+
+model Channel {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   @default("public")
+  description String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  members     ChannelMember[]
+  messages    Message[]
+}
+
+model ChannelMember {
+  id        String   @id @default(cuid())
+  channelId String
+  userId    String
+  joinedAt  DateTime @default(now())
+
+  channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user      User?   @relation(fields: [userId], references: [id])
+
+  @@unique([channelId, userId])
+}
+
+model Message {
+  id            String   @id @default(cuid())
+  content       String
+  channelId     String?
+  senderId      String?
+  parentId      String?
+  isPinned      Boolean  @default(false)
+  isAnnouncement Boolean @default(false)
+  type          String   @default("text")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  channel       Channel?  @relation(fields: [channelId], references: [id])
+  sender        User?     @relation("MessageSender", fields: [senderId], references: [id])
+  parent        Message?  @relation("MessageReplies", fields: [parentId], references: [id])
+  replies       Message[] @relation("MessageReplies")
+  reactions     MessageReaction[]
+}
+
+model MessageReaction {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+}
+
+// ==================== CALENDAR & MEETINGS ====================
+
+model CalendarEvent {
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+  startDate     DateTime
+  endDate       DateTime
+  allDay        Boolean  @default(false)
+  location      String?
+  meetingUrl    String?
+  color         String?
+  recurrence    String?
+  creatorId     String?
+  isRecurring   Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  creator       User?    @relation(fields: [creatorId], references: [id])
+  attendees     EventAttendee[]
+}
+
+model EventAttendee {
+  id       String   @id @default(cuid())
+  eventId  String
+  userId   String
+  status   String   @default("pending")
+
+  event    CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user     User?          @relation(fields: [userId], references: [id])
+
+  @@unique([eventId, userId])
+}
+
+// ==================== FILE MANAGEMENT ====================
+
+model FileRecord {
+  id          String   @id @default(cuid())
+  name        String
+  path        String
+  size        Int
+  mimeType    String
+  category    String?
+  folderId    String?
+  uploadedBy  String?
+  isDeleted   Boolean  @default(false)
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  folder      FileFolder? @relation(fields: [folderId], references: [id])
+  uploader    User?       @relation(fields: [uploadedBy], references: [id])
+
+  @@index([folderId])
+}
+
+model FileFolder {
+  id          String   @id @default(cuid())
+  name        String
+  parentId    String?
+  createdAt   DateTime @default(now())
+
+  parent      FileFolder?  @relation("FileFolderTree", fields: [parentId], references: [id])
+  children    FileFolder[] @relation("FileFolderTree")
+  files       FileRecord[]
+}
+
+// ==================== SUPPORT DESK ====================
+
+model Ticket {
+  id            String   @id @default(cuid())
+  ticketNumber  String   @unique
+  subject       String
+  description   String
+  priority      String   @default("medium")
+  status        String   @default("open")
+  category      String?
+  department    String?
+  contactId     String?
+  assigneeId    String?
+  dueDate       DateTime?
+  resolvedAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  contact       Contact?  @relation(fields: [contactId], references: [id])
+  assignee      User?     @relation(fields: [assigneeId], references: [id])
+  replies       TicketReply[]
+}
+
+model TicketReply {
+  id        String   @id @default(cuid())
+  content   String
+  ticketId  String
+  userId    String?
+  isInternal Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  ticket    Ticket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user      User?   @relation(fields: [userId], references: [id])
+
+  @@index([ticketId])
+}
+
+// ==================== INVENTORY ====================
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  sku         String   @unique
+  description String?
+  category    String?
+  price       Float
+  cost        Float?
+  unit        String   @default("unit")
+  barcode     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stock       InventoryStock[]
+}
+
+model InventoryStock {
+  id          String   @id @default(cuid())
+  productId   String
+  warehouseId String
+  quantity    Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@unique([productId, warehouseId])
+}
+
+model Warehouse {
+  id          String   @id @default(cuid())
+  name        String
+  location    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  stock       InventoryStock[]
+}
+
+model Supplier {
+  id          String   @id @default(cuid())
+  name        String
+  contactName String?
+  email       String?
+  phone       String?
+  address     String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  orders      PurchaseOrder[]
+}
+
+model PurchaseOrder {
+  id            String   @id @default(cuid())
+  poNumber      String   @unique
+  supplierId    String
+  status        String   @default("draft")
+  totalAmount   Float
+  expectedDate  DateTime?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  supplier      Supplier @relation(fields: [supplierId], references: [id])
+}
+
+// ==================== AUTOMATION ====================
+
+model Workflow {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  trigger     String
+  conditions  String   @default("[]")
+  actions     String   @default("[]")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  executions  WorkflowExecution[]
+}
+
+model WorkflowExecution {
+  id          String   @id @default(cuid())
+  workflowId  String
+  status      String   @default("running")
+  inputData   String   @default("{}")
+  outputData  String   @default("{}")
+  error       String?
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+
+  workflow    Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId])
+}
+
+// ==================== NOTES & ACTIVITIES ====================
+
+model Note {
+  id        String   @id @default(cuid())
+  title     String?
+  content   String
+  color     String?
+  userId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  type      String
+  title     String
+  description String?
+  metadata  String   @default("{}")
+  userId    String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ==================== NOTIFICATIONS ====================
+
+model Notification {
+  id          String   @id @default(cuid())
+  type        String
+  title       String
+  message     String
+  data        String   @default("{}")
+  isRead      Boolean  @default(false)
+  userId      String
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+// ==================== AUDIT LOG ====================
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  module    String
+  entityId  String?
+  details   String   @default("{}")
+  userId    String?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([module])
+  @@index([userId])
+  @@index([createdAt])
 }
