@@ -99,9 +99,13 @@ export function Header() {
 
   const count = unreadCount();
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // Use ref to track mount state to avoid setState in effect
+  const mountedRef = useRef(false);
+  if (typeof window !== 'undefined' && !mountedRef.current) {
+    mountedRef.current = true;
+    // Schedule state update outside of render
+    queueMicrotask(() => setMounted(true));
+  }
 
   const handleSearchKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {

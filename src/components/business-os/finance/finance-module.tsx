@@ -4,7 +4,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   DollarSign, TrendingUp, TrendingDown, AlertTriangle, CreditCard,
@@ -113,11 +113,11 @@ function OverviewTab() {
     { label: 'Expenses', value: '$46,400', change: -5.4, icon: Receipt, color: 'text-amber-600 bg-amber-50' },
   ];
 
-  const expenseByCategory = useMemo(() => {
+  const expenseByCategory = (() => {
     const map: Record<string, number> = {};
     expenses.forEach((e) => { map[e.category] = (map[e.category] || 0) + e.amount; });
     return Object.entries(map).map(([category, amount]) => ({ category, amount }));
-  }, []);
+  })();
 
   const topInvoices = [...invoices].sort((a, b) => b.total - a.total).slice(0, 4);
   const recentExpenses = [...expenses].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 4);
