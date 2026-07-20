@@ -15,7 +15,7 @@ import {
   BarChart3, PieChartIcon, LayoutDashboard, CalendarDays, Activity,
   Zap, UserPlus, PlusCircle, FileText, CalendarClock, Handshake,
   CheckCircle2, LifeBuoy, UserCheck, MessageSquare, Clock, MapPin,
-  Sparkles, ArrowUpRight, ArrowDownRight, CircleDot, Briefcase,
+  ArrowUpRight, ArrowDownRight, CircleDot, Briefcase,
 } from 'lucide-react';
 
 import { toast } from 'sonner';

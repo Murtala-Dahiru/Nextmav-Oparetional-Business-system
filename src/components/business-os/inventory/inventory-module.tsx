@@ -8,7 +8,7 @@ import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
   Package, Search, Warehouse, Truck, AlertTriangle, DollarSign,
-  BarChart3, MapPin, User, MoreVertical, Plus, ArrowUpDown,
+  MapPin, User, MoreVertical, Plus, ArrowUpDown,
   Box, Layers, Tag, Eye, Edit, Trash2, Phone, Mail,
   Building2, Globe, ChevronRight,
 } from 'lucide-react';
@@ -29,6 +29,10 @@ import { Separator } from '@/components/ui/separator';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 import { products } from '@/lib/mock-data';
 import type { ProductItem } from '@/types';
@@ -141,11 +145,12 @@ const suppliers = [
 export default function InventoryModule() {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [deleteTarget, setDeleteTarget] = useState<ProductItem | null>(null);
 
   const categories = useMemo(() => {
     const cats = [...new Set(products.map(p => p.category))];
     return ['all', ...cats];
-  }, []);
+  }, [products]);
 
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
@@ -159,11 +164,11 @@ export default function InventoryModule() {
       }
       return true;
     });
-  }, [categoryFilter, searchQuery]);
+  }, [products, categoryFilter, searchQuery]);
 
   const totalValue = useMemo(() => {
     return products.reduce((sum, p) => sum + (p.price * p.stock), 0);
-  }, []);
+  }, [products]);
 
   const activeProducts = products.filter(p => p.isActive).length;
   const uniqueCategories = new Set(products.map(p => p.category)).size;
@@ -381,7 +386,7 @@ export default function InventoryModule() {
                               <DropdownMenuItem onClick={() => toast.info(`Editing ${product.name}`)}>
                                 <Edit className="mr-2 h-4 w-4" />Edit
                               </DropdownMenuItem>
-                              <DropdownMenuItem className="text-red-600" onClick={() => toast.error(`${product.name} deleted`)}>
+                              <DropdownMenuItem className="text-red-600" onClick={() => setDeleteTarget(product)}>
                                 <Trash2 className="mr-2 h-4 w-4" />Delete
                               </DropdownMenuItem>
                             </DropdownMenuContent>
@@ -541,6 +546,30 @@ export default function InventoryModule() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Product</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {deleteTarget?.name}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                toast.success('Product deleted successfully');
+                setDeleteTarget(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </motion.div>
   );
 }

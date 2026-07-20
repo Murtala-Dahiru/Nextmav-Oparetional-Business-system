@@ -184,6 +184,7 @@ export default function WorkspaceModule() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [searchQuery, setSearchQuery] = useState('');
   const [starred, setStarred] = useState<Set<string>>(new Set(['d-welcome', 'd-values']));
+  const [commentInput, setCommentInput] = useState('');
 
   // Filter folder tree based on search query
   const filteredTree = useMemo(() => {
@@ -325,7 +326,7 @@ export default function WorkspaceModule() {
           initial={{ x: -20, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={{ duration: 0.3 }}
-          className="w-64 flex-shrink-0 border-r border-border bg-muted/30 flex flex-col"
+          className="hidden md:flex w-64 flex-shrink-0 border-r border-border bg-muted/30 flex flex-col"
         >
           {/* Header */}
           <div className="p-3 pb-2">
@@ -444,7 +445,7 @@ export default function WorkspaceModule() {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => toast.success('Share link copied to clipboard')}>
                     <Share2 className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </TooltipTrigger>
@@ -452,7 +453,7 @@ export default function WorkspaceModule() {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => toast.success('Page bookmarked')}>
                     <Bookmark className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </TooltipTrigger>
@@ -460,7 +461,7 @@ export default function WorkspaceModule() {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => toast.info('Document options')}>
                     <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </TooltipTrigger>
@@ -589,11 +590,11 @@ export default function WorkspaceModule() {
                             </p>
                             {/* Hover actions */}
                             <div className="flex items-center gap-3 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-emerald-500 transition-colors">
+                              <button className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-emerald-500 transition-colors" onClick={() => toast.success('Comment liked')}>
                                 <Heart className="h-3 w-3" />
                                 Like
                               </button>
-                              <button className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-emerald-500 transition-colors">
+                              <button className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-emerald-500 transition-colors" onClick={() => toast.info('Reply feature coming soon')}>
                                 <MessageSquare className="h-3 w-3" />
                                 Reply
                               </button>
@@ -613,6 +614,14 @@ export default function WorkspaceModule() {
                       <div className="flex-1">
                         <Input
                           placeholder="Add a comment..."
+                          value={commentInput}
+                          onChange={(e) => setCommentInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && commentInput.trim()) {
+                              toast.success('Comment posted');
+                              setCommentInput('');
+                            }
+                          }}
                           className="h-9 text-sm border-border focus-visible:ring-emerald-500/30"
                         />
                         <div className="flex items-center justify-between mt-2">
@@ -624,7 +633,12 @@ export default function WorkspaceModule() {
                           <Button
                             size="sm"
                             className="h-7 px-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs"
-                            onClick={() => toast.success('Comment posted')}
+                            onClick={() => {
+                              if (commentInput.trim()) {
+                                toast.success('Comment posted');
+                                setCommentInput('');
+                              }
+                            }}
                           >
                             Comment
                           </Button>

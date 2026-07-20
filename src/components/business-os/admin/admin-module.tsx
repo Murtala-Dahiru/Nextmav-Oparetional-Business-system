@@ -8,11 +8,11 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Search, Shield, Settings, FileText, UserPlus,
-  CheckCircle2, XCircle, Clock, Wifi, WifiOff, Edit3,
+  CheckCircle2, XCircle, Clock, Wifi, Edit3,
   ChevronDown, ChevronUp, Globe, Phone, Mail, Building2,
-  Palette, Calendar, Lock, Eye, Download, Plus, Upload,
-  Monitor, Key, UserCheck, UserX, Trash2, LogIn,
-  ArrowUpDown, BadgeCheck, AlertCircle, MapPin, DollarSign,
+  Palette, Calendar, Eye, Download, Plus, Upload,
+  Key, UserCheck, UserX, Trash2, LogIn,
+  MapPin, DollarSign,
 } from 'lucide-react';
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -42,7 +42,7 @@ function getInitials(firstName: string, lastName: string) {
 
 function formatLastSeen(d: string) {
   const date = new Date(d);
-  const now = new Date('2026-07-20T11:00:00Z');
+  const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
   if (diffMins < 60) return `${diffMins}m ago`;
@@ -194,7 +194,7 @@ export default function AdminModule() {
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-teal-50"><Users className="h-5 w-5 text-teal-600" /></div>
                     <div>
-                      <p className="text-2xl font-bold text-foreground">48</p>
+                      <p className="text-2xl font-bold text-foreground">{users.length}</p>
                       <p className="text-xs text-muted-foreground">Total Users</p>
                     </div>
                   </div>
@@ -220,7 +220,7 @@ export default function AdminModule() {
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-red-50"><UserX className="h-5 w-5 text-red-500" /></div>
                     <div>
-                      <p className="text-2xl font-bold text-foreground">3</p>
+                      <p className="text-2xl font-bold text-foreground">{users.filter(u => !u.isActive).length}</p>
                       <p className="text-xs text-muted-foreground">Inactive</p>
                     </div>
                   </div>
@@ -316,6 +316,16 @@ export default function AdminModule() {
                       <TableCell className="text-sm text-muted-foreground">{formatLastSeen(user.lastSeen)}</TableCell>
                     </TableRow>
                   ))}
+                  {filteredUsers.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="h-24 text-center text-sm text-muted-foreground">
+                        <div className="flex flex-col items-center gap-1">
+                          <Users className="h-5 w-5 text-muted-foreground/50" />
+                          No users found.
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -561,6 +571,16 @@ export default function AdminModule() {
                       </TableRow>
                     );
                   })}
+                  {auditLog.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-24 text-center text-sm text-muted-foreground">
+                        <div className="flex flex-col items-center gap-1">
+                          <FileText className="h-5 w-5 text-muted-foreground/50" />
+                          No audit log entries found.
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>

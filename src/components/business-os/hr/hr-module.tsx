@@ -10,7 +10,7 @@ import {
   Users, Search, UserCheck, UserX, Clock, CalendarOff,
   Plus, Calendar, DollarSign, TrendingUp, Eye, Shield,
   CheckCircle2, XCircle, ArrowUpDown, Filter, CalendarDays,
-  ChevronLeft, ChevronRight, Banknote, PieChart, Briefcase,
+  Banknote, PieChart, Briefcase,
   UserRound, AlertCircle, FileCheck, Plane, Heart, Coffee,
   Baby, ArrowUpRight, BadgeDollarSign,
 } from 'lucide-react';
@@ -110,7 +110,7 @@ interface LeaveRequest {
   status: LeaveStatus;
 }
 
-const leaveRequests: LeaveRequest[] = [
+const initialLeaveRequests: LeaveRequest[] = [
   { id: 'lr1', employee: employees[0], type: 'Vacation', from: '2026-08-01', to: '2026-08-05', days: 5, reason: 'Family vacation to Hawaii for summer break', status: 'pending' },
   { id: 'lr2', employee: employees[2], type: 'Sick', from: '2026-07-22', to: '2026-07-23', days: 2, reason: 'Flu symptoms, doctor recommendation to rest', status: 'approved' },
   { id: 'lr3', employee: employees[5], type: 'Personal', from: '2026-07-28', to: '2026-07-29', days: 2, reason: 'Moving to a new apartment across town', status: 'pending' },
@@ -229,10 +229,10 @@ function EmployeesTab() {
 
       {/* summary cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard icon={Users} label="Total Employees" value="248" accent="bg-teal-500/10 text-teal-600" />
-        <StatCard icon={UserCheck} label="Active" value="235" accent="bg-emerald-500/10 text-emerald-600" />
-        <StatCard icon={CalendarOff} label="On Leave" value="8" accent="bg-amber-500/10 text-amber-600" />
-        <StatCard icon={UserRound} label="New Hires" value="5" accent="bg-cyan-500/10 text-cyan-600" />
+        <StatCard icon={Users} label="Total Employees" value={String(employees.length)} accent="bg-teal-500/10 text-teal-600" />
+        <StatCard icon={UserCheck} label="Active" value={String(employees.filter(e => e.status === 'Active').length)} accent="bg-emerald-500/10 text-emerald-600" />
+        <StatCard icon={CalendarOff} label="On Leave" value={String(employees.filter(e => e.status === 'On Leave').length)} accent="bg-amber-500/10 text-amber-600" />
+        <StatCard icon={Briefcase} label="Departments" value={String(new Set(employees.map(e => e.department)).size)} accent="bg-cyan-500/10 text-cyan-600" />
       </div>
 
       {/* search & filter */}
@@ -408,6 +408,8 @@ function AttendanceTab() {
    ================================================================ */
 
 function LeaveManagementTab() {
+  const [leaveRequests, setLeaveRequests] = useState(initialLeaveRequests);
+
   const leaveStatusColor: Record<LeaveStatus, string> = {
     pending: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
     approved: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
@@ -494,10 +496,16 @@ function LeaveManagementTab() {
                   <TableCell className="text-right">
                     {lr.status === 'pending' && (
                       <div className="flex items-center justify-end gap-1">
-                        <Button size="sm" variant="ghost" className="h-7 px-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10" onClick={() => toast.success(`Leave request approved for ${lr.employee.firstName} ${lr.employee.lastName}`)}>
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10" onClick={() => {
+                          setLeaveRequests(prev => prev.map(r => r.id === lr.id ? { ...r, status: 'approved' as const } : r));
+                          toast.success(`Leave request approved for ${lr.employee.firstName} ${lr.employee.lastName}`);
+                        }}>
                           <CheckCircle2 className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" variant="ghost" className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-500/10" onClick={() => toast.error(`Leave request rejected for ${lr.employee.firstName} ${lr.employee.lastName}`)}>
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-500/10" onClick={() => {
+                          setLeaveRequests(prev => prev.map(r => r.id === lr.id ? { ...r, status: 'rejected' as const } : r));
+                          toast.error(`Leave request rejected for ${lr.employee.firstName} ${lr.employee.lastName}`);
+                        }}>
                           <XCircle className="h-4 w-4" />
                         </Button>
                       </div>
@@ -519,13 +527,15 @@ function LeaveManagementTab() {
    ================================================================ */
 
 function PayrollTab() {
-  const payrollRows = employees.slice(0, 8).map((emp) => {
-    const bonus = Math.round(emp.salary * (0.02 + Math.random() * 0.08));
-    const deduction = Math.round(emp.salary * (0.03 + Math.random() * 0.06));
-    const net = emp.salary + bonus - deduction;
-    const status = Math.random() > 0.25 ? 'paid' : 'pending';
-    return { employee: emp, bonus, deduction, net, status };
-  });
+  const payrollRows = useMemo(() => {
+    return employees.slice(0, 8).map((emp, i) => {
+      const bonus = Math.round(emp.salary * (0.02 + ((i * 7 + 3) % 17) / 17 * 0.08));
+      const deduction = Math.round(emp.salary * (0.03 + ((i * 11 + 5) % 19) / 19 * 0.06));
+      const net = emp.salary + bonus - deduction;
+      const status = i % 4 !== 0 ? 'paid' as const : 'pending' as const;
+      return { employee: emp, bonus, deduction, net, status };
+    });
+  }, []);
 
   const deptSalaryMap: Record<string, number> = {};
   employees.forEach((e) => {

@@ -10,7 +10,7 @@ import {
   Search, Ticket, Clock, AlertTriangle, CheckCircle2, XCircle,
   CircleDot, BookOpen, Eye, Target, MessageSquare, Lightbulb,
   FileText, Users, Shield, TrendingUp, Filter, ChevronDown,
-  HelpCircle, BarChart3, ThumbsUp, Timer, ArrowUpRight,
+  HelpCircle, BarChart3, Timer, ArrowUpRight,
 } from 'lucide-react';
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -331,7 +331,7 @@ export default function SupportModule() {
                   animate="visible"
                   transition={{ delay: i * 0.05 }}
                 >
-                  <Card className="border border-border hover:shadow-lg hover:border-emerald-200 transition-all cursor-pointer group h-full">
+                  <Card className="border border-border hover:shadow-lg hover:border-emerald-200 transition-all cursor-pointer group h-full" onClick={() => toast.info('Opening article: ' + article.title)}>
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between">
                         <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600 group-hover:bg-emerald-100 transition-colors">

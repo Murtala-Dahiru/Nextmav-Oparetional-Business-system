@@ -1,0 +1,515 @@
+   585→          </CardHeader>
+   586→          <CardContent>
+   587→            <div className="overflow-x-auto">
+   588→            <Table>
+   589→              <TableHeader>
+   590→                <TableRow className="border-gray-100 dark:border-gray-800 hover:bg-transparent">
+   591→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Deal</TableHead>
+   592→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Value</TableHead>
+   593→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Stage</TableHead>
+   594→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Close Date</TableHead>
+   595→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Owner</TableHead>
+   596→                </TableRow>
+   597→              </TableHeader>
+   598→              <TableBody>
+   599→                {topDeals.map((deal) => (
+   600→                  <TableRow key={deal.name} className="border-gray-50 dark:border-gray-800/50">
+   601→                    <TableCell className="font-medium text-gray-900 dark:text-gray-100">{deal.name}</TableCell>
+   602→                    <TableCell className="font-semibold text-emerald-600 dark:text-emerald-400">${(deal.value / 1000).toFixed(0)}K</TableCell>
+   603→                    <TableCell>
+   604→                      <Badge variant="secondary" className={cn(
+   605→                        'text-xs font-medium border-0',
+   606→                        deal.stage === 'Qualified' && 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400',
+   607→                        deal.stage === 'Proposal' && 'bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400',
+   608→                        deal.stage === 'Negotiation' && 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400',
+   609→                        deal.stage === 'Contract' && 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400',
+   610→                      )}>
+   611→                        {deal.stage}
+   612→                      </Badge>
+   613→                    </TableCell>
+   614→                    <TableCell className="text-gray-500 dark:text-gray-400">{deal.closeDate}</TableCell>
+   615→                    <TableCell className="text-gray-600 dark:text-gray-400">{deal.owner}</TableCell>
+   616→                  </TableRow>
+   617→                ))}
+   618→              </TableBody>
+   619→            </Table>
+   620→            </div>
+   621→          </CardContent>
+   622→        </Card>
+   623→      </motion.div>
+   624→
+   625→      {/* Sales by Stage */}
+   626→      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.3 }}>
+   627→        <Card className="border-0 shadow-sm">
+   628→          <CardHeader className="pb-2">
+   629→            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   630→              <Activity className="h-4 w-4 text-emerald-600" />
+   631→              Sales by Stage
+   632→            </CardTitle>
+   633→            <CardDescription>Monthly deal distribution across pipeline stages</CardDescription>
+   634→          </CardHeader>
+   635→          <CardContent>
+   636→            <ResponsiveContainer width="100%" height={300}>
+   637→              <BarChart data={salesByStage} barGap={2}>
+   638→                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+   639→                <XAxis dataKey="month" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
+   640→                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+   641→                <Tooltip content={<SimpleTooltip />} />
+   642→                <Legend verticalAlign="top" align="right" iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+   643→                <Bar dataKey="qualified" name="Qualified" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+   644→                <Bar dataKey="proposal" name="Proposal" stackId="a" fill="#14b8a6" />
+   645→                <Bar dataKey="negotiation" name="Negotiation" stackId="a" fill="#f59e0b" />
+   646→                <Bar dataKey="won" name="Won" stackId="a" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+   647→              </BarChart>
+   648→            </ResponsiveContainer>
+   649→          </CardContent>
+   650→        </Card>
+   651→      </motion.div>
+   652→    </div>
+   653→  );
+   654→}
+   655→
+   656→// ─── Project Tab ─────────────────────────────────────────────────────────────
+   657→
+   658→function ProjectTab() {
+   659→  return (
+   660→    <div className="space-y-6">
+   661→      <TabHeader title="Project Reports" description="Project health, budgets, and team workload analysis" />
+   662→
+   663→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+   664→        {/* Project Status Distribution */}
+   665→        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+   666→          <Card className="border-0 shadow-sm h-full">
+   667→            <CardHeader className="pb-2">
+   668→              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   669→                <PieChartIcon className="h-4 w-4 text-emerald-600" />
+   670→                Project Status Distribution
+   671→              </CardTitle>
+   672→              <CardDescription>Current status breakdown of all active projects</CardDescription>
+   673→            </CardHeader>
+   674→            <CardContent>
+   675→              <ResponsiveContainer width="100%" height={300}>
+   676→                <PieChart>
+   677→                  <Pie
+   678→                    data={projectStatusData}
+   679→                    cx="50%"
+   680→                    cy="50%"
+   681→                    innerRadius={60}
+   682→                    outerRadius={100}
+   683→                    paddingAngle={4}
+   684→                    dataKey="value"
+   685→                    nameKey="name"
+   686→                    label={({ name, value }) => `${name}: ${value}`}
+   687→                    labelLine={{ strokeWidth: 1 }}
+   688→                  >
+   689→                    {projectStatusData.map((entry, idx) => (
+   690→                      <Cell key={idx} fill={entry.color} />
+   691→                    ))}
+   692→                  </Pie>
+   693→                  <Tooltip content={<SimpleTooltip />} />
+   694→                </PieChart>
+   695→              </ResponsiveContainer>
+   696→            </CardContent>
+   697→          </Card>
+   698→        </motion.div>
+   699→
+   700→        {/* Budget vs Actual */}
+   701→        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
+   702→          <Card className="border-0 shadow-sm h-full">
+   703→            <CardHeader className="pb-2">
+   704→              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   705→                <DollarSign className="h-4 w-4 text-emerald-600" />
+   706→                Budget vs Actual Spend
+   707→              </CardTitle>
+   708→              <CardDescription>Top 5 projects budget utilization comparison</CardDescription>
+   709→            </CardHeader>
+   710→            <CardContent>
+   711→              <ResponsiveContainer width="100%" height={300}>
+   712→                <BarChart data={budgetVsActual} barGap={4}>
+   713→                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+   714→                  <XAxis dataKey="name" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} angle={-15} textAnchor="end" height={60} />
+   715→                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v / 1000}K`} />
+   716→                  <Tooltip content={<ChartTooltip />} />
+   717→                  <Legend verticalAlign="top" align="right" iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+   718→                  <Bar dataKey="budget" name="Budget" fill="#14b8a6" radius={[4, 4, 0, 0]} />
+   719→                  <Bar dataKey="actual" name="Actual" fill="#10b981" radius={[4, 4, 0, 0]} />
+   720→                </BarChart>
+   721→              </ResponsiveContainer>
+   722→            </CardContent>
+   723→          </Card>
+   724→        </motion.div>
+   725→      </div>
+   726→
+   727→      {/* Task Completion Progress */}
+   728→      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.2 }}>
+   729→        <Card className="border-0 shadow-sm">
+   730→          <CardHeader className="pb-2">
+   731→            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   732→              <CircleDot className="h-4 w-4 text-emerald-600" />
+   733→              Task Completion by Project
+   734→            </CardTitle>
+   735→            <CardDescription>Progress of task completion across all projects</CardDescription>
+   736→          </CardHeader>
+   737→          <CardContent>
+   738→            <div className="space-y-5">
+   739→              {projects.map((project) => {
+   740→                const pct = Math.round((project.completedTaskCount / project.taskCount) * 100);
+   741→                return (
+   742→                  <div key={project.id} className="space-y-2">
+   743→                    <div className="flex items-center justify-between">
+   744→                      <div className="flex items-center gap-2">
+   745→                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{project.name}</span>
+   746→                        <Badge variant="outline" className={cn(
+   747→                          'text-[10px] capitalize border-0',
+   748→                          project.status === 'active' && 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400',
+   749→                          project.status === 'completed' && 'bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-400',
+   750→                          project.status === 'on-hold' && 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400',
+   751→                          project.status === 'planning' && 'bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400',
+   752→                        )}>
+   753→                          {project.status}
+   754→                        </Badge>
+   755→                      </div>
+   756→                      <span className="text-xs tabular-nums font-semibold text-gray-600 dark:text-gray-400">
+   757→                        {project.completedTaskCount}/{project.taskCount} tasks ({pct}%)
+   758→                      </span>
+   759→                    </div>
+   760→                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+   761→                      <motion.div
+   762→                        initial={{ width: 0 }}
+   763→                        animate={{ width: `${pct}%` }}
+   764→                        transition={{ duration: 0.8, ease: 'easeOut' }}
+   765→                        className={cn(
+   766→                          'h-full rounded-full',
+   767→                          pct === 100
+   768→                            ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+   769→                            : 'bg-gradient-to-r from-emerald-500 to-teal-500',
+   770→                        )}
+   771→                      />
+   772→                    </div>
+   773→                  </div>
+   774→                );
+   775→              })}
+   776→            </div>
+   777→          </CardContent>
+   778→        </Card>
+   779→      </motion.div>
+   780→
+   781→      {/* Team Workload */}
+   782→      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.3 }}>
+   783→        <Card className="border-0 shadow-sm">
+   784→          <CardHeader className="pb-2">
+   785→            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   786→              <Clock className="h-4 w-4 text-emerald-600" />
+   787→              Team Workload Distribution
+   788→            </CardTitle>
+   789→            <CardDescription>Weekly hours allocated per team member by activity type</CardDescription>
+   790→          </CardHeader>
+   791→          <CardContent>
+   792→            <ResponsiveContainer width="100%" height={260}>
+   793→              <BarChart data={teamWorkload} layout="vertical" barSize={16}>
+   794→                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" horizontal={false} />
+   795→                <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} unit="h" />
+   796→                <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} width={120} />
+   797→                <Tooltip content={<SimpleTooltip />} />
+   798→                <Legend verticalAlign="top" align="right" iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+   799→                <Bar dataKey="projectWork" name="Project Work" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+   800→                <Bar dataKey="meetings" name="Meetings" stackId="a" fill="#14b8a6" />
+   801→                <Bar dataKey="admin" name="Admin" stackId="a" fill="#f59e0b" radius={[0, 6, 6, 0]} />
+   802→              </BarChart>
+   803→            </ResponsiveContainer>
+   804→          </CardContent>
+   805→        </Card>
+   806→      </motion.div>
+   807→    </div>
+   808→  );
+   809→}
+   810→
+   811→// ─── Financial Tab ───────────────────────────────────────────────────────────
+   812→
+   813→function FinancialTab() {
+   814→  return (
+   815→    <div className="space-y-6">
+   816→      <TabHeader title="Financial Reports" description="Profit & loss, expenses, receivables, and cash flow analysis" />
+   817→
+   818→      {/* P&L Summary */}
+   819→      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+   820→        <Card className="border-0 shadow-sm">
+   821→          <CardHeader className="pb-2">
+   822→            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   823→              <FileText className="h-4 w-4 text-emerald-600" />
+   824→              Profit & Loss Summary
+   825→            </CardTitle>
+   826→            <CardDescription>Key financial metrics for the current quarter</CardDescription>
+   827→          </CardHeader>
+   828→          <CardContent>
+   829→            <div className="overflow-x-auto">
+   830→            <Table>
+   831→              <TableHeader>
+   832→                <TableRow className="border-gray-100 dark:border-gray-800 hover:bg-transparent">
+   833→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Line Item</TableHead>
+   834→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500 text-right">Amount</TableHead>
+   835→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500 text-right">Change</TableHead>
+   836→                </TableRow>
+   837→              </TableHeader>
+   838→              <TableBody>
+   839→                {plSummary.map((row) => (
+   840→                  <TableRow key={row.label} className={cn(
+   841→                    'border-gray-50 dark:border-gray-800/50',
+   842→                    row.label === 'Gross Profit' && 'bg-emerald-50/50 dark:bg-emerald-950/20',
+   843→                    row.label === 'Net Income' && 'bg-emerald-50/80 dark:bg-emerald-950/30',
+   844→                  )}>
+   845→                    <TableCell className={cn(
+   846→                      'font-medium',
+   847→                      (row.label === 'Gross Profit' || row.label === 'Net Income') ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-gray-900 dark:text-gray-100',
+   848→                      row.label === 'Cost of Goods Sold' && 'pl-4',
+   849→                      row.label === 'Operating Expenses' && 'pl-4',
+   850→                    )}>
+   851→                      {row.label === 'Cost of Goods Sold' && <span className="text-gray-400 mr-1">−</span>}
+   852→                      {row.label === 'Operating Expenses' && <span className="text-gray-400 mr-1">−</span>}
+   853→                      {row.label}
+   854→                    </TableCell>
+   855→                    <TableCell className={cn(
+   856→                      'text-right font-semibold tabular-nums',
+   857→                      (row.label === 'Gross Profit' || row.label === 'Net Income') ? 'text-emerald-700 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100',
+   858→                    )}>
+   859→                      {row.amount}
+   860→                    </TableCell>
+   861→                    <TableCell className="text-right">
+   862→                      <div className="inline-flex items-center gap-1">
+   863→                        {row.change >= 0 ? (
+   864→                          <ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" />
+   865→                        ) : (
+   866→                          <ArrowDownRight className="h-3.5 w-3.5 text-rose-500" />
+   867→                        )}
+   868→                        <span className={cn(
+   869→                          'text-xs font-semibold tabular-nums',
+   870→                          row.change >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400',
+   871→                        )}>
+   872→                          {Math.abs(row.change)}%
+   873→                        </span>
+   874→                      </div>
+   875→                    </TableCell>
+   876→                  </TableRow>
+   877→                ))}
+   878→              </TableBody>
+   879→            </Table>
+   880→            </div>
+   881→          </CardContent>
+   882→        </Card>
+   883→      </motion.div>
+   884→
+   885→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+   886→        {/* Expense by Category */}
+   887→        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
+   888→          <Card className="border-0 shadow-sm h-full">
+   889→            <CardHeader className="pb-2">
+   890→              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   891→                <Receipt className="h-4 w-4 text-emerald-600" />
+   892→                Expense by Category
+   893→              </CardTitle>
+   894→              <CardDescription>Grouped spending breakdown for the current period</CardDescription>
+   895→            </CardHeader>
+   896→            <CardContent>
+   897→              <ResponsiveContainer width="100%" height={300}>
+   898→                <BarChart data={expenseByCategory} barGap={4}>
+   899→                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+   900→                  <XAxis dataKey="category" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} angle={-25} textAnchor="end" height={65} />
+   901→                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(1)}K`} />
+   902→                  <Tooltip content={<ChartTooltip />} />
+   903→                  <Bar dataKey="amount" name="Amount" radius={[6, 6, 0, 0]}>
+   904→                    {expenseByCategory.map((_, idx) => (
+   905→                      <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+   906→                    ))}
+   907→                  </Bar>
+   908→                </BarChart>
+   909→              </ResponsiveContainer>
+   910→            </CardContent>
+   911→          </Card>
+   912→        </motion.div>
+   913→
+   914→        {/* Monthly Cash Flow */}
+   915→        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.15 }}>
+   916→          <Card className="border-0 shadow-sm h-full">
+   917→            <CardHeader className="pb-2">
+   918→              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   919→                <TrendingUp className="h-4 w-4 text-emerald-600" />
+   920→                Monthly Cash Flow
+   921→              </CardTitle>
+   922→              <CardDescription>Inflow vs outflow cash movement over time</CardDescription>
+   923→            </CardHeader>
+   924→            <CardContent>
+   925→              <ResponsiveContainer width="100%" height={300}>
+   926→                <AreaChart data={cashFlowData}>
+   927→                  <defs>
+   928→                    <linearGradient id="inflowGrad" x1="0" y1="0" x2="0" y2="1">
+   929→                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+   930→                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+   931→                    </linearGradient>
+   932→                    <linearGradient id="outflowGrad" x1="0" y1="0" x2="0" y2="1">
+   933→                      <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.3} />
+   934→                      <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.02} />
+   935→                    </linearGradient>
+   936→                  </defs>
+   937→                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+   938→                  <XAxis dataKey="month" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
+   939→                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v / 1000}K`} />
+   940→                  <Tooltip content={<ChartTooltip />} />
+   941→                  <Legend verticalAlign="top" align="right" iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+   942→                  <Area type="monotone" dataKey="inflow" name="Inflow" stroke="#10b981" strokeWidth={2.5} fill="url(#inflowGrad)" />
+   943→                  <Area type="monotone" dataKey="outflow" name="Outflow" stroke="#f59e0b" strokeWidth={2.5} fill="url(#outflowGrad)" />
+   944→                </AreaChart>
+   945→              </ResponsiveContainer>
+   946→            </CardContent>
+   947→          </Card>
+   948→        </motion.div>
+   949→      </div>
+   950→
+   951→      {/* Accounts Receivable */}
+   952→      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.25 }}>
+   953→        <Card className="border-0 shadow-sm">
+   954→          <CardHeader className="pb-2">
+   955→            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   956→              <CalendarDays className="h-4 w-4 text-emerald-600" />
+   957→              Accounts Receivable
+   958→            </CardTitle>
+   959→            <CardDescription>Outstanding and overdue invoices with aging buckets</CardDescription>
+   960→          </CardHeader>
+   961→          <CardContent>
+   962→            <div className="overflow-x-auto">
+   963→            <Table>
+   964→              <TableHeader>
+   965→                <TableRow className="border-gray-100 dark:border-gray-800 hover:bg-transparent">
+   966→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Invoice</TableHead>
+   967→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Company</TableHead>
+   968→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500 text-right">Amount</TableHead>
+   969→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Due Date</TableHead>
+   970→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Status</TableHead>
+   971→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Aging</TableHead>
+   972→                </TableRow>
+   973→              </TableHeader>
+   974→              <TableBody>
+   975→                {accountsReceivable.map((ar) => (
+   976→                  <TableRow key={ar.invoiceNumber} className="border-gray-50 dark:border-gray-800/50">
+   977→                    <TableCell className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">{ar.invoiceNumber}</TableCell>
+   978→                    <TableCell className="text-gray-600 dark:text-gray-400">{ar.company}</TableCell>
+   979→                    <TableCell className="text-right font-semibold tabular-nums text-gray-900 dark:text-gray-100">${ar.total.toLocaleString()}</TableCell>
+   980→                    <TableCell className="text-gray-500 dark:text-gray-400">{ar.dueDate}</TableCell>
+   981→                    <TableCell>
+   982→                      <Badge variant="secondary" className={cn(
+   983→                        'text-xs font-medium border-0 capitalize',
+   984→                        ar.status === 'overdue' && 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400',
+   985→                        ar.status === 'sent' && 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400',
+   986→                      )}>
+   987→                        {ar.status}
+   988→                      </Badge>
+   989→                    </TableCell>
+   990→                    <TableCell>
+   991→                      <Badge variant="outline" className={cn(
+   992→                        'text-xs font-mono border',
+   993→                        ar.aging === '0-30' && 'border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400',
+   994→                        ar.aging === '31-60' && 'border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400',
+   995→                        ar.aging === '61-90' && 'border-rose-300 text-rose-700 dark:border-rose-700 dark:text-rose-400',
+   996→                      )}>
+   997→                        {ar.aging} days
+   998→                      </Badge>
+   999→                    </TableCell>
+  1000→                  </TableRow>
+  1001→                ))}
+  1002→              </TableBody>
+  1003→            </Table>
+  1004→            </div>
+  1005→          </CardContent>
+  1006→        </Card>
+  1007→      </motion.div>
+  1008→    </div>
+  1009→  );
+  1010→}
+  1011→
+  1012→// ─── Main Reports Module ─────────────────────────────────────────────────────
+  1013→
+  1014→export default function ReportsModule() {
+  1015→  const [activeTab, setActiveTab] = useState('overview');
+  1016→
+  1017→  return (
+  1018→    <div className="mx-auto w-full max-w-[1600px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+  1019→      {/* Page Header */}
+  1020→      <motion.div
+  1021→        initial={{ opacity: 0, y: -10 }}
+  1022→        animate={{ opacity: 1, y: 0 }}
+  1023→        transition={{ duration: 0.4 }}
+  1024→        className="flex flex-col gap-1"
+  1025→      >
+  1026→        <div className="flex items-center gap-3">
+  1027→          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/25">
+  1028→            <BarChart3 className="h-5 w-5 text-white" />
+  1029→          </div>
+  1030→          <div>
+  1031→            <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+  1032→              Reports & Analytics
+  1033→            </h1>
+  1034→            <p className="text-sm text-gray-500 dark:text-gray-400">
+  1035→              Comprehensive business intelligence and performance reporting
+  1036→            </p>
+  1037→          </div>
+  1038→        </div>
+  1039→      </motion.div>
+  1040→
+  1041→      {/* Tabs */}
+  1042→      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-0">
+  1043→        <TabsList className="mb-6 w-full justify-start rounded-xl bg-gray-100/80 p-1 dark:bg-gray-800/60">
+  1044→          <TabsTrigger
+  1045→            value="overview"
+  1046→            className="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:dark:bg-gray-900"
+  1047→          >
+  1048→            <Activity className="h-4 w-4" />
+  1049→            Overview
+  1050→          </TabsTrigger>
+  1051→          <TabsTrigger
+  1052→            value="sales"
+  1053→            className="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:dark:bg-gray-900"
+  1054→          >
+  1055→            <TrendingUp className="h-4 w-4" />
+  1056→            Sales
+  1057→          </TabsTrigger>
+  1058→          <TabsTrigger
+  1059→            value="projects"
+  1060→            className="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:dark:bg-gray-900"
+  1061→          >
+  1062→            <Briefcase className="h-4 w-4" />
+  1063→            Projects
+  1064→          </TabsTrigger>
+  1065→          <TabsTrigger
+  1066→            value="financial"
+  1067→            className="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:dark:bg-gray-900"
+  1068→          >
+  1069→            <DollarSign className="h-4 w-4" />
+  1070→            Financial
+  1071→          </TabsTrigger>
+  1072→        </TabsList>
+  1073→
+  1074→        <AnimatePresence mode="wait">
+  1075→          <motion.div
+  1076→            key={activeTab}
+  1077→            initial={{ opacity: 0, y: 12 }}
+  1078→            animate={{ opacity: 1, y: 0 }}
+  1079→            exit={{ opacity: 0, y: -12 }}
+  1080→            transition={{ duration: 0.25 }}
+  1081→          >
+  1082→            <TabsContent value="overview" className="mt-0">
+  1083→              <OverviewTab />
+  1084→            </TabsContent>
+  1085→            <TabsContent value="sales" className="mt-0">
+  1086→              <SalesTab />
+  1087→            </TabsContent>
+  1088→            <TabsContent value="projects" className="mt-0">
+  1089→              <ProjectTab />
+  1090→            </TabsContent>
+  1091→            <TabsContent value="financial" className="mt-0">
+  1092→              <FinancialTab />
+  1093→            </TabsContent>
+  1094→          </motion.div>
+  1095→        </AnimatePresence>
+  1096→      </Tabs>
+  1097→    </div>
+  1098→  );
+  1099→}

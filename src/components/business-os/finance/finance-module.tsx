@@ -9,7 +9,7 @@ import { motion } from 'framer-motion';
 import {
   DollarSign, TrendingUp, TrendingDown, AlertTriangle, CreditCard,
   Search, Eye, Download, FileText, Receipt, Wallet, PiggyBank,
-  ArrowUpRight, ArrowDownRight, Building2, User, CalendarDays,
+  ArrowUpRight, ArrowDownRight, Building2, User,
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -174,11 +174,11 @@ function OverviewTab() {
                         <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                     <XAxis dataKey="month" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v / 1000}k`} />
                     <Tooltip
-                      contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                      contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', fontSize: 12 }}
                       formatter={(value: number) => [formatCurrency(value), 'Revenue']}
                     />
                     <Area
@@ -203,11 +203,11 @@ function OverviewTab() {
               <div className="h-[260px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={expenseByCategory} layout="vertical" margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
                     <XAxis type="number" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v / 1000}k`} />
                     <YAxis type="category" dataKey="category" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={90} />
                     <Tooltip
-                      contentStyle={{ borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 12 }}
+                      contentStyle={{ borderRadius: 8, border: '1px solid hsl(var(--border))', fontSize: 12 }}
                       formatter={(value: number) => [formatCurrency(value), 'Amount']}
                     />
                     <Bar dataKey="amount" fill="#14b8a6" radius={[0, 4, 4, 0]} barSize={16} />

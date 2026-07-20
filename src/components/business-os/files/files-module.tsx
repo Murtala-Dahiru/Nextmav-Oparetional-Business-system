@@ -8,7 +8,6 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Folder,
-  FolderOpen,
   FileText,
   Image,
   FileSpreadsheet,
@@ -31,6 +30,16 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -161,7 +170,7 @@ const fadeUp = {
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: i * 0.03, duration: 0.3, ease: 'easeOut' },
+    transition: { delay: i * 0.03, duration: 0.3, ease: 'easeOut' as const },
   }),
 };
 
@@ -176,6 +185,7 @@ export default function FilesModule() {
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [currentFolder, setCurrentFolder] = useState('Home');
+  const [deleteTarget, setDeleteTarget] = useState<{type: 'file' | 'folder', name: string} | null>(null);
 
   const filteredFiles = useMemo(() => {
     let list = files;
@@ -358,7 +368,7 @@ export default function FilesModule() {
                       <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-emerald-600" onClick={() => toast.success('Share link copied')}>
                         <Share2 className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-red-500" onClick={() => toast.error('Folder deleted')}>
+                      <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-red-500" onClick={() => setDeleteTarget({type: 'folder', name: folder.name})}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
@@ -415,7 +425,7 @@ export default function FilesModule() {
                       <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-emerald-600" onClick={() => toast.success('Share link copied')}>
                         <Share2 className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-red-500" onClick={() => toast.error('File deleted')}>
+                      <Button variant="ghost" size="icon" className="w-7 h-7 text-slate-400 hover:text-red-500" onClick={() => setDeleteTarget({type: 'file', name: file.name})}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>
@@ -608,6 +618,30 @@ export default function FilesModule() {
           Total size: <span className="font-medium text-slate-700">{formatFileSize(totalBytes)}</span>
         </span>
       </div>
+
+      {/* ── Delete Confirmation Dialog ── */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteTarget?.type}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteTarget?.name}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                toast.success(`${deleteTarget?.name} deleted`);
+                setDeleteTarget(null);
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

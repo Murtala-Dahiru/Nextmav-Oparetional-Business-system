@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Hash, Lock, User, Search, Send, Paperclip, SmilePlus,
   Pin, Users, ChevronDown, MoreVertical, AtSign, Phone,
-  Video, ChevronRight, Circle, Bell, BellOff, Settings, PlusCircle,
+  Video, ChevronRight, Circle, Bell, Settings, PlusCircle,
 } from 'lucide-react';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -21,6 +21,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 import { channels, messages } from '@/lib/mock-data';
+import type { MessageItem } from '@/types';
 import { toast } from 'sonner';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -68,6 +69,7 @@ export default function CommunicationModule() {
   const [activeChannelId, setActiveChannelId] = useState(channels[0].id);
   const [messageInput, setMessageInput] = useState('');
   const [channelSearch, setChannelSearch] = useState('');
+  const [sentMessages, setSentMessages] = useState<MessageItem[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const filteredChannels = useMemo(() => {
@@ -77,7 +79,7 @@ export default function CommunicationModule() {
   }, [channelSearch]);
 
   const activeChannel = filteredChannels.find((c) => c.id === activeChannelId)!;
-  const channelMessages = messages.filter((m) => m.channelId === activeChannelId);
+  const channelMessages = [...messages.filter(m => m.channelId === activeChannelId), ...sentMessages.filter(m => m.channelId === activeChannelId)];
   const pinnedMessages = channelMessages.filter((m) => m.isPinned);
 
   useEffect(() => {
@@ -94,7 +96,7 @@ export default function CommunicationModule() {
           initial={{ x: -20, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={{ duration: 0.3 }}
-          className="w-72 flex-shrink-0 border-r border-border bg-muted/30 flex flex-col"
+          className="hidden md:flex w-72 flex-shrink-0 border-r border-border bg-muted/30 flex-col"
         >
           {/* Header */}
           <div className="p-4 pb-2">
@@ -102,7 +104,7 @@ export default function CommunicationModule() {
               <h2 className="font-semibold text-lg text-foreground">Messages</h2>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Settings">
                     <Settings className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </TooltipTrigger>
@@ -125,7 +127,7 @@ export default function CommunicationModule() {
           {/* Channel list */}
           <ScrollArea className="flex-1">
             <div className="p-2">
-              <button className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors w-full">
+              <button aria-expanded="true" aria-label="Toggle channels list" className="flex items-center gap-1.5 px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors w-full">
                 <ChevronDown className="h-3 w-3" />
                 Channels
               </button>
@@ -213,7 +215,7 @@ export default function CommunicationModule() {
               </div>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Notifications">
                     <Bell className="h-3.5 w-3.5 text-muted-foreground" />
                   </Button>
                 </TooltipTrigger>
@@ -251,7 +253,7 @@ export default function CommunicationModule() {
             <div className="flex items-center gap-1 flex-shrink-0">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Search messages">
                     <Search className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </TooltipTrigger>
@@ -259,7 +261,7 @@ export default function CommunicationModule() {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Start call">
                     <Phone className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </TooltipTrigger>
@@ -267,7 +269,7 @@ export default function CommunicationModule() {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Start video call">
                     <Video className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </TooltipTrigger>
@@ -275,7 +277,7 @@ export default function CommunicationModule() {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="View members">
                     <Users className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </TooltipTrigger>
@@ -288,7 +290,7 @@ export default function CommunicationModule() {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="More options">
                     <MoreVertical className="h-4 w-4 text-muted-foreground" />
                   </Button>
                 </TooltipTrigger>
@@ -460,7 +462,21 @@ export default function CommunicationModule() {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
-                      if (messageInput.trim()) { setMessageInput(''); toast.success('Message sent'); }
+                      if (messageInput.trim()) {
+                        const newMsg: MessageItem = {
+                          id: `msg-${Date.now()}`,
+                          content: messageInput.trim(),
+                          senderName: 'Alex Johnson',
+                          senderAvatar: '',
+                          channelId: activeChannelId,
+                          createdAt: new Date().toISOString(),
+                          isPinned: false,
+                          type: 'text',
+                        };
+                        setSentMessages(prev => [...prev, newMsg]);
+                        setMessageInput('');
+                        toast.success('Message sent');
+                      }
                     }
                   }}
                 />
@@ -494,7 +510,23 @@ export default function CommunicationModule() {
                   <Button
                     size="icon"
                     className="h-7 w-7 bg-emerald-500 hover:bg-emerald-600 text-white rounded-md"
-                    onClick={() => { if (messageInput.trim()) { setMessageInput(''); toast.success('Message sent'); } }}
+                    onClick={() => {
+                      if (messageInput.trim()) {
+                        const newMsg: MessageItem = {
+                          id: `msg-${Date.now()}`,
+                          content: messageInput.trim(),
+                          senderName: 'Alex Johnson',
+                          senderAvatar: '',
+                          channelId: activeChannelId,
+                          createdAt: new Date().toISOString(),
+                          isPinned: false,
+                          type: 'text',
+                        };
+                        setSentMessages(prev => [...prev, newMsg]);
+                        setMessageInput('');
+                        toast.success('Message sent');
+                      }
+                    }}
                   >
                     <Send className="h-3.5 w-3.5" />
                   </Button>

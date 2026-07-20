@@ -103,10 +103,10 @@ function buildMonthGrid(year: number, month: number, events: typeof calendarEven
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export default function CalendarModule() {
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [currentMonth, setCurrentMonth] = useState(6); // July
+  const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(() => new Date().getMonth());
   const [view, setView] = useState<CalendarView>('month');
-  const [selectedDate, setSelectedDate] = useState<Date | null>(new Date(2026, 6, 20));
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   const weeks = useMemo(
     () => buildMonthGrid(currentYear, currentMonth, calendarEvents),
@@ -115,7 +115,7 @@ export default function CalendarModule() {
 
   // Upcoming events starting from selected date or today
   const upcomingEvents = useMemo(() => {
-    const ref = selectedDate || new Date(2026, 6, 20);
+    const ref = selectedDate || new Date();
     return calendarEvents
       .filter((ev) => new Date(ev.startDate) >= new Date(ref.getFullYear(), ref.getMonth(), ref.getDate()))
       .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
@@ -314,7 +314,7 @@ export default function CalendarModule() {
           initial={{ x: 20, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.1 }}
-          className="w-80 flex-shrink-0 border-l border-border bg-muted/20 flex flex-col"
+          className="hidden lg:flex w-80 flex-shrink-0 border-l border-border bg-muted/20 flex-col"
         >
           {/* Side panel header */}
           <div className="p-4 pb-3 border-b border-border">

@@ -1,0 +1,1099 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { clsx, type ClassValue } from 'clsx';
+     4→     4→import { twMerge } from 'tailwind-merge';
+     5→     5→function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
+     6→     6→
+     7→     7→import { useState } from 'react';
+     8→     8→import { motion, AnimatePresence } from 'framer-motion';
+     9→     9→import {
+    10→    10→  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+    11→    11→  PieChart, Pie, Cell, LineChart, Line, AreaChart, Area,
+    12→    12→  ResponsiveContainer, ReferenceLine,
+    13→    13→} from 'recharts';
+    14→    14→import {
+    15→    15→  DollarSign, Trophy, Percent, Hash, Star, Zap,
+    16→    16→  FileDown, FileSpreadsheet, BarChart3, TrendingUp,
+    17→    17→  ArrowUpRight, ArrowDownRight, ChevronRight,
+    18→    18→  FileText, Receipt, PieChartIcon, Activity,
+    19→    19→  Briefcase, Clock, Users, Target, CircleDot,
+    20→    20→  Filter, CalendarDays,
+    21→    21→} from 'lucide-react';
+    22→    22→
+    23→    23→import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+    24→    24→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    25→    25→import { Badge } from '@/components/ui/badge';
+    26→    26→import { Button } from '@/components/ui/button';
+    27→    27→import {
+    28→    28→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    29→    29→} from '@/components/ui/table';
+    30→    30→import { Progress } from '@/components/ui/progress';
+    31→    31→import { toast } from 'sonner';
+    32→    32→
+    33→    33→import {
+    34→    34→  leadsByStatus, salesBySource, revenueChart, projects,
+    35→    35→  employees, invoices, expenses, tickets, products,
+    36→    36→} from '@/lib/mock-data';
+    37→    37→
+    38→    38→// ─── Color Palettes ───────────────────────────────────────────────────────────
+    39→    39→
+    40→    40→const EMERALD = '#10b981';
+    41→    41→const TEAL = '#14b8a6';
+    42→    42→const PIE_COLORS = ['#10b981', '#14b8a6', '#f59e0b', '#f43f5e', '#8b5cf6'];
+    43→    43→const FUNNEL_COLORS = ['#0d9488', '#0f766e', '#115e59', '#134e4a', '#1a3a37', '#0a2f2b'];
+    44→    44→const STAGE_COLORS = ['#10b981', '#14b8a6', '#0d9488', '#f59e0b', '#8b5cf6'];
+    45→    45→
+    46→    46→// ─── Funnel Data ──────────────────────────────────────────────────────────────
+    47→    47→
+    48→    48→const funnelStages = [
+    49→    49→  { label: 'Leads', count: 284, color: '#0d9488' },
+    50→    50→  { label: 'Contacted', count: 175, color: '#0f766e' },
+    51→    51→  { label: 'Qualified', count: 112, color: '#115e59' },
+    52→    52→  { label: 'Proposal', count: 68, color: '#134e4a' },
+    53→    53→  { label: 'Negotiation', count: 42, color: '#1a3a37' },
+    54→    54→  { label: 'Won', count: 23, color: '#10b981' },
+    55→    55→];
+    56→    56→
+    57→    57→// ─── Metric Cards ─────────────────────────────────────────────────────────────
+    58→    58→
+    59→    59→const metricCards = [
+    60→    60→  { label: 'Total Revenue', value: '$445K', change: 12.5, icon: DollarSign, color: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-950/40' },
+    61→    61→  { label: 'Deals Won', value: '23', change: 15.4, icon: Trophy, color: 'text-teal-600', bg: 'bg-teal-50 dark:bg-teal-950/40' },
+    62→    62→  { label: 'Conversion Rate', value: '18.5%', change: 3.2, icon: Percent, color: 'text-cyan-600', bg: 'bg-cyan-50 dark:bg-cyan-950/40' },
+    63→    63→  { label: 'Avg Deal Size', value: '$19.3K', change: -2.1, icon: Hash, color: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-950/40' },
+    64→    64→  { label: 'Customer Satisfaction', value: '4.2/5', change: 5.0, icon: Star, color: 'text-violet-600', bg: 'bg-violet-50 dark:bg-violet-950/40' },
+    65→    65→  { label: 'Team Productivity', value: '87%', change: 8.3, icon: Zap, color: 'text-rose-600', bg: 'bg-rose-50 dark:bg-rose-950/40' },
+    66→    66→];
+    67→    67→
+    68→    68→// ─── Revenue + Target Data ───────────────────────────────────────────────────
+    69→    69→
+    70→    70→const revenueWithTarget = revenueChart.map((d) => ({
+    71→    71→  ...d,
+    72→    72→  target: 40000,
+    73→    73→}));
+    74→    74→
+    75→    75→// ─── Team Performance (mock from employees) ──────────────────────────────────
+    76→    76→
+    77→    77→const teamPerformance = employees.slice(0, 5).map((e, i) => ({
+    78→    78→  name: `${e.firstName} ${e.lastName}`,
+    79→    79→  tasks: [47, 42, 38, 35, 31][i],
+    80→    80→  department: e.department,
+    81→    81→}));
+    82→    82→
+    83→    83→// ─── Top Deals (derived) ────────────────────────────────────────────────────
+    84→    84→
+    85→    85→const topDeals = [
+    86→    86→  { name: 'Data Analytics Platform', value: 250000, stage: 'Qualified', closeDate: '2026-10-01', owner: 'Alex Johnson' },
+    87→    87→  { name: 'Platform Integration', value: 200000, stage: 'Negotiation', closeDate: '2026-07-30', owner: 'Alex Johnson' },
+    88→    88→  { name: 'Digital Transformation', value: 150000, stage: 'Contract', closeDate: '2026-07-25', owner: 'David Kim' },
+    89→    89→  { name: 'Cloud Infrastructure', value: 180000, stage: 'Qualified', closeDate: '2026-09-01', owner: 'Alex Johnson' },
+    90→    90→  { name: 'Enterprise License Deal', value: 120000, stage: 'Qualified', closeDate: '2026-08-15', owner: 'Alex Johnson' },
+    91→    91→].sort((a, b) => b.value - a.value);
+    92→    92→
+    93→    93→// ─── Sales by Stage (monthly mock) ───────────────────────────────────────────
+    94→    94→
+    95→    95→const salesByStage = [
+    96→    96→  { month: 'Jan', qualified: 15, proposal: 10, negotiation: 6, won: 4 },
+    97→    97→  { month: 'Feb', qualified: 18, proposal: 12, negotiation: 8, won: 5 },
+    98→    98→  { month: 'Mar', qualified: 22, proposal: 15, negotiation: 10, won: 7 },
+    99→    99→  { month: 'Apr', qualified: 20, proposal: 14, negotiation: 9, won: 6 },
+   100→   100→  { month: 'May', qualified: 25, proposal: 18, negotiation: 12, won: 8 },
+   101→   101→  { month: 'Jun', qualified: 28, proposal: 20, negotiation: 14, won: 10 },
+   102→   102→  { month: 'Jul', qualified: 30, proposal: 22, negotiation: 16, won: 12 },
+   103→   103→];
+   104→   104→
+   105→   105→// ─── Project Status Distribution ─────────────────────────────────────────────
+   106→   106→
+   107→   107→const projectStatusData = [
+   108→   108→  { name: 'Active', value: projects.filter((p) => p.status === 'active').length, color: '#10b981' },
+   109→   109→  { name: 'Completed', value: projects.filter((p) => p.status === 'completed').length, color: '#14b8a6' },
+   110→   110→  { name: 'On Hold', value: projects.filter((p) => p.status === 'on-hold').length, color: '#f59e0b' },
+   111→   111→  { name: 'Planning', value: projects.filter((p) => p.status === 'planning').length, color: '#8b5cf6' },
+   112→   112→];
+   113→   113→
+   114→   114→// ─── Budget vs Actual ────────────────────────────────────────────────────────
+   115→   115→
+   116→   116→const budgetVsActual = projects.slice(0, 5).map((p) => ({
+   117→   117→  name: p.name.length > 18 ? p.name.slice(0, 18) + '…' : p.name,
+   118→   118→  budget: p.budget,
+   119→   119→  actual: Math.round(p.budget * (0.7 + Math.random() * 0.5)),
+   120→   120→}));
+   121→   121→
+   122→   122→// ─── Team Workload (hours) ───────────────────────────────────────────────────
+   123→   123→
+   124→   124→const teamWorkload = [
+   125→   125→  { name: 'Maria Garcia', projectWork: 32, meetings: 8, admin: 4 },
+   126→   126→  { name: 'John Smith', projectWork: 36, meetings: 6, admin: 3 },
+   127→   127→  { name: 'David Kim', projectWork: 28, meetings: 10, admin: 5 },
+   128→   128→  { name: 'Sarah Chen', projectWork: 34, meetings: 5, admin: 6 },
+   129→   129→  { name: 'Emily Park', projectWork: 30, meetings: 7, admin: 4 },
+   130→   130→];
+   131→   131→
+   132→   132→// ─── P&L Summary ─────────────────────────────────────────────────────────────
+   133→   133→
+   134→   134→const plSummary = [
+   135→   135→  { label: 'Revenue', amount: '$445,000', change: 12.5, type: 'income' as const },
+   136→   136→  { label: 'Cost of Goods Sold', amount: '$89,000', change: -3.2, type: 'cost' as const },
+   137→   137→  { label: 'Gross Profit', amount: '$356,000', change: 18.7, type: 'profit' as const },
+   138→   138→  { label: 'Operating Expenses', amount: '$156,000', change: 5.1, type: 'cost' as const },
+   139→   139→  { label: 'Net Income', amount: '$200,000', change: 24.3, type: 'profit' as const },
+   140→   140→];
+   141→   141→
+   142→   142→// ─── Expense by Category ─────────────────────────────────────────────────────
+   143→   143→
+   144→   144→const expenseByCategory = [
+   145→   145→  { category: 'Cloud Services', amount: 12450, count: 3 },
+   146→   146→  { category: 'Facilities', amount: 8500, count: 1 },
+   147→   147→  { category: 'Marketing', amount: 15000, count: 2 },
+   148→   148→  { category: 'Software', amount: 3200, count: 4 },
+   149→   149→  { category: 'Travel', amount: 2800, count: 1 },
+   150→   150→  { category: 'Equipment', amount: 4500, count: 1 },
+   151→   151→  { category: 'Meals', amount: 450, count: 3 },
+   152→   152→];
+   153→   153→
+   154→   154→// ─── Accounts Receivable ─────────────────────────────────────────────────────
+   155→   155→
+   156→   156→const accountsReceivable = invoices
+   157→   157→  .filter((inv) => inv.status === 'overdue' || inv.status === 'sent')
+   158→   158→  .map((inv) => {
+   159→   159→    const daysSinceCreation = Math.floor(
+   160→   160→      (Date.now() - new Date(inv.createdAt).getTime()) / (1000 * 60 * 60 * 24)
+   161→   161→    );
+   162→   162→    const aging =
+   163→   163→      daysSinceCreation <= 30 ? '0-30' : daysSinceCreation <= 60 ? '31-60' : '61-90';
+   164→   164→    return {
+   165→   165→      invoiceNumber: inv.invoiceNumber,
+   166→   166→      company: inv.companyName,
+   167→   167→      total: inv.total,
+   168→   168→      dueDate: inv.dueDate,
+   169→   169→      status: inv.status,
+   170→   170→      aging,
+   171→   171→      daysSinceCreation,
+   172→   172→    };
+   173→   173→  });
+   174→   174→
+   175→   175→// ─── Cash Flow ───────────────────────────────────────────────────────────────
+   176→   176→
+   177→   177→const cashFlowData = [
+   178→   178→  { month: 'Jan', inflow: 38000, outflow: 28000 },
+   179→   179→  { month: 'Feb', inflow: 42000, outflow: 31000 },
+   180→   180→  { month: 'Mar', inflow: 52000, outflow: 33000 },
+   181→   181→  { month: 'Apr', inflow: 45000, outflow: 36000 },
+   182→   182→  { month: 'May', inflow: 55000, outflow: 38000 },
+   183→   183→  { month: 'Jun', inflow: 62000, outflow: 42000 },
+   184→   184→  { month: 'Jul', inflow: 58000, outflow: 40000 },
+   185→   185→];
+   186→   186→
+   187→   187→// ─── Custom Tooltip ──────────────────────────────────────────────────────────
+   188→   188→
+   189→   189→function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
+   190→   190→  if (!active || !payload?.length) return null;
+   191→   191→  return (
+   192→   192→    <div className="rounded-lg border border-gray-200 bg-white/95 px-3 py-2 shadow-lg dark:border-gray-700 dark:bg-gray-900/95">
+   193→   193→      <p className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{label}</p>
+   194→   194→      {payload.map((entry, i) => (
+   195→   195→        <p key={i} className="text-xs text-gray-600 dark:text-gray-400">
+   196→   196→          <span className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
+   197→   197→          {entry.name}: <span className="font-medium text-gray-900 dark:text-gray-100">${(entry.value / 1000).toFixed(1)}K</span>
+   198→   198→        </p>
+   199→   199→      ))}
+   200→   200→    </div>
+   201→   201→  );
+   202→   202→}
+   203→   203→
+   204→   204→function SimpleTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
+   205→   205→  if (!active || !payload?.length) return null;
+   206→   206→  return (
+   207→   207→    <div className="rounded-lg border border-gray-200 bg-white/95 px-3 py-2 shadow-lg dark:border-gray-700 dark:bg-gray-900/95">
+   208→   208→      <p className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{label}</p>
+   209→   209→      {payload.map((entry, i) => (
+   210→   210→        <p key={i} className="text-xs text-gray-600 dark:text-gray-400">
+   211→   211→          <span className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
+   212→   212→          {entry.name}: <span className="font-medium text-gray-900 dark:text-gray-100">{entry.value}</span>
+   213→   213→        </p>
+   214→   214→      ))}
+   215→   215→    </div>
+   216→   216→  );
+   217→   217→}
+   218→   218→
+   219→   219→// ─── Tab Header ──────────────────────────────────────────────────────────────
+   220→   220→
+   221→   221→function TabHeader({ title, description }: { title: string; description: string }) {
+   222→   222→  return (
+   223→   223→    <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+   224→   224→      <div>
+   225→   225→        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
+   226→   226→        <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+   227→   227→      </div>
+   228→   228→      <div className="flex gap-2">
+   229→   229→        <Button variant="outline" size="sm" className="gap-1.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40" onClick={() => toast.success('PDF report exported')}>
+   230→   230→          <FileDown className="h-4 w-4" /> PDF
+   231→   231→        </Button>
+   232→   232→        <Button variant="outline" size="sm" className="gap-1.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40" onClick={() => toast.success('Excel report exported')}>
+   233→   233→          <FileSpreadsheet className="h-4 w-4" /> Excel
+   234→   234→        </Button>
+   235→   235→      </div>
+   236→   236→    </div>
+   237→   237→  );
+   238→   238→}
+   239→   239→
+   240→   240→// ─── Metric Card ─────────────────────────────────────────────────────────────
+   241→   241→
+   242→   242→function MetricCard({ label, value, change, icon: Icon, color, bg, index }: {
+   243→   243→  label: string; value: string; change: number; icon: React.ElementType;
+   244→   244→  color: string; bg: string; index: number;
+   245→   245→}) {
+   246→   246→  return (
+   247→   247→    <motion.div
+   248→   248→      initial={{ opacity: 0, y: 20 }}
+   249→   249→      animate={{ opacity: 1, y: 0 }}
+   250→   250→      transition={{ duration: 0.4, delay: index * 0.06 }}
+   251→   251→    >
+   252→   252→      <Card className="relative overflow-hidden border-0 shadow-sm">
+   253→   253→        <CardContent className="p-5">
+   254→   254→          <div className="flex items-start justify-between">
+   255→   255→            <div className="space-y-2">
+   256→   256→              <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
+   257→   257→              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
+   258→   258→              <div className="flex items-center gap-1">
+   259→   259→                {change >= 0 ? (
+   260→   260→                  <ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" />
+   261→   261→                ) : (
+   262→   262→                  <ArrowDownRight className="h-3.5 w-3.5 text-rose-500" />
+   263→   263→                )}
+   264→   264→                <span className={cn('text-xs font-semibold', change >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400')}>
+   265→   265→                  {Math.abs(change)}%
+   266→   266→                </span>
+   267→   267→                <span className="text-xs text-gray-400">vs last month</span>
+   268→   268→              </div>
+   269→   269→            </div>
+   270→   270→            <div className={cn('rounded-xl p-2.5', bg)}>
+   271→   271→              <Icon className={cn('h-5 w-5', color)} />
+   272→   272→            </div>
+   273→   273→          </div>
+   274→   274→          {/* Decorative gradient bar */}
+   275→   275→          <div className="absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r from-emerald-500/60 via-teal-500/40 to-transparent" />
+   276→   276→        </CardContent>
+   277→   277→      </Card>
+   278→   278→    </motion.div>
+   279→   279→  );
+   280→   280→}
+   281→   281→
+   282→   282→// ─── Lead Conversion Funnel ──────────────────────────────────────────────────
+   283→   283→
+   284→   284→function LeadConversionFunnel() {
+   285→   285→  const maxCount = funnelStages[0].count;
+   286→   286→  return (
+   287→   287→    <Card className="border-0 shadow-sm">
+   288→   288→      <CardHeader className="pb-2">
+   289→   289→        <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   290→   290→          <Filter className="h-4 w-4 text-emerald-600" />
+   291→   291→          Lead Conversion Funnel
+   292→   292→        </CardTitle>
+   293→   293→        <CardDescription>Visual representation of your pipeline from lead to close</CardDescription>
+   294→   294→      </CardHeader>
+   295→   295→      <CardContent className="pt-2">
+   296→   296→        <div className="relative flex flex-col items-center gap-0">
+   297→   297→          {funnelStages.map((stage, idx) => {
+   298→   298→            const widthPercent = 30 + ((stage.count / maxCount) * 70);
+   299→   299→            const conversionFromPrev = idx > 0 ? ((stage.count / funnelStages[idx - 1].count) * 100).toFixed(1) : '100';
+   300→   300→            const isLast = idx === funnelStages.length - 1;
+   301→   301→            return (
+   302→   302→              <div key={stage.label} className="relative flex w-full flex-col items-center">
+   303→   303→                {/* Connector arrow */}
+   304→   304→                {idx > 0 && (
+   305→   305→                  <motion.div
+   306→   306→                    initial={{ scaleY: 0 }}
+   307→   307→                    animate={{ scaleY: 1 }}
+   308→   308→                    transition={{ duration: 0.3, delay: idx * 0.1 }}
+   309→   309→                    className="flex items-center gap-2 py-1"
+   310→   310→                  >
+   311→   311→                    <div className="h-4 w-px bg-gradient-to-b from-gray-300 to-gray-400 dark:from-gray-600 dark:to-gray-500" />
+   312→   312→                    <ChevronRight className="h-3 w-3 -rotate-90 text-gray-400" />
+   313→   313→                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+   314→   314→                      {conversionFromPrev}%
+   315→   315→                    </span>
+   316→   316→                  </motion.div>
+   317→   317→                )}
+   318→   318→                {/* Funnel bar */}
+   319→   319→                <motion.div
+   320→   320→                  initial={{ scaleX: 0, opacity: 0 }}
+   321→   321→                  animate={{ scaleX: 1, opacity: 1 }}
+   322→   322→                  transition={{ duration: 0.5, delay: idx * 0.1, ease: 'easeOut' }}
+   323→   323→                  style={{ width: `${widthPercent}%` }}
+   324→   324→                  className="relative"
+   325→   325→                >
+   326→   326→                  <div
+   327→   327→                    className={cn(
+   328→   328→                      'group relative flex items-center justify-between rounded-sm px-5 py-3 transition-all duration-300',
+   329→   329→                      isLast
+   330→   330→                        ? 'bg-gradient-to-r from-emerald-500 to-teal-400 shadow-lg shadow-emerald-500/25'
+   331→   331→                        : 'hover:brightness-110',
+   332→   332→                    )}
+   333→   333→                    style={
+   334→   334→                      isLast
+   335→   335→                        ? undefined
+   336→   336→                        : {
+   337→   337→                            background: `linear-gradient(135deg, ${stage.color}, ${stage.color}dd)`,
+   338→   338→                            boxShadow: `0 2px 8px ${stage.color}30`,
+   339→   339→                          }
+   340→   340→                    }
+   341→   341→                  >
+   342→   342→                    {/* Animated shimmer effect */}
+   343→   343→                    <div className="absolute inset-0 overflow-hidden rounded-sm">
+   344→   344→                      <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent animate-[shimmer_3s_infinite]" />
+   345→   345→                    </div>
+   346→   346→                    {/* Stage label and count */}
+   347→   347→                    <div className="relative z-10 flex items-center gap-3">
+   348→   348→                      <div className={cn(
+   349→   349→                        'flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold',
+   350→   350→                        isLast ? 'bg-white/25 text-white' : 'bg-white/15 text-white/90',
+   351→   351→                      )}>
+   352→   352→                        {idx + 1}
+   353→   353→                      </div>
+   354→   354→                      <div>
+   355→   355→                        <span className={cn(
+   356→   356→                          'block text-sm font-semibold tracking-wide',
+   357→   357→                          isLast ? 'text-white' : 'text-white/95',
+   358→   358→                        )}>
+   359→   359→                          {stage.label}
+   360→   360→                        </span>
+   361→   361→                      </div>
+   362→   362→                    </div>
+   363→   363→                    <div className="relative z-10 text-right">
+   364→   364→                      <span className={cn(
+   365→   365→                        'block text-xl font-bold tabular-nums',
+   366→   366→                        isLast ? 'text-white' : 'text-white/95',
+   367→   367→                      )}>
+   368→   368→                        {stage.count.toLocaleString()}
+   369→   369→                      </span>
+   370→   370→                    </div>
+   371→   371→                    {/* Drop percentage */}
+   372→   372→                    {idx > 0 && (
+   373→   373→                      <div className="absolute -right-1 top-1/2 -translate-y-1/2 translate-x-full px-2 py-0.5">
+   374→   374→                        <Badge variant="secondary" className="text-[10px] font-bold text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-950/50 border-0">
+   375→   375→                          ↓ {((1 - stage.count / funnelStages[idx - 1].count) * 100).toFixed(1)}%
+   376→   376→                        </Badge>
+   377→   377→                      </div>
+   378→   378→                    )}
+   379→   379→                  </div>
+   380→   380→                </motion.div>
+   381→   381→              </div>
+   382→   382→            );
+   383→   383→          })}
+   384→   384→          {/* Overall conversion rate callout */}
+   385→   385→          <motion.div
+   386→   386→            initial={{ opacity: 0, scale: 0.9 }}
+   387→   387→            animate={{ opacity: 1, scale: 1 }}
+   388→   388→            transition={{ duration: 0.5, delay: 0.8 }}
+   389→   389→            className="mt-4 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 px-6 py-3 text-center dark:border-emerald-800 dark:from-emerald-950/40 dark:to-teal-950/40"
+   390→   390→          >
+   391→   391→            <p className="text-xs font-medium uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Overall Conversion Rate</p>
+   392→   392→            <p className="mt-0.5 text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+   393→   393→              {((funnelStages[funnelStages.length - 1].count / funnelStages[0].count) * 100).toFixed(1)}%
+   394→   394→            </p>
+   395→   395→            <p className="text-xs text-emerald-600/70 dark:text-emerald-400/60">From Lead to Won</p>
+   396→   396→          </motion.div>
+   397→   397→        </div>
+   398→   398→      </CardContent>
+   399→   399→    </Card>
+   400→   400→  );
+   401→   401→}
+   402→   402→
+   403→   403→// ─── Overview Tab ────────────────────────────────────────────────────────────
+   404→   404→
+   405→   405→function OverviewTab() {
+   406→   406→  return (
+   407→   407→    <div className="space-y-6">
+   408→   408→      <TabHeader title="Overview" description="High-level metrics and performance indicators for your business" />
+   409→   409→
+   410→   410→      {/* Metric Cards Grid */}
+   411→   411→      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+   412→   412→        {metricCards.map((m, i) => (
+   413→   413→          <MetricCard key={m.label} {...m} index={i} />
+   414→   414→        ))}
+   415→   415→      </div>
+   416→   416→
+   417→   417→      {/* Revenue vs Target + Funnel */}
+   418→   418→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+   419→   419→        {/* Revenue Chart */}
+   420→   420→        <motion.div
+   421→   421→          initial={{ opacity: 0, x: -20 }}
+   422→   422→          animate={{ opacity: 1, x: 0 }}
+   423→   423→          transition={{ duration: 0.5, delay: 0.3 }}
+   424→   424→          className="lg:col-span-3"
+   425→   425→        >
+   426→   426→          <Card className="border-0 shadow-sm h-full">
+   427→   427→            <CardHeader className="pb-2">
+   428→   428→              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   429→   429→                <BarChart3 className="h-4 w-4 text-emerald-600" />
+   430→   430→                Revenue vs Target
+   431→   431→              </CardTitle>
+   432→   432→              <CardDescription>Monthly revenue performance against quarterly target</CardDescription>
+   433→   433→            </CardHeader>
+   434→   434→            <CardContent>
+   435→   435→              <ResponsiveContainer width="100%" height={320}>
+   436→   436→                <BarChart data={revenueWithTarget} barGap={4}>
+   437→   437→                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+   438→   438→                  <XAxis dataKey="name" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
+   439→   439→                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v / 1000}K`} />
+   440→   440→                  <Tooltip content={<ChartTooltip />} />
+   441→   441→                  <Bar dataKey="value" name="Revenue" fill="#10b981" radius={[4, 4, 0, 0]} />
+   442→   442→                  <ReferenceLine y={40000} stroke="#f59e0b" strokeDasharray="6 4" strokeWidth={2} />
+   443→   443→                  <Legend
+   444→   444→                    verticalAlign="top"
+   445→   445→                    align="right"
+   446→   446→                    iconType="circle"
+   447→   447→                    iconSize={8}
+   448→   448→                    formatter={(value) => {
+   449→   449→                      if (value === 'value') return <span className="text-xs text-gray-600 dark:text-gray-400">Revenue</span>;
+   450→   450→                      return <span className="text-xs text-gray-600 dark:text-gray-400">{value}</span>;
+   451→   451→                    }}
+   452→   452→                  />
+   453→   453→                </BarChart>
+   454→   454→              </ResponsiveContainer>
+   455→   455→              <div className="mt-2 flex items-center gap-2 pl-2">
+   456→   456→                <div className="h-0.5 w-5 bg-amber-500" style={{ borderStyle: 'dashed' }} />
+   457→   457→                <span className="text-xs text-gray-500">Target: $40K/month</span>
+   458→   458→              </div>
+   459→   459→            </CardContent>
+   460→   460→          </Card>
+   461→   461→        </motion.div>
+   462→   462→
+   463→   463→        {/* Lead Conversion Funnel */}
+   464→   464→        <motion.div
+   465→   465→          initial={{ opacity: 0, x: 20 }}
+   466→   466→          animate={{ opacity: 1, x: 0 }}
+   467→   467→          transition={{ duration: 0.5, delay: 0.4 }}
+   468→   468→          className="lg:col-span-2"
+   469→   469→        >
+   470→   470→          <LeadConversionFunnel />
+   471→   471→        </motion.div>
+   472→   472→      </div>
+   473→   473→
+   474→   474→      {/* Team Performance */}
+   475→   475→      <motion.div
+   476→   476→        initial={{ opacity: 0, y: 20 }}
+   477→   477→        animate={{ opacity: 1, y: 0 }}
+   478→   478→        transition={{ duration: 0.5, delay: 0.5 }}
+   479→   479→      >
+   480→   480→        <Card className="border-0 shadow-sm">
+   481→   481→          <CardHeader className="pb-2">
+   482→   482→            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   483→   483→              <Users className="h-4 w-4 text-emerald-600" />
+   484→   484→              Team Performance
+   485→   485→            </CardTitle>
+   486→   486→            <CardDescription>Top 5 team members ranked by tasks completed this month</CardDescription>
+   487→   487→          </CardHeader>
+   488→   488→          <CardContent>
+   489→   489→            <ResponsiveContainer width="100%" height={280}>
+   490→   490→              <BarChart data={teamPerformance} layout="vertical" barSize={18}>
+   491→   491→                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" horizontal={false} />
+   492→   492→                <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+   493→   493→                <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} width={120} />
+   494→   494→                <Tooltip content={<SimpleTooltip />} />
+   495→   495→                <Bar dataKey="tasks" name="Tasks Completed" fill="#14b8a6" radius={[0, 6, 6, 0]} />
+   496→   496→              </BarChart>
+   497→   497→            </ResponsiveContainer>
+   498→   498→          </CardContent>
+   499→   499→        </Card>
+   500→   500→      </motion.div>
+   501→   501→    </div>
+   502→   502→  );
+   503→   503→}
+   504→   504→
+   505→   505→// ─── Sales Tab ───────────────────────────────────────────────────────────────
+   506→   506→
+   507→   507→function SalesTab() {
+   508→   508→  return (
+   509→   509→    <div className="space-y-6">
+   510→   510→      <TabHeader title="Sales Reports" description="Detailed analysis of your sales pipeline and performance" />
+   511→   511→
+   512→   512→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+   513→   513→        {/* Sales by Source Pie */}
+   514→   514→        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+   515→   515→          <Card className="border-0 shadow-sm h-full">
+   516→   516→            <CardHeader className="pb-2">
+   517→   517→              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   518→   518→                <PieChartIcon className="h-4 w-4 text-emerald-600" />
+   519→   519→                Sales by Source
+   520→   520→              </CardTitle>
+   521→   521→              <CardDescription>Distribution of deals across lead sources</CardDescription>
+   522→   522→            </CardHeader>
+   523→   523→            <CardContent>
+   524→   524→              <ResponsiveContainer width="100%" height={300}>
+   525→   525→                <PieChart>
+   526→   526→                  <Pie
+   527→   527→                    data={salesBySource}
+   528→   528→                    cx="50%"
+   529→   529→                    cy="50%"
+   530→   530→                    innerRadius={65}
+   531→   531→                    outerRadius={105}
+   532→   532→                    paddingAngle={3}
+   533→   533→                    dataKey="value"
+   534→   534→                    nameKey="name"
+   535→   535→                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+   536→   536→                    labelLine={{ strokeWidth: 1 }}
+   537→   537→                  >
+   538→   538→                    {salesBySource.map((_, idx) => (
+   539→   539→                      <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+   540→   540→                    ))}
+   541→   541→                  </Pie>
+   542→   542→                  <Tooltip content={<SimpleTooltip />} />
+   543→   543→                </PieChart>
+   544→   544→              </ResponsiveContainer>
+   545→   545→            </CardContent>
+   546→   546→          </Card>
+   547→   547→        </motion.div>
+   548→   548→
+   549→   549→        {/* Monthly Sales Trend */}
+   550→   550→        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
+   551→   551→          <Card className="border-0 shadow-sm h-full">
+   552→   552→            <CardHeader className="pb-2">
+   553→   553→              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   554→   554→                <TrendingUp className="h-4 w-4 text-emerald-600" />
+   555→   555→                Monthly Sales Trend
+   556→   556→              </CardTitle>
+   557→   557→              <CardDescription>Revenue trend over the past 7 months</CardDescription>
+   558→   558→            </CardHeader>
+   559→   559→            <CardContent>
+   560→   560→              <ResponsiveContainer width="100%" height={300}>
+   561→   561→                <LineChart data={revenueChart}>
+   562→   562→                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+   563→   563→                  <XAxis dataKey="name" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
+   564→   564→                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v / 1000}K`} />
+   565→   565→                  <Tooltip content={<ChartTooltip />} />
+   566→   566→                  <Line type="monotone" dataKey="value" name="Revenue" stroke="#10b981" strokeWidth={3} dot={{ fill: '#10b981', r: 5, strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 7, stroke: '#10b981', strokeWidth: 2, fill: '#fff' }} />
+   567→   567→                  <Line type="monotone" dataKey="value2" name="Expenses" stroke="#f59e0b" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: '#f59e0b', r: 4 }} />
+   568→   568→                  <Legend verticalAlign="top" align="right" iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+   569→   569→                </LineChart>
+   570→   570→              </ResponsiveContainer>
+   571→   571→            </CardContent>
+   572→   572→          </Card>
+   573→   573→        </motion.div>
+   574→   574→      </div>
+   575→   575→
+   576→   576→      {/* Top Deals Table */}
+   577→   577→      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.2 }}>
+   578→   578→        <Card className="border-0 shadow-sm">
+   579→   579→          <CardHeader className="pb-2">
+   580→   580→            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   581→   581→              <Target className="h-4 w-4 text-emerald-600" />
+   582→   582→              Top Deals
+   583→   583→            </CardTitle>
+   584→   584→            <CardDescription>Highest value opportunities in your pipeline</CardDescription>
+   585→   585→          </CardHeader>
+   586→   586→          <CardContent>
+   587→   587→            <div className="overflow-x-auto">
+   588→   588→            <Table>
+   589→   589→              <TableHeader>
+   590→   590→                <TableRow className="border-gray-100 dark:border-gray-800 hover:bg-transparent">
+   591→   591→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Deal</TableHead>
+   592→   592→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Value</TableHead>
+   593→   593→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Stage</TableHead>
+   594→   594→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Close Date</TableHead>
+   595→   595→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Owner</TableHead>
+   596→   596→                </TableRow>
+   597→   597→              </TableHeader>
+   598→   598→              <TableBody>
+   599→   599→                {topDeals.map((deal) => (
+   600→   600→                  <TableRow key={deal.name} className="border-gray-50 dark:border-gray-800/50">
+   601→   601→                    <TableCell className="font-medium text-gray-900 dark:text-gray-100">{deal.name}</TableCell>
+   602→   602→                    <TableCell className="font-semibold text-emerald-600 dark:text-emerald-400">${(deal.value / 1000).toFixed(0)}K</TableCell>
+   603→   603→                    <TableCell>
+   604→   604→                      <Badge variant="secondary" className={cn(
+   605→   605→                        'text-xs font-medium border-0',
+   606→   606→                        deal.stage === 'Qualified' && 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400',
+   607→   607→                        deal.stage === 'Proposal' && 'bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400',
+   608→   608→                        deal.stage === 'Negotiation' && 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400',
+   609→   609→                        deal.stage === 'Contract' && 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400',
+   610→   610→                      )}>
+   611→   611→                        {deal.stage}
+   612→   612→                      </Badge>
+   613→   613→                    </TableCell>
+   614→   614→                    <TableCell className="text-gray-500 dark:text-gray-400">{deal.closeDate}</TableCell>
+   615→   615→                    <TableCell className="text-gray-600 dark:text-gray-400">{deal.owner}</TableCell>
+   616→   616→                  </TableRow>
+   617→   617→                ))}
+   618→   618→              </TableBody>
+   619→   619→            </Table>
+   620→   620→            </div>
+   621→   621→          </CardContent>
+   622→   622→        </Card>
+   623→   623→      </motion.div>
+   624→   624→
+   625→   625→      {/* Sales by Stage */}
+   626→   626→      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.3 }}>
+   627→   627→        <Card className="border-0 shadow-sm">
+   628→   628→          <CardHeader className="pb-2">
+   629→   629→            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   630→   630→              <Activity className="h-4 w-4 text-emerald-600" />
+   631→   631→              Sales by Stage
+   632→   632→            </CardTitle>
+   633→   633→            <CardDescription>Monthly deal distribution across pipeline stages</CardDescription>
+   634→   634→          </CardHeader>
+   635→   635→          <CardContent>
+   636→   636→            <ResponsiveContainer width="100%" height={300}>
+   637→   637→              <BarChart data={salesByStage} barGap={2}>
+   638→   638→                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+   639→   639→                <XAxis dataKey="month" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
+   640→   640→                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+   641→   641→                <Tooltip content={<SimpleTooltip />} />
+   642→   642→                <Legend verticalAlign="top" align="right" iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+   643→   643→                <Bar dataKey="qualified" name="Qualified" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+   644→   644→                <Bar dataKey="proposal" name="Proposal" stackId="a" fill="#14b8a6" />
+   645→   645→                <Bar dataKey="negotiation" name="Negotiation" stackId="a" fill="#f59e0b" />
+   646→   646→                <Bar dataKey="won" name="Won" stackId="a" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+   647→   647→              </BarChart>
+   648→   648→            </ResponsiveContainer>
+   649→   649→          </CardContent>
+   650→   650→        </Card>
+   651→   651→      </motion.div>
+   652→   652→    </div>
+   653→   653→  );
+   654→   654→}
+   655→   655→
+   656→   656→// ─── Project Tab ─────────────────────────────────────────────────────────────
+   657→   657→
+   658→   658→function ProjectTab() {
+   659→   659→  return (
+   660→   660→    <div className="space-y-6">
+   661→   661→      <TabHeader title="Project Reports" description="Project health, budgets, and team workload analysis" />
+   662→   662→
+   663→   663→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+   664→   664→        {/* Project Status Distribution */}
+   665→   665→        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+   666→   666→          <Card className="border-0 shadow-sm h-full">
+   667→   667→            <CardHeader className="pb-2">
+   668→   668→              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   669→   669→                <PieChartIcon className="h-4 w-4 text-emerald-600" />
+   670→   670→                Project Status Distribution
+   671→   671→              </CardTitle>
+   672→   672→              <CardDescription>Current status breakdown of all active projects</CardDescription>
+   673→   673→            </CardHeader>
+   674→   674→            <CardContent>
+   675→   675→              <ResponsiveContainer width="100%" height={300}>
+   676→   676→                <PieChart>
+   677→   677→                  <Pie
+   678→   678→                    data={projectStatusData}
+   679→   679→                    cx="50%"
+   680→   680→                    cy="50%"
+   681→   681→                    innerRadius={60}
+   682→   682→                    outerRadius={100}
+   683→   683→                    paddingAngle={4}
+   684→   684→                    dataKey="value"
+   685→   685→                    nameKey="name"
+   686→   686→                    label={({ name, value }) => `${name}: ${value}`}
+   687→   687→                    labelLine={{ strokeWidth: 1 }}
+   688→   688→                  >
+   689→   689→                    {projectStatusData.map((entry, idx) => (
+   690→   690→                      <Cell key={idx} fill={entry.color} />
+   691→   691→                    ))}
+   692→   692→                  </Pie>
+   693→   693→                  <Tooltip content={<SimpleTooltip />} />
+   694→   694→                </PieChart>
+   695→   695→              </ResponsiveContainer>
+   696→   696→            </CardContent>
+   697→   697→          </Card>
+   698→   698→        </motion.div>
+   699→   699→
+   700→   700→        {/* Budget vs Actual */}
+   701→   701→        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
+   702→   702→          <Card className="border-0 shadow-sm h-full">
+   703→   703→            <CardHeader className="pb-2">
+   704→   704→              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   705→   705→                <DollarSign className="h-4 w-4 text-emerald-600" />
+   706→   706→                Budget vs Actual Spend
+   707→   707→              </CardTitle>
+   708→   708→              <CardDescription>Top 5 projects budget utilization comparison</CardDescription>
+   709→   709→            </CardHeader>
+   710→   710→            <CardContent>
+   711→   711→              <ResponsiveContainer width="100%" height={300}>
+   712→   712→                <BarChart data={budgetVsActual} barGap={4}>
+   713→   713→                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+   714→   714→                  <XAxis dataKey="name" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} angle={-15} textAnchor="end" height={60} />
+   715→   715→                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v / 1000}K`} />
+   716→   716→                  <Tooltip content={<ChartTooltip />} />
+   717→   717→                  <Legend verticalAlign="top" align="right" iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+   718→   718→                  <Bar dataKey="budget" name="Budget" fill="#14b8a6" radius={[4, 4, 0, 0]} />
+   719→   719→                  <Bar dataKey="actual" name="Actual" fill="#10b981" radius={[4, 4, 0, 0]} />
+   720→   720→                </BarChart>
+   721→   721→              </ResponsiveContainer>
+   722→   722→            </CardContent>
+   723→   723→          </Card>
+   724→   724→        </motion.div>
+   725→   725→      </div>
+   726→   726→
+   727→   727→      {/* Task Completion Progress */}
+   728→   728→      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.2 }}>
+   729→   729→        <Card className="border-0 shadow-sm">
+   730→   730→          <CardHeader className="pb-2">
+   731→   731→            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   732→   732→              <CircleDot className="h-4 w-4 text-emerald-600" />
+   733→   733→              Task Completion by Project
+   734→   734→            </CardTitle>
+   735→   735→            <CardDescription>Progress of task completion across all projects</CardDescription>
+   736→   736→          </CardHeader>
+   737→   737→          <CardContent>
+   738→   738→            <div className="space-y-5">
+   739→   739→              {projects.map((project) => {
+   740→   740→                const pct = Math.round((project.completedTaskCount / project.taskCount) * 100);
+   741→   741→                return (
+   742→   742→                  <div key={project.id} className="space-y-2">
+   743→   743→                    <div className="flex items-center justify-between">
+   744→   744→                      <div className="flex items-center gap-2">
+   745→   745→                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{project.name}</span>
+   746→   746→                        <Badge variant="outline" className={cn(
+   747→   747→                          'text-[10px] capitalize border-0',
+   748→   748→                          project.status === 'active' && 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400',
+   749→   749→                          project.status === 'completed' && 'bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-400',
+   750→   750→                          project.status === 'on-hold' && 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400',
+   751→   751→                          project.status === 'planning' && 'bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400',
+   752→   752→                        )}>
+   753→   753→                          {project.status}
+   754→   754→                        </Badge>
+   755→   755→                      </div>
+   756→   756→                      <span className="text-xs tabular-nums font-semibold text-gray-600 dark:text-gray-400">
+   757→   757→                        {project.completedTaskCount}/{project.taskCount} tasks ({pct}%)
+   758→   758→                      </span>
+   759→   759→                    </div>
+   760→   760→                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+   761→   761→                      <motion.div
+   762→   762→                        initial={{ width: 0 }}
+   763→   763→                        animate={{ width: `${pct}%` }}
+   764→   764→                        transition={{ duration: 0.8, ease: 'easeOut' }}
+   765→   765→                        className={cn(
+   766→   766→                          'h-full rounded-full',
+   767→   767→                          pct === 100
+   768→   768→                            ? 'bg-gradient-to-r from-emerald-500 to-teal-400'
+   769→   769→                            : 'bg-gradient-to-r from-emerald-500 to-teal-500',
+   770→   770→                        )}
+   771→   771→                      />
+   772→   772→                    </div>
+   773→   773→                  </div>
+   774→   774→                );
+   775→   775→              })}
+   776→   776→            </div>
+   777→   777→          </CardContent>
+   778→   778→        </Card>
+   779→   779→      </motion.div>
+   780→   780→
+   781→   781→      {/* Team Workload */}
+   782→   782→      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.3 }}>
+   783→   783→        <Card className="border-0 shadow-sm">
+   784→   784→          <CardHeader className="pb-2">
+   785→   785→            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   786→   786→              <Clock className="h-4 w-4 text-emerald-600" />
+   787→   787→              Team Workload Distribution
+   788→   788→            </CardTitle>
+   789→   789→            <CardDescription>Weekly hours allocated per team member by activity type</CardDescription>
+   790→   790→          </CardHeader>
+   791→   791→          <CardContent>
+   792→   792→            <ResponsiveContainer width="100%" height={260}>
+   793→   793→              <BarChart data={teamWorkload} layout="vertical" barSize={16}>
+   794→   794→                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" horizontal={false} />
+   795→   795→                <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} unit="h" />
+   796→   796→                <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} width={120} />
+   797→   797→                <Tooltip content={<SimpleTooltip />} />
+   798→   798→                <Legend verticalAlign="top" align="right" iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+   799→   799→                <Bar dataKey="projectWork" name="Project Work" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+   800→   800→                <Bar dataKey="meetings" name="Meetings" stackId="a" fill="#14b8a6" />
+   801→   801→                <Bar dataKey="admin" name="Admin" stackId="a" fill="#f59e0b" radius={[0, 6, 6, 0]} />
+   802→   802→              </BarChart>
+   803→   803→            </ResponsiveContainer>
+   804→   804→          </CardContent>
+   805→   805→        </Card>
+   806→   806→      </motion.div>
+   807→   807→    </div>
+   808→   808→  );
+   809→   809→}
+   810→   810→
+   811→   811→// ─── Financial Tab ───────────────────────────────────────────────────────────
+   812→   812→
+   813→   813→function FinancialTab() {
+   814→   814→  return (
+   815→   815→    <div className="space-y-6">
+   816→   816→      <TabHeader title="Financial Reports" description="Profit & loss, expenses, receivables, and cash flow analysis" />
+   817→   817→
+   818→   818→      {/* P&L Summary */}
+   819→   819→      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+   820→   820→        <Card className="border-0 shadow-sm">
+   821→   821→          <CardHeader className="pb-2">
+   822→   822→            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   823→   823→              <FileText className="h-4 w-4 text-emerald-600" />
+   824→   824→              Profit & Loss Summary
+   825→   825→            </CardTitle>
+   826→   826→            <CardDescription>Key financial metrics for the current quarter</CardDescription>
+   827→   827→          </CardHeader>
+   828→   828→          <CardContent>
+   829→   829→            <div className="overflow-x-auto">
+   830→   830→            <Table>
+   831→   831→              <TableHeader>
+   832→   832→                <TableRow className="border-gray-100 dark:border-gray-800 hover:bg-transparent">
+   833→   833→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Line Item</TableHead>
+   834→   834→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500 text-right">Amount</TableHead>
+   835→   835→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500 text-right">Change</TableHead>
+   836→   836→                </TableRow>
+   837→   837→              </TableHeader>
+   838→   838→              <TableBody>
+   839→   839→                {plSummary.map((row) => (
+   840→   840→                  <TableRow key={row.label} className={cn(
+   841→   841→                    'border-gray-50 dark:border-gray-800/50',
+   842→   842→                    row.label === 'Gross Profit' && 'bg-emerald-50/50 dark:bg-emerald-950/20',
+   843→   843→                    row.label === 'Net Income' && 'bg-emerald-50/80 dark:bg-emerald-950/30',
+   844→   844→                  )}>
+   845→   845→                    <TableCell className={cn(
+   846→   846→                      'font-medium',
+   847→   847→                      (row.label === 'Gross Profit' || row.label === 'Net Income') ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-gray-900 dark:text-gray-100',
+   848→   848→                      row.label === 'Cost of Goods Sold' && 'pl-4',
+   849→   849→                      row.label === 'Operating Expenses' && 'pl-4',
+   850→   850→                    )}>
+   851→   851→                      {row.label === 'Cost of Goods Sold' && <span className="text-gray-400 mr-1">−</span>}
+   852→   852→                      {row.label === 'Operating Expenses' && <span className="text-gray-400 mr-1">−</span>}
+   853→   853→                      {row.label}
+   854→   854→                    </TableCell>
+   855→   855→                    <TableCell className={cn(
+   856→   856→                      'text-right font-semibold tabular-nums',
+   857→   857→                      (row.label === 'Gross Profit' || row.label === 'Net Income') ? 'text-emerald-700 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100',
+   858→   858→                    )}>
+   859→   859→                      {row.amount}
+   860→   860→                    </TableCell>
+   861→   861→                    <TableCell className="text-right">
+   862→   862→                      <div className="inline-flex items-center gap-1">
+   863→   863→                        {row.change >= 0 ? (
+   864→   864→                          <ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" />
+   865→   865→                        ) : (
+   866→   866→                          <ArrowDownRight className="h-3.5 w-3.5 text-rose-500" />
+   867→   867→                        )}
+   868→   868→                        <span className={cn(
+   869→   869→                          'text-xs font-semibold tabular-nums',
+   870→   870→                          row.change >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400',
+   871→   871→                        )}>
+   872→   872→                          {Math.abs(row.change)}%
+   873→   873→                        </span>
+   874→   874→                      </div>
+   875→   875→                    </TableCell>
+   876→   876→                  </TableRow>
+   877→   877→                ))}
+   878→   878→              </TableBody>
+   879→   879→            </Table>
+   880→   880→            </div>
+   881→   881→          </CardContent>
+   882→   882→        </Card>
+   883→   883→      </motion.div>
+   884→   884→
+   885→   885→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+   886→   886→        {/* Expense by Category */}
+   887→   887→        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
+   888→   888→          <Card className="border-0 shadow-sm h-full">
+   889→   889→            <CardHeader className="pb-2">
+   890→   890→              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   891→   891→                <Receipt className="h-4 w-4 text-emerald-600" />
+   892→   892→                Expense by Category
+   893→   893→              </CardTitle>
+   894→   894→              <CardDescription>Grouped spending breakdown for the current period</CardDescription>
+   895→   895→            </CardHeader>
+   896→   896→            <CardContent>
+   897→   897→              <ResponsiveContainer width="100%" height={300}>
+   898→   898→                <BarChart data={expenseByCategory} barGap={4}>
+   899→   899→                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+   900→   900→                  <XAxis dataKey="category" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} angle={-25} textAnchor="end" height={65} />
+   901→   901→                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(1)}K`} />
+   902→   902→                  <Tooltip content={<ChartTooltip />} />
+   903→   903→                  <Bar dataKey="amount" name="Amount" radius={[6, 6, 0, 0]}>
+   904→   904→                    {expenseByCategory.map((_, idx) => (
+   905→   905→                      <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+   906→   906→                    ))}
+   907→   907→                  </Bar>
+   908→   908→                </BarChart>
+   909→   909→              </ResponsiveContainer>
+   910→   910→            </CardContent>
+   911→   911→          </Card>
+   912→   912→        </motion.div>
+   913→   913→
+   914→   914→        {/* Monthly Cash Flow */}
+   915→   915→        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.15 }}>
+   916→   916→          <Card className="border-0 shadow-sm h-full">
+   917→   917→            <CardHeader className="pb-2">
+   918→   918→              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   919→   919→                <TrendingUp className="h-4 w-4 text-emerald-600" />
+   920→   920→                Monthly Cash Flow
+   921→   921→              </CardTitle>
+   922→   922→              <CardDescription>Inflow vs outflow cash movement over time</CardDescription>
+   923→   923→            </CardHeader>
+   924→   924→            <CardContent>
+   925→   925→              <ResponsiveContainer width="100%" height={300}>
+   926→   926→                <AreaChart data={cashFlowData}>
+   927→   927→                  <defs>
+   928→   928→                    <linearGradient id="inflowGrad" x1="0" y1="0" x2="0" y2="1">
+   929→   929→                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+   930→   930→                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+   931→   931→                    </linearGradient>
+   932→   932→                    <linearGradient id="outflowGrad" x1="0" y1="0" x2="0" y2="1">
+   933→   933→                      <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.3} />
+   934→   934→                      <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.02} />
+   935→   935→                    </linearGradient>
+   936→   936→                  </defs>
+   937→   937→                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+   938→   938→                  <XAxis dataKey="month" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
+   939→   939→                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v / 1000}K`} />
+   940→   940→                  <Tooltip content={<ChartTooltip />} />
+   941→   941→                  <Legend verticalAlign="top" align="right" iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+   942→   942→                  <Area type="monotone" dataKey="inflow" name="Inflow" stroke="#10b981" strokeWidth={2.5} fill="url(#inflowGrad)" />
+   943→   943→                  <Area type="monotone" dataKey="outflow" name="Outflow" stroke="#f59e0b" strokeWidth={2.5} fill="url(#outflowGrad)" />
+   944→   944→                </AreaChart>
+   945→   945→              </ResponsiveContainer>
+   946→   946→            </CardContent>
+   947→   947→          </Card>
+   948→   948→        </motion.div>
+   949→   949→      </div>
+   950→   950→
+   951→   951→      {/* Accounts Receivable */}
+   952→   952→      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.25 }}>
+   953→   953→        <Card className="border-0 shadow-sm">
+   954→   954→          <CardHeader className="pb-2">
+   955→   955→            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+   956→   956→              <CalendarDays className="h-4 w-4 text-emerald-600" />
+   957→   957→              Accounts Receivable
+   958→   958→            </CardTitle>
+   959→   959→            <CardDescription>Outstanding and overdue invoices with aging buckets</CardDescription>
+   960→   960→          </CardHeader>
+   961→   961→          <CardContent>
+   962→   962→            <div className="overflow-x-auto">
+   963→   963→            <Table>
+   964→   964→              <TableHeader>
+   965→   965→                <TableRow className="border-gray-100 dark:border-gray-800 hover:bg-transparent">
+   966→   966→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Invoice</TableHead>
+   967→   967→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Company</TableHead>
+   968→   968→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500 text-right">Amount</TableHead>
+   969→   969→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Due Date</TableHead>
+   970→   970→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Status</TableHead>
+   971→   971→                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Aging</TableHead>
+   972→   972→                </TableRow>
+   973→   973→              </TableHeader>
+   974→   974→              <TableBody>
+   975→   975→                {accountsReceivable.map((ar) => (
+   976→   976→                  <TableRow key={ar.invoiceNumber} className="border-gray-50 dark:border-gray-800/50">
+   977→   977→                    <TableCell className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">{ar.invoiceNumber}</TableCell>
+   978→   978→                    <TableCell className="text-gray-600 dark:text-gray-400">{ar.company}</TableCell>
+   979→   979→                    <TableCell className="text-right font-semibold tabular-nums text-gray-900 dark:text-gray-100">${ar.total.toLocaleString()}</TableCell>
+   980→   980→                    <TableCell className="text-gray-500 dark:text-gray-400">{ar.dueDate}</TableCell>
+   981→   981→                    <TableCell>
+   982→   982→                      <Badge variant="secondary" className={cn(
+   983→   983→                        'text-xs font-medium border-0 capitalize',
+   984→   984→                        ar.status === 'overdue' && 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400',
+   985→   985→                        ar.status === 'sent' && 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400',
+   986→   986→                      )}>
+   987→   987→                        {ar.status}
+   988→   988→                      </Badge>
+   989→   989→                    </TableCell>
+   990→   990→                    <TableCell>
+   991→   991→                      <Badge variant="outline" className={cn(
+   992→   992→                        'text-xs font-mono border',
+   993→   993→                        ar.aging === '0-30' && 'border-emerald-300 text-emerald-700 dark:border-emerald-700 dark:text-emerald-400',
+   994→   994→                        ar.aging === '31-60' && 'border-amber-300 text-amber-700 dark:border-amber-700 dark:text-amber-400',
+   995→   995→                        ar.aging === '61-90' && 'border-rose-300 text-rose-700 dark:border-rose-700 dark:text-rose-400',
+   996→   996→                      )}>
+   997→   997→                        {ar.aging} days
+   998→   998→                      </Badge>
+   999→   999→                    </TableCell>
+  1000→  1000→                  </TableRow>
+  1001→  1001→                ))}
+  1002→  1002→              </TableBody>
+  1003→  1003→            </Table>
+  1004→  1004→            </div>
+  1005→  1005→          </CardContent>
+  1006→  1006→        </Card>
+  1007→  1007→      </motion.div>
+  1008→  1008→    </div>
+  1009→  1009→  );
+  1010→  1010→}
+  1011→  1011→
+  1012→  1012→// ─── Main Reports Module ─────────────────────────────────────────────────────
+  1013→  1013→
+  1014→  1014→export default function ReportsModule() {
+  1015→  1015→  const [activeTab, setActiveTab] = useState('overview');
+  1016→  1016→
+  1017→  1017→  return (
+  1018→  1018→    <div className="mx-auto w-full max-w-[1600px] space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+  1019→  1019→      {/* Page Header */}
+  1020→  1020→      <motion.div
+  1021→  1021→        initial={{ opacity: 0, y: -10 }}
+  1022→  1022→        animate={{ opacity: 1, y: 0 }}
+  1023→  1023→        transition={{ duration: 0.4 }}
+  1024→  1024→        className="flex flex-col gap-1"
+  1025→  1025→      >
+  1026→  1026→        <div className="flex items-center gap-3">
+  1027→  1027→          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/25">
+  1028→  1028→            <BarChart3 className="h-5 w-5 text-white" />
+  1029→  1029→          </div>
+  1030→  1030→          <div>
+  1031→  1031→            <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+  1032→  1032→              Reports & Analytics
+  1033→  1033→            </h1>
+  1034→  1034→            <p className="text-sm text-gray-500 dark:text-gray-400">
+  1035→  1035→              Comprehensive business intelligence and performance reporting
+  1036→  1036→            </p>
+  1037→  1037→          </div>
+  1038→  1038→        </div>
+  1039→  1039→      </motion.div>
+  1040→  1040→
+  1041→  1041→      {/* Tabs */}
+  1042→  1042→      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-0">
+  1043→  1043→        <TabsList className="mb-6 w-full justify-start rounded-xl bg-gray-100/80 p-1 dark:bg-gray-800/60">
+  1044→  1044→          <TabsTrigger
+  1045→  1045→            value="overview"
+  1046→  1046→            className="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:dark:bg-gray-900"
+  1047→  1047→          >
+  1048→  1048→            <Activity className="h-4 w-4" />
+  1049→  1049→            Overview
+  1050→  1050→          </TabsTrigger>
+  1051→  1051→          <TabsTrigger
+  1052→  1052→            value="sales"
+  1053→  1053→            className="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:dark:bg-gray-900"
+  1054→  1054→          >
+  1055→  1055→            <TrendingUp className="h-4 w-4" />
+  1056→  1056→            Sales
+  1057→  1057→          </TabsTrigger>
+  1058→  1058→          <TabsTrigger
+  1059→  1059→            value="projects"
+  1060→  1060→            className="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:dark:bg-gray-900"
+  1061→  1061→          >
+  1062→  1062→            <Briefcase className="h-4 w-4" />
+  1063→  1063→            Projects
+  1064→  1064→          </TabsTrigger>
+  1065→  1065→          <TabsTrigger
+  1066→  1066→            value="financial"
+  1067→  1067→            className="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:dark:bg-gray-900"
+  1068→  1068→          >
+  1069→  1069→            <DollarSign className="h-4 w-4" />
+  1070→  1070→            Financial
+  1071→  1071→          </TabsTrigger>
+  1072→  1072→        </TabsList>
+  1073→  1073→
+  1074→  1074→        <AnimatePresence mode="wait">
+  1075→  1075→          <motion.div
+  1076→  1076→            key={activeTab}
+  1077→  1077→            initial={{ opacity: 0, y: 12 }}
+  1078→  1078→            animate={{ opacity: 1, y: 0 }}
+  1079→  1079→            exit={{ opacity: 0, y: -12 }}
+  1080→  1080→            transition={{ duration: 0.25 }}
+  1081→  1081→          >
+  1082→  1082→            <TabsContent value="overview" className="mt-0">
+  1083→  1083→              <OverviewTab />
+  1084→  1084→            </TabsContent>
+  1085→  1085→            <TabsContent value="sales" className="mt-0">
+  1086→  1086→              <SalesTab />
+  1087→  1087→            </TabsContent>
+  1088→  1088→            <TabsContent value="projects" className="mt-0">
+  1089→  1089→              <ProjectTab />
+  1090→  1090→            </TabsContent>
+  1091→  1091→            <TabsContent value="financial" className="mt-0">
+  1092→  1092→              <FinancialTab />
+  1093→  1093→            </TabsContent>
+  1094→  1094→          </motion.div>
+  1095→  1095→        </AnimatePresence>
+  1096→  1096→      </Tabs>
+  1097→  1097→    </div>
+  1098→  1098→  );
+  1099→  1099→}

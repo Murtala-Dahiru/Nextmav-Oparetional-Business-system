@@ -4,7 +4,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -32,7 +32,7 @@ import { toast } from 'sonner';
 
 import {
   leadsByStatus, salesBySource, revenueChart, projects,
-  employees, invoices, expenses, tickets, products,
+  employees, invoices, expenses, tickets, products, opportunities,
 } from '@/lib/mock-data';
 
 // ─── Color Palettes ───────────────────────────────────────────────────────────
@@ -82,13 +82,7 @@ const teamPerformance = employees.slice(0, 5).map((e, i) => ({
 
 // ─── Top Deals (derived) ────────────────────────────────────────────────────
 
-const topDeals = [
-  { name: 'Data Analytics Platform', value: 250000, stage: 'Qualified', closeDate: '2026-10-01', owner: 'Alex Johnson' },
-  { name: 'Platform Integration', value: 200000, stage: 'Negotiation', closeDate: '2026-07-30', owner: 'Alex Johnson' },
-  { name: 'Digital Transformation', value: 150000, stage: 'Contract', closeDate: '2026-07-25', owner: 'David Kim' },
-  { name: 'Cloud Infrastructure', value: 180000, stage: 'Qualified', closeDate: '2026-09-01', owner: 'Alex Johnson' },
-  { name: 'Enterprise License Deal', value: 120000, stage: 'Qualified', closeDate: '2026-08-15', owner: 'Alex Johnson' },
-].sort((a, b) => b.value - a.value);
+const topDeals = opportunities.slice(0, 5).map(o => ({ name: o.name, value: o.value, contact: o.contactName, company: o.companyName, probability: o.probability }));
 
 // ─── Sales by Stage (monthly mock) ───────────────────────────────────────────
 
@@ -111,13 +105,7 @@ const projectStatusData = [
   { name: 'Planning', value: projects.filter((p) => p.status === 'planning').length, color: '#8b5cf6' },
 ];
 
-// ─── Budget vs Actual ────────────────────────────────────────────────────────
 
-const budgetVsActual = projects.slice(0, 5).map((p) => ({
-  name: p.name.length > 18 ? p.name.slice(0, 18) + '…' : p.name,
-  budget: p.budget,
-  actual: Math.round(p.budget * (0.7 + Math.random() * 0.5)),
-}));
 
 // ─── Team Workload (hours) ───────────────────────────────────────────────────
 
@@ -189,12 +177,12 @@ const cashFlowData = [
 function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-gray-200 bg-white/95 px-3 py-2 shadow-lg dark:border-gray-700 dark:bg-gray-900/95">
-      <p className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{label}</p>
+    <div className="rounded-lg border border-border bg-white/95 px-3 py-2 shadow-lg  dark:bg-gray-900/95">
+      <p className="mb-1 text-sm font-semibold text-foreground">{label}</p>
       {payload.map((entry, i) => (
         <p key={i} className="text-xs text-gray-600 dark:text-gray-400">
           <span className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
-          {entry.name}: <span className="font-medium text-gray-900 dark:text-gray-100">${(entry.value / 1000).toFixed(1)}K</span>
+          {entry.name}: <span className="font-medium text-foreground">${(entry.value / 1000).toFixed(1)}K</span>
         </p>
       ))}
     </div>
@@ -204,12 +192,12 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
 function SimpleTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-gray-200 bg-white/95 px-3 py-2 shadow-lg dark:border-gray-700 dark:bg-gray-900/95">
-      <p className="mb-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{label}</p>
+    <div className="rounded-lg border border-border bg-white/95 px-3 py-2 shadow-lg  dark:bg-gray-900/95">
+      <p className="mb-1 text-sm font-semibold text-foreground">{label}</p>
       {payload.map((entry, i) => (
         <p key={i} className="text-xs text-gray-600 dark:text-gray-400">
           <span className="mr-1.5 inline-block h-2 w-2 rounded-full" style={{ backgroundColor: entry.color }} />
-          {entry.name}: <span className="font-medium text-gray-900 dark:text-gray-100">{entry.value}</span>
+          {entry.name}: <span className="font-medium text-foreground">{entry.value}</span>
         </p>
       ))}
     </div>
@@ -222,8 +210,8 @@ function TabHeader({ title, description }: { title: string; description: string 
   return (
     <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
+        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+        <p className="text-sm text-muted-foreground">{description}</p>
       </div>
       <div className="flex gap-2">
         <Button variant="outline" size="sm" className="gap-1.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40" onClick={() => toast.success('PDF report exported')}>
@@ -249,12 +237,12 @@ function MetricCard({ label, value, change, icon: Icon, color, bg, index }: {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: index * 0.06 }}
     >
-      <Card className="relative overflow-hidden border-0 shadow-sm">
+      <Card className="relative overflow-hidden border border-border">
         <CardContent className="p-5">
           <div className="flex items-start justify-between">
             <div className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{label}</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
+              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+              <p className="text-2xl font-bold text-foreground">{value}</p>
               <div className="flex items-center gap-1">
                 {change >= 0 ? (
                   <ArrowUpRight className="h-3.5 w-3.5 text-emerald-500" />
@@ -286,7 +274,7 @@ function LeadConversionFunnel() {
   return (
     <Card className="border-0 shadow-sm">
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+        <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
           <Filter className="h-4 w-4 text-emerald-600" />
           Lead Conversion Funnel
         </CardTitle>
@@ -425,7 +413,7 @@ function OverviewTab() {
         >
           <Card className="border-0 shadow-sm h-full">
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
                 <BarChart3 className="h-4 w-4 text-emerald-600" />
                 Revenue vs Target
               </CardTitle>
@@ -434,7 +422,7 @@ function OverviewTab() {
             <CardContent>
               <ResponsiveContainer width="100%" height={320}>
                 <BarChart data={revenueWithTarget} barGap={4}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="name" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
                   <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v / 1000}K`} />
                   <Tooltip content={<ChartTooltip />} />
@@ -479,7 +467,7 @@ function OverviewTab() {
       >
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
               <Users className="h-4 w-4 text-emerald-600" />
               Team Performance
             </CardTitle>
@@ -488,7 +476,7 @@ function OverviewTab() {
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={teamPerformance} layout="vertical" barSize={18}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" horizontal={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} width={120} />
                 <Tooltip content={<SimpleTooltip />} />
@@ -514,7 +502,7 @@ function SalesTab() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <Card className="border-0 shadow-sm h-full">
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
                 <PieChartIcon className="h-4 w-4 text-emerald-600" />
                 Sales by Source
               </CardTitle>
@@ -550,7 +538,7 @@ function SalesTab() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
           <Card className="border-0 shadow-sm h-full">
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
                 <TrendingUp className="h-4 w-4 text-emerald-600" />
                 Monthly Sales Trend
               </CardTitle>
@@ -559,7 +547,7 @@ function SalesTab() {
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={revenueChart}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="name" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
                   <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v / 1000}K`} />
                   <Tooltip content={<ChartTooltip />} />
@@ -577,7 +565,7 @@ function SalesTab() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.2 }}>
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
               <Target className="h-4 w-4 text-emerald-600" />
               Top Deals
             </CardTitle>
@@ -587,32 +575,27 @@ function SalesTab() {
             <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="border-gray-100 dark:border-gray-800 hover:bg-transparent">
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Deal</TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Value</TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Stage</TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Close Date</TableHead>
-                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-gray-500">Owner</TableHead>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Deal</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Value</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Contact</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Company</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Probability</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {topDeals.map((deal) => (
-                  <TableRow key={deal.name} className="border-gray-50 dark:border-gray-800/50">
-                    <TableCell className="font-medium text-gray-900 dark:text-gray-100">{deal.name}</TableCell>
+                  <TableRow key={deal.name}>
+                    <TableCell className="font-medium text-foreground">{deal.name}</TableCell>
                     <TableCell className="font-semibold text-emerald-600 dark:text-emerald-400">${(deal.value / 1000).toFixed(0)}K</TableCell>
+                    <TableCell className="text-muted-foreground">{deal.contact}</TableCell>
+                    <TableCell className="text-muted-foreground">{deal.company}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className={cn(
-                        'text-xs font-medium border-0',
-                        deal.stage === 'Qualified' && 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-400',
-                        deal.stage === 'Proposal' && 'bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-400',
-                        deal.stage === 'Negotiation' && 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400',
-                        deal.stage === 'Contract' && 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400',
-                      )}>
-                        {deal.stage}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Progress value={deal.probability} className="h-2 w-16" />
+                        <span className="text-xs text-muted-foreground">{deal.probability}%</span>
+                      </div>
                     </TableCell>
-                    <TableCell className="text-gray-500 dark:text-gray-400">{deal.closeDate}</TableCell>
-                    <TableCell className="text-gray-600 dark:text-gray-400">{deal.owner}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -626,7 +609,7 @@ function SalesTab() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.3 }}>
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
               <Activity className="h-4 w-4 text-emerald-600" />
               Sales by Stage
             </CardTitle>
@@ -635,7 +618,7 @@ function SalesTab() {
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={salesByStage} barGap={2}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="month" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
                 <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                 <Tooltip content={<SimpleTooltip />} />
@@ -656,6 +639,15 @@ function SalesTab() {
 // ─── Project Tab ─────────────────────────────────────────────────────────────
 
 function ProjectTab() {
+  const budgetVsActual = useMemo(() =>
+    projects.slice(0, 5).map((p) => ({
+      name: p.name.length > 18 ? p.name.slice(0, 18) + '…' : p.name,
+      budget: p.budget,
+      actual: Math.round(p.budget * (0.7 + Math.random() * 0.5)),
+    })),
+    []
+  );
+
   return (
     <div className="space-y-6">
       <TabHeader title="Project Reports" description="Project health, budgets, and team workload analysis" />
@@ -665,7 +657,7 @@ function ProjectTab() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <Card className="border-0 shadow-sm h-full">
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
                 <PieChartIcon className="h-4 w-4 text-emerald-600" />
                 Project Status Distribution
               </CardTitle>
@@ -701,7 +693,7 @@ function ProjectTab() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
           <Card className="border-0 shadow-sm h-full">
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
                 <DollarSign className="h-4 w-4 text-emerald-600" />
                 Budget vs Actual Spend
               </CardTitle>
@@ -710,7 +702,7 @@ function ProjectTab() {
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={budgetVsActual} barGap={4}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="name" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} angle={-15} textAnchor="end" height={60} />
                   <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v / 1000}K`} />
                   <Tooltip content={<ChartTooltip />} />
@@ -728,7 +720,7 @@ function ProjectTab() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.2 }}>
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
               <CircleDot className="h-4 w-4 text-emerald-600" />
               Task Completion by Project
             </CardTitle>
@@ -742,7 +734,7 @@ function ProjectTab() {
                   <div key={project.id} className="space-y-2">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{project.name}</span>
+                        <span className="text-sm font-medium text-foreground">{project.name}</span>
                         <Badge variant="outline" className={cn(
                           'text-[10px] capitalize border-0',
                           project.status === 'active' && 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400',
@@ -757,7 +749,7 @@ function ProjectTab() {
                         {project.completedTaskCount}/{project.taskCount} tasks ({pct}%)
                       </span>
                     </div>
-                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
+                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${pct}%` }}
@@ -782,7 +774,7 @@ function ProjectTab() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.3 }}>
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
               <Clock className="h-4 w-4 text-emerald-600" />
               Team Workload Distribution
             </CardTitle>
@@ -791,7 +783,7 @@ function ProjectTab() {
           <CardContent>
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={teamWorkload} layout="vertical" barSize={16}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" horizontal={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} unit="h" />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} width={120} />
                 <Tooltip content={<SimpleTooltip />} />
@@ -819,7 +811,7 @@ function FinancialTab() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
               <FileText className="h-4 w-4 text-emerald-600" />
               Profit & Loss Summary
             </CardTitle>
@@ -844,7 +836,7 @@ function FinancialTab() {
                   )}>
                     <TableCell className={cn(
                       'font-medium',
-                      (row.label === 'Gross Profit' || row.label === 'Net Income') ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-gray-900 dark:text-gray-100',
+                      (row.label === 'Gross Profit' || row.label === 'Net Income') ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-foreground',
                       row.label === 'Cost of Goods Sold' && 'pl-4',
                       row.label === 'Operating Expenses' && 'pl-4',
                     )}>
@@ -854,7 +846,7 @@ function FinancialTab() {
                     </TableCell>
                     <TableCell className={cn(
                       'text-right font-semibold tabular-nums',
-                      (row.label === 'Gross Profit' || row.label === 'Net Income') ? 'text-emerald-700 dark:text-emerald-400' : 'text-gray-900 dark:text-gray-100',
+                      (row.label === 'Gross Profit' || row.label === 'Net Income') ? 'text-emerald-700 dark:text-emerald-400' : 'text-foreground',
                     )}>
                       {row.amount}
                     </TableCell>
@@ -887,7 +879,7 @@ function FinancialTab() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
           <Card className="border-0 shadow-sm h-full">
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
                 <Receipt className="h-4 w-4 text-emerald-600" />
                 Expense by Category
               </CardTitle>
@@ -896,7 +888,7 @@ function FinancialTab() {
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={expenseByCategory} barGap={4}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="category" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} angle={-25} textAnchor="end" height={65} />
                   <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${(v / 1000).toFixed(1)}K`} />
                   <Tooltip content={<ChartTooltip />} />
@@ -915,7 +907,7 @@ function FinancialTab() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.15 }}>
           <Card className="border-0 shadow-sm h-full">
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+              <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
                 <TrendingUp className="h-4 w-4 text-emerald-600" />
                 Monthly Cash Flow
               </CardTitle>
@@ -934,7 +926,7 @@ function FinancialTab() {
                       <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" className="dark:stroke-gray-700" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
                   <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v / 1000}K`} />
                   <Tooltip content={<ChartTooltip />} />
@@ -952,7 +944,7 @@ function FinancialTab() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.25 }}>
         <Card className="border-0 shadow-sm">
           <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold text-foreground">
               <CalendarDays className="h-4 w-4 text-emerald-600" />
               Accounts Receivable
             </CardTitle>
@@ -974,10 +966,10 @@ function FinancialTab() {
               <TableBody>
                 {accountsReceivable.map((ar) => (
                   <TableRow key={ar.invoiceNumber} className="border-gray-50 dark:border-gray-800/50">
-                    <TableCell className="font-mono text-sm font-medium text-gray-900 dark:text-gray-100">{ar.invoiceNumber}</TableCell>
+                    <TableCell className="font-mono text-sm font-medium text-foreground">{ar.invoiceNumber}</TableCell>
                     <TableCell className="text-gray-600 dark:text-gray-400">{ar.company}</TableCell>
-                    <TableCell className="text-right font-semibold tabular-nums text-gray-900 dark:text-gray-100">${ar.total.toLocaleString()}</TableCell>
-                    <TableCell className="text-gray-500 dark:text-gray-400">{ar.dueDate}</TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums text-foreground">${ar.total.toLocaleString()}</TableCell>
+                    <TableCell className="text-muted-foreground">{ar.dueDate}</TableCell>
                     <TableCell>
                       <Badge variant="secondary" className={cn(
                         'text-xs font-medium border-0 capitalize',
@@ -1028,10 +1020,10 @@ export default function ReportsModule() {
             <BarChart3 className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
               Reports & Analytics
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-sm text-muted-foreground">
               Comprehensive business intelligence and performance reporting
             </p>
           </div>

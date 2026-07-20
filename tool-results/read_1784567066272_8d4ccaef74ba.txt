@@ -1,0 +1,657 @@
+     1→'use client';
+     2→
+     3→import { clsx, type ClassValue } from 'clsx';
+     4→import { twMerge } from 'tailwind-merge';
+     5→function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
+     6→
+     7→import { useState, useMemo } from 'react';
+     8→import { motion, AnimatePresence } from 'framer-motion';
+     9→import {
+    10→  Search, Plus, FolderOpen, Folder, FileText, ChevronRight,
+    11→  ChevronDown, Grid3X3, List, Clock, Eye, MessageSquare,
+    12→  Tag, BookOpen, MoreHorizontal, Star, StarOff,
+    13→  Heart, Share2, Bookmark, ExternalLink,
+    14→} from 'lucide-react';
+    15→
+    16→import { Button } from '@/components/ui/button';
+    17→import { Badge } from '@/components/ui/badge';
+    18→import { Input } from '@/components/ui/input';
+    19→import { ScrollArea } from '@/components/ui/scroll-area';
+    20→import { Separator } from '@/components/ui/separator';
+    21→import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+    22→import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+    23→import {
+    24→  Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator,
+    25→} from '@/components/ui/breadcrumb';
+    26→import { toast } from 'sonner';
+    27→
+    28→// ─── Types & Data ───────────────────────────────────────────────────────────
+    29→
+    30→interface FolderItem {
+    31→  id: string;
+    32→  name: string;
+    33→  icon: 'folder';
+    34→  children: TreeItem[];
+    35→}
+    36→
+    37→interface DocumentItem {
+    38→  id: string;
+    39→  name: string;
+    40→  icon: 'file';
+    41→  parentFolder: string;
+    42→  lastEdited: string;
+    43→  editedBy: string;
+    44→  tags: string[];
+    45→  content: string;
+    46→  comments: CommentItem[];
+    47→}
+    48→
+    49→interface CommentItem {
+    50→  id: string;
+    51→  author: string;
+    52→  avatar: string;
+    53→  initials: string;
+    54→  time: string;
+    55→  text: string;
+    56→}
+    57→
+    58→type TreeItem = FolderItem | DocumentItem;
+    59→
+    60→const documentContent: Record<string, { content: string; comments: CommentItem[] }> = {
+    61→  'welcome-nexuscorp': {
+    62→    content: 'Welcome to NexusCorp! We are thrilled to have you as part of our growing family. NexusCorp was founded with a singular vision: to empower businesses through innovative technology solutions that drive measurable results and lasting impact.\n\nAt NexusCorp, our core values are the foundation of everything we do. **Innovation First** drives us to push boundaries and explore new frontiers in enterprise technology. **Customer Obsession** means we put our clients at the center of every decision, ensuring our solutions solve real problems and deliver genuine value. **Collaboration** is woven into our DNA — we believe the best ideas emerge when diverse minds work together toward a common goal.\n\nOur mission is simple yet ambitious: to be the most trusted technology partner for growing businesses worldwide. We achieve this by maintaining the highest standards of quality, fostering a culture of continuous learning, and building products that scale with our customers\' ambitions. Every team member, from engineering to sales, plays a vital role in making this vision a reality. Welcome aboard — your journey with NexusCorp starts now.',
+    63→    comments: [
+    64→      { id: 'c1', author: 'Emily Park', avatar: '', initials: 'EP', time: '2 days ago', text: 'Great overview! Should we add a section about our remote work policy?' },
+    65→      { id: 'c2', author: 'John Smith', avatar: '', initials: 'JS', time: '1 day ago', text: 'Added a link to the engineering onboarding doc in the related pages section.' },
+    66→      { id: 'c3', author: 'Lisa Taylor', avatar: '', initials: 'LT', time: '5 hours ago', text: 'Love the emphasis on collaboration. Can we add the company values poster here?' },
+    67→    ],
+    68→  },
+    69→  'company-values': {
+    70→    content: 'Our values define who we are and guide every decision we make. They are not just words on a wall — they are living principles that shape our culture, our products, and our relationships.\n\n**Integrity** is non-negotiable. We do the right thing, even when no one is watching. We are transparent with our clients, honest with each other, and accountable for our actions. Trust is the currency we trade in, and we earn it every day through consistency and authenticity.\n\n**Excellence** is our standard. We set ambitious goals and pursue them with relentless dedication. Whether we are writing a line of code, crafting a proposal, or supporting a customer, we bring our best selves to every interaction. We embrace feedback as a gift and view every challenge as an opportunity to grow.',
+    71→    comments: [
+    72→      { id: 'c4', author: 'Alex Johnson', avatar: '', initials: 'AJ', time: '1 week ago', text: 'These values represent who we aspire to be. Let us hold ourselves accountable.' },
+    73→      { id: 'c5', author: 'Maria Garcia', avatar: '', initials: 'MG', time: '3 days ago', text: 'Suggested adding examples for each value to make them more tangible.' },
+    74→    ],
+    75→  },
+    76→  'code-of-conduct': {
+    77→    content: 'All NexusCorp employees are expected to maintain the highest standards of professional conduct. This code outlines the behaviors and practices that define our workplace culture.\n\nWe are committed to providing a safe, inclusive, and respectful environment for everyone. Harassment, discrimination, and bullying of any kind will not be tolerated. We celebrate diversity and believe that different perspectives make us stronger as a team and as a company.\n\nProfessional development is encouraged and supported. Employees are expected to stay current with industry trends, share knowledge with colleagues, and actively contribute to our learning culture. Regular feedback sessions, both giving and receiving, are an essential part of our growth process.',
+    78→    comments: [
+    79→      { id: 'c6', author: 'Lisa Taylor', avatar: '', initials: 'LT', time: '2 weeks ago', text: 'Updated to reflect the new remote work guidelines.' },
+    80→    ],
+    81→  },
+    82→  'onboarding-guide': {
+    83→    content: 'Welcome to the HR onboarding guide. This document provides a comprehensive overview of the first-week experience for all new hires at NexusCorp.\n\nYour first day will include a welcome session with your team, an IT setup walkthrough, and an introduction to our communication tools. You will receive your badge, laptop, and access credentials during the morning orientation. By the end of day one, you should be set up with email, Slack, and access to all the tools you need.\n\nThroughout your first week, you will have one-on-one meetings with your manager, a buddy from your team, and representatives from HR, IT, and Facilities. These meetings are designed to help you understand your role, our processes, and the resources available to you. Do not hesitate to ask questions — we are here to help you succeed.',
+    84→    comments: [
+    85→      { id: 'c7', author: 'Lisa Taylor', avatar: '', initials: 'LT', time: '1 week ago', text: 'Added the new IT provisioning checklist.' },
+    86→      { id: 'c8', author: 'David Kim', avatar: '', initials: 'DK', time: '4 days ago', text: 'The DevOps onboarding section could use a link to our internal wiki.' },
+    87→    ],
+    88→  },
+    89→  'expense-policy': {
+    90→    content: 'This policy outlines the guidelines for business expense reimbursement at NexusCorp. All employees must adhere to these procedures when incurring expenses on behalf of the company.\n\nPre-approval is required for any expense exceeding $500. Submit your expense request through the Finance portal at least 48 hours before the anticipated expense. All receipts must be uploaded within 5 business days of the expense date. Reimbursements are processed on a bi-weekly cycle and typically appear in your account within 3-5 business days after approval.',
+    91→    comments: [
+    92→      { id: 'c9', author: 'Michael Brown', avatar: '', initials: 'MB', time: '3 days ago', text: 'Updated per diem rates for Q3 2026.' },
+    93→    ],
+    94→  },
+    95→  'sprint-process': {
+    96→    content: 'NexusCorp follows a two-week sprint cycle for all engineering teams. Each sprint begins with a planning session and ends with a review and retrospective.\n\nDuring sprint planning, the team selects items from the product backlog based on priority and capacity. Each task is assigned a story point estimate, and the team commits to a realistic sprint goal. Daily standups are held at 9:30 AM to discuss progress, blockers, and priorities. The sprint review demonstrates completed work to stakeholders, while the retrospective identifies process improvements for the next cycle.',
+    97→    comments: [
+    98→      { id: 'c10', author: 'John Smith', avatar: '', initials: 'JS', time: '1 week ago', text: 'Updated the definition of done to include code review requirements.' },
+    99→      { id: 'c11', author: 'David Kim', avatar: '', initials: 'DK', time: '2 days ago', text: 'Added section on sprint velocity tracking best practices.' },
+   100→    ],
+   101→  },
+   102→  'engineering-docs': {
+   103→    content: 'This section contains engineering-specific documentation including architecture decisions, API references, and deployment guides.\n\nOur technology stack centers on Next.js for frontend applications, Node.js/TypeScript for backend services, and PostgreSQL for data persistence. We use GitHub Actions for CI/CD, AWS for infrastructure, and Datadog for monitoring. All services follow a microservices architecture pattern with clear API boundaries and versioning.\n\nDocumentation is a first-class concern for our engineering team. Every pull request must include relevant documentation updates. We use Markdown for all technical docs and maintain them alongside the codebase. The engineering wiki is the single source of truth for architectural decisions and operational runbooks.',
+   104→    comments: [
+   105→      { id: 'c12', author: 'Sarah Chen', avatar: '', initials: 'SC', time: '5 days ago', text: 'Added the data pipeline architecture diagram.' },
+   106→    ],
+   107→  },
+   108→  'proposal-template': {
+   109→    content: 'This template should be used for all client-facing proposals. It provides a consistent structure that has been refined through dozens of successful engagements.\n\nA strong proposal begins with a clear executive summary that articulates the client\'s challenge and our proposed solution. Follow this with a detailed scope of work, timeline, pricing breakdown, and team composition. Include relevant case studies and testimonials to build credibility. End with clear next steps and a call to action.\n\nAll proposals must be reviewed by the sales manager and at least one subject matter expert before being sent to the client. Use the proposal checklist in the CRM to ensure all sections are complete and approved.',
+   110→    comments: [
+   111→      { id: 'c13', author: 'Robert Williams', avatar: '', initials: 'RW', time: '1 week ago', text: 'Updated pricing section to reflect 2026 rates.' },
+   112→    ],
+   113→  },
+   114→};
+   115→
+   116→const folderTree: FolderItem[] = [
+   117→  {
+   118→    id: 'f-company-handbook',
+   119→    name: 'Company Handbook',
+   120→    icon: 'folder',
+   121→    children: [
+   122→      { id: 'd-welcome', name: 'Welcome to NexusCorp', icon: 'file', parentFolder: 'Company Handbook', lastEdited: 'Jul 15, 2026', editedBy: 'Alex Johnson', tags: ['onboarding', 'company'], content: 'welcome-nexuscorp', comments: [] } as DocumentItem,
+   123→      { id: 'd-values', name: 'Company Values', icon: 'file', parentFolder: 'Company Handbook', lastEdited: 'Jul 12, 2026', editedBy: 'Maria Garcia', tags: ['culture', 'values'], content: 'company-values', comments: [] } as DocumentItem,
+   124→    ],
+   125→  },
+   126→  {
+   127→    id: 'f-policies',
+   128→    name: 'Policies',
+   129→    icon: 'folder',
+   130→    children: [
+   131→      { id: 'd-conduct', name: 'Code of Conduct', icon: 'file', parentFolder: 'Policies', lastEdited: 'Jul 10, 2026', editedBy: 'Lisa Taylor', tags: ['hr', 'compliance'], content: 'code-of-conduct', comments: [] } as DocumentItem,
+   132→      { id: 'd-expense', name: 'Expense Policy', icon: 'file', parentFolder: 'Policies', lastEdited: 'Jul 8, 2026', editedBy: 'Michael Brown', tags: ['finance', 'policy'], content: 'expense-policy', comments: [] } as DocumentItem,
+   133→    ],
+   134→  },
+   135→  {
+   136→    id: 'f-procedures',
+   137→    name: 'Procedures',
+   138→    icon: 'folder',
+   139→    children: [
+   140→      { id: 'd-onboarding', name: 'New Hire Onboarding', icon: 'file', parentFolder: 'Procedures', lastEdited: 'Jul 14, 2026', editedBy: 'Lisa Taylor', tags: ['hr', 'onboarding'], content: 'onboarding-guide', comments: [] } as DocumentItem,
+   141→      { id: 'd-sprint', name: 'Sprint Process', icon: 'file', parentFolder: 'Procedures', lastEdited: 'Jul 11, 2026', editedBy: 'John Smith', tags: ['engineering', 'agile'], content: 'sprint-process', comments: [] } as DocumentItem,
+   142→    ],
+   143→  },
+   144→  {
+   145→    id: 'f-dept-docs',
+   146→    name: 'Department Docs',
+   147→    icon: 'folder',
+   148→    children: [
+   149→      { id: 'd-eng-docs', name: 'Engineering Docs', icon: 'file', parentFolder: 'Department Docs', lastEdited: 'Jul 13, 2026', editedBy: 'David Kim', tags: ['engineering', 'technical'], content: 'engineering-docs', comments: [] } as DocumentItem,
+   150→    ],
+   151→  },
+   152→  {
+   153→    id: 'f-templates',
+   154→    name: 'Templates',
+   155→    icon: 'folder',
+   156→    children: [
+   157→      { id: 'd-proposal', name: 'Proposal Template', icon: 'file', parentFolder: 'Templates', lastEdited: 'Jul 9, 2026', editedBy: 'Robert Williams', tags: ['sales', 'template'], content: 'proposal-template', comments: [] } as DocumentItem,
+   158→    ],
+   159→  },
+   160→];
+   161→
+   162→function getInitials(name: string): string {
+   163→  return name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+   164→}
+   165→
+   166→const avatarColors = [
+   167→  'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500', 'bg-cyan-600',
+   168→  'bg-violet-500', 'bg-rose-500', 'bg-amber-500', 'bg-sky-500',
+   169→];
+   170→
+   171→function getAvatarColor(name: string): string {
+   172→  let hash = 0;
+   173→  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+   174→  return avatarColors[Math.abs(hash) % avatarColors.length];
+   175→}
+   176→
+   177→// ─── Component ──────────────────────────────────────────────────────────────
+   178→
+   179→export default function WorkspaceModule() {
+   180→  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
+   181→    new Set(['f-company-handbook'])
+   182→  );
+   183→  const [activeDocId, setActiveDocId] = useState('d-welcome');
+   184→  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+   185→  const [searchQuery, setSearchQuery] = useState('');
+   186→  const [starred, setStarred] = useState<Set<string>>(new Set(['d-welcome', 'd-values']));
+   187→
+   188→  // Filter folder tree based on search query
+   189→  const filteredTree = useMemo(() => {
+   190→    if (!searchQuery.trim()) return folderTree;
+   191→    const q = searchQuery.toLowerCase();
+   192→    return folderTree
+   193→      .map((folder) => {
+   194→        const filteredChildren = folder.children.filter(
+   195→          (child) =>
+   196→            child.name.toLowerCase().includes(q) ||
+   197→            (child as DocumentItem).tags?.some((tag: string) => tag.toLowerCase().includes(q)),
+   198→        );
+   199→        if (folder.name.toLowerCase().includes(q) || filteredChildren.length > 0) {
+   200→          return { ...folder, children: filteredChildren.length > 0 ? filteredChildren : folder.children };
+   201→        }
+   202→        return null;
+   203→      })
+   204→      .filter((f): f is FolderItem => f !== null);
+   205→  }, [searchQuery]);
+   206→
+   207→  const toggleFolder = (folderId: string) => {
+   208→    setExpandedFolders((prev) => {
+   209→      const next = new Set(prev);
+   210→      if (next.has(folderId)) next.delete(folderId);
+   211→      else next.add(folderId);
+   212→      return next;
+   213→    });
+   214→  };
+   215→
+   216→  const toggleStar = (docId: string) => {
+   217→    setStarred((prev) => {
+   218→      const next = new Set(prev);
+   219→      if (next.has(docId)) next.delete(docId);
+   220→      else next.add(docId);
+   221→      return next;
+   222→    });
+   223→  };
+   224→
+   225→  // Find active document
+   226→  const findDoc = (items: TreeItem[], docId: string): DocumentItem | null => {
+   227→    for (const item of items) {
+   228→      if (item.icon === 'file' && item.id === docId) return item as DocumentItem;
+   229→      if (item.icon === 'folder') {
+   230→        const found = findDoc((item as FolderItem).children, docId);
+   231→        if (found) return found;
+   232→      }
+   233→    }
+   234→    return null;
+   235→  };
+   236→
+   237→  const activeDoc = findDoc(folderTree as unknown as TreeItem[], activeDocId);
+   238→  const docData = activeDoc ? documentContent[activeDoc.content] : null;
+   239→
+   240→  // Render tree item
+   241→  const renderTreeItem = (item: TreeItem, depth: number = 0) => {
+   242→    if (item.icon === 'folder') {
+   243→      const folder = item as FolderItem;
+   244→      const isExpanded = expandedFolders.has(folder.id) || !!searchQuery.trim();
+   245→      return (
+   246→        <div key={folder.id}>
+   247→          <motion.button
+   248→            whileHover={{ x: 2 }}
+   249→            onClick={() => toggleFolder(folder.id)}
+   250→            className={cn(
+   251→              'w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left text-sm transition-colors group',
+   252→              'hover:bg-muted text-muted-foreground hover:text-foreground'
+   253→            )}
+   254→            style={{ paddingLeft: `${depth * 16 + 10}px` }}
+   255→          >
+   256→            {isExpanded ? (
+   257→              <ChevronDown className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/60" />
+   258→            ) : (
+   259→              <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/60" />
+   260→            )}
+   261→            {isExpanded ? (
+   262→              <FolderOpen className="h-4 w-4 flex-shrink-0 text-amber-500" />
+   263→            ) : (
+   264→              <Folder className="h-4 w-4 flex-shrink-0 text-amber-500/70" />
+   265→            )}
+   266→            <span className="font-medium truncate flex-1">{folder.name}</span>
+   267→            <span className="text-[10px] text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">
+   268→              {folder.children.length}
+   269→            </span>
+   270→          </motion.button>
+   271→          <AnimatePresence>
+   272→            {isExpanded && (
+   273→              <motion.div
+   274→                initial={{ height: 0, opacity: 0 }}
+   275→                animate={{ height: 'auto', opacity: 1 }}
+   276→                exit={{ height: 0, opacity: 0 }}
+   277→                transition={{ duration: 0.2 }}
+   278→                className="overflow-hidden"
+   279→              >
+   280→                {folder.children.map((child) => renderTreeItem(child as TreeItem, depth + 1))}
+   281→              </motion.div>
+   282→            )}
+   283→          </AnimatePresence>
+   284→        </div>
+   285→      );
+   286→    }
+   287→
+   288→    // File item
+   289→    const doc = item as DocumentItem;
+   290→    const isActive = doc.id === activeDocId;
+   291→    const isStarredDoc = starred.has(doc.id);
+   292→    return (
+   293→      <motion.button
+   294→        key={doc.id}
+   295→        whileHover={{ x: 2 }}
+   296→        onClick={() => setActiveDocId(doc.id)}
+   297→        className={cn(
+   298→          'w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left text-sm transition-all group',
+   299→          isActive
+   300→            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 font-medium'
+   301→            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+   302→        )}
+   303→        style={{ paddingLeft: `${depth * 16 + 10}px` }}
+   304→      >
+   305→        <span className="w-3.5" />
+   306→        <FileText
+   307→          className={cn(
+   308→            'h-4 w-4 flex-shrink-0',
+   309→            isActive ? 'text-emerald-500' : 'text-slate-400'
+   310→          )}
+   311→        />
+   312→        <span className="truncate flex-1">{doc.name}</span>
+   313→        {isStarredDoc && (
+   314→          <Star className="h-3 w-3 fill-amber-400 text-amber-400 flex-shrink-0" />
+   315→        )}
+   316→      </motion.button>
+   317→    );
+   318→  };
+   319→
+   320→  return (
+   321→    <TooltipProvider delayDuration={200}>
+   322→      <div className="flex h-full bg-background">
+   323→        {/* ── Left Panel: Folder Tree ──────────────────────────────────── */}
+   324→        <motion.div
+   325→          initial={{ x: -20, opacity: 0 }}
+   326→          animate={{ x: 0, opacity: 1 }}
+   327→          transition={{ duration: 0.3 }}
+   328→          className="w-64 flex-shrink-0 border-r border-border bg-muted/30 flex flex-col"
+   329→        >
+   330→          {/* Header */}
+   331→          <div className="p-3 pb-2">
+   332→            <div className="flex items-center justify-between mb-2">
+   333→              <div className="flex items-center gap-2">
+   334→                <BookOpen className="h-4 w-4 text-emerald-500" />
+   335→                <h2 className="font-semibold text-sm text-foreground">Workspace</h2>
+   336→              </div>
+   337→              <Tooltip>
+   338→                <TooltipTrigger asChild>
+   339→                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toast.success('New folder created')}>
+   340→                    <Plus className="h-4 w-4" />
+   341→                  </Button>
+   342→                </TooltipTrigger>
+   343→                <TooltipContent>New folder</TooltipContent>
+   344→              </Tooltip>
+   345→            </div>
+   346→            <div className="relative">
+   347→              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+   348→              <Input
+   349→                placeholder="Search pages..."
+   350→                value={searchQuery}
+   351→                onChange={(e) => setSearchQuery(e.target.value)}
+   352→                className="h-8 pl-8 text-sm bg-background border-border"
+   353→              />
+   354→            </div>
+   355→          </div>
+   356→
+   357→          <Separator className="opacity-50" />
+   358→
+   359→          {/* Tree */}
+   360→          <ScrollArea className="flex-1">
+   361→            <div className="p-2 space-y-0.5">
+   362→              {filteredTree.map((folder) => renderTreeItem(folder as unknown as TreeItem))}
+   363→            </div>
+   364→          </ScrollArea>
+   365→
+   366→          {/* Bottom stats */}
+   367→          <div className="p-3 border-t border-border">
+   368→            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+   369→              <FileText className="h-3.5 w-3.5" />
+   370→              <span>{folderTree.reduce((acc, f) => acc + f.children.length, 0)} pages</span>
+   371→              <span className="text-muted-foreground/40">&bull;</span>
+   372→              <Folder className="h-3.5 w-3.5" />
+   373→              <span>{folderTree.length} folders</span>
+   374→            </div>
+   375→          </div>
+   376→        </motion.div>
+   377→
+   378→        {/* ── Right Panel: Document Viewer ─────────────────────────────── */}
+   379→        <div className="flex-1 flex flex-col min-w-0">
+   380→          {/* Top bar */}
+   381→          <div className="h-14 flex items-center justify-between px-4 border-b border-border bg-background/80 backdrop-blur-sm flex-shrink-0">
+   382→            {/* Breadcrumb */}
+   383→            {activeDoc && (
+   384→              <Breadcrumb className="flex-1 min-w-0">
+   385→                <BreadcrumbList>
+   386→                  <BreadcrumbItem>
+   387→                    <BreadcrumbLink className="text-xs">Workspace</BreadcrumbLink>
+   388→                  </BreadcrumbItem>
+   389→                  <BreadcrumbSeparator />
+   390→                  <BreadcrumbItem>
+   391→                    <BreadcrumbLink className="text-xs">{activeDoc.parentFolder}</BreadcrumbLink>
+   392→                  </BreadcrumbItem>
+   393→                  <BreadcrumbSeparator />
+   394→                  <BreadcrumbItem>
+   395→                    <BreadcrumbPage className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+   396→                      {activeDoc.name}
+   397→                    </BreadcrumbPage>
+   398→                  </BreadcrumbItem>
+   399→                </BreadcrumbList>
+   400→              </Breadcrumb>
+   401→            )}
+   402→            <div className="flex items-center gap-1.5 ml-4 flex-shrink-0">
+   403→              {/* View toggle */}
+   404→              <div className="flex items-center rounded-md border border-border bg-muted/50 p-0.5">
+   405→                <Button
+   406→                  variant="ghost"
+   407→                  size="icon"
+   408→                  onClick={() => setViewMode('list')}
+   409→                  className={cn(
+   410→                    'h-7 w-7',
+   411→                    viewMode === 'list'
+   412→                      ? 'bg-background shadow-sm text-foreground'
+   413→                      : 'text-muted-foreground'
+   414→                  )}
+   415→                >
+   416→                  <List className="h-3.5 w-3.5" />
+   417→                </Button>
+   418→                <Button
+   419→                  variant="ghost"
+   420→                  size="icon"
+   421→                  onClick={() => setViewMode('grid')}
+   422→                  className={cn(
+   423→                    'h-7 w-7',
+   424→                    viewMode === 'grid'
+   425→                      ? 'bg-background shadow-sm text-foreground'
+   426→                      : 'text-muted-foreground'
+   427→                  )}
+   428→                >
+   429→                  <Grid3X3 className="h-3.5 w-3.5" />
+   430→                </Button>
+   431→              </div>
+   432→              <Separator orientation="vertical" className="h-6 mx-1" />
+   433→              <Tooltip>
+   434→                <TooltipTrigger asChild>
+   435→                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => activeDocId && toggleStar(activeDocId)}>
+   436→                    {starred.has(activeDocId) ? (
+   437→                      <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+   438→                    ) : (
+   439→                      <StarOff className="h-4 w-4 text-muted-foreground" />
+   440→                    )}
+   441→                  </Button>
+   442→                </TooltipTrigger>
+   443→                <TooltipContent>{starred.has(activeDocId) ? 'Remove from favorites' : 'Add to favorites'}</TooltipContent>
+   444→              </Tooltip>
+   445→              <Tooltip>
+   446→                <TooltipTrigger asChild>
+   447→                  <Button variant="ghost" size="icon" className="h-8 w-8">
+   448→                    <Share2 className="h-4 w-4 text-muted-foreground" />
+   449→                  </Button>
+   450→                </TooltipTrigger>
+   451→                <TooltipContent>Share</TooltipContent>
+   452→              </Tooltip>
+   453→              <Tooltip>
+   454→                <TooltipTrigger asChild>
+   455→                  <Button variant="ghost" size="icon" className="h-8 w-8">
+   456→                    <Bookmark className="h-4 w-4 text-muted-foreground" />
+   457→                  </Button>
+   458→                </TooltipTrigger>
+   459→                <TooltipContent>Bookmark</TooltipContent>
+   460→              </Tooltip>
+   461→              <Tooltip>
+   462→                <TooltipTrigger asChild>
+   463→                  <Button variant="ghost" size="icon" className="h-8 w-8">
+   464→                    <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+   465→                  </Button>
+   466→                </TooltipTrigger>
+   467→                <TooltipContent>More</TooltipContent>
+   468→              </Tooltip>
+   469→              <Separator orientation="vertical" className="h-6 mx-1" />
+   470→              <Button size="sm" className="h-8 bg-emerald-500 hover:bg-emerald-600 text-white gap-1.5" onClick={() => toast.success('New page created')}>
+   471→                <Plus className="h-3.5 w-3.5" />
+   472→                New Page
+   473→              </Button>
+   474→            </div>
+   475→          </div>
+   476→
+   477→          {/* Document Content */}
+   478→          <ScrollArea className="flex-1">
+   479→            <AnimatePresence mode="wait">
+   480→              {activeDoc && docData ? (
+   481→                <motion.div
+   482→                  key={activeDocId}
+   483→                  initial={{ opacity: 0, y: 10 }}
+   484→                  animate={{ opacity: 1, y: 0 }}
+   485→                  exit={{ opacity: 0, y: -10 }}
+   486→                  transition={{ duration: 0.2 }}
+   487→                  className="max-w-3xl mx-auto p-6 pb-24"
+   488→                >
+   489→                  {/* Title */}
+   490→                  <h1 className="text-2xl font-bold text-foreground mb-2">{activeDoc.name}</h1>
+   491→
+   492→                  {/* Meta info */}
+   493→                  <div className="flex items-center gap-4 mb-6 text-xs text-muted-foreground">
+   494→                    <div className="flex items-center gap-1.5">
+   495→                      <div className="flex items-center gap-1.5">
+   496→                        <Avatar className="h-5 w-5">
+   497→                          <AvatarFallback className={cn('text-white text-[9px] font-medium', getAvatarColor(activeDoc.editedBy))}>
+   498→                            {getInitials(activeDoc.editedBy)}
+   499→                          </AvatarFallback>
+   500→                        </Avatar>
+   501→                        <span className="font-medium text-foreground/80">{activeDoc.editedBy}</span>
+   502→                      </div>
+   503→                    </div>
+   504→                    <div className="flex items-center gap-1">
+   505→                      <Clock className="h-3 w-3" />
+   506→                      <span>Last edited {activeDoc.lastEdited}</span>
+   507→                    </div>
+   508→                    <div className="flex items-center gap-1">
+   509→                      <Eye className="h-3 w-3" />
+   510→                      <span>142 views</span>
+   511→                    </div>
+   512→                  </div>
+   513→
+   514→                  {/* Tags */}
+   515→                  <div className="flex items-center gap-1.5 mb-6">
+   516→                    <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+   517→                    {activeDoc.tags.map((tag) => (
+   518→                      <Badge
+   519→                        key={tag}
+   520→                        variant="secondary"
+   521→                        className="text-[11px] h-5 px-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 cursor-pointer"
+   522→                      >
+   523→                        {tag}
+   524→                      </Badge>
+   525→                    ))}
+   526→                  </div>
+   527→
+   528→                  <Separator className="mb-6" />
+   529→
+   530→                  {/* Content */}
+   531→                  <div className="prose prose-sm prose-slate dark:prose-invert max-w-none">
+   532→                    {docData.content.split('\n\n').map((paragraph, idx) => (
+   533→                      <motion.p
+   534→                        key={idx}
+   535→                        initial={{ opacity: 0, y: 5 }}
+   536→                        animate={{ opacity: 1, y: 0 }}
+   537→                        transition={{ delay: 0.1 * idx, duration: 0.3 }}
+   538→                        className="text-sm leading-relaxed text-foreground/85 mb-4"
+   539→                      >
+   540→                        {paragraph.split('**').map((part, pi) =>
+   541→                          pi % 2 === 1 ? (
+   542→                            <strong key={pi} className="font-semibold text-foreground">{part}</strong>
+   543→                          ) : (
+   544→                            <span key={pi}>{part}</span>
+   545→                          )
+   546→                        )}
+   547→                      </motion.p>
+   548→                    ))}
+   549→                  </div>
+   550→
+   551→                  <Separator className="my-8" />
+   552→
+   553→                  {/* Comments Section */}
+   554→                  <div>
+   555→                    <div className="flex items-center gap-2 mb-4">
+   556→                      <MessageSquare className="h-4 w-4 text-emerald-500" />
+   557→                      <h3 className="font-semibold text-sm text-foreground">Comments</h3>
+   558→                      <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+   559→                        {docData.comments.length}
+   560→                      </Badge>
+   561→                    </div>
+   562→
+   563→                    <div className="space-y-4">
+   564→                      {docData.comments.map((comment, idx) => (
+   565→                        <motion.div
+   566→                          key={comment.id}
+   567→                          initial={{ opacity: 0, x: -10 }}
+   568→                          animate={{ opacity: 1, x: 0 }}
+   569→                          transition={{ delay: 0.1 * idx, duration: 0.25 }}
+   570→                          className="flex gap-3 group"
+   571→                        >
+   572→                          <Avatar className="h-7 w-7 mt-0.5 flex-shrink-0">
+   573→                            <AvatarFallback
+   574→                              className={cn(
+   575→                                'text-white text-[10px] font-medium',
+   576→                                getAvatarColor(comment.author)
+   577→                              )}
+   578→                            >
+   579→                              {comment.initials}
+   580→                            </AvatarFallback>
+   581→                          </Avatar>
+   582→                          <div className="flex-1">
+   583→                            <div className="flex items-center gap-2 mb-1">
+   584→                              <span className="text-sm font-medium text-foreground">{comment.author}</span>
+   585→                              <span className="text-[11px] text-muted-foreground">{comment.time}</span>
+   586→                            </div>
+   587→                            <p className="text-sm text-foreground/80 leading-relaxed">
+   588→                              {comment.text}
+   589→                            </p>
+   590→                            {/* Hover actions */}
+   591→                            <div className="flex items-center gap-3 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+   592→                              <button className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-emerald-500 transition-colors">
+   593→                                <Heart className="h-3 w-3" />
+   594→                                Like
+   595→                              </button>
+   596→                              <button className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-emerald-500 transition-colors">
+   597→                                <MessageSquare className="h-3 w-3" />
+   598→                                Reply
+   599→                              </button>
+   600→                            </div>
+   601→                          </div>
+   602→                        </motion.div>
+   603→                      ))}
+   604→                    </div>
+   605→
+   606→                    {/* Add comment input */}
+   607→                    <div className="mt-6 flex gap-3 items-start">
+   608→                      <Avatar className="h-7 w-7 mt-0.5 flex-shrink-0">
+   609→                        <AvatarFallback className="bg-emerald-600 text-white text-[10px] font-semibold">
+   610→                          AJ
+   611→                        </AvatarFallback>
+   612→                      </Avatar>
+   613→                      <div className="flex-1">
+   614→                        <Input
+   615→                          placeholder="Add a comment..."
+   616→                          className="h-9 text-sm border-border focus-visible:ring-emerald-500/30"
+   617→                        />
+   618→                        <div className="flex items-center justify-between mt-2">
+   619→                          <div className="flex items-center gap-1">
+   620→                            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground">
+   621→                              <ExternalLink className="h-3 w-3" />
+   622→                            </Button>
+   623→                          </div>
+   624→                          <Button
+   625→                            size="sm"
+   626→                            className="h-7 px-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs"
+   627→                            onClick={() => toast.success('Comment posted')}
+   628→                          >
+   629→                            Comment
+   630→                          </Button>
+   631→                        </div>
+   632→                      </div>
+   633→                    </div>
+   634→                  </div>
+   635→                </motion.div>
+   636→              ) : (
+   637→                <motion.div
+   638→                  initial={{ opacity: 0 }}
+   639→                  animate={{ opacity: 1 }}
+   640→                  className="flex flex-col items-center justify-center h-full text-center py-20"
+   641→                >
+   642→                  <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
+   643→                    <FileText className="h-8 w-8 text-muted-foreground" />
+   644→                  </div>
+   645→                  <h3 className="font-semibold text-foreground mb-1">No page selected</h3>
+   646→                  <p className="text-sm text-muted-foreground max-w-sm">
+   647→                    Select a page from the sidebar or create a new one to get started.
+   648→                  </p>
+   649→                </motion.div>
+   650→              )}
+   651→            </AnimatePresence>
+   652→          </ScrollArea>
+   653→        </div>
+   654→      </div>
+   655→    </TooltipProvider>
+   656→  );
+   657→}

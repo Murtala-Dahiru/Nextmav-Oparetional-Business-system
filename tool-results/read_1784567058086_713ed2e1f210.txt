@@ -1,0 +1,586 @@
+     1→'use client';
+     2→
+     3→import { clsx, type ClassValue } from 'clsx';
+     4→import { twMerge } from 'tailwind-merge';
+     5→function cn(...inputs: ClassValue[]) { return twMerge(clsx(inputs)); }
+     6→
+     7→import { useState, useMemo } from 'react';
+     8→import { motion, AnimatePresence } from 'framer-motion';
+     9→import {
+    10→  Users, Search, Shield, Settings, FileText, UserPlus,
+    11→  CheckCircle2, XCircle, Clock, Wifi, WifiOff, Edit3,
+    12→  ChevronDown, ChevronUp, Globe, Phone, Mail, Building2,
+    13→  Palette, Calendar, Lock, Eye, Download, Plus, Upload,
+    14→  Monitor, Key, UserCheck, UserX, Trash2, LogIn,
+    15→  ArrowUpDown, BadgeCheck, AlertCircle, MapPin, DollarSign,
+    16→} from 'lucide-react';
+    17→
+    18→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+    19→import {
+    20→  Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
+    21→} from '@/components/ui/table';
+    22→import { Badge } from '@/components/ui/badge';
+    23→import { Button } from '@/components/ui/button';
+    24→import { Input } from '@/components/ui/input';
+    25→import { Label } from '@/components/ui/label';
+    26→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    27→import {
+    28→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    29→} from '@/components/ui/select';
+    30→import { Separator } from '@/components/ui/separator';
+    31→import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+    32→
+    33→import { users, roles, companyInfo } from '@/lib/mock-data';
+    34→import type { UserItem, RoleItem } from '@/types';
+    35→import { toast } from 'sonner';
+    36→
+    37→/* ---- helpers ---- */
+    38→
+    39→function getInitials(firstName: string, lastName: string) {
+    40→  return `${firstName[0]}${lastName[0]}`;
+    41→}
+    42→
+    43→function formatLastSeen(d: string) {
+    44→  const date = new Date(d);
+    45→  const now = new Date('2026-07-20T11:00:00Z');
+    46→  const diffMs = now.getTime() - date.getTime();
+    47→  const diffMins = Math.floor(diffMs / 60000);
+    48→  if (diffMins < 60) return `${diffMins}m ago`;
+    49→  const diffHrs = Math.floor(diffMins / 60);
+    50→  if (diffHrs < 24) return `${diffHrs}h ago`;
+    51→  const diffDays = Math.floor(diffHrs / 24);
+    52→  return `${diffDays}d ago`;
+    53→}
+    54→
+    55→const roleColors: Record<string, string> = {
+    56→  'Super Admin': 'bg-red-100 text-red-700 border border-red-200',
+    57→  Administrator: 'bg-purple-100 text-purple-700 border border-purple-200',
+    58→  Manager: 'bg-teal-100 text-teal-700 border border-teal-200',
+    59→  Sales: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+    60→  HR: 'bg-teal-100 text-teal-700 border border-teal-200',
+    61→  Finance: 'bg-amber-100 text-amber-700 border border-amber-200',
+    62→  Employee: 'bg-gray-100 text-muted-foreground border border-border',
+    63→  Client: 'bg-cyan-100 text-cyan-700 border border-cyan-200',
+    64→};
+    65→
+    66→/* ---- audit log mock data ---- */
+    67→
+    68→const auditLog = [
+    69→  { id: 'al1', timestamp: '2026-07-20T10:32:00Z', userName: 'Alex Johnson', action: 'Login', module: 'Auth', entity: 'Session', ip: '192.168.1.101' },
+    70→  { id: 'al2', timestamp: '2026-07-20T10:15:00Z', userName: 'Maria Garcia', action: 'Updated', module: 'Projects', entity: 'CRM Implementation', ip: '192.168.1.145' },
+    71→  { id: 'al3', timestamp: '2026-07-20T09:45:00Z', userName: 'John Smith', action: 'Created', module: 'Support', entity: 'TKT-445', ip: '192.168.1.203' },
+    72→  { id: 'al4', timestamp: '2026-07-20T09:30:00Z', userName: 'David Kim', action: 'Deleted', module: 'Files', entity: 'old-backup.zip', ip: '192.168.1.204' },
+    73→  { id: 'al5', timestamp: '2026-07-20T09:00:00Z', userName: 'Lisa Taylor', action: 'Created', module: 'HR', entity: 'Amanda Wilson', ip: '192.168.1.108' },
+    74→  { id: 'al6', timestamp: '2026-07-20T08:30:00Z', userName: 'Michael Brown', action: 'Export', module: 'Finance', entity: 'Q3 Report', ip: '192.168.1.109' },
+    75→  { id: 'al7', timestamp: '2026-07-20T08:00:00Z', userName: 'Robert Williams', action: 'Updated', module: 'CRM', entity: 'FusionWorks Deal', ip: '10.0.0.55' },
+    76→  { id: 'al8', timestamp: '2026-07-20T07:45:00Z', userName: 'Jennifer Davis', action: 'Login', module: 'Auth', entity: 'Session', ip: '192.168.1.110' },
+    77→];
+    78→
+    79→const actionStyles: Record<string, string> = {
+    80→  Created: 'bg-emerald-100 text-emerald-700',
+    81→  Updated: 'bg-teal-100 text-teal-700',
+    82→  Deleted: 'bg-red-100 text-red-700',
+    83→  Login: 'bg-gray-100 text-muted-foreground',
+    84→  Export: 'bg-amber-100 text-amber-700',
+    85→};
+    86→
+    87→const actionIcons: Record<string, React.ElementType> = {
+    88→  Created: UserPlus,
+    89→  Updated: Edit3,
+    90→  Deleted: Trash2,
+    91→  Login: LogIn,
+    92→  Export: Download,
+    93→};
+    94→
+    95→/* ---- permission matrix columns ---- */
+    96→
+    97→const permissionModules = ['Dashboard', 'CRM', 'Projects', 'HR', 'Finance', 'Admin', 'Support', 'Communication'];
+    98→const permissionLevels = ['view', 'create', 'edit', 'delete', 'export', 'approve'];
+    99→
+   100→/* ---- animation variants ---- */
+   101→
+   102→const containerVariants = {
+   103→  hidden: { opacity: 0 },
+   104→  visible: { opacity: 1, transition: { staggerChildren: 0.04 } },
+   105→};
+   106→
+   107→const itemVariants = {
+   108→  hidden: { opacity: 0, y: 10 },
+   109→  visible: { opacity: 1, y: 0, transition: { duration: 0.25 } },
+   110→};
+   111→
+   112→/* ---- main component ---- */
+   113→
+   114→export default function AdminModule() {
+   115→  const [userSearch, setUserSearch] = useState('');
+   116→  const [roleFilter, setRoleFilter] = useState('all');
+   117→  const [expandedRole, setExpandedRole] = useState<string | null>(null);
+   118→
+   119→  const roleNames = useMemo(() => {
+   120→    return ['all', ...new Set(users.map(u => u.roleName))];
+   121→  }, []);
+   122→
+   123→  const filteredUsers = useMemo(() => {
+   124→    return users.filter(u => {
+   125→      if (roleFilter !== 'all' && u.roleName !== roleFilter) return false;
+   126→      if (userSearch) {
+   127→        const q = userSearch.toLowerCase();
+   128→        return (
+   129→          u.firstName.toLowerCase().includes(q) ||
+   130→          u.lastName.toLowerCase().includes(q) ||
+   131→          u.email.toLowerCase().includes(q) ||
+   132→          u.department.toLowerCase().includes(q)
+   133→        );
+   134→      }
+   135→      return true;
+   136→    });
+   137→  }, [roleFilter, userSearch]);
+   138→
+   139→  const onlineCount = 12;
+   140→  const activeCount = users.filter(u => u.isActive).length;
+   141→
+   142→  return (
+   143→    <motion.div
+   144→      className="space-y-6 p-6"
+   145→      variants={containerVariants}
+   146→      initial="hidden"
+   147→      animate="visible"
+   148→    >
+   149→      {/* Header */}
+   150→      <div className="flex items-center justify-between">
+   151→        <div>
+   152→          <h1 className="text-2xl font-bold text-foreground tracking-tight">Administration</h1>
+   153→          <p className="text-sm text-muted-foreground mt-1">Manage users, roles, settings, and system activity</p>
+   154→        </div>
+   155→        <div className="flex gap-2">
+   156→          <Button variant="outline" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => toast.success('Data exported')}>
+   157→            <Download className="mr-2 h-4 w-4" />
+   158→            Export
+   159→          </Button>
+   160→          <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => toast.success('New user form opened')}>
+   161→            <Plus className="mr-2 h-4 w-4" />
+   162→            Add User
+   163→          </Button>
+   164→        </div>
+   165→      </div>
+   166→
+   167→      <Tabs defaultValue="users" className="space-y-6">
+   168→        <TabsList className="bg-background border border-border p-1 flex-wrap h-auto">
+   169→          <TabsTrigger value="users" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+   170→            <Users className="mr-2 h-4 w-4" />
+   171→            Users
+   172→          </TabsTrigger>
+   173→          <TabsTrigger value="roles" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+   174→            <Shield className="mr-2 h-4 w-4" />
+   175→            Roles &amp; Permissions
+   176→          </TabsTrigger>
+   177→          <TabsTrigger value="settings" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+   178→            <Settings className="mr-2 h-4 w-4" />
+   179→            Company Settings
+   180→          </TabsTrigger>
+   181→          <TabsTrigger value="audit" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white">
+   182→            <FileText className="mr-2 h-4 w-4" />
+   183→            Audit Log
+   184→          </TabsTrigger>
+   185→        </TabsList>
+   186→
+   187→        {/* ===== TAB 1: USERS ===== */}
+   188→        <TabsContent value="users" className="space-y-6">
+   189→          {/* Summary Cards */}
+   190→          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+   191→            <motion.div variants={itemVariants}>
+   192→              <Card className="border border-border">
+   193→                <CardContent className="p-4">
+   194→                  <div className="flex items-center gap-3">
+   195→                    <div className="p-2 rounded-lg bg-teal-50"><Users className="h-5 w-5 text-teal-600" /></div>
+   196→                    <div>
+   197→                      <p className="text-2xl font-bold text-foreground">48</p>
+   198→                      <p className="text-xs text-muted-foreground">Total Users</p>
+   199→                    </div>
+   200→                  </div>
+   201→                </CardContent>
+   202→              </Card>
+   203→            </motion.div>
+   204→            <motion.div variants={itemVariants}>
+   205→              <Card className="border border-border">
+   206→                <CardContent className="p-4">
+   207→                  <div className="flex items-center gap-3">
+   208→                    <div className="p-2 rounded-lg bg-emerald-50"><UserCheck className="h-5 w-5 text-emerald-600" /></div>
+   209→                    <div>
+   210→                      <p className="text-2xl font-bold text-foreground">{activeCount}</p>
+   211→                      <p className="text-xs text-muted-foreground">Active</p>
+   212→                    </div>
+   213→                  </div>
+   214→                </CardContent>
+   215→              </Card>
+   216→            </motion.div>
+   217→            <motion.div variants={itemVariants}>
+   218→              <Card className="border border-border">
+   219→                <CardContent className="p-4">
+   220→                  <div className="flex items-center gap-3">
+   221→                    <div className="p-2 rounded-lg bg-red-50"><UserX className="h-5 w-5 text-red-500" /></div>
+   222→                    <div>
+   223→                      <p className="text-2xl font-bold text-foreground">3</p>
+   224→                      <p className="text-xs text-muted-foreground">Inactive</p>
+   225→                    </div>
+   226→                  </div>
+   227→                </CardContent>
+   228→              </Card>
+   229→            </motion.div>
+   230→            <motion.div variants={itemVariants}>
+   231→              <Card className="border border-border">
+   232→                <CardContent className="p-4">
+   233→                  <div className="flex items-center gap-3">
+   234→                    <div className="p-2 rounded-lg bg-emerald-50"><Wifi className="h-5 w-5 text-emerald-600" /></div>
+   235→                    <div>
+   236→                      <p className="text-2xl font-bold text-foreground">{onlineCount}</p>
+   237→                      <p className="text-xs text-muted-foreground">Online Now</p>
+   238→                    </div>
+   239→                  </div>
+   240→                </CardContent>
+   241→              </Card>
+   242→            </motion.div>
+   243→          </div>
+   244→
+   245→          {/* Filters */}
+   246→          <Card className="border border-border">
+   247→            <CardContent className="p-4">
+   248→              <div className="flex flex-col sm:flex-row gap-3">
+   249→                <div className="relative flex-1">
+   250→                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+   251→                  <Input placeholder="Search users..." value={userSearch} onChange={e => setUserSearch(e.target.value)} className="pl-9" />
+   252→                </div>
+   253→                <Select value={roleFilter} onValueChange={setRoleFilter}>
+   254→                  <SelectTrigger className="w-[180px]">
+   255→                    <Shield className="mr-2 h-4 w-4 text-muted-foreground" />
+   256→                    <SelectValue placeholder="Role" />
+   257→                  </SelectTrigger>
+   258→                  <SelectContent>
+   259→                    {roleNames.map(r => (
+   260→                      <SelectItem key={r} value={r}>{r === 'all' ? 'All Roles' : r}</SelectItem>
+   261→                    ))}
+   262→                  </SelectContent>
+   263→                </Select>
+   264→              </div>
+   265→            </CardContent>
+   266→          </Card>
+   267→
+   268→          {/* Users Table */}
+   269→          <Card className="border border-border">
+   270→            <CardContent className="p-0 overflow-x-auto">
+   271→              <Table>
+   272→                <TableHeader>
+   273→                  <TableRow className="bg-muted/40">
+   274→                    <TableHead className="font-semibold text-muted-foreground">User</TableHead>
+   275→                    <TableHead className="font-semibold text-muted-foreground">Email</TableHead>
+   276→                    <TableHead className="font-semibold text-muted-foreground">Phone</TableHead>
+   277→                    <TableHead className="font-semibold text-muted-foreground">Job Title</TableHead>
+   278→                    <TableHead className="font-semibold text-muted-foreground">Department</TableHead>
+   279→                    <TableHead className="font-semibold text-muted-foreground">Role</TableHead>
+   280→                    <TableHead className="font-semibold text-muted-foreground">Status</TableHead>
+   281→                    <TableHead className="font-semibold text-muted-foreground">Last Seen</TableHead>
+   282→                  </TableRow>
+   283→                </TableHeader>
+   284→                <TableBody>
+   285→                  {filteredUsers.map(user => (
+   286→                    <TableRow key={user.id} className="hover:bg-emerald-50/30 transition-colors">
+   287→                      <TableCell>
+   288→                        <div className="flex items-center gap-3">
+   289→                          <Avatar className="h-8 w-8">
+   290→                            <AvatarFallback className={cn(
+   291→                              'text-xs font-semibold text-white',
+   292→                              user.isActive ? 'bg-emerald-600' : 'bg-muted',
+   293→                            )}>
+   294→                              {getInitials(user.firstName, user.lastName)}
+   295→                            </AvatarFallback>
+   296→                          </Avatar>
+   297→                          <span className="font-medium text-foreground">
+   298→                            {user.firstName} {user.lastName}
+   299→                          </span>
+   300→                        </div>
+   301→                      </TableCell>
+   302→                      <TableCell className="text-sm text-muted-foreground">{user.email}</TableCell>
+   303→                      <TableCell className="text-sm text-muted-foreground">{user.phone}</TableCell>
+   304→                      <TableCell className="text-sm text-foreground">{user.jobTitle}</TableCell>
+   305→                      <TableCell className="text-sm text-muted-foreground">{user.department}</TableCell>
+   306→                      <TableCell>
+   307→                        <Badge variant="outline" className={cn('text-xs font-medium', roleColors[user.roleName] || 'bg-gray-100 text-muted-foreground border border-border')}>
+   308→                          {user.roleName}
+   309→                        </Badge>
+   310→                      </TableCell>
+   311→                      <TableCell>
+   312→                        <Badge className={cn('text-xs font-medium', user.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-muted-foreground')}>
+   313→                          {user.isActive ? 'Active' : 'Inactive'}
+   314→                        </Badge>
+   315→                      </TableCell>
+   316→                      <TableCell className="text-sm text-muted-foreground">{formatLastSeen(user.lastSeen)}</TableCell>
+   317→                    </TableRow>
+   318→                  ))}
+   319→                </TableBody>
+   320→              </Table>
+   321→            </CardContent>
+   322→          </Card>
+   323→        </TabsContent>
+   324→
+   325→        {/* ===== TAB 2: ROLES & PERMISSIONS ===== */}
+   326→        <TabsContent value="roles" className="space-y-4">
+   327→          <div className="flex items-center justify-between">
+   328→            <p className="text-sm text-muted-foreground">{roles.length} roles configured</p>
+   329→            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => toast.success('New role created')}>
+   330→              <Plus className="mr-2 h-4 w-4" />
+   331→              Create Role
+   332→            </Button>
+   333→          </div>
+   334→
+   335→          <div className="space-y-3">
+   336→            {roles.map((role, i) => {
+   337→              const isExpanded = expandedRole === role.id;
+   338→              const permissionEntries = Object.entries(role.permissions);
+   339→              return (
+   340→                <motion.div key={role.id} variants={itemVariants} initial="hidden" animate="visible" transition={{ delay: i * 0.04 }}>
+   341→                  <Card className="border border-border hover:border-emerald-200 transition-colors overflow-hidden">
+   342→                    <button
+   343→                      className="w-full text-left p-5 flex items-center justify-between bg-transparent border-0 cursor-pointer"
+   344→                      onClick={() => setExpandedRole(isExpanded ? null : role.id)}
+   345→                    >
+   346→                      <div className="flex items-center gap-4 flex-1">
+   347→                        <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600">
+   348→                          <Key className="h-5 w-5" />
+   349→                        </div>
+   350→                        <div className="flex-1">
+   351→                          <div className="flex items-center gap-2">
+   352→                            <h3 className="font-semibold text-foreground">{role.name}</h3>
+   353→                            {role.isSystem && (
+   354→                              <Badge className="bg-teal-100 text-teal-700 text-xs">System</Badge>
+   355→                            )}
+   356→                          </div>
+   357→                          <p className="text-sm text-muted-foreground mt-0.5">{role.description}</p>
+   358→                          <div className="flex items-center gap-3 mt-2">
+   359→                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+   360→                              <Users className="h-3 w-3" />{role.userCount} users
+   361→                            </span>
+   362→                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+   363→                              <Shield className="h-3 w-3" />{permissionEntries.length} modules
+   364→                            </span>
+   365→                          </div>
+   366→                        </div>
+   367→                      </div>
+   368→                      {isExpanded ? (
+   369→                        <ChevronUp className="h-5 w-5 text-muted-foreground" />
+   370→                      ) : (
+   371→                        <ChevronDown className="h-5 w-5 text-muted-foreground" />
+   372→                      )}
+   373→                    </button>
+   374→
+   375→                    <AnimatePresence>
+   376→                      {isExpanded && (
+   377→                        <motion.div
+   378→                          initial={{ height: 0, opacity: 0 }}
+   379→                          animate={{ height: 'auto', opacity: 1 }}
+   380→                          exit={{ height: 0, opacity: 0 }}
+   381→                          transition={{ duration: 0.2 }}
+   382→                          className="overflow-hidden"
+   383→                        >
+   384→                          <Separator />
+   385→                          <div className="p-5">
+   386→                            <p className="text-sm font-medium text-foreground mb-3">Permission Matrix</p>
+   387→                            <div className="overflow-x-auto">
+   388→                              <Table>
+   389→                                <TableHeader>
+   390→                                  <TableRow className="bg-muted/40">
+   391→                                    <TableHead className="font-semibold text-muted-foreground">Module</TableHead>
+   392→                                    {permissionLevels.map(level => (
+   393→                                      <TableHead key={level} className="font-semibold text-muted-foreground text-center capitalize text-xs">
+   394→                                        {level}
+   395→                                      </TableHead>
+   396→                                    ))}
+   397→                                  </TableRow>
+   398→                                </TableHeader>
+   399→                                <TableBody>
+   400→                                  {permissionModules.map(mod => {
+   401→                                    const modKey = mod.toLowerCase();
+   402→                                    const perms = role.permissions[modKey] || [];
+   403→                                    return (
+   404→                                      <TableRow key={mod}>
+   405→                                        <TableCell className="font-medium text-sm text-foreground">{mod}</TableCell>
+   406→                                        {permissionLevels.map(level => (
+   407→                                          <TableCell key={level} className="text-center">
+   408→                                            {perms.includes(level) ? (
+   409→                                              <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />
+   410→                                            ) : (
+   411→                                              <XCircle className="h-4 w-4 text-muted-foreground/40 mx-auto" />
+   412→                                            )}
+   413→                                          </TableCell>
+   414→                                        ))}
+   415→                                      </TableRow>
+   416→                                    );
+   417→                                  })}
+   418→                                </TableBody>
+   419→                              </Table>
+   420→                            </div>
+   421→                          </div>
+   422→                        </motion.div>
+   423→                      )}
+   424→                    </AnimatePresence>
+   425→                  </Card>
+   426→                </motion.div>
+   427→              );
+   428→            })}
+   429→          </div>
+   430→        </TabsContent>
+   431→
+   432→        {/* ===== TAB 3: COMPANY SETTINGS ===== */}
+   433→        <TabsContent value="settings" className="space-y-6">
+   434→          {/* General */}
+   435→          <Card className="border border-border">
+   436→            <CardHeader className="pb-3">
+   437→              <div className="flex items-center justify-between">
+   438→                <div className="flex items-center gap-2">
+   439→                  <Building2 className="h-5 w-5 text-emerald-600" />
+   440→                  <CardTitle className="text-base">General Information</CardTitle>
+   441→                </div>
+   442→                <Button variant="outline" size="sm" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => toast.info('Editing company information')}>
+   443→                  <Edit3 className="mr-2 h-3.5 w-3.5" />Edit
+   444→                </Button>
+   445→              </div>
+   446→            </CardHeader>
+   447→            <CardContent>
+   448→              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+   449→                <SettingsField label="Company Name" value={companyInfo.name} />
+   450→                <SettingsField label="Industry" value={companyInfo.industry} />
+   451→                <SettingsField label="Website" value={companyInfo.website} icon={Globe} />
+   452→                <SettingsField label="Phone" value="+1 555-1000" icon={Phone} />
+   453→                <SettingsField label="Email" value="info@nexuscorp.com" icon={Mail} />
+   454→                <SettingsField label="Address" value="450 Tech Blvd, San Francisco, CA 94105" icon={MapPin} />
+   455→              </div>
+   456→            </CardContent>
+   457→          </Card>
+   458→
+   459→          {/* Preferences */}
+   460→          <Card className="border border-border">
+   461→            <CardHeader className="pb-3">
+   462→              <div className="flex items-center justify-between">
+   463→                <div className="flex items-center gap-2">
+   464→                  <Settings className="h-5 w-5 text-teal-600" />
+   465→                  <CardTitle className="text-base">Preferences</CardTitle>
+   466→                </div>
+   467→                <Button variant="outline" size="sm" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => toast.info('Editing preferences')}>
+   468→                  <Edit3 className="mr-2 h-3.5 w-3.5" />Edit
+   469→                </Button>
+   470→              </div>
+   471→            </CardHeader>
+   472→            <CardContent>
+   473→              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+   474→                <SettingsField label="Currency" value="USD ($)" icon={DollarSign} />
+   475→                <SettingsField label="Timezone" value="America/Los_Angeles (PST)" />
+   476→                <SettingsField label="Language" value="English (US)" />
+   477→                <SettingsField label="Date Format" value="MM/DD/YYYY" icon={Calendar} />
+   478→              </div>
+   479→            </CardContent>
+   480→          </Card>
+   481→
+   482→          {/* Branding */}
+   483→          <Card className="border border-border">
+   484→            <CardHeader className="pb-3">
+   485→              <div className="flex items-center justify-between">
+   486→                <div className="flex items-center gap-2">
+   487→                  <Palette className="h-5 w-5 text-emerald-600" />
+   488→                  <CardTitle className="text-base">Branding</CardTitle>
+   489→                </div>
+   490→                <Button variant="outline" size="sm" className="border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => toast.info('Editing branding')}>
+   491→                  <Edit3 className="mr-2 h-3.5 w-3.5" />Edit
+   492→                </Button>
+   493→              </div>
+   494→            </CardHeader>
+   495→            <CardContent>
+   496→              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+   497→                <div className="space-y-2">
+   498→                  <Label className="text-sm font-medium text-muted-foreground">Company Logo</Label>
+   499→                  <div className="border-2 border-dashed border-border rounded-lg p-6 flex flex-col items-center gap-2 bg-muted/50 hover:bg-emerald-50/30 hover:border-emerald-300 transition-colors cursor-pointer">
+   500→                    <Upload className="h-8 w-8 text-muted-foreground" />
+   501→                    <p className="text-xs text-muted-foreground">Click to upload</p>
+   502→                  </div>
+   503→                </div>
+   504→                <SettingsField label="Primary Color" value="#059669">
+   505→                  <div className="h-5 w-5 rounded-full bg-emerald-600 border border-border" />
+   506→                </SettingsField>
+   507→                <SettingsField label="Accent Color" value="#0D9488">
+   508→                  <div className="h-5 w-5 rounded-full bg-teal-600 border border-border" />
+   509→                </SettingsField>
+   510→              </div>
+   511→            </CardContent>
+   512→          </Card>
+   513→        </TabsContent>
+   514→
+   515→        {/* ===== TAB 4: AUDIT LOG ===== */}
+   516→        <TabsContent value="audit" className="space-y-6">
+   517→          <div className="flex items-center gap-3">
+   518→            <div className="p-2 rounded-lg bg-emerald-50">
+   519→              <FileText className="h-5 w-5 text-emerald-600" />
+   520→            </div>
+   521→            <div>
+   522→              <h3 className="font-semibold text-foreground">Recent Activity</h3>
+   523→              <p className="text-sm text-muted-foreground">Showing latest system events and user actions</p>
+   524→            </div>
+   525→          </div>
+   526→
+   527→          <Card className="border border-border">
+   528→            <CardContent className="p-0 overflow-x-auto">
+   529→              <Table>
+   530→                <TableHeader>
+   531→                  <TableRow className="bg-muted/40">
+   532→                    <TableHead className="font-semibold text-muted-foreground">Timestamp</TableHead>
+   533→                    <TableHead className="font-semibold text-muted-foreground">User</TableHead>
+   534→                    <TableHead className="font-semibold text-muted-foreground">Action</TableHead>
+   535→                    <TableHead className="font-semibold text-muted-foreground">Module</TableHead>
+   536→                    <TableHead className="font-semibold text-muted-foreground">Entity</TableHead>
+   537→                    <TableHead className="font-semibold text-muted-foreground">IP Address</TableHead>
+   538→                  </TableRow>
+   539→                </TableHeader>
+   540→                <TableBody>
+   541→                  {auditLog.map(entry => {
+   542→                    const ActionIcon = actionIcons[entry.action] || Eye;
+   543→                    return (
+   544→                      <TableRow key={entry.id} className="hover:bg-emerald-50/30 transition-colors">
+   545→                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+   546→                          {new Date(entry.timestamp).toLocaleString('en-US', {
+   547→                            month: 'short', day: 'numeric',
+   548→                            hour: '2-digit', minute: '2-digit',
+   549→                          })}
+   550→                        </TableCell>
+   551→                        <TableCell className="font-medium text-foreground text-sm">{entry.userName}</TableCell>
+   552→                        <TableCell>
+   553→                          <Badge className={cn('text-xs font-medium', actionStyles[entry.action])}>
+   554→                            <ActionIcon className="mr-1 h-3 w-3" />
+   555→                            {entry.action}
+   556→                          </Badge>
+   557→                        </TableCell>
+   558→                        <TableCell className="text-sm text-muted-foreground">{entry.module}</TableCell>
+   559→                        <TableCell className="text-sm text-foreground font-medium">{entry.entity}</TableCell>
+   560→                        <TableCell className="font-mono text-xs text-muted-foreground">{entry.ip}</TableCell>
+   561→                      </TableRow>
+   562→                    );
+   563→                  })}
+   564→                </TableBody>
+   565→              </Table>
+   566→            </CardContent>
+   567→          </Card>
+   568→        </TabsContent>
+   569→      </Tabs>
+   570→    </motion.div>
+   571→  );
+   572→}
+   573→
+   574→/* ---- sub-components ---- */
+   575→
+   576→function SettingsField({ label, value, icon: Icon, children }: { label: string; value: string; icon?: React.ElementType; children?: React.ReactNode }) {
+   577→  return (
+   578→    <div className="space-y-1">
+   579→      <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</Label>
+   580→      <div className="flex items-center gap-2 text-sm text-foreground font-medium py-1">
+   581→        {children || (Icon ? <Icon className="h-4 w-4 text-muted-foreground shrink-0" /> : null)}
+   582→        {value}
+   583→      </div>
+   584→    </div>
+   585→  );
+   586→}

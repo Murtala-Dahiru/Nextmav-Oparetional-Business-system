@@ -10,7 +10,7 @@ import {
   Plus, Search, DollarSign, Target, TrendingUp, Users,
   Building2, Handshake, Mail, Phone, Globe, MapPin,
   CalendarDays, UserCircle, ChevronRight, ArrowUpDown,
-  Briefcase, Sparkles, CircleDot, GripVertical, BarChart3,
+  Briefcase, GripVertical, BarChart3,
 } from 'lucide-react';
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -119,6 +119,10 @@ function OpportunityCard({ opp, index }: { opp: OpportunityItem; index: number }
       transition={{ duration: 0.25, delay: index * 0.05 }}
       whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
       className="bg-card border border-border/70 rounded-lg p-3.5 cursor-pointer transition-colors hover:border-teal-300/60 dark:hover:border-teal-600/50"
+      onClick={() => toast.info('Opening opportunity details')}
+      role="button"
+      tabIndex={0}
+      aria-label={`Opportunity: ${opp.name}`}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <p className="text-sm font-medium leading-tight text-foreground">{opp.name}</p>
@@ -375,6 +379,10 @@ function ContactsView() {
             key={contact.id}
             whileHover={{ y: -4, boxShadow: '0 12px 28px rgba(0,0,0,0.08)' }}
             className="bg-card border border-border rounded-xl p-5 transition-colors hover:border-teal-300/50 dark:hover:border-teal-600/40 cursor-pointer"
+            onClick={() => toast.info('Opening contact details')}
+            role="button"
+            tabIndex={0}
+            aria-label={`Contact: ${contact.firstName} ${contact.lastName}`}
           >
             <div className="flex items-start gap-3.5">
               <div className="relative">

@@ -147,6 +147,7 @@ function TaskCard({ task }: { task: ProjectTaskItem }) {
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -2, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
       className="bg-card rounded-lg border border-border p-3 mb-2.5 cursor-pointer transition-colors"
+      onClick={() => toast.info('Opening task details')}
     >
       <p className="text-sm font-semibold text-foreground mb-1.5 leading-snug">{task.title}</p>
       <p className="text-[11px] text-teal-600 font-medium mb-2">{task.projectName}</p>
@@ -366,6 +367,7 @@ function ProjectsGridTab({ items }: { items: ProjectItem[] }) {
             whileHover={{ y: -4, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
             transition={{ type: 'spring', stiffness: 300, damping: 20 }}
             className="bg-card rounded-xl border border-border p-5 cursor-pointer"
+            onClick={() => toast.info('Opening project details')}
           >
             <div className="flex items-start justify-between mb-2">
               <h4 className="text-base font-semibold text-foreground leading-tight pr-2">{project.name}</h4>
