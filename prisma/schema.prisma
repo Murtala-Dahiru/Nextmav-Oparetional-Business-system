@@ -30,13 +30,6 @@ model Company {
   settings    String   @default("{}")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  departments Department[]
-  branches    Branch[]
-  users       User[]
-  leads       Lead[] @relation("LeadCompany")
-  contacts    Contact[]
-  crmCompanies CrmCompany[]
 }
 
 model Branch {
@@ -52,8 +45,6 @@ model Branch {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  company   Company  @relation(fields: [companyId], references: [id])
 }
 
 model Department {
@@ -65,12 +56,6 @@ model Department {
   headId      String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  company     Company  @relation(fields: [companyId], references: [id])
-  parent      Department? @relation("DepartmentTree", fields: [parentId], references: [id])
-  children    Department[] @relation("DepartmentTree")
-  head        User?    @relation("DepartmentHead", fields: [headId], references: [id])
-  teams       Team[]
 }
 
 model Team {
@@ -81,10 +66,6 @@ model Team {
   leadId       String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-
-  department   Department @relation(fields: [departmentId], references: [id])
-  lead         User?     @relation("TeamLead", fields: [leadId], references: [id])
-  members      TeamMember[]
 }
 
 model TeamMember {
@@ -92,14 +73,20 @@ model TeamMember {
   teamId    String
   userId    String
   joinedAt  DateTime @default(now())
-
-  team      Team     @relation(fields: [teamId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
-
   @@unique([teamId, userId])
 }
 
 // ==================== USERS & AUTH ====================
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false)
+  permissions String   @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
 
 model User {
   id            String    @id @default(cuid())
@@ -122,129 +109,83 @@ model User {
   theme         String    @default("system")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-
-  company       Company?
-  department    Department? @relation(fields: [departmentId], references: [id])
-  role          Role      @relation(fields: [roleId], references: [id])
-  teamMemberships TeamMember[]
-  ledTeams      Team[]    @relation("TeamLead")
-  ledDepartment Department? @relation("DepartmentHead")
-
-  activities    Activity[]
-  assignedTasks ProjectTask[] @relation("TaskAssignee")
-  createdTasks  ProjectTask[] @relation("TaskCreator")
-  createdLeads  Lead[] @relation("LeadCreator")
-  assignedLeads Lead[] @relation("LeadAssignee")
-  notes         Note[]
-  sentMessages  Message[] @relation("MessageSender")
-  attendance    Attendance[]
-  leaveRequests LeaveRequest[]
-  notifications Notification[]
-  auditLogs     AuditLog[]
-
   @@index([companyId])
   @@index([roleId])
-}
-
-model Role {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  description String?
-  isSystem    Boolean  @default(false)
-  permissions String   @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  users       User[]
 }
 
 // ==================== CRM ====================
 
 model CrmCompany {
-  id          String   @id @default(cuid())
-  name        String
-  industry    String?
-  website     String?
-  phone       String?
-  email       String?
-  address     String?
-  city        String?
-  state       String?
-  country     String?
-  employeeCount Int?
-  annualRevenue Float?
-  description String?
-  companyId   String
-  ownerId     String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  company     Company  @relation(fields: [companyId], references: [id])
-  owner       User?    @relation(fields: [ownerId], references: [id])
-  contacts    Contact[]
-  opportunities Opportunity[]
+  id             String   @id @default(cuid())
+  name           String
+  industry       String?
+  website        String?
+  phone          String?
+  email          String?
+  address        String?
+  city           String?
+  state          String?
+  country        String?
+  employeeCount  Int?
+  annualRevenue  Float?
+  description    String?
+  companyId      String
+  ownerId        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  @@index([companyId])
+  @@index([ownerId])
 }
 
 model Contact {
-  id            String   @id @default(cuid())
-  firstName     String
-  lastName      String
-  email         String?
-  phone         String?
-  mobile        String?
-  jobTitle      String?
-  address       String?
-  city          String?
-  state         String?
-  country       String?
-  linkedIn      String?
-  twitter       String?
-  companyId     String?
-  crmCompanyId  String?
-  ownerId       String?
-  source        String?
-  tags          String   @default("[]")
-  customFields  String   @default("{}")
-  notes         String?
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  company       Company?
-  crmCompany    CrmCompany? @relation(fields: [crmCompanyId], references: [id])
-  owner         User?    @relation(fields: [ownerId], references: [id])
-
+  id           String   @id @default(cuid())
+  firstName    String
+  lastName     String
+  email        String?
+  phone        String?
+  mobile       String?
+  jobTitle     String?
+  address      String?
+  city         String?
+  state        String?
+  country      String?
+  linkedIn     String?
+  twitter      String?
+  companyId    String?
+  crmCompanyId String?
+  ownerId      String?
+  source       String?
+  tags         String   @default("[]")
+  customFields String   @default("{}")
+  notes        String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   @@index([crmCompanyId])
   @@index([ownerId])
 }
 
 model Lead {
-  id            String    @id @default(cuid())
-  firstName     String
-  lastName      String
-  email         String?
-  phone         String?
-  company       String?
-  title         String?
-  source        String?
-  status        String    @default("new")
-  score         Int       @default(0)
-  value         Float?
-  ownerId       String?
-  creatorId     String?
-  companyId     String
-  tags          String    @default("[]")
-  customFields  String    @default("{}")
-  notes         String?
-  convertedAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  leadCompany  Company   @relation("LeadCompany", fields: [companyId], references: [id])
-  owner         User?     @relation("LeadAssignee", fields: [ownerId], references: [id])
-  creator       User?     @relation("LeadCreator", fields: [creatorId], references: [id])
-  activities    LeadActivity[]
-
+  id           String    @id @default(cuid())
+  firstName    String
+  lastName     String
+  email        String?
+  phone        String?
+  companyName  String?
+  title        String?
+  source       String?
+  status       String    @default("new")
+  score        Int       @default(0)
+  value        Float?
+  ownerId      String?
+  creatorId    String?
+  companyId    String
+  tags         String    @default("[]")
+  customFields String    @default("{}")
+  notes        String?
+  convertedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
   @@index([status])
   @@index([ownerId])
   @@index([companyId])
@@ -258,9 +199,6 @@ model LeadActivity {
   content   String?
   userId    String
   createdAt DateTime @default(now())
-
-  lead      Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
-
   @@index([leadId])
 }
 
@@ -272,48 +210,36 @@ model Pipeline {
   companyId   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  stages      PipelineStage[]
 }
 
 model PipelineStage {
-  id          String   @id @default(cuid())
-  name        String
-  order       Int
-  color       String?
-  pipelineId  String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  pipeline    Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
-  opportunities Opportunity[]
-
+  id         String   @id @default(cuid())
+  name       String
+  order      Int
+  color      String?
+  pipelineId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
   @@index([pipelineId])
 }
 
 model Opportunity {
-  id            String    @id @default(cuid())
-  name          String
-  value         Float
-  stageId       String
-  pipelineId    String?
-  contactId     String?
-  crmCompanyId  String?
-  ownerId       String?
-  probability   Int       @default(0)
-  closeDate     DateTime?
-  description   String?
-  source        String?
-  isWon         Boolean   @default(false)
-  isLost        Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  stage         PipelineStage @relation(fields: [stageId], references: [id])
-  contact       Contact?      @relation(fields: [contactId], references: [id])
-  crmCompany    CrmCompany?   @relation(fields: [crmCompanyId], references: [id])
-  owner         User?         @relation(fields: [ownerId], references: [id])
-
+  id           String    @id @default(cuid())
+  name         String
+  value        Float
+  stageId      String
+  pipelineId   String?
+  contactId    String?
+  crmCompanyId String?
+  ownerId      String?
+  probability  Int       @default(0)
+  closeDate    DateTime?
+  description  String?
+  source       String?
+  isWon        Boolean   @default(false)
+  isLost       Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
   @@index([stageId])
   @@index([ownerId])
 }
@@ -321,38 +247,28 @@ model Opportunity {
 // ==================== WORKSPACE ====================
 
 model WorkspaceFolder {
-  id          String   @id @default(cuid())
-  name        String
-  parentId    String?
-  companyId   String?
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  parent      WorkspaceFolder?  @relation("FolderTree", fields: [parentId], references: [id])
-  children    WorkspaceFolder[]  @relation("FolderTree")
-  pages       WorkspacePage[]
-  creator     User?    @relation(fields: [createdBy], references: [id])
+  id        String   @id @default(cuid())
+  name      String
+  parentId  String?
+  companyId String?
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model WorkspacePage {
-  id          String   @id @default(cuid())
-  title       String
-  content     String   @default("")
-  folderId    String?
-  icon        String?
-  status      String   @default("draft")
-  isTemplate  Boolean  @default(false)
-  version     Int      @default(1)
-  companyId   String?
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  folder      WorkspaceFolder? @relation(fields: [folderId], references: [id])
-  creator     User?    @relation(fields: [createdBy], references: [id])
-  comments    PageComment[]
-
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @default("")
+  folderId  String?
+  icon      String?
+  status    String   @default("draft")
+  isTemplate Boolean @default(false)
+  version   Int      @default(1)
+  companyId String?
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   @@index([folderId])
 }
 
@@ -363,10 +279,6 @@ model PageComment {
   userId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  page      WorkspacePage @relation(fields: [pageId], references: [id], onDelete: Cascade)
-  user      User?    @relation(fields: [userId], references: [id])
-
   @@index([pageId])
 }
 
@@ -386,11 +298,6 @@ model Project {
   companyId   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  owner       User?    @relation(fields: [ownerId], references: [id])
-  milestones  Milestone[]
-  members     ProjectMember[]
-  tasks       ProjectTask[]
 }
 
 model ProjectMember {
@@ -399,10 +306,6 @@ model ProjectMember {
   userId    String
   role      String   @default("member")
   joinedAt  DateTime @default(now())
-
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user      User?   @relation(fields: [userId], references: [id])
-
   @@unique([projectId, userId])
 }
 
@@ -415,42 +318,28 @@ model Milestone {
   projectId   String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
   @@index([projectId])
 }
 
 model ProjectTask {
-  id            String    @id @default(cuid())
-  title         String
-  description   String?
-  status        String    @default("todo")
-  priority      String    @default("medium")
-  assigneeId    String?
-  creatorId     String?
-  projectId     String?
-  milestoneId   String?
-  parentId      String?
-  dueDate       DateTime?
-  startDate     DateTime?
+  id             String    @id @default(cuid())
+  title          String
+  description    String?
+  status         String    @default("todo")
+  priority       String    @default("medium")
+  assigneeId     String?
+  creatorId      String?
+  projectId      String?
+  milestoneId    String?
+  parentId       String?
+  dueDate        DateTime?
+  startDate      DateTime?
   estimatedHours Float?
-  loggedHours   Float     @default(0)
-  order         Int       @default(0)
-  tags          String    @default("[]")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  project       Project?   @relation(fields: [projectId], references: [id])
-  assignee      User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
-  creator       User?      @relation("TaskCreator", fields: [creatorId], references: [id])
-  milestone     Milestone?  @relation(fields: [milestoneId], references: [id])
-  parent        ProjectTask? @relation("TaskTree", fields: [parentId], references: [id])
-  children      ProjectTask[] @relation("TaskTree")
-  timeLogs      TimeLog[]
-  comments      TaskComment[]
-  checklists    Checklist[]
-
+  loggedHours    Float     @default(0)
+  order          Int       @default(0)
+  tags           String    @default("[]")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   @@index([status])
   @@index([projectId])
   @@index([assigneeId])
@@ -462,10 +351,6 @@ model TaskComment {
   taskId    String
   userId    String
   createdAt DateTime @default(now())
-
-  task      ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user      User?    @relation(fields: [userId], references: [id])
-
   @@index([taskId])
 }
 
@@ -476,9 +361,6 @@ model Checklist {
   taskId    String
   order     Int      @default(0)
   createdAt DateTime @default(now())
-
-  task      ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
   @@index([taskId])
 }
 
@@ -490,36 +372,27 @@ model TimeLog {
   date      DateTime
   note      String?
   createdAt DateTime @default(now())
-
-  task      ProjectTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user      User?    @relation(fields: [userId], references: [id])
-
   @@index([taskId])
 }
 
 // ==================== HR ====================
 
 model Employee {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  employeeId      String   @unique
-  departmentId    String?
-  hireDate        DateTime
-  contractType    String   @default("full-time")
-  salary          Float?
-  bankName        String?
-  bankAccount     String?
-  emergencyName   String?
-  emergencyPhone  String?
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  employeeId       String   @unique
+  departmentId     String?
+  hireDate         DateTime
+  contractType     String   @default("full-time")
+  salary           Float?
+  bankName         String?
+  bankAccount      String?
+  emergencyName    String?
+  emergencyPhone   String?
   emergencyRelation String?
-  status          String   @default("active")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  user            User     @relation(fields: [userId], references: [id])
-  department      Department? @relation(fields: [departmentId], references: [id])
-  attendance      Attendance[]
-  leaveRequests   LeaveRequest[]
+  status           String   @default("active")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model Attendance {
@@ -531,10 +404,6 @@ model Attendance {
   status    String   @default("present")
   note      String?
   createdAt DateTime @default(now())
-
-  user      User     @relation(fields: [userId], references: [id])
-  employee  Employee @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@unique([userId, date])
   @@index([userId])
 }
@@ -551,27 +420,21 @@ model LeaveRequest {
   approvedBy  String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  user        User     @relation("LeaveUser", fields: [userId], references: [id])
-  employee    Employee @relation(fields: [userId], references: [id], onDelete: Cascade)
-  approver    User?    @relation("LeaveApprover", fields: [approvedBy], references: [id])
-
   @@index([userId])
   @@index([status])
 }
 
 model PayrollRecord {
-  id            String   @id @default(cuid())
-  userId        String
-  period        String
-  baseSalary    Float
-  bonuses       Float    @default(0)
-  deductions    Float    @default(0)
-  netPay        Float
-  status        String   @default("pending")
-  paidAt        DateTime?
-  createdAt     DateTime @default(now())
-
+  id         String   @id @default(cuid())
+  userId     String
+  period     String
+  baseSalary Float
+  bonuses    Float    @default(0)
+  deductions Float    @default(0)
+  netPay     Float
+  status     String   @default("pending")
+  paidAt     DateTime?
+  createdAt  DateTime @default(now())
   @@index([userId])
   @@index([period])
 }
@@ -593,11 +456,6 @@ model Invoice {
   companyId     String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-
-  contact       Contact?    @relation(fields: [contactId], references: [id])
-  crmCompany    CrmCompany? @relation(fields: [crmCompanyId], references: [id])
-  items         InvoiceItem[]
-  payments      Payment[]
 }
 
 model InvoiceItem {
@@ -607,23 +465,17 @@ model InvoiceItem {
   quantity    Int
   unitPrice   Float
   total       Float
-
-  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-
   @@index([invoiceId])
 }
 
 model Payment {
-  id            String   @id @default(cuid())
-  invoiceId     String
-  amount        Float
-  method        String?
-  reference     String?
-  status        String   @default("completed")
-  paidAt        DateTime @default(now())
-
-  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-
+  id         String   @id @default(cuid())
+  invoiceId  String
+  amount     Float
+  method     String?
+  reference  String?
+  status     String   @default("completed")
+  paidAt     DateTime @default(now())
   @@index([invoiceId])
 }
 
@@ -642,24 +494,22 @@ model Expense {
   createdBy     String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-
   @@index([category])
   @@index([status])
 }
 
 model Budget {
-  id          String   @id @default(cuid())
-  name        String
-  category    String?
-  amount      Float
-  spent       Float    @default(0)
-  period      String
-  startDate   DateTime
-  endDate     DateTime
-  companyId   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id        String   @id @default(cuid())
+  name      String
+  category  String?
+  amount    Float
+  spent     Float    @default(0)
+  period    String
+  startDate DateTime
+  endDate   DateTime
+  companyId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   @@index([period])
 }
 
@@ -672,9 +522,6 @@ model Channel {
   description String?
   createdBy   String?
   createdAt   DateTime @default(now())
-
-  members     ChannelMember[]
-  messages    Message[]
 }
 
 model ChannelMember {
@@ -682,10 +529,6 @@ model ChannelMember {
   channelId String
   userId    String
   joinedAt  DateTime @default(now())
-
-  channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  user      User?   @relation(fields: [userId], references: [id])
-
   @@unique([channelId, userId])
 }
 
@@ -700,12 +543,8 @@ model Message {
   type          String   @default("text")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-
-  channel       Channel?  @relation(fields: [channelId], references: [id])
-  sender        User?     @relation("MessageSender", fields: [senderId], references: [id])
-  parent        Message?  @relation("MessageReplies", fields: [parentId], references: [id])
-  replies       Message[] @relation("MessageReplies")
-  reactions     MessageReaction[]
+  @@index([channelId])
+  @@index([parentId])
 }
 
 model MessageReaction {
@@ -714,100 +553,81 @@ model MessageReaction {
   userId    String
   emoji     String
   createdAt DateTime @default(now())
-
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-
   @@unique([messageId, userId, emoji])
 }
 
 // ==================== CALENDAR & MEETINGS ====================
 
 model CalendarEvent {
-  id            String   @id @default(cuid())
-  title         String
-  description   String?
-  startDate     DateTime
-  endDate       DateTime
-  allDay        Boolean  @default(false)
-  location      String?
-  meetingUrl    String?
-  color         String?
-  recurrence    String?
-  creatorId     String?
-  isRecurring   Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  creator       User?    @relation(fields: [creatorId], references: [id])
-  attendees     EventAttendee[]
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  allDay      Boolean  @default(false)
+  location    String?
+  meetingUrl  String?
+  color       String?
+  recurrence  String?
+  creatorId   String?
+  isRecurring Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([creatorId])
 }
 
 model EventAttendee {
-  id       String   @id @default(cuid())
+  id       String  @id @default(cuid())
   eventId  String
   userId   String
-  status   String   @default("pending")
-
-  event    CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  user     User?          @relation(fields: [userId], references: [id])
-
+  status   String  @default("pending")
   @@unique([eventId, userId])
 }
 
 // ==================== FILE MANAGEMENT ====================
 
 model FileRecord {
-  id          String   @id @default(cuid())
-  name        String
-  path        String
-  size        Int
-  mimeType    String
-  category    String?
-  folderId    String?
-  uploadedBy  String?
-  isDeleted   Boolean  @default(false)
-  version     Int      @default(1)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  folder      FileFolder? @relation(fields: [folderId], references: [id])
-  uploader    User?       @relation(fields: [uploadedBy], references: [id])
-
+  id         String   @id @default(cuid())
+  name       String
+  path       String
+  size       Int
+  mimeType   String
+  category   String?
+  folderId   String?
+  uploadedBy String?
+  isDeleted  Boolean  @default(false)
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
   @@index([folderId])
 }
 
 model FileFolder {
-  id          String   @id @default(cuid())
-  name        String
-  parentId    String?
-  createdAt   DateTime @default(now())
-
-  parent      FileFolder?  @relation("FileFolderTree", fields: [parentId], references: [id])
-  children    FileFolder[] @relation("FileFolderTree")
-  files       FileRecord[]
+  id        String   @id @default(cuid())
+  name      String
+  parentId  String?
+  createdAt DateTime @default(now())
 }
 
 // ==================== SUPPORT DESK ====================
 
 model Ticket {
-  id            String   @id @default(cuid())
-  ticketNumber  String   @unique
-  subject       String
-  description   String
-  priority      String   @default("medium")
-  status        String   @default("open")
-  category      String?
-  department    String?
-  contactId     String?
-  assigneeId    String?
-  dueDate       DateTime?
-  resolvedAt    DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  contact       Contact?  @relation(fields: [contactId], references: [id])
-  assignee      User?     @relation(fields: [assigneeId], references: [id])
-  replies       TicketReply[]
+  id           String   @id @default(cuid())
+  ticketNumber String   @unique
+  subject      String
+  description  String
+  priority     String   @default("medium")
+  status       String   @default("open")
+  category     String?
+  department   String?
+  contactId    String?
+  assigneeId   String?
+  dueDate      DateTime?
+  resolvedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@index([status])
+  @@index([assigneeId])
 }
 
 model TicketReply {
@@ -817,10 +637,6 @@ model TicketReply {
   userId    String?
   isInternal Boolean @default(false)
   createdAt DateTime @default(now())
-
-  ticket    Ticket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  user      User?   @relation(fields: [userId], references: [id])
-
   @@index([ticketId])
 }
 
@@ -839,8 +655,6 @@ model Product {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  stock       InventoryStock[]
 }
 
 model InventoryStock {
@@ -849,21 +663,15 @@ model InventoryStock {
   warehouseId String
   quantity    Int      @default(0)
   updatedAt   DateTime @updatedAt
-
-  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
-  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
-
   @@unique([productId, warehouseId])
 }
 
 model Warehouse {
-  id          String   @id @default(cuid())
-  name        String
-  location    String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-
-  stock       InventoryStock[]
+  id        String   @id @default(cuid())
+  name      String
+  location  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
 }
 
 model Supplier {
@@ -876,22 +684,19 @@ model Supplier {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  orders      PurchaseOrder[]
 }
 
 model PurchaseOrder {
-  id            String   @id @default(cuid())
-  poNumber      String   @unique
-  supplierId    String
-  status        String   @default("draft")
-  totalAmount   Float
-  expectedDate  DateTime?
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  supplier      Supplier @relation(fields: [supplierId], references: [id])
+  id           String   @id @default(cuid())
+  poNumber     String   @unique
+  supplierId   String
+  status       String   @default("draft")
+  totalAmount  Float
+  expectedDate DateTime?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@index([supplierId])
 }
 
 // ==================== AUTOMATION ====================
@@ -906,22 +711,17 @@ model Workflow {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  executions  WorkflowExecution[]
 }
 
 model WorkflowExecution {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   workflowId  String
-  status      String   @default("running")
-  inputData   String   @default("{}")
-  outputData  String   @default("{}")
+  status      String    @default("running")
+  inputData   String    @default("{}")
+  outputData  String    @default("{}")
   error       String?
-  startedAt   DateTime @default(now())
+  startedAt   DateTime  @default(now())
   completedAt DateTime?
-
-  workflow    Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-
   @@index([workflowId])
 }
 
@@ -935,23 +735,17 @@ model Note {
   userId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  user      User     @relation(fields: [userId], references: [id])
-
   @@index([userId])
 }
 
 model Activity {
-  id        String   @id @default(cuid())
-  type      String
-  title     String
+  id          String   @id @default(cuid())
+  type        String
+  title       String
   description String?
-  metadata  String   @default("{}")
-  userId    String
-  createdAt DateTime @default(now())
-
-  user      User     @relation(fields: [userId], references: [id])
-
+  metadata    String   @default("{}")
+  userId      String
+  createdAt   DateTime @default(now())
   @@index([userId])
   @@index([createdAt])
 }
@@ -959,17 +753,14 @@ model Activity {
 // ==================== NOTIFICATIONS ====================
 
 model Notification {
-  id          String   @id @default(cuid())
-  type        String
-  title       String
-  message     String
-  data        String   @default("{}")
-  isRead      Boolean  @default(false)
-  userId      String
-  createdAt   DateTime @default(now())
-
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  id        String   @id @default(cuid())
+  type      String
+  title     String
+  message   String
+  data      String   @default("{}")
+  isRead    Boolean  @default(false)
+  userId    String
+  createdAt DateTime @default(now())
   @@index([userId, isRead])
   @@index([createdAt])
 }
@@ -986,9 +777,6 @@ model AuditLog {
   ipAddress String?
   userAgent String?
   createdAt DateTime @default(now())
-
-  user      User?    @relation(fields: [userId], references: [id])
-
   @@index([module])
   @@index([userId])
   @@index([createdAt])
