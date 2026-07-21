@@ -5,7 +5,7 @@ import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/reac
 import { toast } from 'sonner';
 import {
   Users, Plus, Pencil, Trash2, MoreHorizontal, Settings, Shield,
-  ClipboardList, Loader2, Save, ShieldCheck, Mail, Phone, Briefcase, DollarSign,
+  ClipboardList, Loader2, Save, ShieldCheck, Briefcase, DollarSign,
 } from 'lucide-react';
 
 import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
@@ -437,6 +437,7 @@ export default function AdminModule() {
   //  Delete
   // ════════════════════════════════════════════════════════════
   const handleDelete = async () => {
+    if (deleteTarget?.isSystem) return;
     if (!deleteTarget) return;
     if (deleteTarget.type === 'user' && deleteTarget.id === 'u1') {
       toast.error('You cannot delete your own account');

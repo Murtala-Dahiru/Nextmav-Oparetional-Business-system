@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+// Default user ID (until auth system is connected)
+export const DEFAULT_USER_ID = 'u1';
+
 // ═══════════════════════════════════════════════════════════════
 //  CRM Validations
 // ═══════════════════════════════════════════════════════════════
@@ -164,7 +167,7 @@ export const updateTicketSchema = createTicketSchema.partial();
 
 export const createEmployeeSchema = z.object({
   email: z.string().email('Invalid email'),
-  password: z.string().min(1, 'Password is required'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   avatar: z.string().optional().default(''),

@@ -2,7 +2,7 @@ import { createServer } from 'http';
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import { exec } from 'child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STANDALONE_DIR = join(__dirname, '.next', 'standalone');
@@ -24,6 +24,14 @@ const MIME = {
   '.woff2': 'font/woff2',
   '.map': 'application/json',
   '.txt': 'text/plain',
+};
+
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'X-XSS-Protection': '1; mode=block',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
 };
 
 // Route to Prisma query mapping
@@ -80,7 +88,20 @@ const DYNAMIC_PATTERNS = [
   { regex: /^\/api\/admin\/notifications\/([^/]+)$/, model: 'notification' },
 ];
 
-function runPrismaQuery(queryStr) {
+function runQuery(scriptPath, callback) {
+  exec(`node "${scriptPath}"`, { timeout: 12000, encoding: 'utf-8', env: { ...process.env } }, (err, stdout, stderr) => {
+    const output = stdout || stderr || '{"error":"query failed"}';
+    const lastLine = output.trim().split('\n').pop();
+    try {
+      JSON.parse(lastLine); // validate
+      callback(null, lastLine);
+    } catch {
+      callback(null, output);
+    }
+  });
+}
+
+function runPrismaQuery(queryStr, callback) {
   const script = `
 const { PrismaClient } = require('${STANDALONE_DIR}/node_modules/@prisma/client');
 const prisma = new PrismaClient({ datasources: { db: { url: '${DB_PATH}' } } });
@@ -99,14 +120,14 @@ const prisma = new PrismaClient({ datasources: { db: { url: '${DB_PATH}' } } });
   const tmpFile = join(__dirname, '.tmp-api', `q_${Date.now()}.cjs`);
   mkdirSync(dirname(tmpFile), { recursive: true });
   writeFileSync(tmpFile, script);
-  try {
-    return execSync(`node "${tmpFile}"`, { timeout: 10000, encoding: 'utf-8', env: { ...process.env } });
-  } catch (e) {
-    return e.stdout || e.stderr || '{"error":"query failed"}';
-  }
+  runQuery(tmpFile, callback);
 }
 
-function runPrismaById(model, id) {
+function runPrismaById(model, id, callback) {
+  // Sanitize id to prevent injection
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+    return callback(null, '{"error":"Invalid ID"}');
+  }
   const script = `
 const { PrismaClient } = require('${STANDALONE_DIR}/node_modules/@prisma/client');
 const prisma = new PrismaClient({ datasources: { db: { url: '${DB_PATH}' } } });
@@ -121,52 +142,40 @@ const prisma = new PrismaClient({ datasources: { db: { url: '${DB_PATH}' } } });
   const tmpFile = join(__dirname, '.tmp-api', `q_${Date.now()}.cjs`);
   mkdirSync(dirname(tmpFile), { recursive: true });
   writeFileSync(tmpFile, script);
-  try {
-    return execSync(`node "${tmpFile}"`, { timeout: 10000, encoding: 'utf-8' });
-  } catch (e) {
-    return e.stdout || e.stderr || '{"error":"query failed"}';
-  }
+  runQuery(tmpFile, callback);
 }
 
-function handleApi(method, urlPath) {
+function handleApi(method, urlPath, res) {
   if (method !== 'GET') {
-    return { status: 405, body: JSON.stringify({ error: 'Method not allowed (read-only preview)' }) };
+    res.writeHead(405, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    res.end(JSON.stringify({ error: 'Method not allowed (read-only preview)' }));
+    return;
   }
+
+  const sendJson = (body) => {
+    try { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(body); }
+    catch { /* response already sent */ }
+  };
 
   // Exact route match
   if (ROUTE_MAP[urlPath]) {
-    // Dashboard uses a dedicated script
     if (ROUTE_MAP[urlPath] === 'DASHBOARD_SCRIPT') {
       const dashScript = join(__dirname, '.tmp-api', 'dashboard-query.cjs');
-      const output = execSync(`node "${dashScript}"`, { timeout: 15000, encoding: 'utf-8', env: { ...process.env } });
-      const lastLine = output.trim().split('\n').pop();
-      try { return { status: 200, body: lastLine }; } catch { return { status: 500, body: output }; }
+      return runQuery(dashScript, (_, body) => sendJson(body));
     }
-
-    const output = runPrismaQuery(ROUTE_MAP[urlPath]);
-    const lastLine = output.trim().split('\n').pop();
-    try {
-      return { status: 200, body: lastLine };
-    } catch {
-      return { status: 500, body: output };
-    }
+    return runPrismaQuery(ROUTE_MAP[urlPath], (_, body) => sendJson(body));
   }
 
   // Dynamic [id] routes
   for (const pattern of DYNAMIC_PATTERNS) {
     const match = urlPath.match(pattern.regex);
     if (match) {
-      const output = runPrismaById(pattern.model, match[1]);
-      const lastLine = output.trim().split('\n').pop();
-      try {
-        return { status: 200, body: lastLine };
-      } catch {
-        return { status: 500, body: output };
-      }
+      return runPrismaById(pattern.model, match[1], (_, body) => sendJson(body));
     }
   }
 
-  return { status: 404, body: JSON.stringify({ error: 'Route not found' }) };
+  res.writeHead(404, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify({ error: 'Route not found' }));
 }
 
 function serveStaticFile(res, filePath, contentType, cacheControl) {
@@ -193,9 +202,7 @@ const server = createServer((req, res) => {
 
   // API routes
   if (urlPath.startsWith('/api/')) {
-    const result = handleApi(req.method, urlPath);
-    res.writeHead(result.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-    res.end(result.body);
+    handleApi(req.method, urlPath, res);
     return;
   }
 
@@ -205,6 +212,13 @@ const server = createServer((req, res) => {
     const filePath = join(STATIC_DIR, relativePath);
     const ext = filePath.substring(filePath.lastIndexOf('.'));
     return serveStaticFile(res, filePath, MIME[ext] || 'application/octet-stream');
+  }
+
+  // Block access to dotfiles and sensitive paths
+  if (urlPath.includes('/.') || urlPath.includes('..')) {
+    res.writeHead(403);
+    res.end('Forbidden');
+    return;
   }
 
   // Public files
@@ -219,7 +233,7 @@ const server = createServer((req, res) => {
   }
 
   // SPA fallback
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', ...SECURITY_HEADERS });
   res.end(INDEX_HTML);
 });
 

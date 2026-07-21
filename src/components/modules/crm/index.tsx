@@ -3,19 +3,18 @@
 import { useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
+import type { ColumnDef } from '@tanstack/react-table';
 import { AnimatePresence, motion } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { toast } from 'sonner';
 import {
-  Users, UserPlus, Building2, Handshake, Target, MoreHorizontal,
-  Pencil, Trash2, Plus, TrendingUp, Sparkles, Loader2, Mail, Phone, Globe, MapPin,
+  Users, Building2, Handshake, Target, MoreHorizontal,
+  Pencil, Trash2, Plus, TrendingUp, Sparkles, Loader2, Mail,
 } from 'lucide-react';
 
 import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import { EmptyState } from '@/components/shared/empty-state';
 import { StatCard } from '@/components/shared/stat-card';
 import { formatCurrency, formatDate, formatRelativeTime, getInitials, formatNumber } from '@/lib/format';
 import { LEAD_STATUSES, DEAL_STAGES } from '@/lib/constants';
@@ -235,7 +234,7 @@ function LeadsTab() {
     try {
       const res = await fetchList<Lead>('/api/crm/leads?pageSize=100&sort=createdAt&sortDir=desc');
       setAllLeads(res.data);
-    } catch { /* silent */ }
+    } catch { /* non-critical */ }
     finally { setStatsLoading(false); }
   }, []);
 
@@ -285,7 +284,7 @@ function LeadsTab() {
     { accessorKey: 'createdAt', header: 'Created', cell: ({ row }) => <span className="text-muted-foreground text-sm">{formatRelativeTime(row.original.createdAt)}</span> },
     { id: 'actions', size: 50, cell: ({ row }) => (
       <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="Actions"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => { setEditing(row.original); form.reset({ firstName: row.original.firstName, lastName: row.original.lastName, email: row.original.email, phone: row.original.phone, company: row.original.company, title: row.original.title, source: row.original.source, status: row.original.status, score: row.original.score, value: row.original.value, notes: row.original.notes, ownerId: row.original.ownerId }); setOpen(true); }}>
             <Pencil className="size-4 mr-2" /> Edit
@@ -471,7 +470,7 @@ function ContactsTab() {
     { accessorKey: 'createdAt', header: 'Created', cell: ({ row }) => <span className="text-muted-foreground text-sm">{formatRelativeTime(row.original.createdAt)}</span> },
     { id: 'actions', size: 50, cell: ({ row }) => (
       <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="Actions"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => { const c = row.original; setEditing(c); form.reset({ firstName: c.firstName, lastName: c.lastName, email: c.email, phone: c.phone, jobTitle: c.jobTitle, company: c.company, source: c.source, isActive: c.isActive, notes: c.notes }); setOpen(true); }}>
             <Pencil className="size-4 mr-2" /> Edit
@@ -645,7 +644,7 @@ function CompaniesTab() {
     { accessorKey: 'annualRevenue', header: 'Revenue', cell: ({ row }) => <span className="font-medium">{formatCurrency(row.original.annualRevenue)}</span> },
     { id: 'actions', size: 50, cell: ({ row }) => (
       <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="Actions"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => { const c = row.original; setEditing(c); form.reset({ name: c.name, industry: c.industry, website: c.website, phone: c.phone, email: c.email, city: c.city, country: c.country, employeeCount: c.employeeCount, annualRevenue: c.annualRevenue, notes: c.notes }); setOpen(true); }}>
             <Pencil className="size-4 mr-2" /> Edit
@@ -801,7 +800,7 @@ function DealsTab() {
     try {
       const res = await fetchList<Deal>('/api/crm/deals?pageSize=100&sort=createdAt&sortDir=desc');
       setAllDeals(res.data);
-    } catch { /* silent */ }
+    } catch { /* non-critical */ }
     finally { setChartLoading(false); }
   }, []);
 
@@ -838,7 +837,7 @@ function DealsTab() {
     { accessorKey: 'companyName', header: 'Company', cell: ({ row }) => row.original.companyName || <span className="text-muted-foreground">—</span> },
     { id: 'actions', size: 50, cell: ({ row }) => (
       <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="Actions"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => { const d = row.original; setEditing(d); form.reset({ name: d.name, value: d.value, stage: d.stage, probability: d.probability, closeDate: d.closeDate?.split('T')[0] || '', contactName: d.contactName, companyName: d.companyName, notes: d.notes, ownerId: d.ownerId }); setOpen(true); }}>
             <Pencil className="size-4 mr-2" /> Edit

@@ -9,7 +9,7 @@ import { z } from 'zod';
 import {
   Plus, Pencil, Trash2, Loader2, LifeBuoy, BookOpen, User,
   Receipt, Code, Zap, AlertCircle, Clock, CheckCircle2,
-  CircleDot, Ban, MoreHorizontal, ExternalLink,
+  CircleDot, MoreHorizontal, ExternalLink,
 } from 'lucide-react';
 
 import { DataTable, type DataTableFilter } from '@/components/shared/data-table';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -161,9 +161,9 @@ export function useApi<T = any>(opts: UseApiOptions<T>): UseApiReturn<T> {
   }, [fetchData]);
 
   // Auto-fetch on mount / URL change
-  useState(() => {
+  useEffect(() => {
     if (enabled) fetchData();
-  });
+  }, [enabled, fetchData]);
 
   return {
     data, meta, loading, error, refetch,
@@ -179,6 +179,7 @@ export async function apiCreate(url: string, body: Record<string, unknown>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  if (!res.ok) throw new Error(`Create failed (${res.status})`);
   const json = await res.json();
   if (json.error) throw new Error(json.error.message || 'Create failed');
   return json.data;
@@ -190,6 +191,7 @@ export async function apiUpdate(url: string, body: Record<string, unknown>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  if (!res.ok) throw new Error(`Update failed (${res.status})`);
   const json = await res.json();
   if (json.error) throw new Error(json.error.message || 'Update failed');
   return json.data;
@@ -197,6 +199,7 @@ export async function apiUpdate(url: string, body: Record<string, unknown>) {
 
 export async function apiDelete(url: string) {
   const res = await fetch(url, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Delete failed (${res.status})`);
   const json = await res.json();
   if (json.error) throw new Error(json.error.message || 'Delete failed');
   return json.data;

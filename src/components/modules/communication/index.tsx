@@ -90,7 +90,7 @@ function ChannelTypeIcon({ type, className }: { type: string; className?: string
 
 // ─── Current User ────────────────────────────────────────────────────
 
-const CURRENT_USER_ID = 'u1';
+const CURRENT_USER_ID = 'u1'; // TODO: connect to auth system
 
 // ─── Component ───────────────────────────────────────────────────────
 

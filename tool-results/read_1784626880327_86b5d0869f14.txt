@@ -1,0 +1,827 @@
+     1→'use client';
+     2→
+     3→import { useState, useCallback, useEffect, type ReactNode } from 'react';
+     4→import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
+     5→import { toast } from 'sonner';
+     6→import {
+     7→  Users, Plus, Pencil, Trash2, MoreHorizontal, Settings, Shield,
+     8→  ClipboardList, Loader2, Save, ShieldCheck, Mail, Phone, Briefcase, DollarSign,
+     9→} from 'lucide-react';
+    10→
+    11→import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
+    12→import { PageHeader } from '@/components/shared/page-header';
+    13→import { EmptyState } from '@/components/shared/empty-state';
+    14→import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+    15→import { formatDateTime, formatRelativeTime, getInitials } from '@/lib/format';
+    16→
+    17→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    18→import { Button } from '@/components/ui/button';
+    19→import { Badge } from '@/components/ui/badge';
+    20→import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+    21→import { Input } from '@/components/ui/input';
+    22→import { Label } from '@/components/ui/label';
+    23→import { Textarea } from '@/components/ui/textarea';
+    24→import { Switch } from '@/components/ui/switch';
+    25→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    26→import {
+    27→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+    28→} from '@/components/ui/dialog';
+    29→import {
+    30→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    31→} from '@/components/ui/select';
+    32→import {
+    33→  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+    34→} from '@/components/ui/dropdown-menu';
+    35→
+    36→// ═══════════════════════════════════════════════════════════════
+    37→//  Types
+    38→// ═══════════════════════════════════════════════════════════════
+    39→
+    40→interface ApiMeta { total: number; page: number; pageSize: number; totalPages: number }
+    41→
+    42→interface UserRecord {
+    43→  id: string; email: string; firstName: string; lastName: string; avatar: string;
+    44→  jobTitle: string; phone: string; department: string; roleId: string;
+    45→  isActive: boolean; lastSeen: string; createdAt: string; updatedAt: string;
+    46→  role?: { id: string; name: string };
+    47→}
+    48→
+    49→interface RoleRecord {
+    50→  id: string; name: string; description: string; isSystem: boolean; permissions: string;
+    51→  createdAt: string;
+    52→  _count?: { users: number };
+    53→}
+    54→
+    55→interface AuditLogRecord {
+    56→  id: string; userId: string; action: string; module: string; entity: string;
+    57→  entityId: string; details: string; ipAddress: string; createdAt: string;
+    58→  user?: { id: string; firstName: string; lastName: string; email: string; avatar: string };
+    59→}
+    60→
+    61→interface SettingRecord {
+    62→  id: string; key: string; value: string; type: string; group: string; updatedAt: string;
+    63→}
+    64→
+    65→// ═══════════════════════════════════════════════════════════════
+    66→//  Constants
+    67→// ═══════════════════════════════════════════════════════════════
+    68→
+    69→const DEPARTMENTS = ['Engineering', 'Marketing', 'Sales', 'Support', 'HR', 'Finance', 'Operations', 'Design'];
+    70→
+    71→const MODULE_OPTIONS = ['crm', 'projects', 'hr', 'finance', 'inventory', 'calendar', 'admin', 'support', 'communication', 'workspace'];
+    72→const ACTION_OPTIONS = ['create', 'update', 'delete', 'login', 'export', 'import'];
+    73→
+    74→const ACTION_COLORS: Record<string, string> = {
+    75→  create: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    76→  update: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    77→  delete: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+    78→  login: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
+    79→  export: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+    80→  import: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+    81→};
+    82→
+    83→const MODULE_COLORS: Record<string, string> = {
+    84→  crm: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
+    85→  projects: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+    86→  hr: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+    87→  finance: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    88→  inventory: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+    89→  calendar: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    90→  admin: 'bg-gray-100 text-gray-700 dark:bg-gray-900/40 dark:text-gray-300',
+    91→  support: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+    92→  communication: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+    93→  workspace: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
+    94→};
+    95→
+    96→const PERMISSION_MODULES = ['crm', 'projects', 'hr', 'finance', 'inventory', 'calendar', 'admin', 'support'];
+    97→const PERMISSION_ACTIONS = ['view', 'create', 'edit', 'delete'];
+    98→
+    99→const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR'];
+   100→
+   101→// ═══════════════════════════════════════════════════════════════
+   102→//  Helper: API wrapper
+   103→// ═══════════════════════════════════════════════════════════════
+   104→
+   105→async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
+   106→  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...init });
+   107→  const json = await res.json();
+   108→  if (!res.ok) throw new Error(json.error?.message ?? 'Request failed');
+   109→  return json;
+   110→}
+   111→
+   112→// ═══════════════════════════════════════════════════════════════
+   113→//  Section wrapper
+   114→// ═══════════════════════════════════════════════════════════════
+   115→
+   116→function SectionCard({ title, children, icon: Icon }: { title: string; children: ReactNode; icon?: React.ElementType }) {
+   117→  return (
+   118→    <Card>
+   119→      <CardHeader className="pb-4">
+   120→        <CardTitle className="text-base flex items-center gap-2">
+   121→          {Icon && <Icon className="size-4 text-emerald-600" />}
+   122→          {title}
+   123→        </CardTitle>
+   124→      </CardHeader>
+   125→      <CardContent>{children}</CardContent>
+   126→    </Card>
+   127→  );
+   128→}
+   129→
+   130→// ═══════════════════════════════════════════════════════════════
+   131→//  User Form Dialog
+   132→// ═══════════════════════════════════════════════════════════════
+   133→
+   134→interface UserFormState {
+   135→  firstName: string; lastName: string; email: string; phone: string;
+   136→  jobTitle: string; department: string; roleId: string; password: string;
+   137→}
+   138→
+   139→const defaultUserForm: UserFormState = {
+   140→  firstName: '', lastName: '', email: '', phone: '',
+   141→  jobTitle: '', department: 'Engineering', roleId: '', password: 'changeme',
+   142→};
+   143→
+   144→function UserFormDialog({
+   145→  open, onOpenChange, editing, onSubmit, isLoading, roles,
+   146→}: {
+   147→  open: boolean; onOpenChange: (v: boolean) => void;
+   148→  editing: UserRecord | null; onSubmit: (data: UserFormState) => void;
+   149→  isLoading: boolean; roles: RoleRecord[];
+   150→}) {
+   151→  const getInitialForm = (): UserFormState => editing ? {
+   152→    firstName: editing.firstName, lastName: editing.lastName, email: editing.email,
+   153→    phone: editing.phone, jobTitle: editing.jobTitle, department: editing.department,
+   154→    roleId: editing.roleId, password: '',
+   155→  } : { ...defaultUserForm, roleId: roles[0]?.id || '' };
+   156→
+   157→  const [form, setForm] = useState<UserFormState>(getInitialForm);
+   158→
+   159→  const update = (k: keyof UserFormState, v: string) =>
+   160→    setForm((f) => ({ ...f, [k]: v }));
+   161→
+   162→  return (
+   163→    <Dialog open={open} onOpenChange={onOpenChange}>
+   164→      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   165→        <DialogHeader>
+   166→          <DialogTitle>{editing ? 'Edit User' : 'Add User'}</DialogTitle>
+   167→          <DialogDescription>{editing ? 'Update user details.' : 'Create a new user account.'}</DialogDescription>
+   168→        </DialogHeader>
+   169→        <div className="grid gap-4 py-2">
+   170→          <div className="grid grid-cols-2 gap-4">
+   171→            <div className="grid gap-2"><Label htmlFor="u-first">First Name</Label><Input id="u-first" value={form.firstName} onChange={(e) => update('firstName', e.target.value)} /></div>
+   172→            <div className="grid gap-2"><Label htmlFor="u-last">Last Name</Label><Input id="u-last" value={form.lastName} onChange={(e) => update('lastName', e.target.value)} /></div>
+   173→          </div>
+   174→          <div className="grid gap-2"><Label htmlFor="u-email">Email</Label><Input id="u-email" type="email" value={form.email} onChange={(e) => update('email', e.target.value)} /></div>
+   175→          {!editing && (
+   176→            <div className="grid gap-2"><Label htmlFor="u-pass">Password</Label><Input id="u-pass" type="password" value={form.password} onChange={(e) => update('password', e.target.value)} /></div>
+   177→          )}
+   178→          <div className="grid grid-cols-2 gap-4">
+   179→            <div className="grid gap-2"><Label htmlFor="u-phone">Phone</Label><Input id="u-phone" value={form.phone} onChange={(e) => update('phone', e.target.value)} /></div>
+   180→            <div className="grid gap-2"><Label htmlFor="u-job">Job Title</Label><Input id="u-job" value={form.jobTitle} onChange={(e) => update('jobTitle', e.target.value)} /></div>
+   181→          </div>
+   182→          <div className="grid grid-cols-2 gap-4">
+   183→            <div className="grid gap-2">
+   184→              <Label htmlFor="u-dept">Department</Label>
+   185→              <Select value={form.department} onValueChange={(v) => update('department', v)}>
+   186→                <SelectTrigger id="u-dept"><SelectValue /></SelectTrigger>
+   187→                <SelectContent>{DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+   188→              </Select>
+   189→            </div>
+   190→            <div className="grid gap-2">
+   191→              <Label htmlFor="u-role">Role</Label>
+   192→              <Select value={form.roleId} onValueChange={(v) => update('roleId', v)}>
+   193→                <SelectTrigger id="u-role"><SelectValue /></SelectTrigger>
+   194→                <SelectContent>{roles.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}</SelectContent>
+   195→              </Select>
+   196→            </div>
+   197→          </div>
+   198→        </div>
+   199→        <DialogFooter>
+   200→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
+   201→          <Button onClick={() => onSubmit(form)} disabled={isLoading || !form.firstName || !form.lastName || !form.email}
+   202→            className="bg-emerald-600 text-white hover:bg-emerald-700">
+   203→            {isLoading && <Loader2 className="size-4 animate-spin" />}
+   204→            {editing ? 'Save Changes' : 'Create User'}
+   205→          </Button>
+   206→        </DialogFooter>
+   207→      </DialogContent>
+   208→    </Dialog>
+   209→  );
+   210→}
+   211→
+   212→// ═══════════════════════════════════════════════════════════════
+   213→//  Role Form Dialog
+   214→// ═══════════════════════════════════════════════════════════════
+   215→
+   216→interface RoleFormState {
+   217→  name: string; description: string; isSystem: boolean; permissions: string;
+   218→}
+   219→
+   220→const defaultRoleForm: RoleFormState = { name: '', description: '', isSystem: false, permissions: '{}' };
+   221→
+   222→function RoleFormDialog({
+   223→  open, onOpenChange, editing, onSubmit, isLoading,
+   224→}: {
+   225→  open: boolean; onOpenChange: (v: boolean) => void;
+   226→  editing: RoleRecord | null; onSubmit: (data: RoleFormState) => void; isLoading: boolean;
+   227→}) {
+   228→  const getInitialForm = (): RoleFormState => editing
+   229→    ? { name: editing.name, description: editing.description, isSystem: editing.isSystem, permissions: editing.permissions }
+   230→    : defaultRoleForm;
+   231→
+   232→  const [form, setForm] = useState<RoleFormState>(getInitialForm);
+   233→
+   234→  const update = (k: keyof RoleFormState, v: string | boolean) =>
+   235→    setForm((f) => ({ ...f, [k]: v }));
+   236→
+   237→  return (
+   238→    <Dialog open={open} onOpenChange={onOpenChange}>
+   239→      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   240→        <DialogHeader>
+   241→          <DialogTitle>{editing ? 'Edit Role' : 'Create Role'}</DialogTitle>
+   242→          <DialogDescription>{editing ? 'Update role details.' : 'Define a new role with permissions.'}</DialogDescription>
+   243→        </DialogHeader>
+   244→        <div className="grid gap-4 py-2">
+   245→          <div className="grid gap-2"><Label htmlFor="r-name">Name</Label><Input id="r-name" value={form.name} onChange={(e) => update('name', e.target.value)} /></div>
+   246→          <div className="grid gap-2"><Label htmlFor="r-desc">Description</Label><Textarea id="r-desc" value={form.description} onChange={(e) => update('description', e.target.value)} rows={2} /></div>
+   247→          <div className="flex items-center justify-between rounded-lg border p-3">
+   248→            <Label htmlFor="r-system">System Role</Label>
+   249→            <Switch id="r-system" checked={form.isSystem} onCheckedChange={(v) => update('isSystem', v)} />
+   250→          </div>
+   251→          <div className="grid gap-2">
+   252→            <Label htmlFor="r-perms">Permissions (JSON)</Label>
+   253→            <Textarea id="r-perms" value={form.permissions} onChange={(e) => update('permissions', e.target.value)}
+   254→              rows={8} className="font-mono text-xs" placeholder='{"crm": {"view": true, "create": true}}' />
+   255→          </div>
+   256→        </div>
+   257→        <DialogFooter>
+   258→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
+   259→          <Button onClick={() => onSubmit(form)} disabled={isLoading || !form.name} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   260→            {isLoading && <Loader2 className="size-4 animate-spin" />}
+   261→            {editing ? 'Save Changes' : 'Create Role'}
+   262→          </Button>
+   263→        </DialogFooter>
+   264→      </DialogContent>
+   265→    </Dialog>
+   266→  );
+   267→}
+   268→
+   269→// ═══════════════════════════════════════════════════════════════
+   270→//  Main Module
+   271→// ═══════════════════════════════════════════════════════════════
+   272→
+   273→export default function AdminModule() {
+   274→  // ── Users State ──
+   275→  const [users, setUsers] = useState<UserRecord[]>([]);
+   276→  const [userMeta, setUserMeta] = useState<ApiMeta>({ total: 0, page: 1, pageSize: 20, totalPages: 0 });
+   277→  const [userLoading, setUserLoading] = useState(true);
+   278→  const [userPage, setUserPage] = useState(0);
+   279→  const [userPageSize, setUserPageSize] = useState(20);
+   280→  const [userSearch, setUserSearch] = useState('');
+   281→  const [userFilters, setUserFilters] = useState<ColumnFiltersState>([]);
+   282→  const [userSorting, setUserSorting] = useState<SortingState>([]);
+   283→
+   284→  // ── Roles State ──
+   285→  const [roles, setRoles] = useState<RoleRecord[]>([]);
+   286→  const [rolesLoading, setRolesLoading] = useState(false);
+   287→
+   288→  // ── Audit State ──
+   289→  const [auditLogs, setAuditLogs] = useState<AuditLogRecord[]>([]);
+   290→  const [auditMeta, setAuditMeta] = useState<ApiMeta>({ total: 0, page: 1, pageSize: 20, totalPages: 0 });
+   291→  const [auditLoading, setAuditLoading] = useState(false);
+   292→  const [auditPage, setAuditPage] = useState(0);
+   293→  const [auditPageSize, setAuditPageSize] = useState(20);
+   294→  const [auditFilters, setAuditFilters] = useState<ColumnFiltersState>([]);
+   295→  const [auditSorting, setAuditSorting] = useState<SortingState>([{ id: 'createdAt', desc: true }]);
+   296→
+   297→  // ── Settings State ──
+   298→  const [settings, setSettings] = useState<SettingRecord[]>([]);
+   299→  const [settingsLoading, setSettingsLoading] = useState(false);
+   300→  const [settingsSaving, setSettingsSaving] = useState(false);
+   301→  const [generalForm, setGeneralForm] = useState({
+   302→    companyName: '', industry: '', website: '', email: '', phone: '', address: '',
+   303→  });
+   304→  const [financeForm, setFinanceForm] = useState({
+   305→    currency: 'USD', taxRate: '0', invoicePrefix: 'INV-', fiscalYearStart: '01',
+   306→  });
+   307→
+   308→  // ── Dialogs ──
+   309→  const [userDialogOpen, setUserDialogOpen] = useState(false);
+   310→  const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
+   311→  const [userSubmitting, setUserSubmitting] = useState(false);
+   312→
+   313→  const [roleDialogOpen, setRoleDialogOpen] = useState(false);
+   314→  const [editingRole, setEditingRole] = useState<RoleRecord | null>(null);
+   315→  const [roleSubmitting, setRoleSubmitting] = useState(false);
+   316→
+   317→  const [deleteTarget, setDeleteTarget] = useState<{ type: 'user' | 'role'; id: string; name: string; isSystem?: boolean } | null>(null);
+   318→  const [deleting, setDeleting] = useState(false);
+   319→
+   320→  // ════════════════════════════════════════════════════════════
+   321→  //  Fetch: Users
+   322→  // ════════════════════════════════════════════════════════════
+   323→  const fetchUsers = useCallback(async () => {
+   324→    setUserLoading(true);
+   325→    try {
+   326→      const params = new URLSearchParams({
+   327→        page: String(userPage + 1), pageSize: String(userPageSize),
+   328→        sort: userSorting[0]?.id || 'createdAt',
+   329→        sortDir: userSorting[0]?.desc ? 'desc' : 'asc',
+   330→      });
+   331→      if (userSearch) params.set('search', userSearch);
+   332→      userFilters.forEach((f) => { params.set(f.id, String(f.value)); });
+   333→      const res = await apiFetch<{ data: UserRecord[]; meta: ApiMeta }>(`/api/admin/users?${params}`);
+   334→      setUsers(res.data); setUserMeta(res.meta);
+   335→    } catch (e: any) { toast.error(e.message); } finally { setUserLoading(false); }
+   336→  }, [userPage, userPageSize, userSearch, userFilters, userSorting]);
+   337→
+   338→  // ════════════════════════════════════════════════════════════
+   339→  //  Fetch: Roles
+   340→  // ════════════════════════════════════════════════════════════
+   341→  const fetchRoles = useCallback(async () => {
+   342→    setRolesLoading(true);
+   343→    try {
+   344→      const res = await apiFetch<{ data: RoleRecord[]; meta: ApiMeta }>('/api/admin/roles?pageSize=100');
+   345→      setRoles(res.data);
+   346→    } catch (e: any) { toast.error(e.message); } finally { setRolesLoading(false); }
+   347→  }, []);
+   348→
+   349→  // ════════════════════════════════════════════════════════════
+   350→  //  Fetch: Audit Log
+   351→  // ════════════════════════════════════════════════════════════
+   352→  const fetchAuditLogs = useCallback(async () => {
+   353→    setAuditLoading(true);
+   354→    try {
+   355→      const params = new URLSearchParams({
+   356→        page: String(auditPage + 1), pageSize: String(auditPageSize),
+   357→        sort: auditSorting[0]?.id || 'createdAt',
+   358→        sortDir: auditSorting[0]?.desc ? 'desc' : 'asc',
+   359→      });
+   360→      auditFilters.forEach((f) => { params.set(f.id, String(f.value)); });
+   361→      const res = await apiFetch<{ data: AuditLogRecord[]; meta: ApiMeta }>(`/api/admin/audit-log?${params}`);
+   362→      setAuditLogs(res.data); setAuditMeta(res.meta);
+   363→    } catch (e: any) { toast.error(e.message); } finally { setAuditLoading(false); }
+   364→  }, [auditPage, auditPageSize, auditFilters, auditSorting]);
+   365→
+   366→  // ════════════════════════════════════════════════════════════
+   367→  //  Fetch: Settings
+   368→  // ════════════════════════════════════════════════════════════
+   369→  const fetchSettings = useCallback(async () => {
+   370→    setSettingsLoading(true);
+   371→    try {
+   372→      const res = await apiFetch<{ data: SettingRecord[] }>('/api/admin/settings');
+   373→      setSettings(res.data);
+   374→      const map: Record<string, string> = {};
+   375→      res.data.forEach((s) => { map[s.key] = s.value; });
+   376→      setGeneralForm({
+   377→        companyName: map['companyName'] || '', industry: map['industry'] || '',
+   378→        website: map['website'] || '', email: map['email'] || '',
+   379→        phone: map['phone'] || '', address: map['address'] || '',
+   380→      });
+   381→      setFinanceForm({
+   382→        currency: map['currency'] || 'USD', taxRate: map['taxRate'] || '0',
+   383→        invoicePrefix: map['invoicePrefix'] || 'INV-', fiscalYearStart: map['fiscalYearStart'] || '01',
+   384→      });
+   385→    } catch (e: any) { toast.error(e.message); } finally { setSettingsLoading(false); }
+   386→  }, []);
+   387→
+   388→  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+   389→  useEffect(() => { fetchRoles(); }, [fetchRoles]);
+   390→  useEffect(() => { fetchAuditLogs(); }, [fetchAuditLogs]);
+   391→  useEffect(() => { fetchSettings(); }, [fetchSettings]);
+   392→
+   393→  // ════════════════════════════════════════════════════════════
+   394→  //  CRUD: Users
+   395→  // ════════════════════════════════════════════════════════════
+   396→  const handleUserSubmit = async (form: UserFormState) => {
+   397→    setUserSubmitting(true);
+   398→    try {
+   399→      const payload: any = {
+   400→        firstName: form.firstName, lastName: form.lastName, email: form.email,
+   401→        phone: form.phone, jobTitle: form.jobTitle, department: form.department,
+   402→        roleId: form.roleId,
+   403→      };
+   404→      if (!editingUser) payload.password = form.password;
+   405→      else payload.isActive = true;
+   406→
+   407→      if (editingUser) {
+   408→        await apiFetch(`/api/admin/users/${editingUser.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+   409→        toast.success('User updated');
+   410→      } else {
+   411→        await apiFetch('/api/admin/users', { method: 'POST', body: JSON.stringify(payload) });
+   412→        toast.success('User created');
+   413→      }
+   414→      setUserDialogOpen(false); setEditingUser(null); fetchUsers(); fetchRoles();
+   415→    } catch (e: any) { toast.error(e.message); } finally { setUserSubmitting(false); }
+   416→  };
+   417→
+   418→  // ════════════════════════════════════════════════════════════
+   419→  //  CRUD: Roles
+   420→  // ════════════════════════════════════════════════════════════
+   421→  const handleRoleSubmit = async (form: RoleFormState) => {
+   422→    setRoleSubmitting(true);
+   423→    try {
+   424→      const payload = { name: form.name, description: form.description, isSystem: form.isSystem, permissions: form.permissions };
+   425→      if (editingRole) {
+   426→        await apiFetch(`/api/admin/roles/${editingRole.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+   427→        toast.success('Role updated');
+   428→      } else {
+   429→        await apiFetch('/api/admin/roles', { method: 'POST', body: JSON.stringify(payload) });
+   430→        toast.success('Role created');
+   431→      }
+   432→      setRoleDialogOpen(false); setEditingRole(null); fetchRoles();
+   433→    } catch (e: any) { toast.error(e.message); } finally { setRoleSubmitting(false); }
+   434→  };
+   435→
+   436→  // ════════════════════════════════════════════════════════════
+   437→  //  Delete
+   438→  // ════════════════════════════════════════════════════════════
+   439→  const handleDelete = async () => {
+   440→    if (!deleteTarget) return;
+   441→    if (deleteTarget.type === 'user' && deleteTarget.id === 'u1') {
+   442→      toast.error('You cannot delete your own account');
+   443→      setDeleteTarget(null); return;
+   444→    }
+   445→    setDeleting(true);
+   446→    try {
+   447→      const endpoint = deleteTarget.type === 'user'
+   448→        ? `/api/admin/users/${deleteTarget.id}` : `/api/admin/roles/${deleteTarget.id}`;
+   449→      await apiFetch(endpoint, { method: 'DELETE' });
+   450→      toast.success(`${deleteTarget.type === 'user' ? 'User' : 'Role'} deleted`);
+   451→      setDeleteTarget(null);
+   452→      if (deleteTarget.type === 'user') fetchUsers(); else fetchRoles();
+   453→    } catch (e: any) { toast.error(e.message); } finally { setDeleting(false); }
+   454→  };
+   455→
+   456→  // ════════════════════════════════════════════════════════════
+   457→  //  Save Settings
+   458→  // ════════════════════════════════════════════════════════════
+   459→  const handleSaveSettings = async () => {
+   460→    setSettingsSaving(true);
+   461→    try {
+   462→      const items = [
+   463→        { key: 'companyName', value: generalForm.companyName, type: 'string', group: 'general' },
+   464→        { key: 'industry', value: generalForm.industry, type: 'string', group: 'general' },
+   465→        { key: 'website', value: generalForm.website, type: 'string', group: 'general' },
+   466→        { key: 'email', value: generalForm.email, type: 'string', group: 'general' },
+   467→        { key: 'phone', value: generalForm.phone, type: 'string', group: 'general' },
+   468→        { key: 'address', value: generalForm.address, type: 'string', group: 'general' },
+   469→        { key: 'currency', value: financeForm.currency, type: 'string', group: 'finance' },
+   470→        { key: 'taxRate', value: financeForm.taxRate, type: 'number', group: 'finance' },
+   471→        { key: 'invoicePrefix', value: financeForm.invoicePrefix, type: 'string', group: 'finance' },
+   472→        { key: 'fiscalYearStart', value: financeForm.fiscalYearStart, type: 'string', group: 'finance' },
+   473→      ];
+   474→      await apiFetch('/api/admin/settings', { method: 'PUT', body: JSON.stringify({ settings: items }) });
+   475→      toast.success('Settings saved');
+   476→    } catch (e: any) { toast.error(e.message); } finally { setSettingsSaving(false); }
+   477→  };
+   478→
+   479→  // ════════════════════════════════════════════════════════════
+   480→  //  User columns
+   481→  // ════════════════════════════════════════════════════════════
+   482→  const userColumns: ColumnDef<UserRecord>[] = [
+   483→    {
+   484→      accessorKey: 'avatar', header: '', size: 50,
+   485→      cell: ({ row }) => {
+   486→        const u = row.original;
+   487→        return (
+   488→          <Avatar className="size-8">
+   489→            <AvatarImage src={u.avatar} alt={u.firstName} />
+   490→            <AvatarFallback className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+   491→              {getInitials(u.firstName, u.lastName)}
+   492→            </AvatarFallback>
+   493→          </Avatar>
+   494→        );
+   495→      },
+   496→    },
+   497→    {
+   498→      accessorKey: 'firstName', header: 'Name', size: 160,
+   499→      cell: ({ row }) => <span className="font-medium">{row.original.firstName} {row.original.lastName}</span>,
+   500→    },
+   501→    { accessorKey: 'email', header: 'Email', size: 200 },
+   502→    { accessorKey: 'jobTitle', header: 'Job Title', size: 140 },
+   503→    { accessorKey: 'department', header: 'Department', size: 120 },
+   504→    {
+   505→      accessorKey: 'role', header: 'Role', size: 120,
+   506→      cell: ({ row }) => (
+   507→        <Badge variant="secondary" className="bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+   508→          {row.original.role?.name || '—'}
+   509→        </Badge>
+   510→      ),
+   511→    },
+   512→    {
+   513→      accessorKey: 'isActive', header: 'Status', size: 90,
+   514→      cell: ({ row }) => (
+   515→        <Badge variant={row.original.isActive ? 'default' : 'secondary'}
+   516→          className={row.original.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : ''}>
+   517→          {row.original.isActive ? 'Active' : 'Inactive'}
+   518→        </Badge>
+   519→      ),
+   520→    },
+   521→    {
+   522→      accessorKey: 'lastSeen', header: 'Last Seen', size: 120,
+   523→      cell: ({ row }) => <span className="text-muted-foreground text-sm">{formatRelativeTime(row.original.lastSeen)}</span>,
+   524→    },
+   525→    {
+   526→      id: 'actions', size: 60,
+   527→      cell: ({ row }) => (
+   528→        <DropdownMenu>
+   529→          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
+   530→          <DropdownMenuContent align="end">
+   531→            <DropdownMenuItem onClick={() => { setEditingUser(row.original); setUserDialogOpen(true); }}><Pencil className="size-4 mr-2" /> Edit</DropdownMenuItem>
+   532→            <DropdownMenuItem className="text-red-600" onClick={() => setDeleteTarget({ type: 'user', id: row.original.id, name: `${row.original.firstName} ${row.original.lastName}` })}>
+   533→              <Trash2 className="size-4 mr-2" /> Delete
+   534→            </DropdownMenuItem>
+   535→          </DropdownMenuContent>
+   536→        </DropdownMenu>
+   537→      ),
+   538→    },
+   539→  ];
+   540→
+   541→  // ── User filters ──
+   542→  const userFilterDefs: DataTableFilter[] = [
+   543→    { key: 'department', label: 'Department', options: DEPARTMENTS.map((d) => ({ value: d, label: d })) },
+   544→    { key: 'isActive', label: 'Status', options: [{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }] },
+   545→    { key: 'roleId', label: 'Role', options: roles.map((r) => ({ value: r.id, label: r.name })) },
+   546→  ];
+   547→
+   548→  // ════════════════════════════════════════════════════════════
+   549→  //  Audit Log columns
+   550→  // ════════════════════════════════════════════════════════════
+   551→  const auditColumns: ColumnDef<AuditLogRecord>[] = [
+   552→    {
+   553→      accessorKey: 'createdAt', header: 'Timestamp', size: 160,
+   554→      cell: ({ row }) => <span className="text-sm text-muted-foreground">{formatDateTime(row.original.createdAt)}</span>,
+   555→    },
+   556→    {
+   557→      accessorKey: 'user', header: 'User', size: 150,
+   558→      cell: ({ row }) => {
+   559→        const u = row.original.user;
+   560→        return u ? <span className="font-medium text-sm">{u.firstName} {u.lastName}</span> : <span className="text-muted-foreground">—</span>;
+   561→      },
+   562→    },
+   563→    {
+   564→      accessorKey: 'action', header: 'Action', size: 100,
+   565→      cell: ({ row }) => {
+   566→        const v = row.original.action;
+   567→        return <Badge variant="secondary" className={ACTION_COLORS[v] || ''}>{v}</Badge>;
+   568→      },
+   569→    },
+   570→    {
+   571→      accessorKey: 'module', header: 'Module', size: 110,
+   572→      cell: ({ row }) => {
+   573→        const v = row.original.module;
+   574→        return <Badge variant="secondary" className={MODULE_COLORS[v] || ''}>{v}</Badge>;
+   575→      },
+   576→    },
+   577→    { accessorKey: 'entity', header: 'Entity', size: 100 },
+   578→    {
+   579→      accessorKey: 'details', header: 'Details', size: 200,
+   580→      cell: ({ row }) => {
+   581→        const d = row.original.details;
+   582→        if (!d) return <span className="text-muted-foreground">—</span>;
+   583→        try {
+   584→          const parsed = JSON.parse(d);
+   585→          return <span className="text-xs text-muted-foreground font-mono max-w-[200px] truncate block">{JSON.stringify(parsed).slice(0, 60)}...</span>;
+   586→        } catch { return <span className="text-xs text-muted-foreground">{d.slice(0, 60)}</span>; }
+   587→      },
+   588→    },
+   589→  ];
+   590→
+   591→  // ── Audit filters ──
+   592→  const auditFilterDefs: DataTableFilter[] = [
+   593→    { key: 'module', label: 'Module', options: MODULE_OPTIONS.map((m) => ({ value: m, label: m })) },
+   594→    { key: 'action', label: 'Action', options: ACTION_OPTIONS.map((a) => ({ value: a, label: a })) },
+   595→  ];
+   596→
+   597→  // ════════════════════════════════════════════════════════════
+   598→  //  Render: Permission matrix for role cards
+   599→  // ════════════════════════════════════════════════════════════
+   600→  const renderPermMatrix = (permissions: string) => {
+   601→    let perms: Record<string, any> = {};
+   602→    try { perms = JSON.parse(permissions); } catch { /* empty */ }
+   603→    return (
+   604→      <div className="mt-3 overflow-x-auto">
+   605→        <table className="w-full text-xs">
+   606→          <thead>
+   607→            <tr>
+   608→              <th className="text-left py-1 pr-2 text-muted-foreground font-medium">Module</th>
+   609→              {PERMISSION_ACTIONS.map((a) => (
+   610→                <th key={a} className="py-1 px-1 text-center text-muted-foreground font-medium capitalize">{a}</th>
+   611→              ))}
+   612→            </tr>
+   613→          </thead>
+   614→          <tbody>
+   615→            {PERMISSION_MODULES.map((mod) => {
+   616→              const modPerms = perms[mod] || {};
+   617→              return (
+   618→                <tr key={mod} className="border-t border-border/50">
+   619→                  <td className="py-1.5 pr-2 capitalize font-medium text-foreground/80">{mod}</td>
+   620→                  {PERMISSION_ACTIONS.map((a) => (
+   621→                    <td key={a} className="py-1.5 px-1 text-center">
+   622→                      <span className={`inline-block size-3.5 rounded-sm ${modPerms[a] ? 'bg-emerald-500' : 'bg-muted'}`} />
+   623→                    </td>
+   624→                  ))}
+   625→                </tr>
+   626→              );
+   627→            })}
+   628→          </tbody>
+   629→        </table>
+   630→      </div>
+   631→    );
+   632→  };
+   633→
+   634→  return (
+   635→    <div className="flex-1 overflow-auto p-6">
+   636→      <Tabs defaultValue="users" className="space-y-6">
+   637→        <TabsList className="flex-wrap">
+   638→          <TabsTrigger value="users" className="gap-2"><Users className="size-4" /> Users</TabsTrigger>
+   639→          <TabsTrigger value="roles" className="gap-2"><Shield className="size-4" /> Roles</TabsTrigger>
+   640→          <TabsTrigger value="settings" className="gap-2"><Settings className="size-4" /> Settings</TabsTrigger>
+   641→          <TabsTrigger value="audit" className="gap-2"><ClipboardList className="size-4" /> Audit Log</TabsTrigger>
+   642→        </TabsList>
+   643→
+   644→        {/* ════════════════════════════════════════════════════════
+   645→            USERS TAB
+   646→        ════════════════════════════════════════════════════════ */}
+   647→        <TabsContent value="users" className="space-y-6">
+   648→          <PageHeader title="User Management" description="Manage user accounts and access." icon={Users}>
+   649→            <Button onClick={() => { setEditingUser(null); setUserDialogOpen(true); }}
+   650→              className="bg-emerald-600 text-white hover:bg-emerald-700">
+   651→              <Plus className="size-4 mr-2" /> Add User
+   652→            </Button>
+   653→          </PageHeader>
+   654→          <DataTable
+   655→            columns={userColumns} data={users} isLoading={userLoading}
+   656→            searchPlaceholder="Search users..." filters={userFilterDefs}
+   657→            total={userMeta.total} page={userPage} pageSize={userPageSize}
+   658→            onPageChange={setUserPage}
+   659→            onPageSizeChange={(s) => { setUserPageSize(s); setUserPage(0); }}
+   660→            onSearchChange={(v) => { setUserSearch(v); setUserPage(0); }}
+   661→            onFilterChange={(f) => { setUserFilters(f); setUserPage(0); }}
+   662→            onSortChange={(s) => { setUserSorting(s); setUserPage(0); }}
+   663→          />
+   664→        </TabsContent>
+   665→
+   666→        {/* ════════════════════════════════════════════════════════
+   667→            ROLES TAB
+   668→        ════════════════════════════════════════════════════════ */}
+   669→        <TabsContent value="roles" className="space-y-6">
+   670→          <PageHeader title="Roles & Permissions" description="Manage roles and their permission sets." icon={Shield}>
+   671→            <Button onClick={() => { setEditingRole(null); setRoleDialogOpen(true); }}
+   672→              className="bg-emerald-600 text-white hover:bg-emerald-700">
+   673→              <Plus className="size-4 mr-2" /> Create Role
+   674→            </Button>
+   675→          </PageHeader>
+   676→
+   677→          {rolesLoading ? (
+   678→            <div className="grid gap-4">
+   679→              {Array.from({ length: 2 }).map((_, i) => (
+   680→                <Card key={i}><CardContent className="p-6 space-y-3"><div className="h-5 w-1/3 bg-muted rounded" /><div className="h-4 w-2/3 bg-muted rounded" /></CardContent></Card>
+   681→              ))}
+   682→            </div>
+   683→          ) : roles.length === 0 ? (
+   684→            <EmptyState icon={Shield} title="No roles yet" description="Create your first role to manage permissions."
+   685→              action={{ label: 'Create Role', onClick: () => { setEditingRole(null); setRoleDialogOpen(true); } }} />
+   686→          ) : (
+   687→            <div className="grid gap-4">
+   688→              {roles.map((role) => (
+   689→                <Card key={role.id} className="group transition-shadow hover:shadow-md">
+   690→                  <CardContent className="p-6">
+   691→                    <div className="flex items-start justify-between">
+   692→                      <div className="flex items-center gap-3">
+   693→                        <div className="bg-emerald-500/10 text-emerald-600 flex size-10 items-center justify-center rounded-lg">
+   694→                          <ShieldCheck className="size-5" />
+   695→                        </div>
+   696→                        <div>
+   697→                          <div className="flex items-center gap-2">
+   698→                            <h3 className="font-semibold text-sm">{role.name}</h3>
+   699→                            {role.isSystem && (
+   700→                              <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">System</Badge>
+   701→                            )}
+   702→                          </div>
+   703→                          {role.description && <p className="text-muted-foreground text-xs mt-0.5">{role.description}</p>}
+   704→                          <p className="text-muted-foreground text-xs mt-1">{role._count?.users || 0} users</p>
+   705→                        </div>
+   706→                      </div>
+   707→                      <DropdownMenu>
+   708→                        <DropdownMenuTrigger asChild>
+   709→                          <Button variant="ghost" size="icon" className="size-8 opacity-0 group-hover:opacity-100 transition-opacity">
+   710→                            <MoreHorizontal className="size-4" />
+   711→                          </Button>
+   712→                        </DropdownMenuTrigger>
+   713→                        <DropdownMenuContent align="end">
+   714→                          <DropdownMenuItem onClick={() => { setEditingRole(role); setRoleDialogOpen(true); }}><Pencil className="size-4 mr-2" /> Edit</DropdownMenuItem>
+   715→                          {!role.isSystem && (
+   716→                            <DropdownMenuItem className="text-red-600" onClick={() => setDeleteTarget({ type: 'role', id: role.id, name: role.name, isSystem: role.isSystem })}>
+   717→                              <Trash2 className="size-4 mr-2" /> Delete
+   718→                            </DropdownMenuItem>
+   719→                          )}
+   720→                        </DropdownMenuContent>
+   721→                      </DropdownMenu>
+   722→                    </div>
+   723→                    {renderPermMatrix(role.permissions)}
+   724→                  </CardContent>
+   725→                </Card>
+   726→              ))}
+   727→            </div>
+   728→          )}
+   729→        </TabsContent>
+   730→
+   731→        {/* ════════════════════════════════════════════════════════
+   732→            SETTINGS TAB
+   733→        ════════════════════════════════════════════════════════ */}
+   734→        <TabsContent value="settings" className="space-y-6">
+   735→          <PageHeader title="Settings" description="Configure your organization settings." icon={Settings} />
+   736→
+   737→          <SectionCard title="General" icon={Briefcase}>
+   738→            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   739→              <div className="grid gap-2"><Label htmlFor="s-company">Company Name</Label>
+   740→                <Input id="s-company" value={generalForm.companyName} onChange={(e) => setGeneralForm((f) => ({ ...f, companyName: e.target.value }))} /></div>
+   741→              <div className="grid gap-2"><Label htmlFor="s-industry">Industry</Label>
+   742→                <Input id="s-industry" value={generalForm.industry} onChange={(e) => setGeneralForm((f) => ({ ...f, industry: e.target.value }))} /></div>
+   743→              <div className="grid gap-2"><Label htmlFor="s-website">Website</Label>
+   744→                <Input id="s-website" value={generalForm.website} onChange={(e) => setGeneralForm((f) => ({ ...f, website: e.target.value }))} /></div>
+   745→              <div className="grid gap-2"><Label htmlFor="s-email">Email</Label>
+   746→                <Input id="s-email" type="email" value={generalForm.email} onChange={(e) => setGeneralForm((f) => ({ ...f, email: e.target.value }))} /></div>
+   747→              <div className="grid gap-2"><Label htmlFor="s-phone">Phone</Label>
+   748→                <Input id="s-phone" value={generalForm.phone} onChange={(e) => setGeneralForm((f) => ({ ...f, phone: e.target.value }))} /></div>
+   749→              <div className="grid gap-2"><Label htmlFor="s-address">Address</Label>
+   750→                <Input id="s-address" value={generalForm.address} onChange={(e) => setGeneralForm((f) => ({ ...f, address: e.target.value }))} /></div>
+   751→            </div>
+   752→          </SectionCard>
+   753→
+   754→          <SectionCard title="Finance" icon={DollarSign}>
+   755→            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   756→              <div className="grid gap-2">
+   757→                <Label htmlFor="s-currency">Default Currency</Label>
+   758→                <Select value={financeForm.currency} onValueChange={(v) => setFinanceForm((f) => ({ ...f, currency: v }))}>
+   759→                  <SelectTrigger id="s-currency"><SelectValue /></SelectTrigger>
+   760→                  <SelectContent>{CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+   761→                </Select>
+   762→              </div>
+   763→              <div className="grid gap-2"><Label htmlFor="s-tax">Tax Rate (%)</Label>
+   764→                <Input id="s-tax" type="number" step="0.01" value={financeForm.taxRate} onChange={(e) => setFinanceForm((f) => ({ ...f, taxRate: e.target.value }))} /></div>
+   765→              <div className="grid gap-2"><Label htmlFor="s-prefix">Invoice Prefix</Label>
+   766→                <Input id="s-prefix" value={financeForm.invoicePrefix} onChange={(e) => setFinanceForm((f) => ({ ...f, invoicePrefix: e.target.value }))} /></div>
+   767→              <div className="grid gap-2">
+   768→                <Label htmlFor="s-fiscal">Fiscal Year Start (Month)</Label>
+   769→                <Select value={financeForm.fiscalYearStart} onValueChange={(v) => setFinanceForm((f) => ({ ...f, fiscalYearStart: v }))}>
+   770→                  <SelectTrigger id="s-fiscal"><SelectValue /></SelectTrigger>
+   771→                  <SelectContent>
+   772→                    {['01','02','03','04','05','06','07','08','09','10','11','12'].map((m) => (
+   773→                      <SelectItem key={m} value={m}>{new Date(2024, Number(m) - 1).toLocaleString('en-US', { month: 'long' })}</SelectItem>
+   774→                    ))}
+   775→                  </SelectContent>
+   776→                </Select>
+   777→              </div>
+   778→            </div>
+   779→          </SectionCard>
+   780→
+   781→          <div className="flex justify-end">
+   782→            <Button onClick={handleSaveSettings} disabled={settingsSaving}
+   783→              className="bg-emerald-600 text-white hover:bg-emerald-700">
+   784→              {settingsSaving && <Loader2 className="size-4 animate-spin" />}
+   785→              <Save className="size-4 mr-2" /> Save Settings
+   786→            </Button>
+   787→          </div>
+   788→        </TabsContent>
+   789→
+   790→        {/* ════════════════════════════════════════════════════════
+   791→            AUDIT LOG TAB
+   792→        ════════════════════════════════════════════════════════ */}
+   793→        <TabsContent value="audit" className="space-y-6">
+   794→          <PageHeader title="Audit Log" description="Track all actions performed across the system." icon={ClipboardList} />
+   795→          <DataTable
+   796→            columns={auditColumns} data={auditLogs} isLoading={auditLoading}
+   797→            searchPlaceholder="Search audit logs..." filters={auditFilterDefs}
+   798→            total={auditMeta.total} page={auditPage} pageSize={auditPageSize}
+   799→            onPageChange={setAuditPage}
+   800→            onPageSizeChange={(s) => { setAuditPageSize(s); setAuditPage(0); }}
+   801→            onFilterChange={(f) => { setAuditFilters(f); setAuditPage(0); }}
+   802→            onSortChange={(s) => { setAuditSorting(s); setAuditPage(0); }}
+   803→          />
+   804→        </TabsContent>
+   805→      </Tabs>
+   806→
+   807→      {/* ═══════════ DIALOGS ═══════════ */}
+   808→      <UserFormDialog key={editingUser?.id ?? 'new-user'}
+   809→        open={userDialogOpen} onOpenChange={setUserDialogOpen}
+   810→        editing={editingUser} onSubmit={handleUserSubmit} isLoading={userSubmitting} roles={roles} />
+   811→
+   812→      <RoleFormDialog key={editingRole?.id ?? 'new-role'}
+   813→        open={roleDialogOpen} onOpenChange={setRoleDialogOpen}
+   814→        editing={editingRole} onSubmit={handleRoleSubmit} isLoading={roleSubmitting} />
+   815→
+   816→      <ConfirmDialog
+   817→        open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}
+   818→        title={`Delete ${deleteTarget?.type === 'user' ? 'User' : 'Role'}`}
+   819→        description={deleteTarget?.type === 'role' && deleteTarget.isSystem
+   820→          ? 'This is a system role and cannot be deleted.'
+   821→          : `Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
+   822→        confirmLabel="Delete" variant="destructive" onConfirm={handleDelete} isLoading={deleting}
+   823→      />
+   824→    </div>
+   825→  );
+   826→}
+   827→

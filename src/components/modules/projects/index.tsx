@@ -38,7 +38,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import { Skeleton } from '@/components/ui/skeleton';
 
 // ═══════════════════════════════════════════════════════════════════════════

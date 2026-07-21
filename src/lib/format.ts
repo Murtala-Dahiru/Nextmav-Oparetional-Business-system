@@ -7,16 +7,25 @@ export function formatNumber(n: number): string {
 }
 
 export function formatDate(date: string | Date, opts?: Intl.DateTimeFormatOptions): string {
-  return new Date(date).toLocaleDateString('en-US', opts ?? { month: 'short', day: 'numeric', year: 'numeric' });
+  if (!date) return '';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', opts ?? { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export function formatDateTime(date: string | Date): string {
-  return new Date(date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+  if (!date) return '';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 }
 
 export function formatRelativeTime(date: string | Date): string {
+  if (!date) return '';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '';
   const now = Date.now();
-  const diff = now - new Date(date).getTime();
+  const diff = now - d.getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -39,5 +48,6 @@ export function getInitials(firstName: string, lastName: string): string {
 }
 
 export function truncate(str: string, length: number): string {
+  if (!str) return '';
   return str.length > length ? str.slice(0, length) + '...' : str;
 }
