@@ -99,9 +99,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const res = await fetch('/api/auth/session');
       const json = await res.json();
-      if (json.user) {
+      const userData = json?.data?.user ?? json?.user;
+      if (userData) {
         set({ 
-          user: json.user, 
+          user: userData, 
           isAuthenticated: true, 
           isLoading: false 
         });
