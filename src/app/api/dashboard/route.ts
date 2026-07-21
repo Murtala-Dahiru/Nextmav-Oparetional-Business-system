@@ -4,31 +4,35 @@ import { success, error } from '@/lib/api-response';
 export async function GET() {
   try {
     const [
-      totalLeads,
-      activeLeads,
-      totalDeals,
-      wonDealsValue,
-      totalRevenue,
-      openTickets,
-      activeProjects,
-      totalEmployees,
-      pendingInvoices,
+      leads,
+      deals,
+      projects,
+      tasks,
+      tickets,
+      invoices,
       recentActivity,
       topDeals,
       leadByStatus,
       dealsByStage,
       revenueByMonth,
     ] = await Promise.all([
-      // KPIs
-      db.lead.count(),
-      db.lead.count({ where: { status: { notIn: ['won', 'lost'] } } }),
-      db.deal.count(),
-      db.deal.aggregate({ where: { stage: 'closed-won' }, _sum: { value: true } }),
-      db.invoice.aggregate({ where: { status: 'paid' }, _sum: { total: true } }),
-      db.supportTicket.count({ where: { status: { in: ['open', 'in-progress'] } } }),
-      db.project.count({ where: { status: 'active' } }),
-      db.user.count({ where: { isActive: true } }),
-      db.invoice.count({ where: { status: { in: ['sent', 'overdue'] } } }),
+      db.lead.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }),
+      db.deal.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        include: { owner: { select: { id: true, firstName: true, lastName: true } } },
+      }),
+      db.project.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        include: { _count: { select: { tasks: true } } },
+      }),
+      db.projectTask.findMany({ orderBy: { sortOrder: 'asc' }, take: 100 }),
+      db.supportTicket.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+      db.invoice.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }),
       // Recent activity
       db.auditLog.findMany({
         take: 8,
@@ -59,22 +63,14 @@ export async function GET() {
       `,
     ]);
 
-    const revenue = totalRevenue._sum.total ?? 0;
-    const wonValue = wonDealsValue._sum.value ?? 0;
-
     return success({
-      stats: {
-        totalLeads,
-        activeLeads,
-        totalDeals,
-        wonDealsValue: wonValue,
-        revenue,
-        openTickets,
-        activeProjects,
-        totalEmployees,
-        pendingInvoices,
-      },
-      recentActivity,
+      leads,
+      deals,
+      projects,
+      tasks,
+      tickets,
+      invoices,
+      activities: recentActivity,
       topDeals,
       leadByStatus: leadByStatus.map((s) => ({ status: s.status, count: s._count })),
       dealsByStage: dealsByStage.map((s) => ({

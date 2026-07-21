@@ -4,19 +4,21 @@ const prisma = new PrismaClient({ datasources: { db: { url: 'file:/home/z/my-pro
 (async () => {
   try {
     const [
-      totalLeads, activeLeads, totalDeals, wonDealsValue, totalRevenue,
-      openTickets, activeProjects, totalEmployees, pendingInvoices,
+      leads, deals, projects, tasks, tickets, invoices,
       recentActivity, topDeals, leadByStatus, dealsByStage, revenueByMonth
     ] = await Promise.all([
-      prisma.lead.count(),
-      prisma.lead.count({ where: { status: { notIn: ['won', 'lost'] } } }),
-      prisma.deal.count(),
-      prisma.deal.aggregate({ where: { stage: 'closed-won' }, _sum: { value: true } }),
-      prisma.invoice.aggregate({ where: { status: 'paid' }, _sum: { total: true } }),
-      prisma.supportTicket.count({ where: { status: { in: ['open', 'in-progress'] } } }),
-      prisma.project.count({ where: { status: 'active' } }),
-      prisma.user.count({ where: { isActive: true } }),
-      prisma.invoice.count({ where: { status: { in: ['sent', 'overdue'] } } }),
+      prisma.lead.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }),
+      prisma.deal.findMany({
+        orderBy: { createdAt: 'desc' }, take: 100,
+        include: { owner: { select: { id: true, firstName: true, lastName: true } } },
+      }),
+      prisma.project.findMany({
+        orderBy: { createdAt: 'desc' }, take: 100,
+        include: { _count: { select: { tasks: true } } },
+      }),
+      prisma.projectTask.findMany({ orderBy: { sortOrder: 'asc' }, take: 100 }),
+      prisma.supportTicket.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }),
+      prisma.invoice.findMany({ orderBy: { createdAt: 'desc' }, take: 100 }),
       prisma.auditLog.findMany({
         take: 8, orderBy: { createdAt: 'desc' },
         include: { user: { select: { id: true, firstName: true, lastName: true, avatar: true } } },
@@ -37,13 +39,10 @@ const prisma = new PrismaClient({ datasources: { db: { url: 'file:/home/z/my-pro
       `,
     ]);
 
-    const revenue = totalRevenue._sum.total ?? 0;
-    const wonValue = wonDealsValue._sum.value ?? 0;
-
     console.log(JSON.stringify({
       data: {
-        stats: { totalLeads, activeLeads, totalDeals, wonDealsValue: wonValue, revenue, openTickets, activeProjects, totalEmployees, pendingInvoices },
-        recentActivity,
+        leads, deals, projects, tasks, tickets, invoices,
+        activities: recentActivity,
         topDeals,
         leadByStatus: leadByStatus.map(s => ({ status: s.status, count: s._count })),
         dealsByStage: dealsByStage.map(s => ({ stage: s.stage, count: s._count, value: s._sum.value ?? 0 })),

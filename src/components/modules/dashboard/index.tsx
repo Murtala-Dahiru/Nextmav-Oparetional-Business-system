@@ -157,6 +157,10 @@ interface DashboardData {
   invoices: Invoice[];
   expenses: Expense[];
   activities: ActivityItem[];
+  topDeals: any[];
+  leadByStatus: any[];
+  dealsByStage: any[];
+  revenueByMonth: any[];
 }
 
 // ---------------------------------------------------------------------------
@@ -309,72 +313,63 @@ export default function DashboardModule() {
 
   const kpis = useMemo(() => {
     if (!data) return null;
-    const s = data.stats;
-    return [
-      { label: 'Active Leads', value: s.activeLeads, change: 12.5, changeLabel: 'vs last month', icon: UserPlus },
-      { label: 'Total Revenue', value: formatCurrency(s.revenue), change: 8.3, changeLabel: 'vs last month', icon: DollarSign },
-      { label: 'Open Tickets', value: s.openTickets, change: -2.1, changeLabel: 'vs last week', icon: TicketCheck },
-      { label: 'Active Projects', value: s.activeProjects, change: 5.7, changeLabel: 'vs last month', icon: FolderKanban },
-      { label: 'Team Members', value: s.totalEmployees, icon: User },
-      { label: 'Pending Invoices', value: s.pendingInvoices, icon: FileText },
-    ];
-  }, [data]);
 
-  // Active Deals: not closed-won/closed-lost
-  const activeDealsCount = data.deals.filter(
-    (d) => d.stage !== 'closed-won' && d.stage !== 'closed-lost',
-  ).length;
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
-    // Deals change: this month vs last month created
+    const calcChange = (thisCount: number, lastCount: number) =>
+      lastCount > 0
+        ? ((thisCount - lastCount) / lastCount) * 100
+        : thisCount > 0
+          ? 100
+          : 0;
+
+    // Total Revenue from paid invoices
+    const totalRevenue = data.invoices
+      .filter((inv) => inv.status === 'paid')
+      .reduce((sum, inv) => sum + inv.total, 0);
+    const thisMonthRevenue = data.invoices
+      .filter((inv) => inv.status === 'paid' && new Date(inv.paidAt ?? inv.createdAt) >= thisMonthStart)
+      .reduce((sum, inv) => sum + inv.total, 0);
+    const lastMonthRevenue = data.invoices
+      .filter((inv) => inv.status === 'paid' && new Date(inv.paidAt ?? inv.createdAt) >= lastMonthStart && new Date(inv.paidAt ?? inv.createdAt) < thisMonthStart)
+      .reduce((sum, inv) => sum + inv.total, 0);
+    const revenueChange = calcChange(thisMonthRevenue, lastMonthRevenue);
+
+    // Active Deals
+    const activeDealsCount = data.deals.filter(
+      (d) => d.stage !== 'closed-won' && d.stage !== 'closed-lost',
+    ).length;
     const thisMonthDeals = data.deals.filter(
       (d) => new Date(d.createdAt) >= thisMonthStart,
     ).length;
     const lastMonthDeals = data.deals.filter(
       (d) => new Date(d.createdAt) >= lastMonthStart && new Date(d.createdAt) < thisMonthStart,
     ).length;
-    const dealsChange =
-      lastMonthDeals > 0
-        ? ((thisMonthDeals - lastMonthDeals) / lastMonthDeals) * 100
-        : thisMonthDeals > 0
-          ? 100
-          : 0;
+    const dealsChange = calcChange(thisMonthDeals, lastMonthDeals);
 
-    // Open Tickets: open / in-progress / pending
-    const openTickets = data.tickets.filter(
+    // Open Tickets
+    const openTicketsCount = data.tickets.filter(
       (t) => t.status === 'open' || t.status === 'in-progress' || t.status === 'pending',
-    );
-    const openTicketsCount = openTickets.length;
-
-    // Tickets change: this month vs last month
+    ).length;
     const thisMonthTickets = data.tickets.filter(
       (t) => new Date(t.createdAt) >= thisMonthStart,
     ).length;
     const lastMonthTickets = data.tickets.filter(
       (t) => new Date(t.createdAt) >= lastMonthStart && new Date(t.createdAt) < thisMonthStart,
     ).length;
-    const ticketsChange =
-      lastMonthTickets > 0
-        ? ((thisMonthTickets - lastMonthTickets) / lastMonthTickets) * 100
-        : thisMonthTickets > 0
-          ? 100
-          : 0;
+    const ticketsChange = calcChange(thisMonthTickets, lastMonthTickets);
 
     // Active Projects
-    const activeProjects = data.projects.filter((p) => p.status === 'active');
-    const activeProjectsCount = activeProjects.length;
-
+    const activeProjectsCount = data.projects.filter((p) => p.status === 'active').length;
     const thisMonthProjects = data.projects.filter(
       (p) => new Date(p.createdAt) >= thisMonthStart,
     ).length;
     const lastMonthProjects = data.projects.filter(
       (p) => new Date(p.createdAt) >= lastMonthStart && new Date(p.createdAt) < thisMonthStart,
     ).length;
-    const projectsChange =
-      lastMonthProjects > 0
-        ? ((thisMonthProjects - lastMonthProjects) / lastMonthProjects) * 100
-        : thisMonthProjects > 0
-          ? 100
-          : 0;
+    const projectsChange = calcChange(thisMonthProjects, lastMonthProjects);
 
     // Tasks Due This Week
     const weekFromNow = new Date();
@@ -396,26 +391,26 @@ export default function DashboardModule() {
     const newLeadsThisMonth = data.leads.filter(
       (l) => new Date(l.createdAt) >= thirtyDaysAgo,
     ).length;
-
     const thisMonthLeads = data.leads.filter(
       (l) => new Date(l.createdAt) >= thisMonthStart,
     ).length;
     const lastMonthLeads = data.leads.filter(
       (l) => new Date(l.createdAt) >= lastMonthStart && new Date(l.createdAt) < thisMonthStart,
     ).length;
-    const leadsChange =
-      lastMonthLeads > 0
-        ? ((thisMonthLeads - lastMonthLeads) / lastMonthLeads) * 100
-        : thisMonthLeads > 0
-          ? 100
-          : 0;
+    const leadsChange = calcChange(thisMonthLeads, lastMonthLeads);
 
     return {
+      totalRevenue,
+      revenueChange,
       activeDealsCount,
+      dealsChange,
       openTicketsCount,
+      ticketsChange,
       activeProjectsCount,
+      projectsChange,
       tasksDueThisWeek,
       newLeadsThisMonth,
+      leadsChange,
     };
   }, [data]);
 
@@ -479,21 +474,13 @@ export default function DashboardModule() {
 
   const leadChartData = useMemo(() => {
     if (!data?.leadByStatus) return [];
-    const statusOrder = [new, contacted, qualified, proposal, negotiation, won, lost];
-    return statusOrder
-      .map((status) => {
-        const found = data.leadByStatus.find((s: any) => s.status === status);
-        return { status, count: found?._count ?? 0 };
-      });
-  }, [data]);
-
-    return Array.from(statusMap.entries())
-      .map(([status, count]) => ({
-        name: status.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-        value: count,
-        color: LEAD_STATUS_COLORS[status] ?? '#94a3b8',
+    return data.leadByStatus
+      .map((s: any) => ({
+        name: (s.status as string).replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+        value: s.count,
+        color: LEAD_STATUS_COLORS[s.status] ?? '#94a3b8',
       }))
-      .sort((a, b) => b.value - a.value);
+      .sort((a: any, b: any) => b.value - a.value);
   }, [data]);
 
   // ---- Top Deals ----
