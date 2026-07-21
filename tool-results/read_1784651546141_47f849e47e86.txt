@@ -1,0 +1,719 @@
+   501→      columnFilters.forEach((f) => {
+   502→        params.set(f.id, String(f.value));
+   503→      });
+   504→      const res = await fetchList<InvoiceRecord>(`/api/finance/invoices?${params}`);
+   505→      setInvoices(res.data);
+   506→      setMeta(res.meta);
+   507→    } catch (e: any) {
+   508→      toast.error(e.message || 'Failed to load invoices');
+   509→    } finally {
+   510→      setLoading(false);
+   511→    }
+   512→  }, [page, pageSize, search, sorting, columnFilters]);
+   513→
+   514→  useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
+   515→
+   516→  // Computed values from form items
+   517→  const computedSubtotal = useMemo(() => form.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0), [form.items]);
+   518→  const computedTax = useMemo(() => computedSubtotal * form.taxRate / 100, [computedSubtotal, form.taxRate]);
+   519→  const computedTotal = useMemo(() => computedSubtotal + computedTax, [computedSubtotal, computedTax]);
+   520→
+   521→  // Column definitions
+   522→  const columns: ColumnDef<InvoiceRecord>[] = useMemo(() => [
+   523→    {
+   524→      accessorKey: 'invoiceNumber',
+   525→      header: 'Invoice #',
+   526→      cell: ({ row }) => <span className="font-medium">{row.original.invoiceNumber}</span>,
+   527→    },
+   528→    { accessorKey: 'contactName', header: 'Contact' },
+   529→    { accessorKey: 'companyName', header: 'Company' },
+   530→    {
+   531→      accessorKey: 'status',
+   532→      header: 'Status',
+   533→      cell: ({ row }) => <StatusBadge status={row.original.status} colorMap={INVOICE_STATUS_COLORS} />,
+   534→    },
+   535→    {
+   536→      accessorKey: 'subtotal',
+   537→      header: 'Subtotal',
+   538→      cell: ({ row }) => <span className="text-right block">{formatCurrency(row.original.subtotal)}</span>,
+   539→    },
+   540→    {
+   541→      accessorKey: 'tax',
+   542→      header: 'Tax',
+   543→      cell: ({ row }) => <span className="text-right block">{formatCurrency(row.original.tax)}</span>,
+   544→    },
+   545→    {
+   546→      accessorKey: 'total',
+   547→      header: 'Total',
+   548→      cell: ({ row }) => <span className="text-right block font-medium">{formatCurrency(row.original.total)}</span>,
+   549→    },
+   550→    {
+   551→      accessorKey: 'dueDate',
+   552→      header: 'Due Date',
+   553→      cell: ({ row }) => <span className="whitespace-nowrap">{formatDate(row.original.dueDate)}</span>,
+   554→    },
+   555→    {
+   556→      accessorKey: 'paidAt',
+   557→      header: 'Paid At',
+   558→      cell: ({ row }) => (
+   559→        <span className="whitespace-nowrap text-muted-foreground">
+   560→          {row.original.paidAt ? formatDate(row.original.paidAt) : '—'}
+   561→        </span>
+   562→      ),
+   563→    },
+   564→    {
+   565→      id: 'actions',
+   566→      header: '',
+   567→      size: 48,
+   568→      cell: ({ row }) => (
+   569→        <DropdownMenu>
+   570→          <DropdownMenuTrigger asChild>
+   571→            <Button variant="ghost" size="icon" className="size-8">
+   572→              <MoreHorizontal className="size-4" />
+   573→            </Button>
+   574→          </DropdownMenuTrigger>
+   575→          <DropdownMenuContent align="end">
+   576→            <DropdownMenuItem onClick={() => {
+   577→              setSelected(row.original);
+   578→              setEditStatus(row.original.status);
+   579→              setEditNotes(row.original.notes);
+   580→              setEditOpen(true);
+   581→            }}>
+   582→              <Pencil className="size-4 mr-2" />Edit
+   583→            </DropdownMenuItem>
+   584→            <DropdownMenuItem className="text-red-600" onClick={() => { setSelected(row.original); setDeleteOpen(true); }}>
+   585→              <Trash2 className="size-4 mr-2" />Delete
+   586→            </DropdownMenuItem>
+   587→          </DropdownMenuContent>
+   588→        </DropdownMenu>
+   589→      ),
+   590→    },
+   591→  ], []);
+   592→
+   593→  // Item management helpers
+   594→  const updateItem = (index: number, field: keyof LineItem, value: string | number) => {
+   595→    setForm((prev) => {
+   596→      const items = [...prev.items];
+   597→      items[index] = { ...items[index], [field]: value };
+   598→      return { ...prev, items };
+   599→    });
+   600→  };
+   601→
+   602→  const addItem = () => setForm((prev) => ({ ...prev, items: [...prev.items, { ...EMPTY_LINE_ITEM }] }));
+   603→  const removeItem = (index: number) => {
+   604→    if (form.items.length <= 1) return;
+   605→    setForm((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== index) }));
+   606→  };
+   607→
+   608→  // Create handler
+   609→  const handleCreate = async () => {
+   610→    if (!form.contactName) {
+   611→      toast.error('Contact name is required');
+   612→      return;
+   613→    }
+   614→    if (!form.dueDate) {
+   615→      toast.error('Due date is required');
+   616→      return;
+   617→    }
+   618→    const validItems = form.items.filter((i) => i.description && i.quantity > 0 && i.unitPrice > 0);
+   619→    if (validItems.length === 0) {
+   620→      toast.error('At least one valid line item is required');
+   621→      return;
+   622→    }
+   623→    setFormLoading(true);
+   624→    try {
+   625→      const payload = {
+   626→        invoiceNumber: generateInvoiceNumber(),
+   627→        contactName: form.contactName,
+   628→        companyName: form.companyName,
+   629→        status: form.status,
+   630→        items: JSON.stringify(validItems),
+   631→        subtotal: computedSubtotal,
+   632→        tax: computedTax,
+   633→        total: computedTotal,
+   634→        dueDate: form.dueDate,
+   635→        notes: form.notes,
+   636→      };
+   637→      await createRecord('/api/finance/invoices', payload);
+   638→      toast.success('Invoice created successfully');
+   639→      setCreateOpen(false);
+   640→      setForm(INVOICE_FORM_DEFAULTS);
+   641→      fetchInvoices();
+   642→    } catch (e: any) {
+   643→      toast.error(e.message || 'Failed to create invoice');
+   644→    } finally {
+   645→      setFormLoading(false);
+   646→    }
+   647→  };
+   648→
+   649→  // Edit handler
+   650→  const handleEdit = async () => {
+   651→    if (!selected) return;
+   652→    setFormLoading(true);
+   653→    try {
+   654→      await updateRecord(`/api/finance/invoices/${selected.id}`, { status: editStatus, notes: editNotes });
+   655→      toast.success('Invoice updated successfully');
+   656→      setEditOpen(false);
+   657→      setSelected(null);
+   658→      fetchInvoices();
+   659→    } catch (e: any) {
+   660→      toast.error(e.message || 'Failed to update invoice');
+   661→    } finally {
+   662→      setFormLoading(false);
+   663→    }
+   664→  };
+   665→
+   666→  // Delete handler
+   667→  const handleDelete = async () => {
+   668→    if (!selected) return;
+   669→    setFormLoading(true);
+   670→    try {
+   671→      await deleteRecord(`/api/finance/invoices/${selected.id}`);
+   672→      toast.success('Invoice deleted successfully');
+   673→      setDeleteOpen(false);
+   674→      setSelected(null);
+   675→      fetchInvoices();
+   676→    } catch (e: any) {
+   677→      toast.error(e.message || 'Failed to delete invoice');
+   678→    } finally {
+   679→      setFormLoading(false);
+   680→    }
+   681→  };
+   682→
+   683→  return (
+   684→    <div className="flex flex-col gap-6">
+   685→      <PageHeader title="Invoices" icon={FileText}>
+   686→        <Button onClick={() => { setForm(INVOICE_FORM_DEFAULTS); setCreateOpen(true); }} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   687→          <Plus className="size-4 mr-2" />New Invoice
+   688→        </Button>
+   689→      </PageHeader>
+   690→
+   691→      <DataTable
+   692→        columns={columns}
+   693→        data={invoices}
+   694→        isLoading={loading}
+   695→        searchPlaceholder="Search invoices..."
+   696→        filters={INVOICE_STATUS_FILTERS}
+   697→        total={meta.total}
+   698→        page={page}
+   699→        pageSize={pageSize}
+   700→        onPageChange={setPage}
+   701→        onPageSizeChange={(s) => { setPageSize(s); setPage(0); }}
+   702→        onSearchChange={(v) => { setSearch(v); setPage(0); }}
+   703→        onSortChange={setSorting}
+   704→        onFilterChange={(f) => { setColumnFilters(f); setPage(0); }}
+   705→      />
+   706→
+   707→      {/* Create Dialog */}
+   708→      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+   709→        <DialogContent className="sm:max-w-[640px] max-h-[90vh] overflow-y-auto">
+   710→          <DialogHeader>
+   711→            <DialogTitle>New Invoice</DialogTitle>
+   712→            <DialogDescription>Create a new invoice with line items.</DialogDescription>
+   713→          </DialogHeader>
+   714→          <div className="flex flex-col gap-4 py-2">
+   715→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   716→              <Field label="Contact Name *">
+   717→                <Input value={form.contactName} onChange={(e) => setForm((p) => ({ ...p, contactName: e.target.value }))} placeholder="John Doe" />
+   718→              </Field>
+   719→              <Field label="Company Name">
+   720→                <Input value={form.companyName} onChange={(e) => setForm((p) => ({ ...p, companyName: e.target.value }))} placeholder="Acme Corp" />
+   721→              </Field>
+   722→            </div>
+   723→            <div className="grid grid-cols-2 gap-4">
+   724→              <Field label="Status">
+   725→                <Select value={form.status} onValueChange={(v) => setForm((p) => ({ ...p, status: v }))}>
+   726→                  <SelectTrigger><SelectValue /></SelectTrigger>
+   727→                  <SelectContent>
+   728→                    {INVOICE_STATUSES.map((s) => (
+   729→                      <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
+   730→                    ))}
+   731→                  </SelectContent>
+   732→                </Select>
+   733→              </Field>
+   734→              <Field label="Due Date *">
+   735→                <Input type="date" value={form.dueDate} onChange={(e) => setForm((p) => ({ ...p, dueDate: e.target.value }))} />
+   736→              </Field>
+   737→            </div>
+   738→
+   739→            <Separator />
+   740→
+   741→            {/* Line Items */}
+   742→            <div className="space-y-3">
+   743→              <Label className="text-sm font-medium">Line Items</Label>
+   744→              <div className="space-y-2">
+   745→                {form.items.map((item, idx) => (
+   746→                  <div key={idx} className="grid grid-cols-[1fr_80px_100px_32px] gap-2 items-end">
+   747→                    <div className="space-y-1">
+   748→                      {idx === 0 && <Label className="text-xs text-muted-foreground">Description</Label>}
+   749→                      <Input
+   750→                        value={item.description}
+   751→                        onChange={(e) => updateItem(idx, 'description', e.target.value)}
+   752→                        placeholder="Item description"
+   753→                        className="h-9"
+   754→                      />
+   755→                    </div>
+   756→                    <div className="space-y-1">
+   757→                      {idx === 0 && <Label className="text-xs text-muted-foreground">Qty</Label>}
+   758→                      <Input
+   759→                        type="number"
+   760→                        min={1}
+   761→                        value={item.quantity}
+   762→                        onChange={(e) => updateItem(idx, 'quantity', Number(e.target.value) || 0)}
+   763→                        className="h-9"
+   764→                      />
+   765→                    </div>
+   766→                    <div className="space-y-1">
+   767→                      {idx === 0 && <Label className="text-xs text-muted-foreground">Unit Price</Label>}
+   768→                      <Input
+   769→                        type="number"
+   770→                        min={0}
+   771→                        step={0.01}
+   772→                        value={item.unitPrice}
+   773→                        onChange={(e) => updateItem(idx, 'unitPrice', Number(e.target.value) || 0)}
+   774→                        className="h-9"
+   775→                      />
+   776→                    </div>
+   777→                    <Button
+   778→                      variant="ghost"
+   779→                      size="icon"
+   780→                      className="size-9 text-muted-foreground hover:text-red-500"
+   781→                      onClick={() => removeItem(idx)}
+   782→                      disabled={form.items.length <= 1}
+   783→                    >
+   784→                      <Trash2 className="size-4" />
+   785→                    </Button>
+   786→                  </div>
+   787→                ))}
+   788→              </div>
+   789→              <Button type="button" variant="outline" size="sm" onClick={addItem} className="w-full">
+   790→                <Plus className="size-4 mr-1.5" />Add Line Item
+   791→              </Button>
+   792→            </div>
+   793→
+   794→            <Separator />
+   795→
+   796→            {/* Totals */}
+   797→            <div className="grid grid-cols-2 gap-4">
+   798→              <Field label="Tax Rate (%)">
+   799→                <Input
+   800→                  type="number"
+   801→                  min={0}
+   802→                  max={100}
+   803→                  value={form.taxRate}
+   804→                  onChange={(e) => setForm((p) => ({ ...p, taxRate: Number(e.target.value) || 0 }))}
+   805→                />
+   806→              </Field>
+   807→              <div className="flex flex-col justify-end gap-1 text-sm">
+   808→                <div className="flex justify-between"><span className="text-muted-foreground">Subtotal:</span><span>{formatCurrency(computedSubtotal)}</span></div>
+   809→                <div className="flex justify-between"><span className="text-muted-foreground">Tax:</span><span>{formatCurrency(computedTax)}</span></div>
+   810→                <div className="flex justify-between font-semibold text-base border-t pt-1 mt-1">
+   811→                  <span>Total:</span><span>{formatCurrency(computedTotal)}</span>
+   812→                </div>
+   813→              </div>
+   814→            </div>
+   815→
+   816→            <Field label="Notes">
+   817→              <Textarea
+   818→                value={form.notes}
+   819→                onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+   820→                placeholder="Additional notes..."
+   821→                rows={2}
+   822→              />
+   823→            </Field>
+   824→          </div>
+   825→          <DialogFooter>
+   826→            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+   827→            <Button onClick={handleCreate} disabled={formLoading} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   828→              {formLoading && <Loader2 className="size-4 mr-2 animate-spin" />}Create Invoice
+   829→            </Button>
+   830→          </DialogFooter>
+   831→        </DialogContent>
+   832→      </Dialog>
+   833→
+   834→      {/* Edit Dialog */}
+   835→      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+   836→        <DialogContent className="sm:max-w-[480px]">
+   837→          <DialogHeader>
+   838→            <DialogTitle>Edit Invoice</DialogTitle>
+   839→            <DialogDescription>Update invoice status and notes.</DialogDescription>
+   840→          </DialogHeader>
+   841→          <div className="flex flex-col gap-4 py-2">
+   842→            {selected && (
+   843→              <div className="text-sm text-muted-foreground">
+   844→                Invoice <span className="font-medium text-foreground">{selected.invoiceNumber}</span> — {formatCurrency(selected.total)}
+   845→              </div>
+   846→            )}
+   847→            <Field label="Status">
+   848→              <Select value={editStatus} onValueChange={setEditStatus}>
+   849→                <SelectTrigger><SelectValue /></SelectTrigger>
+   850→                <SelectContent>
+   851→                  {INVOICE_STATUSES.map((s) => (
+   852→                    <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
+   853→                  ))}
+   854→                </SelectContent>
+   855→              </Select>
+   856→            </Field>
+   857→            <Field label="Notes">
+   858→              <Textarea
+   859→                value={editNotes}
+   860→                onChange={(e) => setEditNotes(e.target.value)}
+   861→                placeholder="Notes..."
+   862→                rows={3}
+   863→              />
+   864→            </Field>
+   865→          </div>
+   866→          <DialogFooter>
+   867→            <Button variant="outline" onClick={() => { setEditOpen(false); setSelected(null); }}>Cancel</Button>
+   868→            <Button onClick={handleEdit} disabled={formLoading} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   869→              {formLoading && <Loader2 className="size-4 mr-2 animate-spin" />}Save Changes
+   870→            </Button>
+   871→          </DialogFooter>
+   872→        </DialogContent>
+   873→      </Dialog>
+   874→
+   875→      {/* Delete Confirm */}
+   876→      <ConfirmDialog
+   877→        open={deleteOpen}
+   878→        onOpenChange={setDeleteOpen}
+   879→        title="Delete Invoice"
+   880→        description={`Are you sure you want to delete invoice ${selected?.invoiceNumber}? This action cannot be undone.`}
+   881→        confirmLabel="Delete"
+   882→        variant="destructive"
+   883→        onConfirm={handleDelete}
+   884→        isLoading={formLoading}
+   885→      />
+   886→    </div>
+   887→  );
+   888→}
+   889→
+   890→// ═══════════════════════════════════════════════════════════════════════════
+   891→//  Expenses Tab
+   892→// ═══════════════════════════════════════════════════════════════════════════
+   893→
+   894→interface ExpenseFormData {
+   895→  title: string;
+   896→  amount: number;
+   897→  category: string;
+   898→  vendor: string;
+   899→  date: string;
+   900→  notes: string;
+   901→}
+   902→
+   903→const EXPENSE_DEFAULTS: ExpenseFormData = {
+   904→  title: '', amount: 0, category: 'general', vendor: '',
+   905→  date: new Date().toISOString().split('T')[0], notes: '',
+   906→};
+   907→
+   908→function ExpensesTab() {
+   909→  // Table state
+   910→  const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
+   911→  const [meta, setMeta] = useState<ApiMeta>({ total: 0, page: 1, pageSize: 10, totalPages: 0 });
+   912→  const [loading, setLoading] = useState(false);
+   913→  const [page, setPage] = useState(0);
+   914→  const [pageSize, setPageSize] = useState(10);
+   915→  const [search, setSearch] = useState('');
+   916→  const [sorting, setSorting] = useState<SortingState>([]);
+   917→  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+   918→
+   919→  // Dialogs
+   920→  const [createOpen, setCreateOpen] = useState(false);
+   921→  const [editOpen, setEditOpen] = useState(false);
+   922→  const [deleteOpen, setDeleteOpen] = useState(false);
+   923→  const [selected, setSelected] = useState<ExpenseRecord | null>(null);
+   924→  const [formLoading, setFormLoading] = useState(false);
+   925→  const [form, setForm] = useState<ExpenseFormData>(EXPENSE_DEFAULTS);
+   926→
+   927→  const fetchExpenses = useCallback(async () => {
+   928→    setLoading(true);
+   929→    try {
+   930→      const params = new URLSearchParams();
+   931→      params.set('page', String(page + 1));
+   932→      params.set('pageSize', String(pageSize));
+   933→      if (search) params.set('search', search);
+   934→      if (sorting[0]) {
+   935→        params.set('sort', sorting[0].id);
+   936→        params.set('sortDir', sorting[0].desc ? 'desc' : 'asc');
+   937→      }
+   938→      columnFilters.forEach((f) => {
+   939→        params.set(f.id, String(f.value));
+   940→      });
+   941→      const res = await fetchList<ExpenseRecord>(`/api/finance/expenses?${params}`);
+   942→      setExpenses(res.data);
+   943→      setMeta(res.meta);
+   944→    } catch (e: any) {
+   945→      toast.error(e.message || 'Failed to load expenses');
+   946→    } finally {
+   947→      setLoading(false);
+   948→    }
+   949→  }, [page, pageSize, search, sorting, columnFilters]);
+   950→
+   951→  useEffect(() => { fetchExpenses(); }, [fetchExpenses]);
+   952→
+   953→  // Column definitions
+   954→  const columns: ColumnDef<ExpenseRecord>[] = useMemo(() => [
+   955→    {
+   956→      accessorKey: 'title',
+   957→      header: 'Title',
+   958→      cell: ({ row }) => <span className="font-medium">{row.original.title}</span>,
+   959→    },
+   960→    {
+   961→      accessorKey: 'amount',
+   962→      header: 'Amount',
+   963→      cell: ({ row }) => <span className="font-medium">{formatCurrency(row.original.amount)}</span>,
+   964→    },
+   965→    {
+   966→      accessorKey: 'category',
+   967→      header: 'Category',
+   968→      cell: ({ row }) => <StatusBadge status={row.original.category} colorMap={EXPENSE_CATEGORY_COLORS} />,
+   969→    },
+   970→    { accessorKey: 'vendor', header: 'Vendor' },
+   971→    {
+   972→      accessorKey: 'date',
+   973→      header: 'Date',
+   974→      cell: ({ row }) => <span className="whitespace-nowrap">{formatDate(row.original.date)}</span>,
+   975→    },
+   976→    {
+   977→      accessorKey: 'status',
+   978→      header: 'Status',
+   979→      cell: ({ row }) => <StatusBadge status={row.original.status} colorMap={EXPENSE_STATUS_COLORS} />,
+   980→    },
+   981→    {
+   982→      id: 'actions',
+   983→      header: '',
+   984→      size: 48,
+   985→      cell: ({ row }) => (
+   986→        <DropdownMenu>
+   987→          <DropdownMenuTrigger asChild>
+   988→            <Button variant="ghost" size="icon" className="size-8">
+   989→              <MoreHorizontal className="size-4" />
+   990→            </Button>
+   991→          </DropdownMenuTrigger>
+   992→          <DropdownMenuContent align="end">
+   993→            <DropdownMenuItem onClick={() => {
+   994→              const exp = row.original;
+   995→              setSelected(exp);
+   996→              setForm({
+   997→                title: exp.title,
+   998→                amount: exp.amount,
+   999→                category: exp.category,
+  1000→                vendor: exp.vendor,
+  1001→                date: exp.date.split('T')[0],
+  1002→                notes: exp.notes,
+  1003→              });
+  1004→              setEditOpen(true);
+  1005→            }}>
+  1006→              <Pencil className="size-4 mr-2" />Edit
+  1007→            </DropdownMenuItem>
+  1008→            <DropdownMenuItem className="text-red-600" onClick={() => { setSelected(row.original); setDeleteOpen(true); }}>
+  1009→              <Trash2 className="size-4 mr-2" />Delete
+  1010→            </DropdownMenuItem>
+  1011→          </DropdownMenuContent>
+  1012→        </DropdownMenu>
+  1013→      ),
+  1014→    },
+  1015→  ], []);
+  1016→
+  1017→  // Create handler
+  1018→  const handleCreate = async () => {
+  1019→    if (!form.title) { toast.error('Title is required'); return; }
+  1020→    if (form.amount <= 0) { toast.error('Amount must be greater than 0'); return; }
+  1021→    if (!form.date) { toast.error('Date is required'); return; }
+  1022→    setFormLoading(true);
+  1023→    try {
+  1024→      await createRecord('/api/finance/expenses', form);
+  1025→      toast.success('Expense created successfully');
+  1026→      setCreateOpen(false);
+  1027→      setForm(EXPENSE_DEFAULTS);
+  1028→      fetchExpenses();
+  1029→    } catch (e: any) {
+  1030→      toast.error(e.message || 'Failed to create expense');
+  1031→    } finally {
+  1032→      setFormLoading(false);
+  1033→    }
+  1034→  };
+  1035→
+  1036→  // Edit handler
+  1037→  const handleEdit = async () => {
+  1038→    if (!selected) return;
+  1039→    setFormLoading(true);
+  1040→    try {
+  1041→      await updateRecord(`/api/finance/expenses/${selected.id}`, form);
+  1042→      toast.success('Expense updated successfully');
+  1043→      setEditOpen(false);
+  1044→      setSelected(null);
+  1045→      fetchExpenses();
+  1046→    } catch (e: any) {
+  1047→      toast.error(e.message || 'Failed to update expense');
+  1048→    } finally {
+  1049→      setFormLoading(false);
+  1050→    }
+  1051→  };
+  1052→
+  1053→  // Delete handler
+  1054→  const handleDelete = async () => {
+  1055→    if (!selected) return;
+  1056→    setFormLoading(true);
+  1057→    try {
+  1058→      await deleteRecord(`/api/finance/expenses/${selected.id}`);
+  1059→      toast.success('Expense deleted successfully');
+  1060→      setDeleteOpen(false);
+  1061→      setSelected(null);
+  1062→      fetchExpenses();
+  1063→    } catch (e: any) {
+  1064→      toast.error(e.message || 'Failed to delete expense');
+  1065→    } finally {
+  1066→      setFormLoading(false);
+  1067→    }
+  1068→  };
+  1069→
+  1070→  const ExpenseFormFields = ({ formData, onChange }: { formData: ExpenseFormData; onChange: (f: ExpenseFormData) => void }) => (
+  1071→    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
+  1072→      <div className="sm:col-span-2">
+  1073→        <Field label="Title *">
+  1074→          <Input value={formData.title} onChange={(e) => onChange({ ...formData, title: e.target.value })} placeholder="Expense title" />
+  1075→        </Field>
+  1076→      </div>
+  1077→      <Field label="Amount *">
+  1078→        <Input type="number" min={0} step={0.01} value={formData.amount} onChange={(e) => onChange({ ...formData, amount: Number(e.target.value) || 0 })} placeholder="0.00" />
+  1079→      </Field>
+  1080→      <Field label="Category">
+  1081→        <Select value={formData.category} onValueChange={(v) => onChange({ ...formData, category: v })}>
+  1082→          <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
+  1083→          <SelectContent>
+  1084→            {EXPENSE_CATEGORIES.map((c) => (
+  1085→              <SelectItem key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</SelectItem>
+  1086→            ))}
+  1087→          </SelectContent>
+  1088→        </Select>
+  1089→      </Field>
+  1090→      <Field label="Vendor">
+  1091→        <Input value={formData.vendor} onChange={(e) => onChange({ ...formData, vendor: e.target.value })} placeholder="Vendor name" />
+  1092→      </Field>
+  1093→      <Field label="Date *">
+  1094→        <Input type="date" value={formData.date} onChange={(e) => onChange({ ...formData, date: e.target.value })} />
+  1095→      </Field>
+  1096→      <div className="sm:col-span-2">
+  1097→        <Field label="Notes">
+  1098→          <Textarea value={formData.notes} onChange={(e) => onChange({ ...formData, notes: e.target.value })} placeholder="Additional notes..." rows={2} />
+  1099→        </Field>
+  1100→      </div>
+  1101→    </div>
+  1102→  );
+  1103→
+  1104→  return (
+  1105→    <div className="flex flex-col gap-6">
+  1106→      <PageHeader title="Expenses" icon={Receipt}>
+  1107→        <Button onClick={() => { setForm(EXPENSE_DEFAULTS); setCreateOpen(true); }} className="bg-emerald-600 text-white hover:bg-emerald-700">
+  1108→          <Plus className="size-4 mr-2" />New Expense
+  1109→        </Button>
+  1110→      </PageHeader>
+  1111→
+  1112→      <DataTable
+  1113→        columns={columns}
+  1114→        data={expenses}
+  1115→        isLoading={loading}
+  1116→        searchPlaceholder="Search expenses..."
+  1117→        filters={EXPENSE_FILTERS}
+  1118→        total={meta.total}
+  1119→        page={page}
+  1120→        pageSize={pageSize}
+  1121→        onPageChange={setPage}
+  1122→        onPageSizeChange={(s) => { setPageSize(s); setPage(0); }}
+  1123→        onSearchChange={(v) => { setSearch(v); setPage(0); }}
+  1124→        onSortChange={setSorting}
+  1125→        onFilterChange={(f) => { setColumnFilters(f); setPage(0); }}
+  1126→      />
+  1127→
+  1128→      {/* Create Dialog */}
+  1129→      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+  1130→        <DialogContent className="sm:max-w-[520px]">
+  1131→          <DialogHeader>
+  1132→            <DialogTitle>New Expense</DialogTitle>
+  1133→            <DialogDescription>Record a new business expense.</DialogDescription>
+  1134→          </DialogHeader>
+  1135→          <ExpenseFormFields formData={form} onChange={setForm} />
+  1136→          <DialogFooter>
+  1137→            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+  1138→            <Button onClick={handleCreate} disabled={formLoading} className="bg-emerald-600 text-white hover:bg-emerald-700">
+  1139→              {formLoading && <Loader2 className="size-4 mr-2 animate-spin" />}Create Expense
+  1140→            </Button>
+  1141→          </DialogFooter>
+  1142→        </DialogContent>
+  1143→      </Dialog>
+  1144→
+  1145→      {/* Edit Dialog */}
+  1146→      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+  1147→        <DialogContent className="sm:max-w-[520px]">
+  1148→          <DialogHeader>
+  1149→            <DialogTitle>Edit Expense</DialogTitle>
+  1150→            <DialogDescription>Update expense details.</DialogDescription>
+  1151→          </DialogHeader>
+  1152→          <ExpenseFormFields formData={form} onChange={setForm} />
+  1153→          <DialogFooter>
+  1154→            <Button variant="outline" onClick={() => { setEditOpen(false); setSelected(null); }}>Cancel</Button>
+  1155→            <Button onClick={handleEdit} disabled={formLoading} className="bg-emerald-600 text-white hover:bg-emerald-700">
+  1156→              {formLoading && <Loader2 className="size-4 mr-2 animate-spin" />}Save Changes
+  1157→            </Button>
+  1158→          </DialogFooter>
+  1159→        </DialogContent>
+  1160→      </Dialog>
+  1161→
+  1162→      {/* Delete Confirm */}
+  1163→      <ConfirmDialog
+  1164→        open={deleteOpen}
+  1165→        onOpenChange={setDeleteOpen}
+  1166→        title="Delete Expense"
+  1167→        description={`Are you sure you want to delete "${selected?.title}"? This action cannot be undone.`}
+  1168→        confirmLabel="Delete"
+  1169→        variant="destructive"
+  1170→        onConfirm={handleDelete}
+  1171→        isLoading={formLoading}
+  1172→      />
+  1173→    </div>
+  1174→  );
+  1175→}
+  1176→
+  1177→// ═══════════════════════════════════════════════════════════════════════════
+  1178→//  Main Finance Module
+  1179→// ═══════════════════════════════════════════════════════════════════════════
+  1180→
+  1181→export default function FinanceModule() {
+  1182→  const [activeTab, setActiveTab] = useState('overview');
+  1183→
+  1184→  return (
+  1185→    <div className="flex-1 flex flex-col gap-4 p-4 md:p-6 overflow-auto">
+  1186→      <Tabs value={activeTab} onValueChange={setActiveTab}>
+  1187→        <TabsList className="overflow-x-auto w-full sm:w-auto">
+  1188→          <TabsTrigger value="overview">
+  1189→            <CircleDollarSign className="size-4 mr-1.5 hidden sm:inline" />Overview
+  1190→          </TabsTrigger>
+  1191→          <TabsTrigger value="invoices">
+  1192→            <FileText className="size-4 mr-1.5 hidden sm:inline" />Invoices
+  1193→          </TabsTrigger>
+  1194→          <TabsTrigger value="expenses">
+  1195→            <Receipt className="size-4 mr-1.5 hidden sm:inline" />Expenses
+  1196→          </TabsTrigger>
+  1197→        </TabsList>
+  1198→      </Tabs>
+  1199→
+  1200→      <AnimatePresence mode="wait">
+  1201→        {activeTab === 'overview' && (
+  1202→          <motion.div key="overview" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+  1203→            <OverviewTab onSwitchTab={setActiveTab} />
+  1204→          </motion.div>
+  1205→        )}
+  1206→        {activeTab === 'invoices' && (
+  1207→          <motion.div key="invoices" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+  1208→            <InvoicesTab />
+  1209→          </motion.div>
+  1210→        )}
+  1211→        {activeTab === 'expenses' && (
+  1212→          <motion.div key="expenses" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+  1213→            <ExpensesTab />
+  1214→          </motion.div>
+  1215→        )}
+  1216→      </AnimatePresence>
+  1217→    </div>
+  1218→  );
+  1219→}
