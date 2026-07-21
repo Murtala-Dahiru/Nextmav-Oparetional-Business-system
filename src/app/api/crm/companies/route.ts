@@ -1,13 +1,15 @@
 import { db } from '@/lib/db';
 import { success, error, paginated } from '@/lib/api-response';
 import { createCompanySchema } from '@/lib/validations';
+import { safeSortField } from '@/lib/sort-whitelist';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
   const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 20));
   const search = searchParams.get('search') || '';
-  const sort = searchParams.get('sort') || 'createdAt';
+  const rawSort = searchParams.get('sort') || 'createdAt';
+  const sort = safeSortField('company', rawSort);
   const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
 
   const where: any = {};

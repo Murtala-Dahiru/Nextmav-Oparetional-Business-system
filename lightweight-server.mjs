@@ -50,6 +50,7 @@ const ROUTE_MAP = {
   '/api/admin/audit-log': 'prisma.auditLog.findMany({take:100,orderBy:{createdAt:"desc"}},include:{user:{select:{id:true,firstName:true,lastName:true}}})',
   '/api/admin/notifications': 'prisma.notification.findMany({take:50,orderBy:{createdAt:"desc"}})',
   '/api/admin/settings': 'prisma.setting.findMany({orderBy:{group:"asc",key:"asc"}})',
+  '/api/dashboard': 'DASHBOARD_SCRIPT',
   '/api/activity-log': 'prisma.activityLog.findMany({take:50,orderBy:{createdAt:"desc"},include:{user:{select:{id:true,firstName:true,lastName:true}}}})',
   '/api/search': 'prisma.lead.findMany({take:5})',
   '/api/export': '{}',
@@ -134,6 +135,14 @@ function handleApi(method, urlPath) {
 
   // Exact route match
   if (ROUTE_MAP[urlPath]) {
+    // Dashboard uses a dedicated script
+    if (ROUTE_MAP[urlPath] === 'DASHBOARD_SCRIPT') {
+      const dashScript = join(__dirname, '.tmp-api', 'dashboard-query.cjs');
+      const output = execSync(`node "${dashScript}"`, { timeout: 15000, encoding: 'utf-8', env: { ...process.env } });
+      const lastLine = output.trim().split('\n').pop();
+      try { return { status: 200, body: lastLine }; } catch { return { status: 500, body: output }; }
+    }
+
     const output = runPrismaQuery(ROUTE_MAP[urlPath]);
     const lastLine = output.trim().split('\n').pop();
     try {

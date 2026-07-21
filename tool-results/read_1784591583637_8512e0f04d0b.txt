@@ -1,0 +1,957 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useMemo, useCallback } from 'react';
+     4→import {
+     5→  DollarSign,
+     6→  Handshake,
+     7→  TicketCheck,
+     8→  FolderKanban,
+     9→  ListTodo,
+    10→  UserPlus,
+    11→  Activity,
+    12→  User,
+    13→  Plus,
+    14→  FileText,
+    15→  CalendarDays,
+    16→  BarChart3,
+    17→  TrendingUp,
+    18→  Package,
+    19→  Settings,
+    20→} from 'lucide-react';
+    21→import {
+    22→  AreaChart,
+    23→  Area,
+    24→  BarChart,
+    25→  Bar,
+    26→  XAxis,
+    27→  YAxis,
+    28→  CartesianGrid,
+    29→  Tooltip,
+    30→  ResponsiveContainer,
+    31→  PieChart,
+    32→  Pie,
+    33→  Cell,
+    34→} from 'recharts';
+    35→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    36→import { Button } from '@/components/ui/button';
+    37→import { Badge } from '@/components/ui/badge';
+    38→import { ScrollArea } from '@/components/ui/scroll-area';
+    39→import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+    40→import { PageHeader } from '@/components/shared/page-header';
+    41→import { StatCard } from '@/components/shared/stat-card';
+    42→import { EmptyState } from '@/components/shared/empty-state';
+    43→import { formatCurrency, formatRelativeTime, getInitials } from '@/lib/format';
+    44→import { useAppStore } from '@/store/app-store';
+    45→import type { ModuleId } from '@/lib/constants';
+    46→
+    47→// ---------------------------------------------------------------------------
+    48→// Types
+    49→// ---------------------------------------------------------------------------
+    50→
+    51→interface ApiMeta {
+    52→  total: number;
+    53→  page: number;
+    54→  pageSize: number;
+    55→  totalPages: number;
+    56→}
+    57→
+    58→interface ApiResponse<T> {
+    59→  data: T[];
+    60→  meta: ApiMeta;
+    61→}
+    62→
+    63→interface Lead {
+    64→  id: string;
+    65→  firstName: string;
+    66→  lastName: string;
+    67→  email: string;
+    68→  company: string;
+    69→  status: string;
+    70→  score: number;
+    71→  value: number;
+    72→  createdAt: string;
+    73→}
+    74→
+    75→interface Deal {
+    76→  id: string;
+    77→  name: string;
+    78→  value: number;
+    79→  stage: string;
+    80→  probability: number;
+    81→  closeDate: string;
+    82→  contactName: string;
+    83→  companyName: string;
+    84→  createdAt: string;
+    85→}
+    86→
+    87→interface Project {
+    88→  id: string;
+    89→  name: string;
+    90→  status: string;
+    91→  priority: string;
+    92→  createdAt: string;
+    93→  _count: { tasks: number };
+    94→}
+    95→
+    96→interface Task {
+    97→  id: string;
+    98→  title: string;
+    99→  status: string;
+   100→  priority: string;
+   101→  dueDate: string | null;
+   102→  createdAt: string;
+   103→  project: { id: string; name: string } | null;
+   104→}
+   105→
+   106→interface Ticket {
+   107→  id: string;
+   108→  ticketNumber: string;
+   109→  subject: string;
+   110→  priority: string;
+   111→  status: string;
+   112→  category: string;
+   113→  contactName: string;
+   114→  createdAt: string;
+   115→}
+   116→
+   117→interface Invoice {
+   118→  id: string;
+   119→  invoiceNumber: string;
+   120→  contactName: string;
+   121→  companyName: string;
+   122→  status: string;
+   123→  subtotal: number;
+   124→  tax: number;
+   125→  total: number;
+   126→  dueDate: string;
+   127→  paidAt: string | null;
+   128→  createdAt: string;
+   129→}
+   130→
+   131→interface Expense {
+   132→  id: string;
+   133→  title: string;
+   134→  amount: number;
+   135→  category: string;
+   136→  date: string;
+   137→  status: string;
+   138→  createdAt: string;
+   139→}
+   140→
+   141→interface ActivityItem {
+   142→  id: string;
+   143→  module: string;
+   144→  action: string;
+   145→  title: string;
+   146→  description: string;
+   147→  createdAt: string;
+   148→  user: { id: string; firstName: string; lastName: string; avatar: string } | null;
+   149→}
+   150→
+   151→interface DashboardData {
+   152→  leads: Lead[];
+   153→  deals: Deal[];
+   154→  projects: Project[];
+   155→  tasks: Task[];
+   156→  tickets: Ticket[];
+   157→  invoices: Invoice[];
+   158→  expenses: Expense[];
+   159→  activities: ActivityItem[];
+   160→}
+   161→
+   162→// ---------------------------------------------------------------------------
+   163→// Constants
+   164→// ---------------------------------------------------------------------------
+   165→
+   166→const CHART_COLORS = ['#10b981', '#14b8a6', '#06b6d4', '#f59e0b', '#f43f5e'];
+   167→
+   168→const MODULE_ICON_MAP: Record<string, string> = {
+   169→  crm: '👥',
+   170→  projects: '📁',
+   171→  support: '📧',
+   172→  finance: '💰',
+   173→  hr: '👤',
+   174→  inventory: '📦',
+   175→  calendar: '📅',
+   176→  communication: '📣',
+   177→  admin: '⚙️',
+   178→  workspace: '📓',
+   179→};
+   180→
+   181→const LEAD_STATUS_COLORS: Record<string, string> = {
+   182→  new: '#06b6d4',
+   183→  contacted: '#10b981',
+   184→  qualified: '#14b8a6',
+   185→  proposal: '#f59e0b',
+   186→  negotiation: '#8b5cf6',
+   187→  won: '#22c55e',
+   188→  lost: '#f43f5e',
+   189→};
+   190→
+   191→const QUICK_ACTIONS: { label: string; module: ModuleId; icon: React.ElementType }[] = [
+   192→  { label: 'New Lead', module: 'crm', icon: UserPlus },
+   193→  { label: 'Create Project', module: 'projects', icon: FolderKanban },
+   194→  { label: 'Add Invoice', module: 'finance', icon: FileText },
+   195→  { label: 'New Ticket', module: 'support', icon: TicketCheck },
+   196→  { label: 'Schedule Event', module: 'calendar', icon: CalendarDays },
+   197→  { label: 'View Reports', module: 'admin', icon: BarChart3 },
+   198→];
+   199→
+   200→const DEAL_STAGE_ORDER = ['prospecting', 'qualification', 'proposal', 'negotiation', 'closed-won', 'closed-lost'];
+   201→
+   202→// ---------------------------------------------------------------------------
+   203→// Skeleton helpers
+   204→// ---------------------------------------------------------------------------
+   205→
+   206→function SkeletonPulse({ className }: { className?: string }) {
+   207→  return <div className={`animate-pulse rounded-md bg-muted ${className ?? ''}`} />;
+   208→}
+   209→
+   210→function KpiSkeletons() {
+   211→  return (
+   212→    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+   213→      {Array.from({ length: 6 }).map((_, i) => (
+   214→        <div key={i} className="bg-card rounded-lg border p-4">
+   215→          <SkeletonPulse className="mb-2 h-4 w-24" />
+   216→          <SkeletonPulse className="mb-2 h-8 w-32" />
+   217→          <SkeletonPulse className="h-3 w-20" />
+   218→        </div>
+   219→      ))}
+   220→    </div>
+   221→  );
+   222→}
+   223→
+   224→function ChartSkeleton() {
+   225→  return (
+   226→    <Card>
+   227→      <CardHeader>
+   228→        <SkeletonPulse className="h-5 w-36" />
+   229→      </CardHeader>
+   230→      <CardContent>
+   231→        <SkeletonPulse className="h-64 w-full" />
+   232→      </CardContent>
+   233→    </Card>
+   234→  );
+   235→}
+   236→
+   237→// ---------------------------------------------------------------------------
+   238→// Custom Tooltip for charts
+   239→// ---------------------------------------------------------------------------
+   240→
+   241→function ChartTooltipContent({
+   242→  active,
+   243→  payload,
+   244→  label,
+   245→  formatter,
+   246→}: {
+   247→  active?: boolean;
+   248→  payload?: Array<{ value: number; name: string; dataKey: string; color?: string }>;
+   249→  label?: string;
+   250→  formatter?: (value: number) => string;
+   251→}) {
+   252→  if (!active || !payload?.length) return null;
+   253→  return (
+   254→    <div className="border-border/50 bg-background rounded-lg border px-3 py-2 text-xs shadow-xl">
+   255→      {label && <p className="font-medium text-foreground mb-1">{label}</p>}
+   256→      {payload.map((item, idx) => (
+   257→        <div key={idx} className="flex items-center gap-2">
+   258→          <span
+   259→            className="inline-block h-2 w-2 rounded-full"
+   260→            style={{ backgroundColor: item.color ?? CHART_COLORS[0] }}
+   261→          />
+   262→          <span className="text-muted-foreground">
+   263→            {item.name}: {formatter ? formatter(item.value) : item.value.toLocaleString()}
+   264→          </span>
+   265→        </div>
+   266→      ))}
+   267→    </div>
+   268→  );
+   269→}
+   270→
+   271→// ---------------------------------------------------------------------------
+   272→// Main Component
+   273→// ---------------------------------------------------------------------------
+   274→
+   275→export default function DashboardModule() {
+   276→  const { setActiveModule } = useAppStore();
+   277→  const [loading, setLoading] = useState(true);
+   278→  const [data, setData] = useState<DashboardData | null>(null);
+   279→  const [error, setError] = useState<string | null>(null);
+   280→
+   281→  // Fetch dashboard data on mount
+   282→  useEffect(() => {
+   283→    let cancelled = false;
+   284→
+   285→    async function fetchDashboard() {
+   286→      try {
+   287→        setLoading(true);
+   288→        const res = await fetch('/api/dashboard');
+   289→        if (!res.ok) throw new Error(`Failed to fetch dashboard: ${res.status}`);
+   290→        const json = await res.json();
+   291→        if (cancelled) return;
+   292→        setData(json.data);
+   293→      } catch (e: unknown) {
+   294→        if (!cancelled) {
+   295→          setError(e instanceof Error ? e.message : 'Failed to load dashboard data');
+   296→        }
+   297→      } finally {
+   298→        if (!cancelled) setLoading(false);
+   299→      }
+   300→    }
+   301→
+   302→    fetchDashboard();
+   303→    return () => {
+   304→      cancelled = true;
+   305→    };
+   306→  }, []);
+   307→
+   308→  // ---- Computed KPIs ----
+   309→
+   310→  const kpis = useMemo(() => {
+   311→    if (!data) return null;
+   312→    const s = data.stats;
+   313→    return [
+   314→      { label: 'Active Leads', value: s.activeLeads, change: 12.5, changeLabel: 'vs last month', icon: UserPlus },
+   315→      { label: 'Total Revenue', value: formatCurrency(s.revenue), change: 8.3, changeLabel: 'vs last month', icon: DollarSign },
+   316→      { label: 'Open Tickets', value: s.openTickets, change: -2.1, changeLabel: 'vs last week', icon: TicketCheck },
+   317→      { label: 'Active Projects', value: s.activeProjects, change: 5.7, changeLabel: 'vs last month', icon: FolderKanban },
+   318→      { label: 'Team Members', value: s.totalEmployees, icon: User },
+   319→      { label: 'Pending Invoices', value: s.pendingInvoices, icon: FileText },
+   320→    ];
+   321→  }, [data]);
+   322→
+   323→  // Active Deals: not closed-won/closed-lost
+   324→  const activeDealsCount = data.deals.filter(
+   325→    (d) => d.stage !== 'closed-won' && d.stage !== 'closed-lost',
+   326→  ).length;
+   327→
+   328→    // Deals change: this month vs last month created
+   329→    const thisMonthDeals = data.deals.filter(
+   330→      (d) => new Date(d.createdAt) >= thisMonthStart,
+   331→    ).length;
+   332→    const lastMonthDeals = data.deals.filter(
+   333→      (d) => new Date(d.createdAt) >= lastMonthStart && new Date(d.createdAt) < thisMonthStart,
+   334→    ).length;
+   335→    const dealsChange =
+   336→      lastMonthDeals > 0
+   337→        ? ((thisMonthDeals - lastMonthDeals) / lastMonthDeals) * 100
+   338→        : thisMonthDeals > 0
+   339→          ? 100
+   340→          : 0;
+   341→
+   342→    // Open Tickets: open / in-progress / pending
+   343→    const openTickets = data.tickets.filter(
+   344→      (t) => t.status === 'open' || t.status === 'in-progress' || t.status === 'pending',
+   345→    );
+   346→    const openTicketsCount = openTickets.length;
+   347→
+   348→    // Tickets change: this month vs last month
+   349→    const thisMonthTickets = data.tickets.filter(
+   350→      (t) => new Date(t.createdAt) >= thisMonthStart,
+   351→    ).length;
+   352→    const lastMonthTickets = data.tickets.filter(
+   353→      (t) => new Date(t.createdAt) >= lastMonthStart && new Date(t.createdAt) < thisMonthStart,
+   354→    ).length;
+   355→    const ticketsChange =
+   356→      lastMonthTickets > 0
+   357→        ? ((thisMonthTickets - lastMonthTickets) / lastMonthTickets) * 100
+   358→        : thisMonthTickets > 0
+   359→          ? 100
+   360→          : 0;
+   361→
+   362→    // Active Projects
+   363→    const activeProjects = data.projects.filter((p) => p.status === 'active');
+   364→    const activeProjectsCount = activeProjects.length;
+   365→
+   366→    const thisMonthProjects = data.projects.filter(
+   367→      (p) => new Date(p.createdAt) >= thisMonthStart,
+   368→    ).length;
+   369→    const lastMonthProjects = data.projects.filter(
+   370→      (p) => new Date(p.createdAt) >= lastMonthStart && new Date(p.createdAt) < thisMonthStart,
+   371→    ).length;
+   372→    const projectsChange =
+   373→      lastMonthProjects > 0
+   374→        ? ((thisMonthProjects - lastMonthProjects) / lastMonthProjects) * 100
+   375→        : thisMonthProjects > 0
+   376→          ? 100
+   377→          : 0;
+   378→
+   379→    // Tasks Due This Week
+   380→    const weekFromNow = new Date();
+   381→    weekFromNow.setDate(weekFromNow.getDate() + 7);
+   382→    weekFromNow.setHours(23, 59, 59, 999);
+   383→    const todayStart = new Date();
+   384→    todayStart.setHours(0, 0, 0, 0);
+   385→    const tasksDueThisWeek = data.tasks.filter(
+   386→      (t) =>
+   387→        t.dueDate &&
+   388→        t.status !== 'done' &&
+   389→        new Date(t.dueDate) >= todayStart &&
+   390→        new Date(t.dueDate) <= weekFromNow,
+   391→    ).length;
+   392→
+   393→    // New Leads This Month
+   394→    const thirtyDaysAgo = new Date();
+   395→    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+   396→    const newLeadsThisMonth = data.leads.filter(
+   397→      (l) => new Date(l.createdAt) >= thirtyDaysAgo,
+   398→    ).length;
+   399→
+   400→    const thisMonthLeads = data.leads.filter(
+   401→      (l) => new Date(l.createdAt) >= thisMonthStart,
+   402→    ).length;
+   403→    const lastMonthLeads = data.leads.filter(
+   404→      (l) => new Date(l.createdAt) >= lastMonthStart && new Date(l.createdAt) < thisMonthStart,
+   405→    ).length;
+   406→    const leadsChange =
+   407→      lastMonthLeads > 0
+   408→        ? ((thisMonthLeads - lastMonthLeads) / lastMonthLeads) * 100
+   409→        : thisMonthLeads > 0
+   410→          ? 100
+   411→          : 0;
+   412→
+   413→    return {
+   414→      activeDealsCount,
+   415→      openTicketsCount,
+   416→      activeProjectsCount,
+   417→      tasksDueThisWeek,
+   418→      newLeadsThisMonth,
+   419→    };
+   420→  }, [data]);
+   421→
+   422→  // ---- Chart: Monthly Revenue ----
+   423→
+   424→  const revenueChartData = useMemo(() => {
+   425→    if (!data) return [];
+   426→
+   427→    const paidInvoices = data.invoices.filter((inv) => inv.status === 'paid' && inv.paidAt);
+   428→
+   429→    // Group by month (last 6 months)
+   430→    const monthMap = new Map<string, number>();
+   431→    const now = new Date();
+   432→
+   433→    for (let i = 5; i >= 0; i--) {
+   434→      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+   435→      const key = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+   436→      monthMap.set(key, 0);
+   437→    }
+   438→
+   439→    paidInvoices.forEach((inv) => {
+   440→      const d = new Date(inv.paidAt!);
+   441→      const key = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+   442→      if (monthMap.has(key)) {
+   443→        monthMap.set(key, monthMap.get(key)! + inv.total);
+   444→      }
+   445→    });
+   446→
+   447→    return Array.from(monthMap.entries()).map(([month, revenue]) => ({ month, revenue }));
+   448→  }, [data]);
+   449→
+   450→  // ---- Chart: Deal Pipeline ----
+   451→
+   452→  const pipelineChartData = useMemo(() => {
+   453→    if (!data) return [];
+   454→
+   455→    const stageMap = new Map<string, { count: number; value: number }>();
+   456→
+   457→    DEAL_STAGE_ORDER.forEach((stage) => {
+   458→      stageMap.set(stage, { count: 0, value: 0 });
+   459→    });
+   460→
+   461→    data.deals.forEach((deal) => {
+   462→      const entry = stageMap.get(deal.stage);
+   463→      if (entry) {
+   464→        entry.count += 1;
+   465→        entry.value += deal.value;
+   466→      }
+   467→    });
+   468→
+   469→    return Array.from(stageMap.entries())
+   470→      .filter(([, v]) => v.count > 0)
+   471→      .map(([stage, v]) => ({
+   472→        stage: stage.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+   473→        count: v.count,
+   474→        value: v.value,
+   475→      }));
+   476→  }, [data]);
+   477→
+   478→  // ---- Chart: Lead Status Distribution ----
+   479→
+   480→  const leadChartData = useMemo(() => {
+   481→    if (!data?.leadByStatus) return [];
+   482→    const statusOrder = [new, contacted, qualified, proposal, negotiation, won, lost];
+   483→    return statusOrder
+   484→      .map((status) => {
+   485→        const found = data.leadByStatus.find((s: any) => s.status === status);
+   486→        return { status, count: found?._count ?? 0 };
+   487→      });
+   488→  }, [data]);
+   489→
+   490→    return Array.from(statusMap.entries())
+   491→      .map(([status, count]) => ({
+   492→        name: status.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+   493→        value: count,
+   494→        color: LEAD_STATUS_COLORS[status] ?? '#94a3b8',
+   495→      }))
+   496→      .sort((a, b) => b.value - a.value);
+   497→  }, [data]);
+   498→
+   499→  // ---- Top Deals ----
+   500→
+   501→  const topDeals = useMemo(() => {
+   502→    if (!data) return [];
+   503→    return [...data.deals]
+   504→      .sort((a, b) => b.value - a.value)
+   505→      .slice(0, 5);
+   506→  }, [data]);
+   507→
+   508→  // ---- Quick Action Handler ----
+   509→
+   510→  const handleQuickAction = useCallback(
+   511→    (module: ModuleId) => {
+   512→      setActiveModule(module);
+   513→    },
+   514→    [setActiveModule],
+   515→  );
+   516→
+   517→  // ---- Module navigation from activity ----
+   518→
+   519→  const handleActivityClick = useCallback(
+   520→    (moduleName: string) => {
+   521→      const moduleMap: Record<string, ModuleId> = {
+   522→        crm: 'crm',
+   523→        projects: 'projects',
+   524→        support: 'support',
+   525→        finance: 'finance',
+   526→        hr: 'hr',
+   527→        inventory: 'inventory',
+   528→        calendar: 'calendar',
+   529→        communication: 'communication',
+   530→        admin: 'admin',
+   531→        workspace: 'workspace',
+   532→      };
+   533→      if (moduleMap[moduleName]) {
+   534→        setActiveModule(moduleMap[moduleName]);
+   535→      }
+   536→    },
+   537→    [setActiveModule],
+   538→  );
+   539→
+   540→  // ---- Error State ----
+   541→
+   542→  if (error && !data) {
+   543→    return (
+   544→      <div className="space-y-6">
+   545→        <PageHeader
+   546→          title="Dashboard"
+   547→          description="Overview of your business operations"
+   548→          icon={TrendingUp}
+   549→        />
+   550→        <EmptyState
+   551→          icon={Activity}
+   552→          title="Unable to load dashboard"
+   553→          description={error}
+   554→        />
+   555→      </div>
+   556→    );
+   557→  }
+   558→
+   559→  // ---- Render ----
+   560→
+   561→  return (
+   562→    <div className="space-y-6">
+   563→      {/* Page Header */}
+   564→      <PageHeader
+   565→        title="Dashboard"
+   566→        description="Overview of your business operations"
+   567→        icon={TrendingUp}
+   568→      />
+   569→
+   570→      {/* Section 1: KPI Cards */}
+   571→      {loading ? (
+   572→        <KpiSkeletons />
+   573→      ) : (
+   574→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+   575→          <StatCard
+   576→            label="Total Revenue"
+   577→            value={formatCurrency(kpis!.totalRevenue)}
+   578→            change={kpis!.revenueChange}
+   579→            changeLabel="vs last month"
+   580→            icon={DollarSign}
+   581→          />
+   582→          <StatCard
+   583→            label="Active Deals"
+   584→            value={kpis!.activeDealsCount}
+   585→            change={kpis!.dealsChange}
+   586→            changeLabel="vs last month"
+   587→            icon={Handshake}
+   588→          />
+   589→          <StatCard
+   590→            label="Open Tickets"
+   591→            value={kpis!.openTicketsCount}
+   592→            change={kpis!.ticketsChange}
+   593→            changeLabel="vs last month"
+   594→            icon={TicketCheck}
+   595→          />
+   596→          <StatCard
+   597→            label="Active Projects"
+   598→            value={kpis!.activeProjectsCount}
+   599→            change={kpis!.projectsChange}
+   600→            changeLabel="vs last month"
+   601→            icon={FolderKanban}
+   602→          />
+   603→          <StatCard
+   604→            label="Tasks Due This Week"
+   605→            value={kpis!.tasksDueThisWeek}
+   606→            icon={ListTodo}
+   607→          />
+   608→          <StatCard
+   609→            label="New Leads"
+   610→            value={kpis!.newLeadsThisMonth}
+   611→            change={kpis!.leadsChange}
+   612→            changeLabel="vs last month"
+   613→            icon={UserPlus}
+   614→          />
+   615→        </div>
+   616→      )}
+   617→
+   618→      {/* Section 2: Revenue Chart */}
+   619→      {loading ? (
+   620→        <ChartSkeleton />
+   621→      ) : revenueChartData.length === 0 ? (
+   622→        <Card>
+   623→          <CardHeader>
+   624→            <CardTitle>Revenue Overview</CardTitle>
+   625→          </CardHeader>
+   626→          <CardContent>
+   627→            <EmptyState
+   628→              icon={DollarSign}
+   629→              title="No revenue data yet"
+   630→              description="Paid invoices will appear as monthly revenue here."
+   631→            />
+   632→          </CardContent>
+   633→        </Card>
+   634→      ) : (
+   635→        <Card>
+   636→          <CardHeader>
+   637→            <CardTitle>Revenue Overview</CardTitle>
+   638→          </CardHeader>
+   639→          <CardContent>
+   640→            <div className="h-72">
+   641→              <ResponsiveContainer width="100%" height="100%">
+   642→                <AreaChart data={revenueChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+   643→                  <defs>
+   644→                    <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+   645→                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+   646→                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+   647→                    </linearGradient>
+   648→                  </defs>
+   649→                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+   650→                  <XAxis
+   651→                    dataKey="month"
+   652→                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+   653→                    axisLine={{ stroke: 'hsl(var(--border))' }}
+   654→                    tickLine={false}
+   655→                  />
+   656→                  <YAxis
+   657→                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+   658→                    axisLine={false}
+   659→                    tickLine={false}
+   660→                    tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
+   661→                  />
+   662→                  <Tooltip content={<ChartTooltipContent formatter={(v: number) => formatCurrency(v)} />} />
+   663→                  <Area
+   664→                    type="monotone"
+   665→                    dataKey="revenue"
+   666→                    stroke="#10b981"
+   667→                    strokeWidth={2}
+   668→                    fill="url(#revenueGradient)"
+   669→                    name="Revenue"
+   670→                  />
+   671→                </AreaChart>
+   672→              </ResponsiveContainer>
+   673→            </div>
+   674→          </CardContent>
+   675→        </Card>
+   676→      )}
+   677→
+   678→      {/* Section 3: Deal Pipeline */}
+   679→      {loading ? (
+   680→        <ChartSkeleton />
+   681→      ) : pipelineChartData.length === 0 ? (
+   682→        <Card>
+   683→          <CardHeader>
+   684→            <CardTitle>Deal Pipeline</CardTitle>
+   685→          </CardHeader>
+   686→          <CardContent>
+   687→            <EmptyState
+   688→              icon={Handshake}
+   689→              title="No deals in pipeline"
+   690→              description="Create deals to see your pipeline breakdown here."
+   691→            />
+   692→          </CardContent>
+   693→        </Card>
+   694→      ) : (
+   695→        <Card>
+   696→          <CardHeader>
+   697→            <CardTitle>Deal Pipeline</CardTitle>
+   698→          </CardHeader>
+   699→          <CardContent>
+   700→            <div className="h-64">
+   701→              <ResponsiveContainer width="100%" height="100%">
+   702→                <BarChart data={pipelineChartData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+   703→                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+   704→                  <XAxis
+   705→                    type="number"
+   706→                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+   707→                    axisLine={{ stroke: 'hsl(var(--border))' }}
+   708→                    tickLine={false}
+   709→                    tickFormatter={(v: number) => formatCurrency(v)}
+   710→                  />
+   711→                  <YAxis
+   712→                    type="category"
+   713→                    dataKey="stage"
+   714→                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+   715→                    axisLine={false}
+   716→                    tickLine={false}
+   717→                    width={110}
+   718→                  />
+   719→                  <Tooltip
+   720→                    content={
+   721→                      <ChartTooltipContent
+   722→                        formatter={(v: number) => formatCurrency(v)}
+   723→                      />
+   724→                    }
+   725→                  />
+   726→                  <Bar
+   727→                    dataKey="value"
+   728→                    fill="#10b981"
+   729→                    radius={[0, 4, 4, 0]}
+   730→                    name="Pipeline Value"
+   731→                    barSize={28}
+   732→                  />
+   733→                </BarChart>
+   734→              </ResponsiveContainer>
+   735→            </div>
+   736→          </CardContent>
+   737→        </Card>
+   738→      )}
+   739→
+   740→      {/* Section 4: Recent Activity + Quick Actions */}
+   741→      {loading ? (
+   742→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+   743→          <div className="lg:col-span-2">
+   744→            <ChartSkeleton />
+   745→          </div>
+   746→          <ChartSkeleton />
+   747→        </div>
+   748→      ) : (
+   749→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+   750→          {/* Left: Recent Activity */}
+   751→          <Card className="lg:col-span-2">
+   752→            <CardHeader>
+   753→              <CardTitle>Recent Activity</CardTitle>
+   754→            </CardHeader>
+   755→            <CardContent>
+   756→              {data!.activities.length === 0 ? (
+   757→                <EmptyState
+   758→                  icon={Activity}
+   759→                  title="No recent activity"
+   760→                  description="Activity from all modules will appear here."
+   761→                />
+   762→              ) : (
+   763→                <ScrollArea className="max-h-96">
+   764→                  <div className="space-y-1">
+   765→                    {data!.activities.map((item) => (
+   766→                      <button
+   767→                        key={item.id}
+   768→                        onClick={() => handleActivityClick(item.module)}
+   769→                        className="flex items-start gap-3 w-full rounded-lg p-3 text-left transition-colors hover:bg-muted/50 cursor-pointer"
+   770→                      >
+   771→                        <div
+   772→                          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-base"
+   773→                          aria-hidden="true"
+   774→                        >
+   775→                          {MODULE_ICON_MAP[item.module] ?? '📋'}
+   776→                        </div>
+   777→                        <div className="min-w-0 flex-1">
+   778→                          <div className="flex items-center gap-2">
+   779→                            <p className="text-sm font-medium text-foreground truncate">
+   780→                              {item.title}
+   781→                            </p>
+   782→                            {item.user && (
+   783→                              <Avatar className="size-5 shrink-0">
+   784→                                <AvatarFallback className="text-[9px]">
+   785→                                  {getInitials(item.user.firstName, item.user.lastName)}
+   786→                                </AvatarFallback>
+   787→                              </Avatar>
+   788→                            )}
+   789→                          </div>
+   790→                          {item.description && (
+   791→                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+   792→                              {item.description}
+   793→                            </p>
+   794→                          )}
+   795→                          <p className="text-xs text-muted-foreground mt-1">
+   796→                            {formatRelativeTime(item.createdAt)}
+   797→                          </p>
+   798→                        </div>
+   799→                        <Badge variant="outline" className="shrink-0 text-[10px] capitalize">
+   800→                          {item.module}
+   801→                        </Badge>
+   802→                      </button>
+   803→                    ))}
+   804→                  </div>
+   805→                </ScrollArea>
+   806→              )}
+   807→            </CardContent>
+   808→          </Card>
+   809→
+   810→          {/* Right: Quick Actions */}
+   811→          <Card>
+   812→            <CardHeader>
+   813→              <CardTitle>Quick Actions</CardTitle>
+   814→            </CardHeader>
+   815→            <CardContent>
+   816→              <div className="grid grid-cols-2 gap-3">
+   817→                {QUICK_ACTIONS.map((action) => {
+   818→                  const Icon = action.icon;
+   819→                  return (
+   820→                    <Button
+   821→                      key={action.module}
+   822→                      variant="outline"
+   823→                      className="flex h-auto flex-col items-center gap-2 py-4 cursor-pointer hover:bg-emerald-500/10 hover:border-emerald-500/50 hover:text-emerald-600 transition-colors"
+   824→                      onClick={() => handleQuickAction(action.module)}
+   825→                    >
+   826→                      <Icon className="size-5" />
+   827→                      <span className="text-xs font-medium">{action.label}</span>
+   828→                    </Button>
+   829→                  );
+   830→                })}
+   831→              </div>
+   832→            </CardContent>
+   833→          </Card>
+   834→        </div>
+   835→      )}
+   836→
+   837→      {/* Section 5: Top Deals + Lead Distribution */}
+   838→      {loading ? (
+   839→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+   840→          <div className="lg:col-span-2">
+   841→            <ChartSkeleton />
+   842→          </div>
+   843→          <ChartSkeleton />
+   844→        </div>
+   845→      ) : (
+   846→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+   847→          {/* Left: Top Deals Table */}
+   848→          <Card className="lg:col-span-2">
+   849→            <CardHeader>
+   850→              <CardTitle>Top Deals</CardTitle>
+   851→            </CardHeader>
+   852→            <CardContent>
+   853→              {topDeals.length === 0 ? (
+   854→                <EmptyState
+   855→                  icon={Handshake}
+   856→                  title="No deals yet"
+   857→                  description="Create deals in CRM to see your top opportunities here."
+   858→                />
+   859→              ) : (
+   860→                <div className="overflow-x-auto">
+   861→                  <table className="w-full text-sm">
+   862→                    <thead>
+   863→                      <tr className="border-b border-border">
+   864→                        <th className="pb-3 text-left font-medium text-muted-foreground">Deal</th>
+   865→                        <th className="pb-3 text-left font-medium text-muted-foreground hidden sm:table-cell">Company</th>
+   866→                        <th className="pb-3 text-left font-medium text-muted-foreground hidden md:table-cell">Stage</th>
+   867→                        <th className="pb-3 text-right font-medium text-muted-foreground">Value</th>
+   868→                      </tr>
+   869→                    </thead>
+   870→                    <tbody>
+   871→                      {topDeals.map((deal) => (
+   872→                        <tr key={deal.id} className="border-b border-border/50 last:border-0">
+   873→                          <td className="py-3">
+   874→                            <span className="font-medium text-foreground">{deal.name}</span>
+   875→                          </td>
+   876→                          <td className="py-3 text-muted-foreground hidden sm:table-cell">
+   877→                            {deal.companyName || '—'}
+   878→                          </td>
+   879→                          <td className="py-3 hidden md:table-cell">
+   880→                            <Badge
+   881→                              variant="outline"
+   882→                              className="capitalize text-[10px]"
+   883→                            >
+   884→                              {deal.stage.replace(/-/g, ' ')}
+   885→                            </Badge>
+   886→                          </td>
+   887→                          <td className="py-3 text-right font-medium text-foreground">
+   888→                            {formatCurrency(deal.value)}
+   889→                          </td>
+   890→                        </tr>
+   891→                      ))}
+   892→                    </tbody>
+   893→                  </table>
+   894→                </div>
+   895→              )}
+   896→            </CardContent>
+   897→          </Card>
+   898→
+   899→          {/* Right: Lead Status Distribution Pie Chart */}
+   900→          <Card>
+   901→            <CardHeader>
+   902→              <CardTitle>Lead Status</CardTitle>
+   903→            </CardHeader>
+   904→            <CardContent>
+   905→              {leadStatusData.length === 0 ? (
+   906→                <EmptyState
+   907→                  icon={User}
+   908→                  title="No leads yet"
+   909→                  description="Add leads in CRM to see status distribution."
+   910→                />
+   911→              ) : (
+   912→                <div>
+   913→                  <div className="h-56">
+   914→                    <ResponsiveContainer width="100%" height="100%">
+   915→                      <PieChart>
+   916→                        <Pie
+   917→                          data={leadStatusData}
+   918→                          cx="50%"
+   919→                          cy="50%"
+   920→                          innerRadius={50}
+   921→                          outerRadius={80}
+   922→                          paddingAngle={3}
+   923→                          dataKey="value"
+   924→                        >
+   925→                          {leadStatusData.map((entry, index) => (
+   926→                            <Cell key={entry.name} fill={entry.color} stroke="none" />
+   927→                          ))}
+   928→                        </Pie>
+   929→                        <Tooltip
+   930→                          content={<ChartTooltipContent />}
+   931→                        />
+   932→                      </PieChart>
+   933→                    </ResponsiveContainer>
+   934→                  </div>
+   935→                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 justify-center">
+   936→                    {leadStatusData.map((entry) => (
+   937→                      <div key={entry.name} className="flex items-center gap-1.5 text-xs">
+   938→                        <span
+   939→                          className="inline-block h-2 w-2 rounded-full"
+   940→                          style={{ backgroundColor: entry.color }}
+   941→                        />
+   942→                        <span className="text-muted-foreground">
+   943→                          {entry.name} ({entry.value})
+   944→                        </span>
+   945→                      </div>
+   946→                    ))}
+   947→                  </div>
+   948→                </div>
+   949→              )}
+   950→            </CardContent>
+   951→          </Card>
+   952→        </div>
+   953→      )}
+   954→    </div>
+   955→  );
+   956→}
+   957→

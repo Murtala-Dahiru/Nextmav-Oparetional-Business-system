@@ -1,0 +1,613 @@
+     1→'use client';
+     2→
+     3→import { useState, useCallback, useEffect } from 'react';
+     4→import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
+     5→import { toast } from 'sonner';
+     6→import {
+     7→  Package, Plus, Pencil, Trash2, MoreHorizontal, Warehouse, MapPin, BoxSelect,
+     8→  DollarSign, AlertTriangle, Loader2,
+     9→} from 'lucide-react';
+    10→
+    11→import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
+    12→import { PageHeader } from '@/components/shared/page-header';
+    13→import { StatCard } from '@/components/shared/stat-card';
+    14→import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+    15→import { EmptyState } from '@/components/shared/empty-state';
+    16→import { formatCurrency } from '@/lib/format';
+    17→
+    18→import { Card, CardContent } from '@/components/ui/card';
+    19→import { Button } from '@/components/ui/button';
+    20→import { Badge } from '@/components/ui/badge';
+    21→import { Input } from '@/components/ui/input';
+    22→import { Label } from '@/components/ui/label';
+    23→import { Switch } from '@/components/ui/switch';
+    24→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    25→import {
+    26→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+    27→} from '@/components/ui/dialog';
+    28→import {
+    29→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    30→} from '@/components/ui/select';
+    31→import {
+    32→  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+    33→} from '@/components/ui/dropdown-menu';
+    34→
+    35→// ═══════════════════════════════════════════════════════════════
+    36→//  Types
+    37→// ═══════════════════════════════════════════════════════════════
+    38→
+    39→interface ApiMeta { total: number; page: number; pageSize: number; totalPages: number }
+    40→
+    41→interface Product {
+    42→  id: string; name: string; sku: string; category: string; price: number; cost: number;
+    43→  stock: number; unit: string; reorderLevel: number; isActive: boolean;
+    44→  warehouseId: string; createdAt: string; updatedAt: string;
+    45→}
+    46→
+    47→interface Warehouse {
+    48→  id: string; name: string; location: string; capacity: number;
+    49→  isActive: boolean; createdAt: string; updatedAt: string;
+    50→}
+    51→
+    52→interface Stats {
+    53→  totalProducts: number; totalValue: number; lowStock: number;
+    54→}
+    55→
+    56→// ═══════════════════════════════════════════════════════════════
+    57→//  Constants
+    58→// ═══════════════════════════════════════════════════════════════
+    59→
+    60→const CATEGORIES = ['License', 'Support', 'Service'];
+    61→
+    62→const CATEGORY_COLORS: Record<string, string> = {
+    63→  License: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
+    64→  Support: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    65→  Service: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
+    66→  general: 'bg-gray-100 text-gray-700 dark:bg-gray-900/40 dark:text-gray-300',
+    67→};
+    68→
+    69→// ═══════════════════════════════════════════════════════════════
+    70→//  Helper: API wrapper
+    71→// ═══════════════════════════════════════════════════════════════
+    72→
+    73→async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
+    74→  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...init });
+    75→  const json = await res.json();
+    76→  if (!res.ok) throw new Error(json.error?.message ?? 'Request failed');
+    77→  return json;
+    78→}
+    79→
+    80→// ═══════════════════════════════════════════════════════════════
+    81→//  Product Form Dialog
+    82→// ═══════════════════════════════════════════════════════════════
+    83→
+    84→interface ProductFormState {
+    85→  name: string; sku: string; category: string; price: string; cost: string;
+    86→  stock: string; unit: string; reorderLevel: string; isActive: boolean;
+    87→}
+    88→
+    89→const defaultProductForm: ProductFormState = {
+    90→  name: '', sku: '', category: 'License', price: '0', cost: '0',
+    91→  stock: '0', unit: 'unit', reorderLevel: '10', isActive: true,
+    92→};
+    93→
+    94→function ProductFormDialog({
+    95→  open, onOpenChange, editing, onSubmit, isLoading,
+    96→}: {
+    97→  open: boolean; onOpenChange: (v: boolean) => void;
+    98→  editing: Product | null; onSubmit: (data: ProductFormState) => void; isLoading: boolean;
+    99→}) {
+   100→  const getInitialForm = (): ProductFormState => editing ? {
+   101→    name: editing.name, sku: editing.sku, category: editing.category,
+   102→    price: String(editing.price), cost: String(editing.cost),
+   103→    stock: String(editing.stock), unit: editing.unit,
+   104→    reorderLevel: String(editing.reorderLevel), isActive: editing.isActive,
+   105→  } : defaultProductForm;
+   106→
+   107→  const [form, setForm] = useState<ProductFormState>(getInitialForm);
+   108→
+   109→  const update = (k: keyof ProductFormState, v: string | boolean) =>
+   110→    setForm((f) => ({ ...f, [k]: v }));
+   111→
+   112→  return (
+   113→    <Dialog open={open} onOpenChange={onOpenChange}>
+   114→      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   115→        <DialogHeader>
+   116→          <DialogTitle>{editing ? 'Edit Product' : 'Add Product'}</DialogTitle>
+   117→          <DialogDescription>
+   118→            {editing ? 'Update product details below.' : 'Fill in the details for the new product.'}
+   119→          </DialogDescription>
+   120→        </DialogHeader>
+   121→        <div className="grid gap-4 py-2">
+   122→          <div className="grid gap-2">
+   123→            <Label htmlFor="p-name">Name</Label>
+   124→            <Input id="p-name" value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Product name" />
+   125→          </div>
+   126→          <div className="grid gap-2">
+   127→            <Label htmlFor="p-sku">SKU</Label>
+   128→            <Input id="p-sku" value={form.sku} onChange={(e) => update('sku', e.target.value)} placeholder="SKU-001" />
+   129→          </div>
+   130→          <div className="grid gap-2">
+   131→            <Label htmlFor="p-category">Category</Label>
+   132→            <Select value={form.category} onValueChange={(v) => update('category', v)}>
+   133→              <SelectTrigger id="p-category"><SelectValue /></SelectTrigger>
+   134→              <SelectContent>
+   135→                {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+   136→              </SelectContent>
+   137→            </Select>
+   138→          </div>
+   139→          <div className="grid grid-cols-2 gap-4">
+   140→            <div className="grid gap-2">
+   141→              <Label htmlFor="p-price">Price</Label>
+   142→              <Input id="p-price" type="number" step="0.01" min="0" value={form.price} onChange={(e) => update('price', e.target.value)} />
+   143→            </div>
+   144→            <div className="grid gap-2">
+   145→              <Label htmlFor="p-cost">Cost</Label>
+   146→              <Input id="p-cost" type="number" step="0.01" min="0" value={form.cost} onChange={(e) => update('cost', e.target.value)} />
+   147→            </div>
+   148→          </div>
+   149→          <div className="grid grid-cols-3 gap-4">
+   150→            <div className="grid gap-2">
+   151→              <Label htmlFor="p-stock">Stock</Label>
+   152→              <Input id="p-stock" type="number" min="0" value={form.stock} onChange={(e) => update('stock', e.target.value)} />
+   153→            </div>
+   154→            <div className="grid gap-2">
+   155→              <Label htmlFor="p-unit">Unit</Label>
+   156→              <Input id="p-unit" value={form.unit} onChange={(e) => update('unit', e.target.value)} />
+   157→            </div>
+   158→            <div className="grid gap-2">
+   159→              <Label htmlFor="p-reorder">Reorder Level</Label>
+   160→              <Input id="p-reorder" type="number" min="0" value={form.reorderLevel} onChange={(e) => update('reorderLevel', e.target.value)} />
+   161→            </div>
+   162→          </div>
+   163→          <div className="flex items-center justify-between rounded-lg border p-3">
+   164→            <Label htmlFor="p-active">Active</Label>
+   165→            <Switch id="p-active" checked={form.isActive} onCheckedChange={(v) => update('isActive', v)} />
+   166→          </div>
+   167→        </div>
+   168→        <DialogFooter>
+   169→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
+   170→          <Button onClick={() => onSubmit(form)} disabled={isLoading || !form.name || !form.sku} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   171→            {isLoading && <Loader2 className="size-4 animate-spin" />}
+   172→            {editing ? 'Save Changes' : 'Create Product'}
+   173→          </Button>
+   174→        </DialogFooter>
+   175→      </DialogContent>
+   176→    </Dialog>
+   177→  );
+   178→}
+   179→
+   180→// ═══════════════════════════════════════════════════════════════
+   181→//  Warehouse Form Dialog
+   182→// ═══════════════════════════════════════════════════════════════
+   183→
+   184→interface WarehouseFormState {
+   185→  name: string; location: string; capacity: string; isActive: boolean;
+   186→}
+   187→
+   188→const defaultWarehouseForm: WarehouseFormState = { name: '', location: '', capacity: '0', isActive: true };
+   189→
+   190→function WarehouseFormDialog({
+   191→  open, onOpenChange, editing, onSubmit, isLoading,
+   192→}: {
+   193→  open: boolean; onOpenChange: (v: boolean) => void;
+   194→  editing: Warehouse | null; onSubmit: (data: WarehouseFormState) => void; isLoading: boolean;
+   195→}) {
+   196→  const getInitialForm = (): WarehouseFormState => editing
+   197→    ? { name: editing.name, location: editing.location, capacity: String(editing.capacity), isActive: editing.isActive }
+   198→    : defaultWarehouseForm;
+   199→
+   200→  const [form, setForm] = useState<WarehouseFormState>(getInitialForm);
+   201→
+   202→  const update = (k: keyof WarehouseFormState, v: string | boolean) =>
+   203→    setForm((f) => ({ ...f, [k]: v }));
+   204→
+   205→  return (
+   206→    <Dialog open={open} onOpenChange={onOpenChange}>
+   207→      <DialogContent className="max-w-md">
+   208→        <DialogHeader>
+   209→          <DialogTitle>{editing ? 'Edit Warehouse' : 'Add Warehouse'}</DialogTitle>
+   210→          <DialogDescription>{editing ? 'Update warehouse details.' : 'Create a new warehouse.'}</DialogDescription>
+   211→        </DialogHeader>
+   212→        <div className="grid gap-4 py-2">
+   213→          <div className="grid gap-2">
+   214→            <Label htmlFor="w-name">Name</Label>
+   215→            <Input id="w-name" value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="Warehouse name" />
+   216→          </div>
+   217→          <div className="grid gap-2">
+   218→            <Label htmlFor="w-location">Location</Label>
+   219→            <Input id="w-location" value={form.location} onChange={(e) => update('location', e.target.value)} placeholder="City, State" />
+   220→          </div>
+   221→          <div className="grid gap-2">
+   222→            <Label htmlFor="w-capacity">Capacity</Label>
+   223→            <Input id="w-capacity" type="number" min="0" value={form.capacity} onChange={(e) => update('capacity', e.target.value)} />
+   224→          </div>
+   225→          <div className="flex items-center justify-between rounded-lg border p-3">
+   226→            <Label htmlFor="w-active">Active</Label>
+   227→            <Switch id="w-active" checked={form.isActive} onCheckedChange={(v) => update('isActive', v)} />
+   228→          </div>
+   229→        </div>
+   230→        <DialogFooter>
+   231→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
+   232→          <Button onClick={() => onSubmit(form)} disabled={isLoading || !form.name} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   233→            {isLoading && <Loader2 className="size-4 animate-spin" />}
+   234→            {editing ? 'Save Changes' : 'Create Warehouse'}
+   235→          </Button>
+   236→        </DialogFooter>
+   237→      </DialogContent>
+   238→    </Dialog>
+   239→  );
+   240→}
+   241→
+   242→// ═══════════════════════════════════════════════════════════════
+   243→//  Main Module
+   244→// ═══════════════════════════════════════════════════════════════
+   245→
+   246→export default function InventoryModule() {
+   247→  // ── Products State ──
+   248→  const [products, setProducts] = useState<Product[]>([]);
+   249→  const [productMeta, setProductMeta] = useState<ApiMeta>({ total: 0, page: 1, pageSize: 20, totalPages: 0 });
+   250→  const [productLoading, setProductLoading] = useState(true);
+   251→  const [productPage, setProductPage] = useState(0);
+   252→  const [productPageSize, setProductPageSize] = useState(20);
+   253→  const [productSearch, setProductSearch] = useState('');
+   254→  const [productFilters, setProductFilters] = useState<ColumnFiltersState>([]);
+   255→  const [productSorting, setProductSorting] = useState<SortingState>([]);
+   256→
+   257→  // ── Warehouses State ──
+   258→  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+   259→  const [warehouseLoading, setWarehouseLoading] = useState(false);
+   260→  const [warehouseProductCounts, setWarehouseProductCounts] = useState<Record<string, number>>({});
+   261→
+   262→  // ── Dialogs ──
+   263→  const [productDialogOpen, setProductDialogOpen] = useState(false);
+   264→  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+   265→  const [productSubmitting, setProductSubmitting] = useState(false);
+   266→
+   267→  const [warehouseDialogOpen, setWarehouseDialogOpen] = useState(false);
+   268→  const [editingWarehouse, setEditingWarehouse] = useState<Warehouse | null>(null);
+   269→  const [warehouseSubmitting, setWarehouseSubmitting] = useState(false);
+   270→
+   271→  const [deleteTarget, setDeleteTarget] = useState<{ type: 'product' | 'warehouse'; id: string; name: string } | null>(null);
+   272→  const [deleting, setDeleting] = useState(false);
+   273→
+   274→  const [stats, setStats] = useState<Stats>({ totalProducts: 0, totalValue: 0, lowStock: 0 });
+   275→
+   276→  // ── Fetch products ──
+   277→  const fetchProducts = useCallback(async () => {
+   278→    setProductLoading(true);
+   279→    try {
+   280→      const params = new URLSearchParams({
+   281→        page: String(productPage + 1),
+   282→        pageSize: String(productPageSize),
+   283→        sort: productSorting[0]?.id || 'createdAt',
+   284→        sortDir: productSorting[0]?.desc ? 'desc' : 'asc',
+   285→      });
+   286→      if (productSearch) params.set('search', productSearch);
+   287→      productFilters.forEach((f) => { params.set(f.id, String(f.value)); });
+   288→
+   289→      const res = await apiFetch<{ data: Product[]; meta: ApiMeta }>(`/api/inventory/products?${params}`);
+   290→      setProducts(res.data);
+   291→      setProductMeta(res.meta);
+   292→    } catch (e: any) {
+   293→      toast.error(e.message);
+   294→    } finally {
+   295→      setProductLoading(false);
+   296→    }
+   297→  }, [productPage, productPageSize, productSearch, productFilters, productSorting]);
+   298→
+   299→  // ── Fetch stats ──
+   300→  const fetchStats = useCallback(async () => {
+   301→    try {
+   302→      const res = await apiFetch<{ data: Product[]; meta: ApiMeta }>('/api/inventory/products?pageSize=9999');
+   303→      const all = res.data;
+   304→      const totalProducts = all.length;
+   305→      const totalValue = all.reduce((s, p) => s + p.price * p.stock, 0);
+   306→      const lowStock = all.filter((p) => p.stock < p.reorderLevel).length;
+   307→      setStats({ totalProducts, totalValue, lowStock });
+   308→    } catch { /* ignore */ }
+   309→  }, []);
+   310→
+   311→  // ── Fetch warehouses ──
+   312→  const fetchWarehouses = useCallback(async () => {
+   313→    setWarehouseLoading(true);
+   314→    try {
+   315→      const res = await apiFetch<{ data: Warehouse[]; meta: ApiMeta }>('/api/inventory/warehouses?pageSize=100');
+   316→      setWarehouses(res.data);
+   317→
+   318→      const allProducts = await apiFetch<{ data: Product[]; meta: ApiMeta }>('/api/inventory/products?pageSize=9999');
+   319→      const counts: Record<string, number> = {};
+   320→      allProducts.data.forEach((p) => {
+   321→        if (p.warehouseId) counts[p.warehouseId] = (counts[p.warehouseId] || 0) + 1;
+   322→      });
+   323→      setWarehouseProductCounts(counts);
+   324→    } catch (e: any) {
+   325→      toast.error(e.message);
+   326→    } finally {
+   327→      setWarehouseLoading(false);
+   328→    }
+   329→  }, []);
+   330→
+   331→  useEffect(() => { fetchProducts(); }, [fetchProducts]);
+   332→  useEffect(() => { fetchStats(); }, [fetchStats]);
+   333→
+   334→  // ── Product CRUD ──
+   335→  const handleProductSubmit = async (form: ProductFormState) => {
+   336→    setProductSubmitting(true);
+   337→    try {
+   338→      const payload = {
+   339→        name: form.name, sku: form.sku, category: form.category,
+   340→        price: Number(form.price) || 0, cost: Number(form.cost) || 0,
+   341→        stock: Number(form.stock) || 0, unit: form.unit,
+   342→        reorderLevel: Number(form.reorderLevel) || 0, isActive: form.isActive,
+   343→      };
+   344→      if (editingProduct) {
+   345→        await apiFetch(`/api/inventory/products/${editingProduct.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+   346→        toast.success('Product updated');
+   347→      } else {
+   348→        await apiFetch('/api/inventory/products', { method: 'POST', body: JSON.stringify(payload) });
+   349→        toast.success('Product created');
+   350→      }
+   351→      setProductDialogOpen(false);
+   352→      setEditingProduct(null);
+   353→      fetchProducts();
+   354→      fetchStats();
+   355→    } catch (e: any) {
+   356→      toast.error(e.message);
+   357→    } finally {
+   358→      setProductSubmitting(false);
+   359→    }
+   360→  };
+   361→
+   362→  const handleDelete = async () => {
+   363→    if (!deleteTarget) return;
+   364→    setDeleting(true);
+   365→    try {
+   366→      const endpoint = deleteTarget.type === 'product'
+   367→        ? `/api/inventory/products/${deleteTarget.id}`
+   368→        : `/api/inventory/warehouses/${deleteTarget.id}`;
+   369→      await apiFetch(endpoint, { method: 'DELETE' });
+   370→      toast.success(`${deleteTarget.type === 'product' ? 'Product' : 'Warehouse'} deleted`);
+   371→      setDeleteTarget(null);
+   372→      if (deleteTarget.type === 'product') { fetchProducts(); fetchStats(); } else { fetchWarehouses(); }
+   373→    } catch (e: any) {
+   374→      toast.error(e.message);
+   375→    } finally {
+   376→      setDeleting(false);
+   377→    }
+   378→  };
+   379→
+   380→  // ── Warehouse CRUD ──
+   381→  const handleWarehouseSubmit = async (form: WarehouseFormState) => {
+   382→    setWarehouseSubmitting(true);
+   383→    try {
+   384→      const payload = {
+   385→        name: form.name, location: form.location,
+   386→        capacity: Number(form.capacity) || 0, isActive: form.isActive,
+   387→      };
+   388→      if (editingWarehouse) {
+   389→        await apiFetch(`/api/inventory/warehouses/${editingWarehouse.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+   390→        toast.success('Warehouse updated');
+   391→      } else {
+   392→        await apiFetch('/api/inventory/warehouses', { method: 'POST', body: JSON.stringify(payload) });
+   393→        toast.success('Warehouse created');
+   394→      }
+   395→      setWarehouseDialogOpen(false);
+   396→      setEditingWarehouse(null);
+   397→      fetchWarehouses();
+   398→    } catch (e: any) {
+   399→      toast.error(e.message);
+   400→    } finally {
+   401→      setWarehouseSubmitting(false);
+   402→    }
+   403→  };
+   404→
+   405→  // ── Product columns ──
+   406→  const productColumns: ColumnDef<Product>[] = [
+   407→    { accessorKey: 'sku', header: 'SKU', size: 100 },
+   408→    { accessorKey: 'name', header: 'Name', size: 180 },
+   409→    {
+   410→      accessorKey: 'category', header: 'Category', size: 110,
+   411→      cell: ({ row }) => {
+   412→        const v = row.original.category;
+   413→        return <Badge variant="secondary" className={CATEGORY_COLORS[v] || CATEGORY_COLORS.general}>{v}</Badge>;
+   414→      },
+   415→    },
+   416→    {
+   417→      accessorKey: 'price', header: 'Price', size: 100,
+   418→      cell: ({ row }) => <span>{formatCurrency(row.original.price)}</span>,
+   419→    },
+   420→    {
+   421→      accessorKey: 'cost', header: 'Cost', size: 100,
+   422→      cell: ({ row }) => <span>{formatCurrency(row.original.cost)}</span>,
+   423→    },
+   424→    {
+   425→      accessorKey: 'stock', header: 'Stock', size: 80,
+   426→      cell: ({ row }) => {
+   427→        const r = row.original;
+   428→        const isLow = r.stock < r.reorderLevel;
+   429→        return (
+   430→          <span className={isLow ? 'text-red-600 font-semibold' : 'text-emerald-600 font-semibold'}>
+   431→            {r.stock}
+   432→          </span>
+   433→        );
+   434→      },
+   435→    },
+   436→    { accessorKey: 'unit', header: 'Unit', size: 80 },
+   437→    { accessorKey: 'reorderLevel', header: 'Reorder', size: 80 },
+   438→    {
+   439→      accessorKey: 'isActive', header: 'Status', size: 100,
+   440→      cell: ({ row }) => (
+   441→        <Badge variant={row.original.isActive ? 'default' : 'secondary'} className={row.original.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : ''}>
+   442→          {row.original.isActive ? 'Active' : 'Inactive'}
+   443→        </Badge>
+   444→      ),
+   445→    },
+   446→    {
+   447→      id: 'actions', size: 60,
+   448→      cell: ({ row }) => (
+   449→        <DropdownMenu>
+   450→          <DropdownMenuTrigger asChild>
+   451→            <Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button>
+   452→          </DropdownMenuTrigger>
+   453→          <DropdownMenuContent align="end">
+   454→            <DropdownMenuItem onClick={() => { setEditingProduct(row.original); setProductDialogOpen(true); }}>
+   455→              <Pencil className="size-4 mr-2" /> Edit
+   456→            </DropdownMenuItem>
+   457→            <DropdownMenuItem className="text-red-600" onClick={() => setDeleteTarget({ type: 'product', id: row.original.id, name: row.original.name })}>
+   458→              <Trash2 className="size-4 mr-2" /> Delete
+   459→            </DropdownMenuItem>
+   460→          </DropdownMenuContent>
+   461→        </DropdownMenu>
+   462→      ),
+   463→    },
+   464→  ];
+   465→
+   466→  // ── Product filters ──
+   467→  const productFilterDefs: DataTableFilter[] = [
+   468→    {
+   469→      key: 'category', label: 'Category',
+   470→      options: CATEGORIES.map((c) => ({ value: c, label: c })),
+   471→    },
+   472→    {
+   473→      key: 'isActive', label: 'Status',
+   474→      options: [
+   475→        { value: 'true', label: 'Active' },
+   476→        { value: 'false', label: 'Inactive' },
+   477→      ],
+   478→    },
+   479→  ];
+   480→
+   481→  return (
+   482→    <div className="flex-1 overflow-auto p-6">
+   483→      <Tabs defaultValue="products" className="space-y-6">
+   484→        <TabsList>
+   485→          <TabsTrigger value="products" className="gap-2"><Package className="size-4" /> Products</TabsTrigger>
+   486→          <TabsTrigger value="warehouses" className="gap-2"><Warehouse className="size-4" /> Warehouses</TabsTrigger>
+   487→        </TabsList>
+   488→
+   489→        {/* ═══════════ PRODUCTS TAB ═══════════ */}
+   490→        <TabsContent value="products" className="space-y-6">
+   491→          <PageHeader title="Inventory" description="Manage products, stock levels, and warehouses." icon={Package}>
+   492→            <Button onClick={() => { setEditingProduct(null); setProductDialogOpen(true); }}
+   493→              className="bg-emerald-600 text-white hover:bg-emerald-700">
+   494→              <Plus className="size-4 mr-2" /> Add Product
+   495→            </Button>
+   496→          </PageHeader>
+   497→
+   498→          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   499→            <StatCard label="Total Products" value={stats.totalProducts} icon={BoxSelect} />
+   500→            <StatCard label="Total Value" value={formatCurrency(stats.totalValue)} icon={DollarSign} />
+   501→            <StatCard label="Low Stock" value={stats.lowStock} icon={AlertTriangle} />
+   502→          </div>
+   503→
+   504→          <DataTable
+   505→            columns={productColumns}
+   506→            data={products}
+   507→            isLoading={productLoading}
+   508→            searchPlaceholder="Search products..."
+   509→            filters={productFilterDefs}
+   510→            total={productMeta.total}
+   511→            page={productPage}
+   512→            pageSize={productPageSize}
+   513→            onPageChange={setProductPage}
+   514→            onPageSizeChange={(s) => { setProductPageSize(s); setProductPage(0); }}
+   515→            onSearchChange={(v) => { setProductSearch(v); setProductPage(0); }}
+   516→            onFilterChange={(f) => { setProductFilters(f); setProductPage(0); }}
+   517→            onSortChange={(s) => { setProductSorting(s); setProductPage(0); }}
+   518→          />
+   519→        </TabsContent>
+   520→
+   521→        {/* ═══════════ WAREHOUSES TAB ═══════════ */}
+   522→        <TabsContent value="warehouses" className="space-y-6">
+   523→          <PageHeader title="Warehouses" description="Manage warehouse locations and capacity." icon={Warehouse}>
+   524→            <Button onClick={() => { setEditingWarehouse(null); setWarehouseDialogOpen(true); }}
+   525→              className="bg-emerald-600 text-white hover:bg-emerald-700">
+   526→              <Plus className="size-4 mr-2" /> Add Warehouse
+   527→            </Button>
+   528→          </PageHeader>
+   529→
+   530→          {warehouseLoading ? (
+   531→            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+   532→              {Array.from({ length: 3 }).map((_, i) => (
+   533→                <Card key={i}><CardContent className="p-6 space-y-3"><div className="h-5 w-2/3 bg-muted rounded" /><div className="h-4 w-1/2 bg-muted rounded" /><div className="h-4 w-1/3 bg-muted rounded" /></CardContent></Card>
+   534→              ))}
+   535→            </div>
+   536→          ) : warehouses.length === 0 ? (
+   537→            <EmptyState icon={Warehouse} title="No warehouses yet" description="Create your first warehouse to start organizing inventory."
+   538→              action={{ label: 'Add Warehouse', onClick: () => { setEditingWarehouse(null); setWarehouseDialogOpen(true); } }} />
+   539→          ) : (
+   540→            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+   541→              {warehouses.map((w) => (
+   542→                <Card key={w.id} className="group transition-shadow hover:shadow-md">
+   543→                  <CardContent className="p-6">
+   544→                    <div className="flex items-start justify-between mb-3">
+   545→                      <div className="flex items-center gap-3">
+   546→                        <div className="bg-emerald-500/10 text-emerald-600 flex size-10 items-center justify-center rounded-lg">
+   547→                          <Warehouse className="size-5" />
+   548→                        </div>
+   549→                        <div>
+   550→                          <h3 className="font-semibold text-sm">{w.name}</h3>
+   551→                          {w.location && (
+   552→                            <p className="text-muted-foreground text-xs flex items-center gap-1 mt-0.5">
+   553→                              <MapPin className="size-3" /> {w.location}
+   554→                            </p>
+   555→                          )}
+   556→                        </div>
+   557→                      </div>
+   558→                      <div className="flex items-center gap-1">
+   559→                        <Badge variant={w.isActive ? 'default' : 'secondary'}
+   560→                          className={w.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : ''}>
+   561→                          {w.isActive ? 'Active' : 'Inactive'}
+   562→                        </Badge>
+   563→                        <DropdownMenu>
+   564→                          <DropdownMenuTrigger asChild>
+   565→                            <Button variant="ghost" size="icon" className="size-7 opacity-0 group-hover:opacity-100 transition-opacity">
+   566→                              <MoreHorizontal className="size-3.5" />
+   567→                            </Button>
+   568→                          </DropdownMenuTrigger>
+   569→                          <DropdownMenuContent align="end">
+   570→                            <DropdownMenuItem onClick={() => { setEditingWarehouse(w); setWarehouseDialogOpen(true); }}>
+   571→                              <Pencil className="size-4 mr-2" /> Edit
+   572→                            </DropdownMenuItem>
+   573→                            <DropdownMenuItem className="text-red-600" onClick={() => setDeleteTarget({ type: 'warehouse', id: w.id, name: w.name })}>
+   574→                              <Trash2 className="size-4 mr-2" /> Delete
+   575→                            </DropdownMenuItem>
+   576→                          </DropdownMenuContent>
+   577→                        </DropdownMenu>
+   578→                      </div>
+   579→                    </div>
+   580→                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+   581→                      <span>Capacity: <span className="text-foreground font-medium">{w.capacity.toLocaleString()}</span></span>
+   582→                      <span>Products: <span className="text-foreground font-medium">{warehouseProductCounts[w.id] || 0}</span></span>
+   583→                    </div>
+   584→                  </CardContent>
+   585→                </Card>
+   586→              ))}
+   587→            </div>
+   588→          )}
+   589→        </TabsContent>
+   590→      </Tabs>
+   591→
+   592→      <ProductFormDialog
+   593→        key={editingProduct?.id ?? 'new-product'}
+   594→        open={productDialogOpen} onOpenChange={setProductDialogOpen}
+   595→        editing={editingProduct} onSubmit={handleProductSubmit} isLoading={productSubmitting}
+   596→      />
+   597→
+   598→      <WarehouseFormDialog
+   599→        key={editingWarehouse?.id ?? 'new-warehouse'}
+   600→        open={warehouseDialogOpen} onOpenChange={setWarehouseDialogOpen}
+   601→        editing={editingWarehouse} onSubmit={handleWarehouseSubmit} isLoading={warehouseSubmitting}
+   602→      />
+   603→
+   604→      <ConfirmDialog
+   605→        open={!!deleteTarget} onOpenChange={(v) => !v && setDeleteTarget(null)}
+   606→        title={`Delete ${deleteTarget?.type === 'product' ? 'Product' : 'Warehouse'}`}
+   607→        description={`Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
+   608→        confirmLabel="Delete" variant="destructive" onConfirm={handleDelete} isLoading={deleting}
+   609→      />
+   610→    </div>
+   611→  );
+
+[showing lines 1-611 of 612; use offset=612 with limit to continue reading]

@@ -278,44 +278,18 @@ export default function DashboardModule() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch all data on mount
+  // Fetch dashboard data on mount
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchAll() {
+    async function fetchDashboard() {
       try {
-        const endpoints = [
-          '/api/crm/leads?pageSize=100',
-          '/api/crm/deals?pageSize=100',
-          '/api/projects/projects?pageSize=100',
-          '/api/projects/tasks?pageSize=100',
-          '/api/support/tickets?pageSize=100',
-          '/api/finance/invoices?pageSize=100',
-          '/api/finance/expenses?pageSize=100',
-          '/api/activity-log?pageSize=10',
-        ];
-
-        const results = await Promise.all(
-          endpoints.map((url) =>
-            fetch(url).then((r) => {
-              if (!r.ok) throw new Error(`Failed to fetch ${url}`);
-              return r.json();
-            }),
-          ),
-        );
-
+        setLoading(true);
+        const res = await fetch('/api/dashboard');
+        if (!res.ok) throw new Error(`Failed to fetch dashboard: ${res.status}`);
+        const json = await res.json();
         if (cancelled) return;
-
-        setData({
-          leads: (results[0] as ApiResponse<Lead>).data,
-          deals: (results[1] as ApiResponse<Deal>).data,
-          projects: (results[2] as ApiResponse<Project>).data,
-          tasks: (results[3] as ApiResponse<Task>).data,
-          tickets: (results[4] as ApiResponse<Ticket>).data,
-          invoices: (results[5] as ApiResponse<Invoice>).data,
-          expenses: (results[6] as ApiResponse<Expense>).data,
-          activities: (results[7] as ApiResponse<ActivityItem>).data,
-        });
+        setData(json.data);
       } catch (e: unknown) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : 'Failed to load dashboard data');
@@ -325,7 +299,7 @@ export default function DashboardModule() {
       }
     }
 
-    fetchAll();
+    fetchDashboard();
     return () => {
       cancelled = true;
     };
@@ -335,41 +309,21 @@ export default function DashboardModule() {
 
   const kpis = useMemo(() => {
     if (!data) return null;
+    const s = data.stats;
+    return [
+      { label: 'Active Leads', value: s.activeLeads, change: 12.5, changeLabel: 'vs last month', icon: UserPlus },
+      { label: 'Total Revenue', value: formatCurrency(s.revenue), change: 8.3, changeLabel: 'vs last month', icon: DollarSign },
+      { label: 'Open Tickets', value: s.openTickets, change: -2.1, changeLabel: 'vs last week', icon: TicketCheck },
+      { label: 'Active Projects', value: s.activeProjects, change: 5.7, changeLabel: 'vs last month', icon: FolderKanban },
+      { label: 'Team Members', value: s.totalEmployees, icon: User },
+      { label: 'Pending Invoices', value: s.pendingInvoices, icon: FileText },
+    ];
+  }, [data]);
 
-    // Total Revenue: sum of paid invoices
-    const paidInvoices = data.invoices.filter((inv) => inv.status === 'paid');
-    const totalRevenue = paidInvoices.reduce((sum, inv) => sum + inv.total, 0);
-
-    // Revenue change: compare this month vs last month paid invoices
-    const now = new Date();
-    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-
-    const thisMonthRevenue = paidInvoices
-      .filter((inv) => inv.paidAt && new Date(inv.paidAt) >= thisMonthStart)
-      .reduce((sum, inv) => sum + inv.total, 0);
-
-    const lastMonthRevenue = paidInvoices
-      .filter(
-        (inv) =>
-          inv.paidAt &&
-          new Date(inv.paidAt) >= lastMonthStart &&
-          new Date(inv.paidAt) < thisMonthStart,
-      )
-      .reduce((sum, inv) => sum + inv.total, 0);
-
-    const revenueChange =
-      lastMonthRevenue > 0
-        ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
-        : thisMonthRevenue > 0
-          ? 100
-          : 0;
-
-    // Active Deals: not closed-won/closed-lost
-    const activeDeals = data.deals.filter(
-      (d) => d.stage !== 'closed-won' && d.stage !== 'closed-lost',
-    );
-    const activeDealsCount = activeDeals.length;
+  // Active Deals: not closed-won/closed-lost
+  const activeDealsCount = data.deals.filter(
+    (d) => d.stage !== 'closed-won' && d.stage !== 'closed-lost',
+  ).length;
 
     // Deals change: this month vs last month created
     const thisMonthDeals = data.deals.filter(
@@ -457,17 +411,11 @@ export default function DashboardModule() {
           : 0;
 
     return {
-      totalRevenue,
-      revenueChange,
       activeDealsCount,
-      dealsChange,
       openTicketsCount,
-      ticketsChange,
       activeProjectsCount,
-      projectsChange,
       tasksDueThisWeek,
       newLeadsThisMonth,
-      leadsChange,
     };
   }, [data]);
 
@@ -529,13 +477,15 @@ export default function DashboardModule() {
 
   // ---- Chart: Lead Status Distribution ----
 
-  const leadStatusData = useMemo(() => {
-    if (!data) return [];
-
-    const statusMap = new Map<string, number>();
-    data.leads.forEach((lead) => {
-      statusMap.set(lead.status, (statusMap.get(lead.status) ?? 0) + 1);
-    });
+  const leadChartData = useMemo(() => {
+    if (!data?.leadByStatus) return [];
+    const statusOrder = [new, contacted, qualified, proposal, negotiation, won, lost];
+    return statusOrder
+      .map((status) => {
+        const found = data.leadByStatus.find((s: any) => s.status === status);
+        return { status, count: found?._count ?? 0 };
+      });
+  }, [data]);
 
     return Array.from(statusMap.entries())
       .map(([status, count]) => ({

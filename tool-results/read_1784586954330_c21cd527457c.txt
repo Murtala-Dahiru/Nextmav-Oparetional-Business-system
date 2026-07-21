@@ -1,0 +1,1025 @@
+     1→     1→'use client';
+     2→     2→
+     3→     3→import { useState, useCallback, useEffect, useMemo } from 'react';
+     4→     4→import { useForm, Controller } from 'react-hook-form';
+     5→     5→import { zodResolver } from '@hookform/resolvers/zod';
+     6→     6→import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
+     7→     7→import { toast } from 'sonner';
+     8→     8→import {
+     9→     9→  ListTodo, FolderKanban, Plus, MoreHorizontal, Pencil, Trash2,
+    10→    10→  CheckCircle2, Clock, Loader2, CalendarDays,
+    11→    11→} from 'lucide-react';
+    12→    12→
+    13→    13→import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
+    14→    14→import { PageHeader } from '@/components/shared/page-header';
+    15→    15→import { StatCard } from '@/components/shared/stat-card';
+    16→    16→import { ConfirmDialog } from '@/components/shared/confirm-dialog';
+    17→    17→import { EmptyState } from '@/components/shared/empty-state';
+    18→    18→import { formatCurrency, formatDate, getInitials } from '@/lib/format';
+    19→    19→import { TASK_STATUSES, PROJECT_STATUSES } from '@/lib/constants';
+    20→    20→import { createTaskSchema, createProjectSchema } from '@/lib/validations';
+    21→    21→import { z } from 'zod';
+    22→    22→
+    23→    23→import { Card, CardContent } from '@/components/ui/card';
+    24→    24→import { Button } from '@/components/ui/button';
+    25→    25→import { Badge } from '@/components/ui/badge';
+    26→    26→import { Input } from '@/components/ui/input';
+    27→    27→import { Label } from '@/components/ui/label';
+    28→    28→import { Textarea } from '@/components/ui/textarea';
+    29→    29→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+    30→    30→import { Progress } from '@/components/ui/progress';
+    31→    31→import {
+    32→    32→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+    33→    33→} from '@/components/ui/dialog';
+    34→    34→import {
+    35→    35→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    36→    36→} from '@/components/ui/select';
+    37→    37→import {
+    38→    38→  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+    39→    39→} from '@/components/ui/dropdown-menu';
+    40→    40→import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+    41→    41→import { ScrollArea } from '@/components/ui/scroll-area';
+    42→    42→import { Skeleton } from '@/components/ui/skeleton';
+    43→    43→
+    44→    44→// ═══════════════════════════════════════════════════════════════════════════
+    45→    45→//  Types
+    46→    46→// ═══════════════════════════════════════════════════════════════════════════
+    47→    47→
+    48→    48→interface ApiMeta { total: number; page: number; pageSize: number; totalPages: number }
+    49→    49→
+    50→    50→interface Task {
+    51→    51→  id: string;
+    52→    52→  title: string;
+    53→    53→  description: string;
+    54→    54→  status: string;
+    55→    55→  priority: string;
+    56→    56→  assigneeId: string;
+    57→    57→  projectId: string;
+    58→    58→  dueDate: string | null;
+    59→    59→  estimatedHours: number;
+    60→    60→  loggedHours: number;
+    61→    61→  sortOrder: number;
+    62→    62→  createdAt: string;
+    63→    63→  updatedAt: string;
+    64→    64→  assignee?: { id: string; firstName: string; lastName: string; email: string };
+    65→    65→  project?: { id: string; name: string };
+    66→    66→}
+    67→    67→
+    68→    68→interface Project {
+    69→    69→  id: string;
+    70→    70→  name: string;
+    71→    71→  description: string;
+    72→    72→  status: string;
+    73→    73→  priority: string;
+    74→    74→  startDate: string | null;
+    75→    75→  endDate: string | null;
+    76→    76→  budget: number;
+    77→    77→  ownerId: string;
+    78→    78→  createdAt: string;
+    79→    79→  updatedAt: string;
+    80→    80→  owner?: { id: string; firstName: string; lastName: string; email: string };
+    81→    81→  _count?: { tasks: number };
+    82→    82→  tasks?: Task[];
+    83→    83→}
+    84→    84→
+    85→    85→interface User {
+    86→    86→  id: string;
+    87→    87→  firstName: string;
+    88→    88→  lastName: string;
+    89→    89→  email: string;
+    90→    90→}
+    91→    91→
+    92→    92→type TaskFormValues = z.infer<typeof createTaskSchema>;
+    93→    93→type ProjectFormValues = z.infer<typeof createProjectSchema>;
+    94→    94→
+    95→    95→// ═══════════════════════════════════════════════════════════════════════════
+    96→    96→//  Color Maps
+    97→    97→// ═══════════════════════════════════════════════════════════════════════════
+    98→    98→
+    99→    99→const TASK_STATUS_COLORS: Record<string, string> = {
+   100→   100→  todo: 'bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300',
+   101→   101→  'in-progress': 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+   102→   102→  review: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+   103→   103→  done: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+   104→   104→};
+   105→   105→
+   106→   106→const TASK_STATUS_LABELS: Record<string, string> = {
+   107→   107→  todo: 'To Do',
+   108→   108→  'in-progress': 'In Progress',
+   109→   109→  review: 'Review',
+   110→   110→  done: 'Done',
+   111→   111→};
+   112→   112→
+   113→   113→const PRIORITY_COLORS: Record<string, string> = {
+   114→   114→  low: 'bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300',
+   115→   115→  medium: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+   116→   116→  high: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+   117→   117→  critical: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+   118→   118→};
+   119→   119→
+   120→   120→const PROJECT_STATUS_COLORS: Record<string, string> = {
+   121→   121→  planning: 'bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300',
+   122→   122→  active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+   123→   123→  'on-hold': 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+   124→   124→  completed: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+   125→   125→  archived: 'bg-muted text-muted-foreground',
+   126→   126→};
+   127→   127→
+   128→   128→const PROJECT_STATUS_LABELS: Record<string, string> = {
+   129→   129→  planning: 'Planning',
+   130→   130→  active: 'Active',
+   131→   131→  'on-hold': 'On Hold',
+   132→   132→  completed: 'Completed',
+   133→   133→  archived: 'Archived',
+   134→   134→};
+   135→   135→
+   136→   136→const PRIORITY_LABELS: Record<string, string> = {
+   137→   137→  low: 'Low',
+   138→   138→  medium: 'Medium',
+   139→   139→  high: 'High',
+   140→   140→  critical: 'Critical',
+   141→   141→};
+   142→   142→
+   143→   143→function progressColor(pct: number): string {
+   144→   144→  if (pct > 60) return '[&>div]:bg-emerald-500';
+   145→   145→  if (pct >= 30) return '[&>div]:bg-amber-500';
+   146→   146→  return '[&>div]:bg-red-500';
+   147→   147→}
+   148→   148→
+   149→   149→// ═══════════════════════════════════════════════════════════════════════════
+   150→   150→//  Helper: API wrapper
+   151→   151→// ═══════════════════════════════════════════════════════════════════════════
+   152→   152→
+   153→   153→async function apiFetch<T>(url: string, init?: RequestInit): Promise<{ data: T; meta?: ApiMeta }> {
+   154→   154→  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...init });
+   155→   155→  const json = await res.json();
+   156→   156→  if (json.error) throw new Error(json.error.message || 'Request failed');
+   157→   157→  return json;
+   158→   158→}
+   159→   159→
+   160→   160→// ═══════════════════════════════════════════════════════════════════════════
+   161→   161→//  Module
+   162→   162→// ═══════════════════════════════════════════════════════════════════════════
+   163→   163→
+   164→   164→export default function ProjectsModule() {
+   165→   165→  const [activeTab, setActiveTab] = useState('tasks');
+   166→   166→
+   167→   167→  return (
+   168→   168→    <div className="flex flex-col gap-6 p-4 md:p-6 overflow-auto h-full">
+   169→   169→      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+   170→   170→        <TabsList>
+   171→   171→          <TabsTrigger value="tasks" className="gap-1.5">
+   172→   172→            <ListTodo className="size-4" /> Tasks
+   173→   173→          </TabsTrigger>
+   174→   174→          <TabsTrigger value="projects" className="gap-1.5">
+   175→   175→            <FolderKanban className="size-4" /> Projects
+   176→   176→          </TabsTrigger>
+   177→   177→        </TabsList>
+   178→   178→
+   179→   179→        <TabsContent value="tasks" className="mt-4">
+   180→   180→          <TasksTab />
+   181→   181→        </TabsContent>
+   182→   182→        <TabsContent value="projects" className="mt-4">
+   183→   183→          <ProjectsTab />
+   184→   184→        </TabsContent>
+   185→   185→      </Tabs>
+   186→   186→    </div>
+   187→   187→  );
+   188→   188→}
+   189→   189→
+   190→   190→// ═══════════════════════════════════════════════════════════════════════════
+   191→   191→//  Tasks Tab
+   192→   192→// ═══════════════════════════════════════════════════════════════════════════
+   193→   193→
+   194→   194→function TasksTab() {
+   195→   195→  // Data state
+   196→   196→  const [tasks, setTasks] = useState<Task[]>([]);
+   197→   197→  const [total, setTotal] = useState(0);
+   198→   198→  const [loading, setLoading] = useState(true);
+   199→   199→  const [users, setUsers] = useState<User[]>([]);
+   200→   200→  const [projects, setProjects] = useState<Project[]>([]);
+   201→   201→
+   202→   202→  // Table state
+   203→   203→  const [page, setPage] = useState(0);
+   204→   204→  const [pageSize, setPageSize] = useState(20);
+   205→   205→  const [search, setSearch] = useState('');
+   206→   206→  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+   207→   207→  const [sorting, setSorting] = useState<SortingState>([]);
+   208→   208→
+   209→   209→  // Dialog state
+   210→   210→  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+   211→   211→  const [editingTask, setEditingTask] = useState<Task | null>(null);
+   212→   212→  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+   213→   213→  const [deletingTask, setDeletingTask] = useState<Task | null>(null);
+   214→   214→  const [saving, setSaving] = useState(false);
+   215→   215→  const [deleting, setDeleting] = useState(false);
+   216→   216→
+   217→   217→  // Stats
+   218→   218→  const [stats, setStats] = useState({ total: 0, inProgress: 0, completed: 0 });
+   219→   219→
+   220→   220→  // Fetch tasks
+   221→   221→  const fetchTasks = useCallback(async () => {
+   222→   222→    setLoading(true);
+   223→   223→    try {
+   224→   224→      const params = new URLSearchParams();
+   225→   225→      params.set('page', String(page + 1));
+   226→   226→      params.set('pageSize', String(pageSize));
+   227→   227→      if (search) params.set('search', search);
+   228→   228→
+   229→   229→      // Apply column filters
+   230→   230→      const statusFilter = columnFilters.find((f) => f.id === 'status')?.value as string | undefined;
+   231→   231→      const priorityFilter = columnFilters.find((f) => f.id === 'priority')?.value as string | undefined;
+   232→   232→      const projectFilter = columnFilters.find((f) => f.id === 'projectId')?.value as string | undefined;
+   233→   233→      if (statusFilter) params.set('status', statusFilter);
+   234→   234→      if (priorityFilter) params.set('priority', priorityFilter);
+   235→   235→      if (projectFilter) params.set('projectId', projectFilter);
+   236→   236→
+   237→   237→      // Apply sorting
+   238→   238→      if (sorting.length > 0) {
+   239→   239→        params.set('sort', sorting[0].id);
+   240→   240→        params.set('sortDir', sorting[0].desc ? 'desc' : 'asc');
+   241→   241→      }
+   242→   242→
+   243→   243→      const res = await apiFetch<Task[]>(`/api/projects/tasks?${params.toString()}`);
+   244→   244→      setTasks(res.data || []);
+   245→   245→      setTotal(res.meta?.total || 0);
+   246→   246→    } catch (err: any) {
+   247→   247→      toast.error(err.message || 'Failed to load tasks');
+   248→   248→    } finally {
+   249→   249→      setLoading(false);
+   250→   250→    }
+   251→   251→  }, [page, pageSize, search, columnFilters, sorting]);
+   252→   252→
+   253→   253→  // Fetch all tasks for stats (no pagination)
+   254→   254→  const fetchStats = useCallback(async () => {
+   255→   255→    try {
+   256→   256→      const params = new URLSearchParams();
+   257→   257→      params.set('page', '1');
+   258→   258→      params.set('pageSize', '1');
+   259→   259→      const res = await apiFetch<Task[]>(`/api/projects/tasks?${params.toString()}`);
+   260→   260→      setStats((prev) => ({ ...prev, total: res.meta?.total || 0 }));
+   261→   261→
+   262→   262→      // In progress count
+   263→   263→      const res2 = await apiFetch<Task[]>('/api/projects/tasks?status=in-progress&page=1&pageSize=1');
+   264→   264→      setStats((prev) => ({ ...prev, inProgress: res2.meta?.total || 0 }));
+   265→   265→
+   266→   266→      // Completed count
+   267→   267→      const res3 = await apiFetch<Task[]>('/api/projects/tasks?status=done&page=1&pageSize=1');
+   268→   268→      setStats((prev) => ({ ...prev, completed: res3.meta?.total || 0 }));
+   269→   269→    } catch {
+   270→   270→      // silent
+   271→   271→    }
+   272→   272→  }, []);
+   273→   273→
+   274→   274→  // Fetch users and projects for dropdowns
+   275→   275→  const fetchDropdowns = useCallback(async () => {
+   276→   276→    try {
+   277→   277→      const [usersRes, projectsRes] = await Promise.all([
+   278→   278→        apiFetch<User[]>('/api/admin/users?pageSize=100'),
+   279→   279→        apiFetch<Project[]>('/api/projects/projects?page=1&pageSize=100'),
+   280→   280→      ]);
+   281→   281→      setUsers(usersRes.data || []);
+   282→   282→      setProjects(projectsRes.data || []);
+   283→   283→    } catch {
+   284→   284→      // silent
+   285→   285→    }
+   286→   286→  }, []);
+   287→   287→
+   288→   288→  useEffect(() => { fetchTasks(); }, [fetchTasks]);
+   289→   289→  useEffect(() => { fetchStats(); fetchDropdowns(); }, [fetchStats, fetchDropdowns]);
+   290→   290→
+   291→   291→  // Form
+   292→   292→  const { register, handleSubmit, control, reset, formState: { errors } } = useForm<TaskFormValues>({
+   293→   293→    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   294→   294→    resolver: zodResolver(createTaskSchema) as any,
+   295→   295→    defaultValues: {
+   296→   296→      title: '', description: '', status: 'todo', priority: 'medium',
+   297→   297→      assigneeId: 'u1', projectId: '', dueDate: null as any, estimatedHours: 0, loggedHours: 0,
+   298→   298→    },
+   299→   299→  });
+   300→   300→
+   301→   301→  // Open create dialog
+   302→   302→  const openCreate = useCallback(() => {
+   303→   303→    setEditingTask(null);
+   304→   304→    reset({
+   305→   305→      title: '', description: '', status: 'todo', priority: 'medium',
+   306→   306→      assigneeId: 'u1', projectId: projects[0]?.id || '', dueDate: null as any,
+   307→   307→      estimatedHours: 0, loggedHours: 0,
+   308→   308→    });
+   309→   309→    setTaskDialogOpen(true);
+   310→   310→  }, [reset, projects]);
+   311→   311→
+   312→   312→  // Open edit dialog
+   313→   313→  const openEdit = useCallback((task: Task) => {
+   314→   314→    setEditingTask(task);
+   315→   315→    reset({
+   316→   316→      title: task.title,
+   317→   317→      description: task.description,
+   318→   318→      status: task.status,
+   319→   319→      priority: task.priority,
+   320→   320→      assigneeId: task.assigneeId,
+   321→   321→      projectId: task.projectId,
+   322→   322→      dueDate: task.dueDate ? task.dueDate.slice(0, 10) : null as any,
+   323→   323→      estimatedHours: task.estimatedHours,
+   324→   324→      loggedHours: task.loggedHours,
+   325→   325→    });
+   326→   326→    setTaskDialogOpen(true);
+   327→   327→  }, [reset]);
+   328→   328→
+   329→   329→  // Submit
+   330→   330→  const onSubmit = useCallback(async (values: TaskFormValues) => {
+   331→   331→    setSaving(true);
+   332→   332→    try {
+   333→   333→      const payload = {
+   334→   334→        ...values,
+   335→   335→        dueDate: values.dueDate || null,
+   336→   336→        loggedHours: values.loggedHours ?? 0,
+   337→   337→        sortOrder: values.sortOrder ?? 0,
+   338→   338→      };
+   339→   339→      if (editingTask) {
+   340→   340→        await apiFetch(`/api/projects/tasks/${editingTask.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+   341→   341→        toast.success('Task updated');
+   342→   342→      } else {
+   343→   343→        await apiFetch('/api/projects/tasks', { method: 'POST', body: JSON.stringify(payload) });
+   344→   344→        toast.success('Task created');
+   345→   345→      }
+   346→   346→      setTaskDialogOpen(false);
+   347→   347→      fetchTasks();
+   348→   348→      fetchStats();
+   349→   349→    } catch (err: any) {
+   350→   350→      toast.error(err.message || 'Save failed');
+   351→   351→    } finally {
+   352→   352→      setSaving(false);
+   353→   353→    }
+   354→   354→  }, [editingTask, fetchTasks, fetchStats]);
+   355→   355→
+   356→   356→  // Delete
+   357→   357→  const confirmDelete = useCallback(() => {
+   358→   358→    if (!deletingTask) return;
+   359→   359→    setDeleting(true);
+   360→   360→    apiFetch(`/api/projects/tasks/${deletingTask.id}`, { method: 'DELETE' })
+   361→   361→      .then(() => {
+   362→   362→        toast.success('Task deleted');
+   363→   363→        setDeleteDialogOpen(false);
+   364→   364→        setDeletingTask(null);
+   365→   365→        fetchTasks();
+   366→   366→        fetchStats();
+   367→   367→      })
+   368→   368→      .catch((err: any) => toast.error(err.message || 'Delete failed'))
+   369→   369→      .finally(() => setDeleting(false));
+   370→   370→  }, [deletingTask, fetchTasks, fetchStats]);
+   371→   371→
+   372→   372→  // Table columns
+   373→   373→  const columns = useMemo<ColumnDef<Task, any>[]>(() => [
+   374→   374→    {
+   375→   375→      accessorKey: 'title',
+   376→   376→      header: 'Title',
+   377→   377→      cell: ({ row }) => (
+   378→   378→        <span className="font-medium text-foreground">{row.original.title}</span>
+   379→   379→      ),
+   380→   380→    },
+   381→   381→    {
+   382→   382→      accessorKey: 'project.name',
+   383→   383→      id: 'project',
+   384→   384→      header: 'Project',
+   385→   385→      cell: ({ row }) => row.original.project ? (
+   386→   386→        <Badge variant="outline" className="font-normal text-xs">{row.original.project.name}</Badge>
+   387→   387→      ) : <span className="text-muted-foreground text-sm">—</span>,
+   388→   388→    },
+   389→   389→    {
+   390→   390→      accessorKey: 'assignee',
+   391→   391→      id: 'assignee',
+   392→   392→      header: 'Assignee',
+   393→   393→      cell: ({ row }) => {
+   394→   394→        const a = row.original.assignee;
+   395→   395→        return a ? (
+   396→   396→          <div className="flex items-center gap-2">
+   397→   397→            <Avatar className="size-6">
+   398→   398→              <AvatarFallback className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+   399→   399→                {getInitials(a.firstName, a.lastName)}
+   400→   400→              </AvatarFallback>
+   401→   401→            </Avatar>
+   402→   402→            <span className="text-sm">{a.firstName} {a.lastName}</span>
+   403→   403→          </div>
+   404→   404→        ) : <span className="text-muted-foreground text-sm">—</span>;
+   405→   405→      },
+   406→   406→    },
+   407→   407→    {
+   408→   408→      accessorKey: 'status',
+   409→   409→      header: 'Status',
+   410→   410→      cell: ({ row }) => {
+   411→   411→        const s = row.original.status;
+   412→   412→        return (
+   413→   413→          <Badge variant="secondary" className={TASK_STATUS_COLORS[s] || ''}>
+   414→   414→            {TASK_STATUS_LABELS[s] || s}
+   415→   415→          </Badge>
+   416→   416→        );
+   417→   417→      },
+   418→   418→    },
+   419→   419→    {
+   420→   420→      accessorKey: 'priority',
+   421→   421→      header: 'Priority',
+   422→   422→      cell: ({ row }) => {
+   423→   423→        const p = row.original.priority;
+   424→   424→        return (
+   425→   425→          <Badge variant="secondary" className={PRIORITY_COLORS[p] || ''}>
+   426→   426→            {PRIORITY_LABELS[p] || p}
+   427→   427→          </Badge>
+   428→   428→        );
+   429→   429→      },
+   430→   430→    },
+   431→   431→    {
+   432→   432→      accessorKey: 'dueDate',
+   433→   433→      header: 'Due Date',
+   434→   434→      cell: ({ row }) => row.original.dueDate
+   435→   435→        ? <span className="text-sm">{formatDate(row.original.dueDate)}</span>
+   436→   436→        : <span className="text-muted-foreground text-sm">—</span>,
+   437→   437→    },
+   438→   438→    {
+   439→   439→      id: 'hours',
+   440→   440→      header: 'Hours',
+   441→   441→      cell: ({ row }) => (
+   442→   442→        <span className="text-sm tabular-nums">
+   443→   443→          {row.original.loggedHours}/{row.original.estimatedHours}h
+   444→   444→        </span>
+   445→   445→      ),
+   446→   446→    },
+   447→   447→    {
+   448→   448→      id: 'actions',
+   449→   449→      header: '',
+   450→   450→      size: 50,
+   451→   451→      cell: ({ row }) => (
+   452→   452→        <DropdownMenu>
+   453→   453→          <DropdownMenuTrigger asChild>
+   454→   454→            <Button variant="ghost" size="icon" className="size-8">
+   455→   455→              <MoreHorizontal className="size-4" />
+   456→   456→            </Button>
+   457→   457→          </DropdownMenuTrigger>
+   458→   458→          <DropdownMenuContent align="end">
+   459→   459→            <DropdownMenuItem onClick={() => openEdit(row.original)}>
+   460→   460→              <Pencil className="size-4 mr-2" /> Edit
+   461→   461→            </DropdownMenuItem>
+   462→   462→            <DropdownMenuItem
+   463→   463→              className="text-destructive focus:text-destructive"
+   464→   464→              onClick={() => { setDeletingTask(row.original); setDeleteDialogOpen(true); }}
+   465→   465→            >
+   466→   466→              <Trash2 className="size-4 mr-2" /> Delete
+   467→   467→            </DropdownMenuItem>
+   468→   468→          </DropdownMenuContent>
+   469→   469→        </DropdownMenu>
+   470→   470→      ),
+   471→   471→    },
+   472→   472→  ], [openEdit]);
+   473→   473→
+   474→   474→  // Filters for DataTable
+   475→   475→  const filters = useMemo<DataTableFilter[]>(() => [
+   476→   476→    {
+   477→   477→      key: 'status',
+   478→   478→      label: 'Status',
+   479→   479→      options: TASK_STATUSES.map((s) => ({ value: s, label: TASK_STATUS_LABELS[s] || s })),
+   480→   480→    },
+   481→   481→    {
+   482→   482→      key: 'priority',
+   483→   483→      label: 'Priority',
+   484→   484→      options: ['low', 'medium', 'high', 'critical'].map((p) => ({ value: p, label: PRIORITY_LABELS[p] || p })),
+   485→   485→    },
+   486→   486→    {
+   487→   487→      key: 'projectId',
+   488→   488→      label: 'Project',
+   489→   489→      options: projects.map((p) => ({ value: p.id, label: p.name })),
+   490→   490→    },
+   491→   491→  ], [projects]);
+   492→   492→
+   493→   493→  return (
+   494→   494→    <div className="flex flex-col gap-6">
+   495→   495→      {/* Header */}
+   496→   496→      <PageHeader title="Tasks" icon={ListTodo}>
+   497→   497→        <Button onClick={openCreate} className="bg-emerald-600 text-white hover:bg-emerald-700 gap-1.5">
+   498→   498→          <Plus className="size-4" /> New Task
+   499→   499→        </Button>
+   500→   500→      </PageHeader>
+   501→   501→
+   502→   502→      {/* Stat Cards */}
+   503→   503→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   504→   504→        <StatCard label="Total Tasks" value={stats.total} icon={ListTodo} />
+   505→   505→        <StatCard label="In Progress" value={stats.inProgress} icon={Clock} />
+   506→   506→        <StatCard label="Completed" value={stats.completed} icon={CheckCircle2} />
+   507→   507→      </div>
+   508→   508→
+   509→   509→      {/* Data Table */}
+   510→   510→      <DataTable
+   511→   511→        columns={columns}
+   512→   512→        data={tasks}
+   513→   513→        searchKey="title"
+   514→   514→        searchPlaceholder="Search tasks..."
+   515→   515→        filters={filters}
+   516→   516→        isLoading={loading}
+   517→   517→        emptyMessage="No tasks found. Create your first task!"
+   518→   518→        total={total}
+   519→   519→        page={page}
+   520→   520→        pageSize={pageSize}
+   521→   521→        onPageChange={setPage}
+   522→   522→        onPageSizeChange={(s) => { setPageSize(s); setPage(0); }}
+   523→   523→        onSearchChange={(v) => { setSearch(v); setPage(0); }}
+   524→   524→        onFilterChange={(f) => { setColumnFilters(f); setPage(0); }}
+   525→   525→        onSortChange={(s) => { setSorting(s); setPage(0); }}
+   526→   526→      />
+   527→   527→
+   528→   528→      {/* Create / Edit Dialog */}
+   529→   529→      <Dialog open={taskDialogOpen} onOpenChange={setTaskDialogOpen}>
+   530→   530→        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   531→   531→          <DialogHeader>
+   532→   532→            <DialogTitle>{editingTask ? 'Edit Task' : 'New Task'}</DialogTitle>
+   533→   533→            <DialogDescription>
+   534→   534→              {editingTask ? 'Update task details below.' : 'Fill in the details to create a new task.'}
+   535→   535→            </DialogDescription>
+   536→   536→          </DialogHeader>
+   537→   537→
+   538→   538→          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+   539→   539→            <div className="space-y-2">
+   540→   540→              <Label htmlFor="task-title">Title *</Label>
+   541→   541→              <Input id="task-title" {...register('title')} placeholder="Task title" />
+   542→   542→              {errors.title && <p className="text-sm text-destructive">{errors.title.message}</p>}
+   543→   543→            </div>
+   544→   544→
+   545→   545→            <div className="space-y-2">
+   546→   546→              <Label htmlFor="task-desc">Description</Label>
+   547→   547→              <Textarea id="task-desc" {...register('description')} rows={3} placeholder="Task description" />
+   548→   548→            </div>
+   549→   549→
+   550→   550→            <div className="grid grid-cols-2 gap-4">
+   551→   551→              <div className="space-y-2">
+   552→   552→                <Label>Status</Label>
+   553→   553→                <Controller
+   554→   554→                  control={control}
+   555→   555→                  name="status"
+   556→   556→                  render={({ field }) => (
+   557→   557→                    <Select value={field.value} onValueChange={field.onChange}>
+   558→   558→                      <SelectTrigger><SelectValue /></SelectTrigger>
+   559→   559→                      <SelectContent>
+   560→   560→                        {TASK_STATUSES.map((s) => (
+   561→   561→                          <SelectItem key={s} value={s}>{TASK_STATUS_LABELS[s] || s}</SelectItem>
+   562→   562→                        ))}
+   563→   563→                      </SelectContent>
+   564→   564→                    </Select>
+   565→   565→                  )}
+   566→   566→                />
+   567→   567→              </div>
+   568→   568→
+   569→   569→              <div className="space-y-2">
+   570→   570→                <Label>Priority</Label>
+   571→   571→                <Controller
+   572→   572→                  control={control}
+   573→   573→                  name="priority"
+   574→   574→                  render={({ field }) => (
+   575→   575→                    <Select value={field.value} onValueChange={field.onChange}>
+   576→   576→                      <SelectTrigger><SelectValue /></SelectTrigger>
+   577→   577→                      <SelectContent>
+   578→   578→                        {['low', 'medium', 'high', 'critical'].map((p) => (
+   579→   579→                          <SelectItem key={p} value={p}>{PRIORITY_LABELS[p]}</SelectItem>
+   580→   580→                        ))}
+   581→   581→                      </SelectContent>
+   582→   582→                    </Select>
+   583→   583→                  )}
+   584→   584→                />
+   585→   585→              </div>
+   586→   586→            </div>
+   587→   587→
+   588→   588→            <div className="grid grid-cols-2 gap-4">
+   589→   589→              <div className="space-y-2">
+   590→   590→                <Label>Assignee</Label>
+   591→   591→                <Controller
+   592→   592→                  control={control}
+   593→   593→                  name="assigneeId"
+   594→   594→                  render={({ field }) => (
+   595→   595→                    <Select value={field.value} onValueChange={field.onChange}>
+   596→   596→                      <SelectTrigger><SelectValue placeholder="Select assignee" /></SelectTrigger>
+   597→   597→                      <SelectContent>
+   598→   598→                        {users.map((u) => (
+   599→   599→                          <SelectItem key={u.id} value={u.id}>
+   600→   600→                            {u.firstName} {u.lastName}
+   601→   601→                          </SelectItem>
+   602→   602→                        ))}
+   603→   603→                      </SelectContent>
+   604→   604→                    </Select>
+   605→   605→                  )}
+   606→   606→                />
+   607→   607→              </div>
+   608→   608→
+   609→   609→              <div className="space-y-2">
+   610→   610→                <Label>Project *</Label>
+   611→   611→                <Controller
+   612→   612→                  control={control}
+   613→   613→                  name="projectId"
+   614→   614→                  render={({ field }) => (
+   615→   615→                    <Select value={field.value || '_none'} onValueChange={(v) => field.onChange(v === '_none' ? '' : v)}>
+   616→   616→                      <SelectTrigger><SelectValue placeholder="Select project" /></SelectTrigger>
+   617→   617→                      <SelectContent>
+   618→   618→                        <SelectItem value="_none">None</SelectItem>
+   619→   619→                        {projects.map((p) => (
+   620→   620→                          <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+   621→   621→                        ))}
+   622→   622→                      </SelectContent>
+   623→   623→                    </Select>
+   624→   624→                  )}
+   625→   625→                />
+   626→   626→                {errors.projectId && <p className="text-sm text-destructive">{errors.projectId.message}</p>}
+   627→   627→              </div>
+   628→   628→            </div>
+   629→   629→
+   630→   630→            <div className="grid grid-cols-2 gap-4">
+   631→   631→              <div className="space-y-2">
+   632→   632→                <Label htmlFor="task-due">Due Date</Label>
+   633→   633→                <Input id="task-due" type="date" {...register('dueDate')} />
+   634→   634→              </div>
+   635→   635→
+   636→   636→              <div className="space-y-2">
+   637→   637→                <Label htmlFor="task-hours">Estimated Hours</Label>
+   638→   638→                <Input id="task-hours" type="number" step="0.5" min="0" {...register('estimatedHours', { valueAsNumber: true })} />
+   639→   639→              </div>
+   640→   640→            </div>
+   641→   641→
+   642→   642→            <DialogFooter>
+   643→   643→              <Button type="button" variant="outline" onClick={() => setTaskDialogOpen(false)}>Cancel</Button>
+   644→   644→              <Button type="submit" disabled={saving} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   645→   645→                {saving && <Loader2 className="size-4 animate-spin mr-1.5" />}
+   646→   646→                {editingTask ? 'Update' : 'Create'}
+   647→   647→              </Button>
+   648→   648→            </DialogFooter>
+   649→   649→          </form>
+   650→   650→        </DialogContent>
+   651→   651→      </Dialog>
+   652→   652→
+   653→   653→      {/* Delete Confirmation */}
+   654→   654→      <ConfirmDialog
+   655→   655→        open={deleteDialogOpen}
+   656→   656→        onOpenChange={setDeleteDialogOpen}
+   657→   657→        title="Delete Task"
+   658→   658→        description={`Are you sure you want to delete "${deletingTask?.title}"? This action cannot be undone.`}
+   659→   659→        confirmLabel="Delete"
+   660→   660→        variant="destructive"
+   661→   661→        onConfirm={confirmDelete}
+   662→   662→        isLoading={deleting}
+   663→   663→      />
+   664→   664→    </div>
+   665→   665→  );
+   666→   666→}
+   667→   667→
+   668→   668→// ═══════════════════════════════════════════════════════════════════════════
+   669→   669→//  Projects Tab
+   670→   670→// ═══════════════════════════════════════════════════════════════════════════
+   671→   671→
+   672→   672→function ProjectsTab() {
+   673→   673→  // Data state
+   674→   674→  const [projects, setProjects] = useState<Project[]>([]);
+   675→   675→  const [loading, setLoading] = useState(true);
+   676→   676→  const [users, setUsers] = useState<User[]>([]);
+   677→   677→
+   678→   678→  // Dialog state
+   679→   679→  const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+   680→   680→  const [editingProject, setEditingProject] = useState<Project | null>(null);
+   681→   681→  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+   682→   682→  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+   683→   683→  const [saving, setSaving] = useState(false);
+   684→   684→  const [deleting, setDeleting] = useState(false);
+   685→   685→
+   686→   686→  // Fetch projects
+   687→   687→  const fetchProjects = useCallback(async () => {
+   688→   688→    setLoading(true);
+   689→   689→    try {
+   690→   690→      const params = new URLSearchParams({ page: '1', pageSize: '100' });
+   691→   691→      const res = await apiFetch<Project[]>(`/api/projects/projects?${params.toString()}`);
+   692→   692→      setProjects(res.data || []);
+   693→   693→    } catch (err: any) {
+   694→   694→      toast.error(err.message || 'Failed to load projects');
+   695→   695→    } finally {
+   696→   696→      setLoading(false);
+   697→   697→    }
+   698→   698→  }, []);
+   699→   699→
+   700→   700→  // Fetch users
+   701→   701→  const fetchUsers = useCallback(async () => {
+   702→   702→    try {
+   703→   703→      const res = await apiFetch<User[]>('/api/admin/users?pageSize=100');
+   704→   704→      setUsers(res.data || []);
+   705→   705→    } catch {
+   706→   706→      // silent
+   707→   707→    }
+   708→   708→  }, []);
+   709→   709→
+   710→   710→  useEffect(() => { fetchProjects(); fetchUsers(); }, [fetchProjects, fetchUsers]);
+   711→   711→
+   712→   712→  // Form
+   713→   713→  const { register, handleSubmit, control, reset, formState: { errors } } = useForm<ProjectFormValues>({
+   714→   714→    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   715→   715→    resolver: zodResolver(createProjectSchema) as any,
+   716→   716→    defaultValues: {
+   717→   717→      name: '', description: '', status: 'planning', priority: 'medium',
+   718→   718→      startDate: null as any, endDate: null as any, budget: 0, ownerId: 'u1',
+   719→   719→    },
+   720→   720→  });
+   721→   721→
+   722→   722→  // Open create dialog
+   723→   723→  const openCreate = useCallback(() => {
+   724→   724→    setEditingProject(null);
+   725→   725→    reset({
+   726→   726→      name: '', description: '', status: 'planning', priority: 'medium',
+   727→   727→      startDate: null as any, endDate: null as any, budget: 0, ownerId: 'u1',
+   728→   728→    });
+   729→   729→    setProjectDialogOpen(true);
+   730→   730→  }, [reset]);
+   731→   731→
+   732→   732→  // Open edit dialog (click card)
+   733→   733→  const openEdit = useCallback((project: Project) => {
+   734→   734→    setEditingProject(project);
+   735→   735→    reset({
+   736→   736→      name: project.name,
+   737→   737→      description: project.description,
+   738→   738→      status: project.status,
+   739→   739→      priority: project.priority,
+   740→   740→      startDate: project.startDate ? project.startDate.slice(0, 10) : null as any,
+   741→   741→      endDate: project.endDate ? project.endDate.slice(0, 10) : null as any,
+   742→   742→      budget: project.budget,
+   743→   743→      ownerId: project.ownerId,
+   744→   744→    });
+   745→   745→    setProjectDialogOpen(true);
+   746→   746→  }, [reset]);
+   747→   747→
+   748→   748→  // Submit
+   749→   749→  const onSubmit = useCallback(async (values: ProjectFormValues) => {
+   750→   750→    setSaving(true);
+   751→   751→    try {
+   752→   752→      const payload = {
+   753→   753→        ...values,
+   754→   754→        startDate: values.startDate || null,
+   755→   755→        endDate: values.endDate || null,
+   756→   756→      };
+   757→   757→      if (editingProject) {
+   758→   758→        await apiFetch(`/api/projects/projects/${editingProject.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+   759→   759→        toast.success('Project updated');
+   760→   760→      } else {
+   761→   761→        await apiFetch('/api/projects/projects', { method: 'POST', body: JSON.stringify(payload) });
+   762→   762→        toast.success('Project created');
+   763→   763→      }
+   764→   764→      setProjectDialogOpen(false);
+   765→   765→      fetchProjects();
+   766→   766→    } catch (err: any) {
+   767→   767→      toast.error(err.message || 'Save failed');
+   768→   768→    } finally {
+   769→   769→      setSaving(false);
+   770→   770→    }
+   771→   771→  }, [editingProject, fetchProjects]);
+   772→   772→
+   773→   773→  // Delete
+   774→   774→  const confirmDelete = useCallback(() => {
+   775→   775→    if (!deletingProject) return;
+   776→   776→    setDeleting(true);
+   777→   777→    apiFetch(`/api/projects/projects/${deletingProject.id}`, { method: 'DELETE' })
+   778→   778→      .then(() => {
+   779→   779→        toast.success('Project deleted');
+   780→   780→        setDeleteDialogOpen(false);
+   781→   781→        setDeletingProject(null);
+   782→   782→        fetchProjects();
+   783→   783→      })
+   784→   784→      .catch((err: any) => toast.error(err.message || 'Delete failed'))
+   785→   785→      .finally(() => setDeleting(false));
+   786→   786→  }, [deletingProject, fetchProjects]);
+   787→   787→
+   788→   788→  return (
+   789→   789→    <div className="flex flex-col gap-6">
+   790→   790→      {/* Header */}
+   791→   791→      <PageHeader title="Projects" icon={FolderKanban}>
+   792→   792→        <Button onClick={openCreate} className="bg-emerald-600 text-white hover:bg-emerald-700 gap-1.5">
+   793→   793→          <Plus className="size-4" /> New Project
+   794→   794→        </Button>
+   795→   795→      </PageHeader>
+   796→   796→
+   797→   797→      {/* Project Cards Grid */}
+   798→   798→      {loading ? (
+   799→   799→        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+   800→   800→          {Array.from({ length: 6 }).map((_, i) => (
+   801→   801→            <Card key={i}>
+   802→   802→              <CardContent className="p-5 flex flex-col gap-3">
+   803→   803→                <Skeleton className="h-5 w-3/4" />
+   804→   804→                <Skeleton className="h-4 w-full" />
+   805→   805→                <Skeleton className="h-4 w-1/2" />
+   806→   806→                <Skeleton className="h-2 w-full mt-2" />
+   807→   807→                <div className="flex justify-between">
+   808→   808→                  <Skeleton className="h-5 w-20" />
+   809→   809→                  <Skeleton className="h-5 w-16" />
+   810→   810→                </div>
+   811→   811→              </CardContent>
+   812→   812→            </Card>
+   813→   813→          ))}
+   814→   814→        </div>
+   815→   815→      ) : projects.length === 0 ? (
+   816→   816→        <EmptyState
+   817→   817→          icon={FolderKanban}
+   818→   818→          title="No projects yet"
+   819→   819→          description="Create your first project to get started."
+   820→   820→          action={{ label: 'New Project', onClick: openCreate }}
+   821→   821→        />
+   822→   822→      ) : (
+   823→   823→        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+   824→   824→          {projects.map((project) => {
+   825→   825→            const taskCount = project._count?.tasks ?? 0;
+   826→   826→            const doneCount = project.tasks?.filter((t) => t.status === 'done').length ?? 0;
+   827→   827→            const pct = taskCount > 0 ? Math.round((doneCount / taskCount) * 100) : 0;
+   828→   828→
+   829→   829→            return (
+   830→   830→              <Card
+   831→   831→                key={project.id}
+   832→   832→                className="group cursor-pointer transition-shadow hover:shadow-md"
+   833→   833→                onClick={() => openEdit(project)}
+   834→   834→              >
+   835→   835→                <CardContent className="p-5 flex flex-col gap-3">
+   836→   836→                  {/* Header row */}
+   837→   837→                  <div className="flex items-start justify-between gap-2">
+   838→   838→                    <h3 className="font-semibold text-foreground leading-tight line-clamp-1">
+   839→   839→                      {project.name}
+   840→   840→                    </h3>
+   841→   841→                    <Badge variant="secondary" className={PROJECT_STATUS_COLORS[project.status] || ''}>
+   842→   842→                      {PROJECT_STATUS_LABELS[project.status] || project.status}
+   843→   843→                    </Badge>
+   844→   844→                  </div>
+   845→   845→
+   846→   846→                  {/* Description */}
+   847→   847→                  <p className="text-sm text-muted-foreground line-clamp-2">
+   848→   848→                    {project.description || 'No description'}
+   849→   849→                  </p>
+   850→   850→
+   851→   851→                  {/* Priority + Budget row */}
+   852→   852→                  <div className="flex items-center justify-between text-sm">
+   853→   853→                    <Badge variant="secondary" className={PRIORITY_COLORS[project.priority] || ''}>
+   854→   854→                      {PRIORITY_LABELS[project.priority] || project.priority}
+   855→   855→                    </Badge>
+   856→   856→                    <span className="text-muted-foreground font-medium">
+   857→   857→                      {formatCurrency(project.budget)}
+   858→   858→                    </span>
+   859→   859→                  </div>
+   860→   860→
+   861→   861→                  {/* Progress */}
+   862→   862→                  <div className="space-y-1.5">
+   863→   863→                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+   864→   864→                      <span>{doneCount} of {taskCount} tasks done</span>
+   865→   865→                      <span className="font-medium">{pct}%</span>
+   866→   866→                    </div>
+   867→   867→                    <Progress value={pct} className={`h-2 ${progressColor(pct)}`} />
+   868→   868→                  </div>
+   869→   869→
+   870→   870→                  {/* Date range + Owner */}
+   871→   871→                  <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 border-t">
+   872→   872→                    <div className="flex items-center gap-1.5">
+   873→   873→                      <CalendarDays className="size-3.5" />
+   874→   874→                      {project.startDate && project.endDate
+   875→   875→                        ? `${formatDate(project.startDate, { month: 'short', day: 'numeric' })} – ${formatDate(project.endDate, { month: 'short', day: 'numeric', year: 'numeric' })}`
+   876→   876→                        : project.startDate
+   877→   877→                          ? `Starts ${formatDate(project.startDate)}`
+   878→   878→                          : 'No dates set'}
+   879→   879→                    </div>
+   880→   880→                    {project.owner && (
+   881→   881→                      <div className="flex items-center gap-1.5">
+   882→   882→                        <Avatar className="size-5">
+   883→   883→                          <AvatarFallback className="text-[8px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+   884→   884→                            {getInitials(project.owner.firstName, project.owner.lastName)}
+   885→   885→                          </AvatarFallback>
+   886→   886→                        </Avatar>
+   887→   887→                        <span>{project.owner.firstName} {project.owner.lastName}</span>
+   888→   888→                      </div>
+   889→   889→                    )}
+   890→   890→                  </div>
+   891→   891→                </CardContent>
+   892→   892→              </Card>
+   893→   893→            );
+   894→   894→          })}
+   895→   895→        </div>
+   896→   896→      )}
+   897→   897→
+   898→   898→      {/* Create / Edit Dialog */}
+   899→   899→      <Dialog open={projectDialogOpen} onOpenChange={setProjectDialogOpen}>
+   900→   900→        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   901→   901→          <DialogHeader>
+   902→   902→            <DialogTitle>{editingProject ? 'Edit Project' : 'New Project'}</DialogTitle>
+   903→   903→            <DialogDescription>
+   904→   904→              {editingProject ? 'Update project details below.' : 'Fill in the details to create a new project.'}
+   905→   905→            </DialogDescription>
+   906→   906→          </DialogHeader>
+   907→   907→
+   908→   908→          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+   909→   909→            <div className="space-y-2">
+   910→   910→              <Label htmlFor="proj-name">Name *</Label>
+   911→   911→              <Input id="proj-name" {...register('name')} placeholder="Project name" />
+   912→   912→              {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+   913→   913→            </div>
+   914→   914→
+   915→   915→            <div className="space-y-2">
+   916→   916→              <Label htmlFor="proj-desc">Description</Label>
+   917→   917→              <Textarea id="proj-desc" {...register('description')} rows={3} placeholder="Project description" />
+   918→   918→            </div>
+   919→   919→
+   920→   920→            <div className="grid grid-cols-2 gap-4">
+   921→   921→              <div className="space-y-2">
+   922→   922→                <Label>Status</Label>
+   923→   923→                <Controller
+   924→   924→                  control={control}
+   925→   925→                  name="status"
+   926→   926→                  render={({ field }) => (
+   927→   927→                    <Select value={field.value} onValueChange={field.onChange}>
+   928→   928→                      <SelectTrigger><SelectValue /></SelectTrigger>
+   929→   929→                      <SelectContent>
+   930→   930→                        {PROJECT_STATUSES.map((s) => (
+   931→   931→                          <SelectItem key={s} value={s}>{PROJECT_STATUS_LABELS[s] || s}</SelectItem>
+   932→   932→                        ))}
+   933→   933→                      </SelectContent>
+   934→   934→                    </Select>
+   935→   935→                  )}
+   936→   936→                />
+   937→   937→              </div>
+   938→   938→
+   939→   939→              <div className="space-y-2">
+   940→   940→                <Label>Priority</Label>
+   941→   941→                <Controller
+   942→   942→                  control={control}
+   943→   943→                  name="priority"
+   944→   944→                  render={({ field }) => (
+   945→   945→                    <Select value={field.value} onValueChange={field.onChange}>
+   946→   946→                      <SelectTrigger><SelectValue /></SelectTrigger>
+   947→   947→                      <SelectContent>
+   948→   948→                        {['low', 'medium', 'high', 'critical'].map((p) => (
+   949→   949→                          <SelectItem key={p} value={p}>{PRIORITY_LABELS[p]}</SelectItem>
+   950→   950→                        ))}
+   951→   951→                      </SelectContent>
+   952→   952→                    </Select>
+   953→   953→                  )}
+   954→   954→                />
+   955→   955→              </div>
+   956→   956→            </div>
+   957→   957→
+   958→   958→            <div className="grid grid-cols-2 gap-4">
+   959→   959→              <div className="space-y-2">
+   960→   960→                <Label htmlFor="proj-start">Start Date</Label>
+   961→   961→                <Input id="proj-start" type="date" {...register('startDate')} />
+   962→   962→              </div>
+   963→   963→
+   964→   964→              <div className="space-y-2">
+   965→   965→                <Label htmlFor="proj-end">End Date</Label>
+   966→   966→                <Input id="proj-end" type="date" {...register('endDate')} />
+   967→   967→              </div>
+   968→   968→            </div>
+   969→   969→
+   970→   970→            <div className="space-y-2">
+   971→   971→              <Label htmlFor="proj-budget">Budget</Label>
+   972→   972→              <Input
+   973→   973→                id="proj-budget"
+   974→   974→                type="number"
+   975→   975→                step="0.01"
+   976→   976→                min="0"
+   977→   977→                {...register('budget', { valueAsNumber: true })}
+   978→   978→                placeholder="0"
+   979→   979→              />
+   980→   980→            </div>
+   981→   981→
+   982→   982→            {/* Delete button for editing */}
+   983→   983→            {editingProject && (
+   984→   984→              <div className="flex justify-end pt-2 border-t">
+   985→   985→                <Button
+   986→   986→                  type="button"
+   987→   987→                  variant="ghost"
+   988→   988→                  className="text-destructive hover:text-destructive gap-1.5"
+   989→   989→                  onClick={(e) => {
+   990→   990→                    e.stopPropagation();
+   991→   991→                    setProjectDialogOpen(false);
+   992→   992→                    setDeletingProject(editingProject);
+   993→   993→                    setDeleteDialogOpen(true);
+   994→   994→                  }}
+   995→   995→                >
+   996→   996→                  <Trash2 className="size-4" /> Delete Project
+   997→   997→                </Button>
+   998→   998→              </div>
+   999→   999→            )}
+  1000→  1000→
+  1001→  1001→            <DialogFooter>
+  1002→  1002→              <Button type="button" variant="outline" onClick={() => setProjectDialogOpen(false)}>Cancel</Button>
+  1003→  1003→              <Button type="submit" disabled={saving} className="bg-emerald-600 text-white hover:bg-emerald-700">
+  1004→  1004→                {saving && <Loader2 className="size-4 animate-spin mr-1.5" />}
+  1005→  1005→                {editingProject ? 'Update' : 'Create'}
+  1006→  1006→              </Button>
+  1007→  1007→            </DialogFooter>
+  1008→  1008→          </form>
+  1009→  1009→        </DialogContent>
+  1010→  1010→      </Dialog>
+  1011→  1011→
+  1012→  1012→      {/* Delete Confirmation */}
+  1013→  1013→      <ConfirmDialog
+  1014→  1014→        open={deleteDialogOpen}
+  1015→  1015→        onOpenChange={setDeleteDialogOpen}
+  1016→  1016→        title="Delete Project"
+  1017→  1017→        description={`Are you sure you want to delete "${deletingProject?.name}"? All associated tasks will also be deleted.`}
+  1018→  1018→        confirmLabel="Delete"
+  1019→  1019→        variant="destructive"
+  1020→  1020→        onConfirm={confirmDelete}
+  1021→  1021→        isLoading={deleting}
+  1022→  1022→      />
+  1023→  1023→    </div>
+  1024→  1024→  );
+  1025→  1025→}

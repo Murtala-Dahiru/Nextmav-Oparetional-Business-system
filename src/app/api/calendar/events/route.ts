@@ -1,13 +1,15 @@
 import { db } from '@/lib/db';
 import { success, error, paginated } from '@/lib/api-response';
 import { createEventSchema } from '@/lib/validations';
+import { safeSortField } from '@/lib/sort-whitelist';
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
   const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 50));
   const search = searchParams.get('search') || '';
-  const sort = searchParams.get('sort') || 'startDate';
+  const rawSort = searchParams.get('sort') || 'startDate';
+  const sort = safeSortField('calendarEvent', rawSort);
   const sortDir = searchParams.get('sortDir') === 'desc' ? 'desc' : 'asc';
   const startDateAfter = searchParams.get('startDateAfter');
   const startDateBefore = searchParams.get('startDateBefore');

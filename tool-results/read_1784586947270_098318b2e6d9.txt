@@ -1,0 +1,1007 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useMemo, useCallback } from 'react';
+     4→import {
+     5→  DollarSign,
+     6→  Handshake,
+     7→  TicketCheck,
+     8→  FolderKanban,
+     9→  ListTodo,
+    10→  UserPlus,
+    11→  Activity,
+    12→  User,
+    13→  Plus,
+    14→  FileText,
+    15→  CalendarDays,
+    16→  BarChart3,
+    17→  TrendingUp,
+    18→  Package,
+    19→  Settings,
+    20→} from 'lucide-react';
+    21→import {
+    22→  AreaChart,
+    23→  Area,
+    24→  BarChart,
+    25→  Bar,
+    26→  XAxis,
+    27→  YAxis,
+    28→  CartesianGrid,
+    29→  Tooltip,
+    30→  ResponsiveContainer,
+    31→  PieChart,
+    32→  Pie,
+    33→  Cell,
+    34→} from 'recharts';
+    35→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+    36→import { Button } from '@/components/ui/button';
+    37→import { Badge } from '@/components/ui/badge';
+    38→import { ScrollArea } from '@/components/ui/scroll-area';
+    39→import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+    40→import { PageHeader } from '@/components/shared/page-header';
+    41→import { StatCard } from '@/components/shared/stat-card';
+    42→import { EmptyState } from '@/components/shared/empty-state';
+    43→import { formatCurrency, formatRelativeTime, getInitials } from '@/lib/format';
+    44→import { useAppStore } from '@/store/app-store';
+    45→import type { ModuleId } from '@/lib/constants';
+    46→
+    47→// ---------------------------------------------------------------------------
+    48→// Types
+    49→// ---------------------------------------------------------------------------
+    50→
+    51→interface ApiMeta {
+    52→  total: number;
+    53→  page: number;
+    54→  pageSize: number;
+    55→  totalPages: number;
+    56→}
+    57→
+    58→interface ApiResponse<T> {
+    59→  data: T[];
+    60→  meta: ApiMeta;
+    61→}
+    62→
+    63→interface Lead {
+    64→  id: string;
+    65→  firstName: string;
+    66→  lastName: string;
+    67→  email: string;
+    68→  company: string;
+    69→  status: string;
+    70→  score: number;
+    71→  value: number;
+    72→  createdAt: string;
+    73→}
+    74→
+    75→interface Deal {
+    76→  id: string;
+    77→  name: string;
+    78→  value: number;
+    79→  stage: string;
+    80→  probability: number;
+    81→  closeDate: string;
+    82→  contactName: string;
+    83→  companyName: string;
+    84→  createdAt: string;
+    85→}
+    86→
+    87→interface Project {
+    88→  id: string;
+    89→  name: string;
+    90→  status: string;
+    91→  priority: string;
+    92→  createdAt: string;
+    93→  _count: { tasks: number };
+    94→}
+    95→
+    96→interface Task {
+    97→  id: string;
+    98→  title: string;
+    99→  status: string;
+   100→  priority: string;
+   101→  dueDate: string | null;
+   102→  createdAt: string;
+   103→  project: { id: string; name: string } | null;
+   104→}
+   105→
+   106→interface Ticket {
+   107→  id: string;
+   108→  ticketNumber: string;
+   109→  subject: string;
+   110→  priority: string;
+   111→  status: string;
+   112→  category: string;
+   113→  contactName: string;
+   114→  createdAt: string;
+   115→}
+   116→
+   117→interface Invoice {
+   118→  id: string;
+   119→  invoiceNumber: string;
+   120→  contactName: string;
+   121→  companyName: string;
+   122→  status: string;
+   123→  subtotal: number;
+   124→  tax: number;
+   125→  total: number;
+   126→  dueDate: string;
+   127→  paidAt: string | null;
+   128→  createdAt: string;
+   129→}
+   130→
+   131→interface Expense {
+   132→  id: string;
+   133→  title: string;
+   134→  amount: number;
+   135→  category: string;
+   136→  date: string;
+   137→  status: string;
+   138→  createdAt: string;
+   139→}
+   140→
+   141→interface ActivityItem {
+   142→  id: string;
+   143→  module: string;
+   144→  action: string;
+   145→  title: string;
+   146→  description: string;
+   147→  createdAt: string;
+   148→  user: { id: string; firstName: string; lastName: string; avatar: string } | null;
+   149→}
+   150→
+   151→interface DashboardData {
+   152→  leads: Lead[];
+   153→  deals: Deal[];
+   154→  projects: Project[];
+   155→  tasks: Task[];
+   156→  tickets: Ticket[];
+   157→  invoices: Invoice[];
+   158→  expenses: Expense[];
+   159→  activities: ActivityItem[];
+   160→}
+   161→
+   162→// ---------------------------------------------------------------------------
+   163→// Constants
+   164→// ---------------------------------------------------------------------------
+   165→
+   166→const CHART_COLORS = ['#10b981', '#14b8a6', '#06b6d4', '#f59e0b', '#f43f5e'];
+   167→
+   168→const MODULE_ICON_MAP: Record<string, string> = {
+   169→  crm: '👥',
+   170→  projects: '📁',
+   171→  support: '📧',
+   172→  finance: '💰',
+   173→  hr: '👤',
+   174→  inventory: '📦',
+   175→  calendar: '📅',
+   176→  communication: '📣',
+   177→  admin: '⚙️',
+   178→  workspace: '📓',
+   179→};
+   180→
+   181→const LEAD_STATUS_COLORS: Record<string, string> = {
+   182→  new: '#06b6d4',
+   183→  contacted: '#10b981',
+   184→  qualified: '#14b8a6',
+   185→  proposal: '#f59e0b',
+   186→  negotiation: '#8b5cf6',
+   187→  won: '#22c55e',
+   188→  lost: '#f43f5e',
+   189→};
+   190→
+   191→const QUICK_ACTIONS: { label: string; module: ModuleId; icon: React.ElementType }[] = [
+   192→  { label: 'New Lead', module: 'crm', icon: UserPlus },
+   193→  { label: 'Create Project', module: 'projects', icon: FolderKanban },
+   194→  { label: 'Add Invoice', module: 'finance', icon: FileText },
+   195→  { label: 'New Ticket', module: 'support', icon: TicketCheck },
+   196→  { label: 'Schedule Event', module: 'calendar', icon: CalendarDays },
+   197→  { label: 'View Reports', module: 'admin', icon: BarChart3 },
+   198→];
+   199→
+   200→const DEAL_STAGE_ORDER = ['prospecting', 'qualification', 'proposal', 'negotiation', 'closed-won', 'closed-lost'];
+   201→
+   202→// ---------------------------------------------------------------------------
+   203→// Skeleton helpers
+   204→// ---------------------------------------------------------------------------
+   205→
+   206→function SkeletonPulse({ className }: { className?: string }) {
+   207→  return <div className={`animate-pulse rounded-md bg-muted ${className ?? ''}`} />;
+   208→}
+   209→
+   210→function KpiSkeletons() {
+   211→  return (
+   212→    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+   213→      {Array.from({ length: 6 }).map((_, i) => (
+   214→        <div key={i} className="bg-card rounded-lg border p-4">
+   215→          <SkeletonPulse className="mb-2 h-4 w-24" />
+   216→          <SkeletonPulse className="mb-2 h-8 w-32" />
+   217→          <SkeletonPulse className="h-3 w-20" />
+   218→        </div>
+   219→      ))}
+   220→    </div>
+   221→  );
+   222→}
+   223→
+   224→function ChartSkeleton() {
+   225→  return (
+   226→    <Card>
+   227→      <CardHeader>
+   228→        <SkeletonPulse className="h-5 w-36" />
+   229→      </CardHeader>
+   230→      <CardContent>
+   231→        <SkeletonPulse className="h-64 w-full" />
+   232→      </CardContent>
+   233→    </Card>
+   234→  );
+   235→}
+   236→
+   237→// ---------------------------------------------------------------------------
+   238→// Custom Tooltip for charts
+   239→// ---------------------------------------------------------------------------
+   240→
+   241→function ChartTooltipContent({
+   242→  active,
+   243→  payload,
+   244→  label,
+   245→  formatter,
+   246→}: {
+   247→  active?: boolean;
+   248→  payload?: Array<{ value: number; name: string; dataKey: string; color?: string }>;
+   249→  label?: string;
+   250→  formatter?: (value: number) => string;
+   251→}) {
+   252→  if (!active || !payload?.length) return null;
+   253→  return (
+   254→    <div className="border-border/50 bg-background rounded-lg border px-3 py-2 text-xs shadow-xl">
+   255→      {label && <p className="font-medium text-foreground mb-1">{label}</p>}
+   256→      {payload.map((item, idx) => (
+   257→        <div key={idx} className="flex items-center gap-2">
+   258→          <span
+   259→            className="inline-block h-2 w-2 rounded-full"
+   260→            style={{ backgroundColor: item.color ?? CHART_COLORS[0] }}
+   261→          />
+   262→          <span className="text-muted-foreground">
+   263→            {item.name}: {formatter ? formatter(item.value) : item.value.toLocaleString()}
+   264→          </span>
+   265→        </div>
+   266→      ))}
+   267→    </div>
+   268→  );
+   269→}
+   270→
+   271→// ---------------------------------------------------------------------------
+   272→// Main Component
+   273→// ---------------------------------------------------------------------------
+   274→
+   275→export default function DashboardModule() {
+   276→  const { setActiveModule } = useAppStore();
+   277→  const [loading, setLoading] = useState(true);
+   278→  const [data, setData] = useState<DashboardData | null>(null);
+   279→  const [error, setError] = useState<string | null>(null);
+   280→
+   281→  // Fetch all data on mount
+   282→  useEffect(() => {
+   283→    let cancelled = false;
+   284→
+   285→    async function fetchAll() {
+   286→      try {
+   287→        const endpoints = [
+   288→          '/api/crm/leads?pageSize=100',
+   289→          '/api/crm/deals?pageSize=100',
+   290→          '/api/projects/projects?pageSize=100',
+   291→          '/api/projects/tasks?pageSize=100',
+   292→          '/api/support/tickets?pageSize=100',
+   293→          '/api/finance/invoices?pageSize=100',
+   294→          '/api/finance/expenses?pageSize=100',
+   295→          '/api/activity-log?pageSize=10',
+   296→        ];
+   297→
+   298→        const results = await Promise.all(
+   299→          endpoints.map((url) =>
+   300→            fetch(url).then((r) => {
+   301→              if (!r.ok) throw new Error(`Failed to fetch ${url}`);
+   302→              return r.json();
+   303→            }),
+   304→          ),
+   305→        );
+   306→
+   307→        if (cancelled) return;
+   308→
+   309→        setData({
+   310→          leads: (results[0] as ApiResponse<Lead>).data,
+   311→          deals: (results[1] as ApiResponse<Deal>).data,
+   312→          projects: (results[2] as ApiResponse<Project>).data,
+   313→          tasks: (results[3] as ApiResponse<Task>).data,
+   314→          tickets: (results[4] as ApiResponse<Ticket>).data,
+   315→          invoices: (results[5] as ApiResponse<Invoice>).data,
+   316→          expenses: (results[6] as ApiResponse<Expense>).data,
+   317→          activities: (results[7] as ApiResponse<ActivityItem>).data,
+   318→        });
+   319→      } catch (e: unknown) {
+   320→        if (!cancelled) {
+   321→          setError(e instanceof Error ? e.message : 'Failed to load dashboard data');
+   322→        }
+   323→      } finally {
+   324→        if (!cancelled) setLoading(false);
+   325→      }
+   326→    }
+   327→
+   328→    fetchAll();
+   329→    return () => {
+   330→      cancelled = true;
+   331→    };
+   332→  }, []);
+   333→
+   334→  // ---- Computed KPIs ----
+   335→
+   336→  const kpis = useMemo(() => {
+   337→    if (!data) return null;
+   338→
+   339→    // Total Revenue: sum of paid invoices
+   340→    const paidInvoices = data.invoices.filter((inv) => inv.status === 'paid');
+   341→    const totalRevenue = paidInvoices.reduce((sum, inv) => sum + inv.total, 0);
+   342→
+   343→    // Revenue change: compare this month vs last month paid invoices
+   344→    const now = new Date();
+   345→    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+   346→    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+   347→
+   348→    const thisMonthRevenue = paidInvoices
+   349→      .filter((inv) => inv.paidAt && new Date(inv.paidAt) >= thisMonthStart)
+   350→      .reduce((sum, inv) => sum + inv.total, 0);
+   351→
+   352→    const lastMonthRevenue = paidInvoices
+   353→      .filter(
+   354→        (inv) =>
+   355→          inv.paidAt &&
+   356→          new Date(inv.paidAt) >= lastMonthStart &&
+   357→          new Date(inv.paidAt) < thisMonthStart,
+   358→      )
+   359→      .reduce((sum, inv) => sum + inv.total, 0);
+   360→
+   361→    const revenueChange =
+   362→      lastMonthRevenue > 0
+   363→        ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
+   364→        : thisMonthRevenue > 0
+   365→          ? 100
+   366→          : 0;
+   367→
+   368→    // Active Deals: not closed-won/closed-lost
+   369→    const activeDeals = data.deals.filter(
+   370→      (d) => d.stage !== 'closed-won' && d.stage !== 'closed-lost',
+   371→    );
+   372→    const activeDealsCount = activeDeals.length;
+   373→
+   374→    // Deals change: this month vs last month created
+   375→    const thisMonthDeals = data.deals.filter(
+   376→      (d) => new Date(d.createdAt) >= thisMonthStart,
+   377→    ).length;
+   378→    const lastMonthDeals = data.deals.filter(
+   379→      (d) => new Date(d.createdAt) >= lastMonthStart && new Date(d.createdAt) < thisMonthStart,
+   380→    ).length;
+   381→    const dealsChange =
+   382→      lastMonthDeals > 0
+   383→        ? ((thisMonthDeals - lastMonthDeals) / lastMonthDeals) * 100
+   384→        : thisMonthDeals > 0
+   385→          ? 100
+   386→          : 0;
+   387→
+   388→    // Open Tickets: open / in-progress / pending
+   389→    const openTickets = data.tickets.filter(
+   390→      (t) => t.status === 'open' || t.status === 'in-progress' || t.status === 'pending',
+   391→    );
+   392→    const openTicketsCount = openTickets.length;
+   393→
+   394→    // Tickets change: this month vs last month
+   395→    const thisMonthTickets = data.tickets.filter(
+   396→      (t) => new Date(t.createdAt) >= thisMonthStart,
+   397→    ).length;
+   398→    const lastMonthTickets = data.tickets.filter(
+   399→      (t) => new Date(t.createdAt) >= lastMonthStart && new Date(t.createdAt) < thisMonthStart,
+   400→    ).length;
+   401→    const ticketsChange =
+   402→      lastMonthTickets > 0
+   403→        ? ((thisMonthTickets - lastMonthTickets) / lastMonthTickets) * 100
+   404→        : thisMonthTickets > 0
+   405→          ? 100
+   406→          : 0;
+   407→
+   408→    // Active Projects
+   409→    const activeProjects = data.projects.filter((p) => p.status === 'active');
+   410→    const activeProjectsCount = activeProjects.length;
+   411→
+   412→    const thisMonthProjects = data.projects.filter(
+   413→      (p) => new Date(p.createdAt) >= thisMonthStart,
+   414→    ).length;
+   415→    const lastMonthProjects = data.projects.filter(
+   416→      (p) => new Date(p.createdAt) >= lastMonthStart && new Date(p.createdAt) < thisMonthStart,
+   417→    ).length;
+   418→    const projectsChange =
+   419→      lastMonthProjects > 0
+   420→        ? ((thisMonthProjects - lastMonthProjects) / lastMonthProjects) * 100
+   421→        : thisMonthProjects > 0
+   422→          ? 100
+   423→          : 0;
+   424→
+   425→    // Tasks Due This Week
+   426→    const weekFromNow = new Date();
+   427→    weekFromNow.setDate(weekFromNow.getDate() + 7);
+   428→    weekFromNow.setHours(23, 59, 59, 999);
+   429→    const todayStart = new Date();
+   430→    todayStart.setHours(0, 0, 0, 0);
+   431→    const tasksDueThisWeek = data.tasks.filter(
+   432→      (t) =>
+   433→        t.dueDate &&
+   434→        t.status !== 'done' &&
+   435→        new Date(t.dueDate) >= todayStart &&
+   436→        new Date(t.dueDate) <= weekFromNow,
+   437→    ).length;
+   438→
+   439→    // New Leads This Month
+   440→    const thirtyDaysAgo = new Date();
+   441→    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+   442→    const newLeadsThisMonth = data.leads.filter(
+   443→      (l) => new Date(l.createdAt) >= thirtyDaysAgo,
+   444→    ).length;
+   445→
+   446→    const thisMonthLeads = data.leads.filter(
+   447→      (l) => new Date(l.createdAt) >= thisMonthStart,
+   448→    ).length;
+   449→    const lastMonthLeads = data.leads.filter(
+   450→      (l) => new Date(l.createdAt) >= lastMonthStart && new Date(l.createdAt) < thisMonthStart,
+   451→    ).length;
+   452→    const leadsChange =
+   453→      lastMonthLeads > 0
+   454→        ? ((thisMonthLeads - lastMonthLeads) / lastMonthLeads) * 100
+   455→        : thisMonthLeads > 0
+   456→          ? 100
+   457→          : 0;
+   458→
+   459→    return {
+   460→      totalRevenue,
+   461→      revenueChange,
+   462→      activeDealsCount,
+   463→      dealsChange,
+   464→      openTicketsCount,
+   465→      ticketsChange,
+   466→      activeProjectsCount,
+   467→      projectsChange,
+   468→      tasksDueThisWeek,
+   469→      newLeadsThisMonth,
+   470→      leadsChange,
+   471→    };
+   472→  }, [data]);
+   473→
+   474→  // ---- Chart: Monthly Revenue ----
+   475→
+   476→  const revenueChartData = useMemo(() => {
+   477→    if (!data) return [];
+   478→
+   479→    const paidInvoices = data.invoices.filter((inv) => inv.status === 'paid' && inv.paidAt);
+   480→
+   481→    // Group by month (last 6 months)
+   482→    const monthMap = new Map<string, number>();
+   483→    const now = new Date();
+   484→
+   485→    for (let i = 5; i >= 0; i--) {
+   486→      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+   487→      const key = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+   488→      monthMap.set(key, 0);
+   489→    }
+   490→
+   491→    paidInvoices.forEach((inv) => {
+   492→      const d = new Date(inv.paidAt!);
+   493→      const key = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+   494→      if (monthMap.has(key)) {
+   495→        monthMap.set(key, monthMap.get(key)! + inv.total);
+   496→      }
+   497→    });
+   498→
+   499→    return Array.from(monthMap.entries()).map(([month, revenue]) => ({ month, revenue }));
+   500→  }, [data]);
+   501→
+   502→  // ---- Chart: Deal Pipeline ----
+   503→
+   504→  const pipelineChartData = useMemo(() => {
+   505→    if (!data) return [];
+   506→
+   507→    const stageMap = new Map<string, { count: number; value: number }>();
+   508→
+   509→    DEAL_STAGE_ORDER.forEach((stage) => {
+   510→      stageMap.set(stage, { count: 0, value: 0 });
+   511→    });
+   512→
+   513→    data.deals.forEach((deal) => {
+   514→      const entry = stageMap.get(deal.stage);
+   515→      if (entry) {
+   516→        entry.count += 1;
+   517→        entry.value += deal.value;
+   518→      }
+   519→    });
+   520→
+   521→    return Array.from(stageMap.entries())
+   522→      .filter(([, v]) => v.count > 0)
+   523→      .map(([stage, v]) => ({
+   524→        stage: stage.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+   525→        count: v.count,
+   526→        value: v.value,
+   527→      }));
+   528→  }, [data]);
+   529→
+   530→  // ---- Chart: Lead Status Distribution ----
+   531→
+   532→  const leadStatusData = useMemo(() => {
+   533→    if (!data) return [];
+   534→
+   535→    const statusMap = new Map<string, number>();
+   536→    data.leads.forEach((lead) => {
+   537→      statusMap.set(lead.status, (statusMap.get(lead.status) ?? 0) + 1);
+   538→    });
+   539→
+   540→    return Array.from(statusMap.entries())
+   541→      .map(([status, count]) => ({
+   542→        name: status.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+   543→        value: count,
+   544→        color: LEAD_STATUS_COLORS[status] ?? '#94a3b8',
+   545→      }))
+   546→      .sort((a, b) => b.value - a.value);
+   547→  }, [data]);
+   548→
+   549→  // ---- Top Deals ----
+   550→
+   551→  const topDeals = useMemo(() => {
+   552→    if (!data) return [];
+   553→    return [...data.deals]
+   554→      .sort((a, b) => b.value - a.value)
+   555→      .slice(0, 5);
+   556→  }, [data]);
+   557→
+   558→  // ---- Quick Action Handler ----
+   559→
+   560→  const handleQuickAction = useCallback(
+   561→    (module: ModuleId) => {
+   562→      setActiveModule(module);
+   563→    },
+   564→    [setActiveModule],
+   565→  );
+   566→
+   567→  // ---- Module navigation from activity ----
+   568→
+   569→  const handleActivityClick = useCallback(
+   570→    (moduleName: string) => {
+   571→      const moduleMap: Record<string, ModuleId> = {
+   572→        crm: 'crm',
+   573→        projects: 'projects',
+   574→        support: 'support',
+   575→        finance: 'finance',
+   576→        hr: 'hr',
+   577→        inventory: 'inventory',
+   578→        calendar: 'calendar',
+   579→        communication: 'communication',
+   580→        admin: 'admin',
+   581→        workspace: 'workspace',
+   582→      };
+   583→      if (moduleMap[moduleName]) {
+   584→        setActiveModule(moduleMap[moduleName]);
+   585→      }
+   586→    },
+   587→    [setActiveModule],
+   588→  );
+   589→
+   590→  // ---- Error State ----
+   591→
+   592→  if (error && !data) {
+   593→    return (
+   594→      <div className="space-y-6">
+   595→        <PageHeader
+   596→          title="Dashboard"
+   597→          description="Overview of your business operations"
+   598→          icon={TrendingUp}
+   599→        />
+   600→        <EmptyState
+   601→          icon={Activity}
+   602→          title="Unable to load dashboard"
+   603→          description={error}
+   604→        />
+   605→      </div>
+   606→    );
+   607→  }
+   608→
+   609→  // ---- Render ----
+   610→
+   611→  return (
+   612→    <div className="space-y-6">
+   613→      {/* Page Header */}
+   614→      <PageHeader
+   615→        title="Dashboard"
+   616→        description="Overview of your business operations"
+   617→        icon={TrendingUp}
+   618→      />
+   619→
+   620→      {/* Section 1: KPI Cards */}
+   621→      {loading ? (
+   622→        <KpiSkeletons />
+   623→      ) : (
+   624→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+   625→          <StatCard
+   626→            label="Total Revenue"
+   627→            value={formatCurrency(kpis!.totalRevenue)}
+   628→            change={kpis!.revenueChange}
+   629→            changeLabel="vs last month"
+   630→            icon={DollarSign}
+   631→          />
+   632→          <StatCard
+   633→            label="Active Deals"
+   634→            value={kpis!.activeDealsCount}
+   635→            change={kpis!.dealsChange}
+   636→            changeLabel="vs last month"
+   637→            icon={Handshake}
+   638→          />
+   639→          <StatCard
+   640→            label="Open Tickets"
+   641→            value={kpis!.openTicketsCount}
+   642→            change={kpis!.ticketsChange}
+   643→            changeLabel="vs last month"
+   644→            icon={TicketCheck}
+   645→          />
+   646→          <StatCard
+   647→            label="Active Projects"
+   648→            value={kpis!.activeProjectsCount}
+   649→            change={kpis!.projectsChange}
+   650→            changeLabel="vs last month"
+   651→            icon={FolderKanban}
+   652→          />
+   653→          <StatCard
+   654→            label="Tasks Due This Week"
+   655→            value={kpis!.tasksDueThisWeek}
+   656→            icon={ListTodo}
+   657→          />
+   658→          <StatCard
+   659→            label="New Leads"
+   660→            value={kpis!.newLeadsThisMonth}
+   661→            change={kpis!.leadsChange}
+   662→            changeLabel="vs last month"
+   663→            icon={UserPlus}
+   664→          />
+   665→        </div>
+   666→      )}
+   667→
+   668→      {/* Section 2: Revenue Chart */}
+   669→      {loading ? (
+   670→        <ChartSkeleton />
+   671→      ) : revenueChartData.length === 0 ? (
+   672→        <Card>
+   673→          <CardHeader>
+   674→            <CardTitle>Revenue Overview</CardTitle>
+   675→          </CardHeader>
+   676→          <CardContent>
+   677→            <EmptyState
+   678→              icon={DollarSign}
+   679→              title="No revenue data yet"
+   680→              description="Paid invoices will appear as monthly revenue here."
+   681→            />
+   682→          </CardContent>
+   683→        </Card>
+   684→      ) : (
+   685→        <Card>
+   686→          <CardHeader>
+   687→            <CardTitle>Revenue Overview</CardTitle>
+   688→          </CardHeader>
+   689→          <CardContent>
+   690→            <div className="h-72">
+   691→              <ResponsiveContainer width="100%" height="100%">
+   692→                <AreaChart data={revenueChartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+   693→                  <defs>
+   694→                    <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+   695→                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+   696→                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+   697→                    </linearGradient>
+   698→                  </defs>
+   699→                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+   700→                  <XAxis
+   701→                    dataKey="month"
+   702→                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+   703→                    axisLine={{ stroke: 'hsl(var(--border))' }}
+   704→                    tickLine={false}
+   705→                  />
+   706→                  <YAxis
+   707→                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+   708→                    axisLine={false}
+   709→                    tickLine={false}
+   710→                    tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
+   711→                  />
+   712→                  <Tooltip content={<ChartTooltipContent formatter={(v: number) => formatCurrency(v)} />} />
+   713→                  <Area
+   714→                    type="monotone"
+   715→                    dataKey="revenue"
+   716→                    stroke="#10b981"
+   717→                    strokeWidth={2}
+   718→                    fill="url(#revenueGradient)"
+   719→                    name="Revenue"
+   720→                  />
+   721→                </AreaChart>
+   722→              </ResponsiveContainer>
+   723→            </div>
+   724→          </CardContent>
+   725→        </Card>
+   726→      )}
+   727→
+   728→      {/* Section 3: Deal Pipeline */}
+   729→      {loading ? (
+   730→        <ChartSkeleton />
+   731→      ) : pipelineChartData.length === 0 ? (
+   732→        <Card>
+   733→          <CardHeader>
+   734→            <CardTitle>Deal Pipeline</CardTitle>
+   735→          </CardHeader>
+   736→          <CardContent>
+   737→            <EmptyState
+   738→              icon={Handshake}
+   739→              title="No deals in pipeline"
+   740→              description="Create deals to see your pipeline breakdown here."
+   741→            />
+   742→          </CardContent>
+   743→        </Card>
+   744→      ) : (
+   745→        <Card>
+   746→          <CardHeader>
+   747→            <CardTitle>Deal Pipeline</CardTitle>
+   748→          </CardHeader>
+   749→          <CardContent>
+   750→            <div className="h-64">
+   751→              <ResponsiveContainer width="100%" height="100%">
+   752→                <BarChart data={pipelineChartData} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+   753→                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+   754→                  <XAxis
+   755→                    type="number"
+   756→                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+   757→                    axisLine={{ stroke: 'hsl(var(--border))' }}
+   758→                    tickLine={false}
+   759→                    tickFormatter={(v: number) => formatCurrency(v)}
+   760→                  />
+   761→                  <YAxis
+   762→                    type="category"
+   763→                    dataKey="stage"
+   764→                    tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+   765→                    axisLine={false}
+   766→                    tickLine={false}
+   767→                    width={110}
+   768→                  />
+   769→                  <Tooltip
+   770→                    content={
+   771→                      <ChartTooltipContent
+   772→                        formatter={(v: number) => formatCurrency(v)}
+   773→                      />
+   774→                    }
+   775→                  />
+   776→                  <Bar
+   777→                    dataKey="value"
+   778→                    fill="#10b981"
+   779→                    radius={[0, 4, 4, 0]}
+   780→                    name="Pipeline Value"
+   781→                    barSize={28}
+   782→                  />
+   783→                </BarChart>
+   784→              </ResponsiveContainer>
+   785→            </div>
+   786→          </CardContent>
+   787→        </Card>
+   788→      )}
+   789→
+   790→      {/* Section 4: Recent Activity + Quick Actions */}
+   791→      {loading ? (
+   792→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+   793→          <div className="lg:col-span-2">
+   794→            <ChartSkeleton />
+   795→          </div>
+   796→          <ChartSkeleton />
+   797→        </div>
+   798→      ) : (
+   799→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+   800→          {/* Left: Recent Activity */}
+   801→          <Card className="lg:col-span-2">
+   802→            <CardHeader>
+   803→              <CardTitle>Recent Activity</CardTitle>
+   804→            </CardHeader>
+   805→            <CardContent>
+   806→              {data!.activities.length === 0 ? (
+   807→                <EmptyState
+   808→                  icon={Activity}
+   809→                  title="No recent activity"
+   810→                  description="Activity from all modules will appear here."
+   811→                />
+   812→              ) : (
+   813→                <ScrollArea className="max-h-96">
+   814→                  <div className="space-y-1">
+   815→                    {data!.activities.map((item) => (
+   816→                      <button
+   817→                        key={item.id}
+   818→                        onClick={() => handleActivityClick(item.module)}
+   819→                        className="flex items-start gap-3 w-full rounded-lg p-3 text-left transition-colors hover:bg-muted/50 cursor-pointer"
+   820→                      >
+   821→                        <div
+   822→                          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-base"
+   823→                          aria-hidden="true"
+   824→                        >
+   825→                          {MODULE_ICON_MAP[item.module] ?? '📋'}
+   826→                        </div>
+   827→                        <div className="min-w-0 flex-1">
+   828→                          <div className="flex items-center gap-2">
+   829→                            <p className="text-sm font-medium text-foreground truncate">
+   830→                              {item.title}
+   831→                            </p>
+   832→                            {item.user && (
+   833→                              <Avatar className="size-5 shrink-0">
+   834→                                <AvatarFallback className="text-[9px]">
+   835→                                  {getInitials(item.user.firstName, item.user.lastName)}
+   836→                                </AvatarFallback>
+   837→                              </Avatar>
+   838→                            )}
+   839→                          </div>
+   840→                          {item.description && (
+   841→                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+   842→                              {item.description}
+   843→                            </p>
+   844→                          )}
+   845→                          <p className="text-xs text-muted-foreground mt-1">
+   846→                            {formatRelativeTime(item.createdAt)}
+   847→                          </p>
+   848→                        </div>
+   849→                        <Badge variant="outline" className="shrink-0 text-[10px] capitalize">
+   850→                          {item.module}
+   851→                        </Badge>
+   852→                      </button>
+   853→                    ))}
+   854→                  </div>
+   855→                </ScrollArea>
+   856→              )}
+   857→            </CardContent>
+   858→          </Card>
+   859→
+   860→          {/* Right: Quick Actions */}
+   861→          <Card>
+   862→            <CardHeader>
+   863→              <CardTitle>Quick Actions</CardTitle>
+   864→            </CardHeader>
+   865→            <CardContent>
+   866→              <div className="grid grid-cols-2 gap-3">
+   867→                {QUICK_ACTIONS.map((action) => {
+   868→                  const Icon = action.icon;
+   869→                  return (
+   870→                    <Button
+   871→                      key={action.module}
+   872→                      variant="outline"
+   873→                      className="flex h-auto flex-col items-center gap-2 py-4 cursor-pointer hover:bg-emerald-500/10 hover:border-emerald-500/50 hover:text-emerald-600 transition-colors"
+   874→                      onClick={() => handleQuickAction(action.module)}
+   875→                    >
+   876→                      <Icon className="size-5" />
+   877→                      <span className="text-xs font-medium">{action.label}</span>
+   878→                    </Button>
+   879→                  );
+   880→                })}
+   881→              </div>
+   882→            </CardContent>
+   883→          </Card>
+   884→        </div>
+   885→      )}
+   886→
+   887→      {/* Section 5: Top Deals + Lead Distribution */}
+   888→      {loading ? (
+   889→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+   890→          <div className="lg:col-span-2">
+   891→            <ChartSkeleton />
+   892→          </div>
+   893→          <ChartSkeleton />
+   894→        </div>
+   895→      ) : (
+   896→        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+   897→          {/* Left: Top Deals Table */}
+   898→          <Card className="lg:col-span-2">
+   899→            <CardHeader>
+   900→              <CardTitle>Top Deals</CardTitle>
+   901→            </CardHeader>
+   902→            <CardContent>
+   903→              {topDeals.length === 0 ? (
+   904→                <EmptyState
+   905→                  icon={Handshake}
+   906→                  title="No deals yet"
+   907→                  description="Create deals in CRM to see your top opportunities here."
+   908→                />
+   909→              ) : (
+   910→                <div className="overflow-x-auto">
+   911→                  <table className="w-full text-sm">
+   912→                    <thead>
+   913→                      <tr className="border-b border-border">
+   914→                        <th className="pb-3 text-left font-medium text-muted-foreground">Deal</th>
+   915→                        <th className="pb-3 text-left font-medium text-muted-foreground hidden sm:table-cell">Company</th>
+   916→                        <th className="pb-3 text-left font-medium text-muted-foreground hidden md:table-cell">Stage</th>
+   917→                        <th className="pb-3 text-right font-medium text-muted-foreground">Value</th>
+   918→                      </tr>
+   919→                    </thead>
+   920→                    <tbody>
+   921→                      {topDeals.map((deal) => (
+   922→                        <tr key={deal.id} className="border-b border-border/50 last:border-0">
+   923→                          <td className="py-3">
+   924→                            <span className="font-medium text-foreground">{deal.name}</span>
+   925→                          </td>
+   926→                          <td className="py-3 text-muted-foreground hidden sm:table-cell">
+   927→                            {deal.companyName || '—'}
+   928→                          </td>
+   929→                          <td className="py-3 hidden md:table-cell">
+   930→                            <Badge
+   931→                              variant="outline"
+   932→                              className="capitalize text-[10px]"
+   933→                            >
+   934→                              {deal.stage.replace(/-/g, ' ')}
+   935→                            </Badge>
+   936→                          </td>
+   937→                          <td className="py-3 text-right font-medium text-foreground">
+   938→                            {formatCurrency(deal.value)}
+   939→                          </td>
+   940→                        </tr>
+   941→                      ))}
+   942→                    </tbody>
+   943→                  </table>
+   944→                </div>
+   945→              )}
+   946→            </CardContent>
+   947→          </Card>
+   948→
+   949→          {/* Right: Lead Status Distribution Pie Chart */}
+   950→          <Card>
+   951→            <CardHeader>
+   952→              <CardTitle>Lead Status</CardTitle>
+   953→            </CardHeader>
+   954→            <CardContent>
+   955→              {leadStatusData.length === 0 ? (
+   956→                <EmptyState
+   957→                  icon={User}
+   958→                  title="No leads yet"
+   959→                  description="Add leads in CRM to see status distribution."
+   960→                />
+   961→              ) : (
+   962→                <div>
+   963→                  <div className="h-56">
+   964→                    <ResponsiveContainer width="100%" height="100%">
+   965→                      <PieChart>
+   966→                        <Pie
+   967→                          data={leadStatusData}
+   968→                          cx="50%"
+   969→                          cy="50%"
+   970→                          innerRadius={50}
+   971→                          outerRadius={80}
+   972→                          paddingAngle={3}
+   973→                          dataKey="value"
+   974→                        >
+   975→                          {leadStatusData.map((entry, index) => (
+   976→                            <Cell key={entry.name} fill={entry.color} stroke="none" />
+   977→                          ))}
+   978→                        </Pie>
+   979→                        <Tooltip
+   980→                          content={<ChartTooltipContent />}
+   981→                        />
+   982→                      </PieChart>
+   983→                    </ResponsiveContainer>
+   984→                  </div>
+   985→                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 justify-center">
+   986→                    {leadStatusData.map((entry) => (
+   987→                      <div key={entry.name} className="flex items-center gap-1.5 text-xs">
+   988→                        <span
+   989→                          className="inline-block h-2 w-2 rounded-full"
+   990→                          style={{ backgroundColor: entry.color }}
+   991→                        />
+   992→                        <span className="text-muted-foreground">
+   993→                          {entry.name} ({entry.value})
+   994→                        </span>
+   995→                      </div>
+   996→                    ))}
+   997→                  </div>
+   998→                </div>
+   999→              )}
+  1000→            </CardContent>
+  1001→          </Card>
+  1002→        </div>
+  1003→      )}
+  1004→    </div>
+  1005→  );
+  1006→}
+  1007→
