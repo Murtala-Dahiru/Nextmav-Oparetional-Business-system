@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { success, error } from '@/lib/api-response'
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,11 +12,14 @@ export async function POST(request: NextRequest) {
       return error('New password must be at least 8 characters long', 400, 'VALIDATION_ERROR')
     }
 
+    if (!SUPABASE_URL) {
+      return success({ message: 'Password updated successfully (demo mode)' })
+    }
+
+    const { createSupabaseServerClient } = await import('@/lib/supabase/server')
     const supabase = await createSupabaseServerClient(request)
 
     if (token) {
-      // Verify the token and update password using admin API approach
-      // Exchange the token for a session first
       const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
         token_hash: token,
         type: 'recovery',
@@ -25,26 +29,16 @@ export async function POST(request: NextRequest) {
         return error('Invalid or expired reset token', 400, 'INVALID_TOKEN', verifyError)
       }
 
-      // Now update the password with the active session
-      const { error: updateError } = await supabase.auth.updateUser({
-        password,
-      })
-
+      const { error: updateError } = await supabase.auth.updateUser({ password })
       if (updateError) {
         return error(updateError.message, 400, 'UPDATE_ERROR', updateError)
       }
     } else {
-      // No token provided — try updating with current session (user is already logged in)
       const { data: { user }, error: sessionError } = await supabase.auth.getUser()
-
       if (sessionError || !user) {
-        return error('No active session found. Please provide a valid reset token.', 401, 'UNAUTHORIZED')
+        return error('No active session found', 401, 'UNAUTHORIZED')
       }
-
-      const { error: updateError } = await supabase.auth.updateUser({
-        password,
-      })
-
+      const { error: updateError } = await supabase.auth.updateUser({ password })
       if (updateError) {
         return error(updateError.message, 400, 'UPDATE_ERROR', updateError)
       }
@@ -52,6 +46,6 @@ export async function POST(request: NextRequest) {
 
     return success({ message: 'Password updated successfully' })
   } catch (e: any) {
-    return error(e.message || 'An unexpected error occurred while resetting password', 500, 'INTERNAL_ERROR')
+    return error(e.message || 'Failed to reset password', 500, 'INTERNAL_ERROR')
   }
 }

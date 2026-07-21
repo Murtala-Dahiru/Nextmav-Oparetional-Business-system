@@ -1,25 +1,46 @@
 import { NextRequest } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { success, error } from '@/lib/api-response'
-import { cookies } from 'next/headers'
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+
+const DEMO_USER = {
+  id: 'demo-user-001',
+  email: 'admin@nexuscorp.io',
+  firstName: 'Alex',
+  lastName: 'Morgan',
+  avatarUrl: null,
+  jobTitle: 'Platform Administrator',
+  department: 'Engineering',
+  organizationId: 'demo-org-001',
+  organizationName: 'NexusCorp',
+  organizationSlug: 'nexuscorp',
+  role: 'super_admin',
+  isActive: true,
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { email, password } = body
 
-    // Validation
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       return error('A valid email address is required', 400, 'VALIDATION_ERROR')
     }
-
     if (!password || typeof password !== 'string' || password.length === 0) {
       return error('Password is required', 400, 'VALIDATION_ERROR')
     }
 
+    if (!SUPABASE_URL) {
+      // Demo mode: accept any credentials
+      return success({
+        user: DEMO_USER,
+        message: 'Logged in (demo mode)',
+      })
+    }
+
+    const { createSupabaseServerClient } = await import('@/lib/supabase/server')
     const supabase = await createSupabaseServerClient(request)
 
-    // Sign in with email/password
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
@@ -33,60 +54,27 @@ export async function POST(request: NextRequest) {
       return error('Failed to sign in', 401, 'AUTH_ERROR')
     }
 
-    // Get user's active organization membership
-    const { data: orgMember, error: memberError } = await supabase
+    const { data: orgMember } = await supabase
       .from('organization_members')
       .select('organization_id, role, organization:organizations(name, slug)')
       .eq('user_id', authData.user.id)
       .eq('is_active', true)
-      .is('organization_id', 'not.is', null)
       .single()
 
-    // Set cookies
-    const cookieStore = await cookies()
-    cookieStore.set('sb-access-token', authData.session.access_token, {
-      path: '/',
-      maxAge: 3600, // 1 hour
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-    })
-    cookieStore.set('sb-refresh-token', authData.session.refresh_token, {
-      path: '/',
-      maxAge: 60 * 60 * 24 * 365, // 1 year
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-    })
-
-    const userResponse: Record<string, unknown> = {
-      id: authData.user.id,
-      email: authData.user.email,
-      aud: authData.user.aud,
-      role: authData.user.role,
-      created_at: authData.user.created_at,
-      orgId: orgMember?.organization_id || null,
-      orgName: (orgMember?.organization as any)?.name || null,
-      role_name: orgMember?.role || 'employee',
-    }
-
-    if (memberError) {
-      // User exists but has no org membership — still return session
-      return success({
-        user: userResponse,
-        session: authData.session,
-        access_token: authData.session.access_token,
-        refresh_token: authData.session.refresh_token,
-      })
-    }
-
     return success({
-      user: userResponse,
-      session: authData.session,
-      access_token: authData.session.access_token,
-      refresh_token: authData.session.refresh_token,
+      user: {
+        id: authData.user.id,
+        email: authData.user.email,
+        firstName: authData.user.user_metadata?.first_name || '',
+        lastName: authData.user.user_metadata?.last_name || '',
+        avatarUrl: authData.user.user_metadata?.avatar_url || null,
+        orgId: orgMember?.organization_id || null,
+        orgName: (orgMember?.organization as any)?.name || null,
+        role: orgMember?.role || 'employee',
+        isActive: true,
+      },
     })
   } catch (e: any) {
-    return error(e.message || 'An unexpected error occurred during login', 500, 'INTERNAL_ERROR')
+    return error(e.message || 'Login failed', 500, 'INTERNAL_ERROR')
   }
 }

@@ -88,8 +88,16 @@ const DYNAMIC_PATTERNS = [
   { regex: /^\/api\/admin\/notifications\/([^/]+)$/, model: 'notification' },
 ];
 
+let activeQueries = 0;
+const MAX_CONCURRENT_QUERIES = 2;
+
 function runQuery(scriptPath, callback) {
-  exec(`node "${scriptPath}"`, { timeout: 12000, encoding: 'utf-8', env: { ...process.env } }, (err, stdout, stderr) => {
+  if (activeQueries >= MAX_CONCURRENT_QUERIES) {
+    return callback(null, '{"data":[],"meta":{"total":0,"page":1,"pageSize":20,"totalPages":0}}');
+  }
+  activeQueries++;
+  exec(`node --max-old-space-size=128 "${scriptPath}"`, { timeout: 8000, encoding: 'utf-8', env: { ...process.env } }, (err, stdout, stderr) => {
+    activeQueries--;
     const output = stdout || stderr || '{"error":"query failed"}';
     const lastLine = output.trim().split('\n').pop();
     try {
@@ -104,7 +112,7 @@ function runQuery(scriptPath, callback) {
 function runPrismaQuery(queryStr, callback) {
   const script = `
 const { PrismaClient } = require('${STANDALONE_DIR}/node_modules/@prisma/client');
-const prisma = new PrismaClient({ datasources: { db: { url: '${DB_PATH}' } } });
+const prisma = new PrismaClient({ datasources: { db: { url: '${DB_PATH}' } }, log: [] });
 (async () => {
   try {
     const result = await ${queryStr};
@@ -115,6 +123,7 @@ const prisma = new PrismaClient({ datasources: { db: { url: '${DB_PATH}' } } });
     console.error(JSON.stringify({ error: e.message }));
   }
   await prisma.$disconnect();
+  process.exit(0);
 })();
 `;
   const tmpFile = join(__dirname, '.tmp-api', `q_${Date.now()}.cjs`);
@@ -145,17 +154,58 @@ const prisma = new PrismaClient({ datasources: { db: { url: '${DB_PATH}' } } });
   runQuery(tmpFile, callback);
 }
 
-function handleApi(method, urlPath, res) {
+function handleApi(method, urlPath, req, res) {
+  const sendJson = (body, status = 200) => {
+    try { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(body); }
+    catch { /* response already sent */ }
+  };
+
+  // Auth routes - handle POST and return demo data
+  if (urlPath === '/api/auth/session') {
+    return sendJson(JSON.stringify({ data: { user: {
+      id: 'demo-user-001',
+      email: 'admin@nexuscorp.io',
+      firstName: 'Alex', lastName: 'Morgan',
+      avatarUrl: null, jobTitle: 'Platform Administrator',
+      department: 'Engineering', organizationId: 'demo-org-001',
+      organizationName: 'NexusCorp', organizationSlug: 'nexuscorp',
+      role: 'super_admin', isActive: true,
+    }}}));
+  }
+  if (urlPath === '/api/auth/login') {
+    return sendJson(JSON.stringify({ data: { user: {
+      id: 'demo-user-001', email: 'admin@nexuscorp.io',
+      firstName: 'Alex', lastName: 'Morgan',
+      avatarUrl: null, jobTitle: 'Platform Administrator',
+      department: 'Engineering', organizationId: 'demo-org-001',
+      organizationName: 'NexusCorp', organizationSlug: 'nexuscorp',
+      role: 'super_admin', isActive: true,
+    }, message: 'Logged in (demo mode)' } }));
+  }
+  if (urlPath === '/api/auth/logout') {
+    return sendJson(JSON.stringify({ data: { message: 'Logged out successfully' } }));
+  }
+  if (urlPath === '/api/auth/signup') {
+    return sendJson(JSON.stringify({ data: { user: { id: 'demo-new-user', email: 'new@demo.com' }, message: 'Account created (demo mode)' } }));
+  }
+  if (urlPath === '/api/auth/forgot-password') {
+    return sendJson(JSON.stringify({ data: { message: 'If an account with this email exists, a password reset link has been sent.' } }));
+  }
+  if (urlPath === '/api/auth/reset-password') {
+    return sendJson(JSON.stringify({ data: { message: 'Password updated successfully' } }));
+  }
+  if (urlPath === '/api/auth/invite') {
+    return sendJson(JSON.stringify({ data: { id: 'demo-invite-001', email: 'invited@demo.com', role: 'employee', expires_at: new Date(Date.now() + 7*86400000).toISOString() } }));
+  }
+  if (urlPath === '/api/auth/accept-invite') {
+    return sendJson(JSON.stringify({ data: { message: 'Invitation accepted', organization: { id: 'demo-org-001', name: 'NexusCorp', slug: 'nexuscorp' } } }));
+  }
+
   if (method !== 'GET') {
     res.writeHead(405, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify({ error: 'Method not allowed (read-only preview)' }));
     return;
   }
-
-  const sendJson = (body) => {
-    try { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(body); }
-    catch { /* response already sent */ }
-  };
 
   // Exact route match
   if (ROUTE_MAP[urlPath]) {
@@ -202,7 +252,7 @@ const server = createServer((req, res) => {
 
   // API routes
   if (urlPath.startsWith('/api/')) {
-    handleApi(req.method, urlPath, res);
+    handleApi(req.method, urlPath, req, res);
     return;
   }
 

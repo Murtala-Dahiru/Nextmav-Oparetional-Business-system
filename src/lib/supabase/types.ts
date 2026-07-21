@@ -264,7 +264,7 @@ export interface LeaveRequest {
   requester?: UserProfile
 }
 
-export type LeaveType = 'vacation' | 'sick' | 'personal' | 'maternity' | 'paternity' 'bereavement' | 'unpaid'
+export type LeaveType = 'vacation' | 'sick' | 'personal' | 'maternity' | 'paternity' | 'bereavement' | 'unpaid'
 export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
 
 // Inventory

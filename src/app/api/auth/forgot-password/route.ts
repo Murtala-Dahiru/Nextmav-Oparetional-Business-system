@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase/server'
 import { success, error } from '@/lib/api-response'
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,6 +12,12 @@ export async function POST(request: NextRequest) {
       return error('A valid email address is required', 400, 'VALIDATION_ERROR')
     }
 
+    if (!SUPABASE_URL) {
+      // Always return success to avoid email enumeration
+      return success({ message: 'If an account with this email exists, a password reset link has been sent.' })
+    }
+
+    const { createSupabaseServerClient } = await import('@/lib/supabase/server')
     const supabase = await createSupabaseServerClient(request)
 
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
@@ -21,9 +28,8 @@ export async function POST(request: NextRequest) {
       return error(resetError.message, 400, 'AUTH_ERROR', resetError)
     }
 
-    // Always return success to avoid email enumeration
     return success({ message: 'If an account with this email exists, a password reset link has been sent.' })
   } catch (e: any) {
-    return error(e.message || 'An unexpected error occurred while sending reset email', 500, 'INTERNAL_ERROR')
+    return error(e.message || 'Failed to send reset email', 500, 'INTERNAL_ERROR')
   }
 }
