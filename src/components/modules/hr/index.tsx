@@ -915,6 +915,309 @@ function LeaveTab() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  Attendance & Shifts Tab
+// ═══════════════════════════════════════════════════════════════════════════
+
+function AttendanceTab() {
+  const [records] = useState([
+    { id: '1', name: 'Alex Morgan', dept: 'Engineering', checkIn: '08:55 AM', checkOut: '05:30 PM', status: 'On Time', totalHours: '8h 35m' },
+    { id: '2', name: 'Sarah Jenkins', dept: 'Sales', checkIn: '09:12 AM', checkOut: '06:00 PM', status: 'Late', totalHours: '8h 48m' },
+    { id: '3', name: 'Jordan Lee', dept: 'Design', checkIn: '08:45 AM', checkOut: '05:15 PM', status: 'On Time', totalHours: '8h 30m' },
+    { id: '4', name: 'Taylor Swift', dept: 'Support', checkIn: '09:00 AM', checkOut: '05:30 PM', status: 'On Time', totalHours: '8h 30m' },
+  ]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Attendance & Shifts" description="Track daily employee check-ins, shift schedules, and working hours">
+        <Button className="bg-emerald-600 hover:bg-emerald-700">
+          <Clock className="size-4 mr-2" /> Clock In / Out
+        </Button>
+      </PageHeader>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard label="Present Today" value="42 / 45" icon={CheckCircle} />
+        <StatCard label="On Time Rate" value="95.5%" icon={Clock} />
+        <StatCard label="Remote / Hybrid" value="18" icon={Building2} />
+      </div>
+
+      <div className="border rounded-lg bg-card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/40">
+              <th className="p-3 text-left font-medium text-muted-foreground">Employee</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Department</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Check In</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Check Out</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Hours</th>
+              <th className="p-3 text-right font-medium text-muted-foreground">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {records.map((r) => (
+              <tr key={r.id} className="border-b last:border-0 hover:bg-accent/30">
+                <td className="p-3 font-medium text-foreground">{r.name}</td>
+                <td className="p-3 text-muted-foreground">{r.dept}</td>
+                <td className="p-3 text-muted-foreground">{r.checkIn}</td>
+                <td className="p-3 text-muted-foreground">{r.checkOut}</td>
+                <td className="p-3 text-muted-foreground">{r.totalHours}</td>
+                <td className="p-3 text-right">
+                  <Badge variant="outline" className={r.status === 'On Time' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 border-amber-500/20'}>
+                    {r.status}
+                  </Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Onboarding & Recruitment Tab
+// ═══════════════════════════════════════════════════════════════════════════
+
+function OnboardingTab() {
+  const [candidates] = useState([
+    { id: '1', name: 'Marcus Vance', role: 'Senior Frontend Engineer', stage: 'Technical Interview', score: '4.8/5.0', progress: 75 },
+    { id: '2', name: 'Emily Chen', role: 'Product Marketing Manager', stage: 'Offer Sent', score: '4.9/5.0', progress: 90 },
+    { id: '3', name: 'David Ross', role: 'DevOps Specialist', stage: 'Screening', score: '4.2/5.0', progress: 30 },
+  ]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Recruitment & Onboarding" description="Manage candidate pipelines, interview schedules, and new-hire onboarding checklists">
+        <Button className="bg-emerald-600 hover:bg-emerald-700">
+          <UserPlus className="size-4 mr-2" /> Add Candidate
+        </Button>
+      </PageHeader>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {candidates.map((c) => (
+          <Card key={c.id} className="border hover:border-emerald-500/50 transition-all">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600">
+                  {c.stage}
+                </Badge>
+                <span className="text-xs font-semibold text-emerald-600">{c.score}</span>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">{c.name}</h4>
+                <p className="text-xs text-muted-foreground mt-0.5">{c.role}</p>
+              </div>
+              <div className="space-y-1">
+                <div className="flex justify-between text-[11px] text-muted-foreground">
+                  <span>Onboarding Checklist</span>
+                  <span>{c.progress}%</span>
+                </div>
+                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${c.progress}%` }} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Payroll & Compensation Structure Tab
+// ═══════════════════════════════════════════════════════════════════════════
+
+function PayrollTab() {
+  const [payroll] = useState([
+    { id: '1', name: 'Alex Morgan', role: 'Platform Administrator', baseSalary: '$145,000', bonus: '$12,000', netPay: '$9,850/mo', status: 'Ready' },
+    { id: '2', name: 'Sarah Jenkins', role: 'Account Executive', baseSalary: '$110,000', bonus: '$25,000', netPay: '$8,400/mo', status: 'Ready' },
+    { id: '3', name: 'Jordan Lee', role: 'Lead UX Designer', baseSalary: '$125,000', bonus: '$8,000', netPay: '$8,200/mo', status: 'Ready' },
+  ]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Payroll & Compensation Structure" description="Overview of employee salary structures, bonuses, tax withholdings, and monthly dispatches">
+        <Button className="bg-emerald-600 hover:bg-emerald-700">
+          Run Payroll Batch
+        </Button>
+      </PageHeader>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard label="Total Monthly Payroll" value="$285,400" icon={UserCog} />
+        <StatCard label="Active Direct Deposits" value="100%" icon={CheckCircle} />
+        <StatCard label="Next Pay Date" value="Aug 01, 2026" icon={CalendarDays} />
+      </div>
+
+      <div className="border rounded-lg bg-card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/40">
+              <th className="p-3 text-left font-medium text-muted-foreground">Employee</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Role</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Base Salary</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Annual Bonus</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Est. Net Pay</th>
+              <th className="p-3 text-right font-medium text-muted-foreground">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {payroll.map((p) => (
+              <tr key={p.id} className="border-b last:border-0 hover:bg-accent/30">
+                <td className="p-3 font-medium text-foreground">{p.name}</td>
+                <td className="p-3 text-muted-foreground">{p.role}</td>
+                <td className="p-3 text-muted-foreground">{p.baseSalary}</td>
+                <td className="p-3 text-muted-foreground">{p.bonus}</td>
+                <td className="p-3 font-medium text-foreground">{p.netPay}</td>
+                <td className="p-3 text-right">
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                    {p.status}
+                  </Badge>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Internal HR Case & Incident Desk Tab
+// ═══════════════════════════════════════════════════════════════════════════
+
+function InternalHrCasesTab() {
+  const [cases, setCases] = useState([
+    { id: 'HRC-801', category: 'Workplace Incident', title: 'Ergonomic Desk Adjustment Request', submittedBy: 'Jordan Lee', assignedTo: 'Elena Rostova (HR Lead)', status: 'In Progress', priority: 'Medium', date: '2026-07-21' },
+    { id: 'HRC-802', category: 'Payroll Question', title: 'Q2 Commuter Tax Withholding Clarification', submittedBy: 'Sarah Jenkins', assignedTo: 'Elena Rostova (HR Lead)', status: 'Open', priority: 'High', date: '2026-07-22' },
+    { id: 'HRC-803', category: 'Policy Inquiry', title: 'Remote Work & International Travel Guidelines', submittedBy: 'Marcus Vance', assignedTo: 'David Ross (People Ops)', status: 'Resolved', priority: 'Low', date: '2026-07-15' },
+  ]);
+
+  const [open, setOpen] = useState(false);
+  const [category, setCategory] = useState('HR Question');
+  const [title, setTitle] = useState('');
+  const [details, setDetails] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title) {
+      toast.error('Case title is required');
+      return;
+    }
+    const newCase = {
+      id: `HRC-${Math.floor(804 + Math.random() * 100)}`,
+      category,
+      title,
+      submittedBy: 'Alex Morgan',
+      assignedTo: 'Unassigned (HR Queue)',
+      status: 'Open',
+      priority: 'Medium',
+      date: new Date().toISOString().substring(0, 10),
+    };
+    setCases([newCase, ...cases]);
+    toast.success('Internal HR Case submitted successfully');
+    setOpen(false);
+    setTitle('');
+    setDetails('');
+  };
+
+  const handleResolve = (id: string) => {
+    setCases(prev => prev.map(c => c.id === id ? { ...c, status: 'Resolved' } : c));
+    toast.success(`HR Case ${id} resolved`);
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Internal HR Case & Incident Desk" description="Private employee channel for workplace complaints, payroll issues, policy inquiries, and HR support">
+        <Button onClick={() => setOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">
+          <Plus className="size-4 mr-2" /> Submit HR Case
+        </Button>
+      </PageHeader>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard label="Open HR Cases" value={cases.filter(c => c.status !== 'Resolved').length} icon={UserCog} />
+        <StatCard label="Avg Resolution Time" value="18 Hours" icon={Clock} />
+        <StatCard label="SLA Compliance" value="98.2%" icon={CheckCircle} />
+      </div>
+
+      <div className="border rounded-lg bg-card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/40">
+              <th className="p-3 text-left font-medium text-muted-foreground">Case ID</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Category</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Subject / Title</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Submitted By</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Assigned HR Specialist</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Status</th>
+              <th className="p-3 text-right font-medium text-muted-foreground">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cases.map((c) => (
+              <tr key={c.id} className="border-b last:border-0 hover:bg-accent/30">
+                <td className="p-3 font-mono font-medium text-foreground">{c.id}</td>
+                <td className="p-3"><Badge variant="outline" className="text-[10px]">{c.category}</Badge></td>
+                <td className="p-3 font-medium text-foreground">{c.title}</td>
+                <td className="p-3 text-muted-foreground">{c.submittedBy}</td>
+                <td className="p-3 text-muted-foreground">{c.assignedTo}</td>
+                <td className="p-3">
+                  <Badge variant="outline" className={c.status === 'Resolved' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 border-amber-500/20'}>
+                    {c.status}
+                  </Badge>
+                </td>
+                <td className="p-3 text-right">
+                  {c.status !== 'Resolved' && (
+                    <Button size="sm" variant="ghost" className="h-7 text-xs text-emerald-600 hover:text-emerald-700" onClick={() => handleResolve(c.id)}>
+                      Resolve Case
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Submit Internal HR Request</DialogTitle>
+            <DialogDescription>Private, confidential case submission directly to the HR Management team.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Field label="Request Category">
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Workplace Complaint">Workplace Complaint</SelectItem>
+                  <SelectItem value="HR Question">HR Question</SelectItem>
+                  <SelectItem value="Payroll Issue">Payroll & Benefits Issue</SelectItem>
+                  <SelectItem value="Policy Clarification">Policy Clarification</SelectItem>
+                  <SelectItem value="Suggestion">Workplace Suggestion</SelectItem>
+                  <SelectItem value="Workplace Incident">Safety / Workplace Incident</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Subject / Brief Summary">
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Question regarding Q3 PTO accrual" />
+            </Field>
+            <Field label="Detailed Explanation">
+              <Textarea value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Provide full context for HR review..." rows={4} />
+            </Field>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700">Submit Case</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  Main HR Module
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -931,6 +1234,18 @@ export default function HrModule() {
           <TabsTrigger value="leave">
             <CalendarDays className="size-4 mr-1.5 hidden sm:inline" />Leave Management
           </TabsTrigger>
+          <TabsTrigger value="attendance">
+            <Clock className="size-4 mr-1.5 hidden sm:inline" />Attendance
+          </TabsTrigger>
+          <TabsTrigger value="cases">
+            <ShieldCheck className="size-4 mr-1.5 hidden sm:inline" />HR Case Desk
+          </TabsTrigger>
+          <TabsTrigger value="onboarding">
+            <UserPlus className="size-4 mr-1.5 hidden sm:inline" />Onboarding
+          </TabsTrigger>
+          <TabsTrigger value="payroll">
+            <UserCog className="size-4 mr-1.5 hidden sm:inline" />Payroll
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -943,6 +1258,26 @@ export default function HrModule() {
         {activeTab === 'leave' && (
           <motion.div key="leave" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
             <LeaveTab />
+          </motion.div>
+        )}
+        {activeTab === 'attendance' && (
+          <motion.div key="attendance" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+            <AttendanceTab />
+          </motion.div>
+        )}
+        {activeTab === 'cases' && (
+          <motion.div key="cases" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+            <InternalHrCasesTab />
+          </motion.div>
+        )}
+        {activeTab === 'onboarding' && (
+          <motion.div key="onboarding" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+            <OnboardingTab />
+          </motion.div>
+        )}
+        {activeTab === 'payroll' && (
+          <motion.div key="payroll" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+            <PayrollTab />
           </motion.div>
         )}
       </AnimatePresence>

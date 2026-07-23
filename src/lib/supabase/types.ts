@@ -247,6 +247,8 @@ export interface Expense {
 
 export type ExpenseCategory = 'travel' | 'meals' | 'office' | 'software' | 'marketing' | 'equipment' | 'training' | 'other'
 
+export type ExpenseStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+
 // HR
 export interface LeaveRequest {
   id: string

@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/store/app-store';
 import { MODULES, type ModuleId } from '@/lib/constants';
 
@@ -12,11 +13,15 @@ import { MODULES, type ModuleId } from '@/lib/constants';
 function ModulePlaceholder({ name }: { name: string }) {
   return (
     <div className="flex-1 flex items-center justify-center p-6">
-      <div className="text-center">
-        <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-          <div className="h-6 w-6 rounded-full bg-muted-foreground/20 animate-pulse" />
+      <div className="text-center max-w-sm">
+        <div className="h-12 w-12 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto mb-4">
+          <div className="h-6 w-6 rounded-full bg-emerald-500/20 animate-pulse" />
         </div>
-        <p className="text-muted-foreground text-sm">{name} module is being built...</p>
+        <h3 className="text-base font-medium text-foreground mb-1">Loading {name}...</h3>
+        <p className="text-muted-foreground text-xs mb-4">Initializing {name} enterprise environment.</p>
+        <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
+          Reload View
+        </Button>
       </div>
     </div>
   );

@@ -44,7 +44,14 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills"]
+  // `.tmp-api`, `.zscripts`, `mini-services` and `tool-results` hold throwaway
+  // scratch scripts from earlier sessions, not application code.
+  ignores: [
+    "node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts",
+    "examples/**", "skills",
+    ".tmp-api/**", ".zscripts/**", "mini-services/**", "tool-results/**",
+    "download/**", "db/**", "*.mjs", "py-server.py",
+  ]
 }];
 
 export default eslintConfig;

@@ -1,38 +1,67 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { success, error } from '@/lib/api-response'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 
+const DEMO_USER = {
+  id: 'demo-user-001',
+  email: 'admin@nexuscorp.io',
+  firstName: 'Alex',
+  lastName: 'Morgan',
+  avatarUrl: null,
+  jobTitle: 'Platform Administrator',
+  department: 'Engineering',
+  organizationId: 'demo-org-001',
+  organizationName: 'NexusCorp',
+  organizationSlug: 'nexuscorp',
+  role: 'super_admin',
+  isActive: true,
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { email, password, first_name, last_name, organization_name } = body
+    const email = body.email
+    const password = body.password
+    const firstName = (body.firstName || body.first_name || '').trim()
+    const lastName = (body.lastName || body.last_name || '').trim()
+    const organizationName = (body.organizationName || body.organization_name || '').trim()
 
     // Validation
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       return error('A valid email address is required', 400, 'VALIDATION_ERROR')
     }
-    if (!password || typeof password !== 'string' || password.length < 8) {
-      return error('Password must be at least 8 characters long', 400, 'VALIDATION_ERROR')
+    if (!password || typeof password !== 'string' || password.length < 6) {
+      return error('Password must be at least 6 characters long', 400, 'VALIDATION_ERROR')
     }
-    if (!first_name || typeof first_name !== 'string' || first_name.trim().length === 0) {
+    if (!firstName) {
       return error('First name is required', 400, 'VALIDATION_ERROR')
     }
-    if (!last_name || typeof last_name !== 'string' || last_name.trim().length === 0) {
+    if (!lastName) {
       return error('Last name is required', 400, 'VALIDATION_ERROR')
     }
 
     if (!SUPABASE_URL) {
-      // Demo mode: accept signup but return mock data
-      return success({
-        user: {
-          id: 'demo-new-user',
-          email: email.trim().toLowerCase(),
-          first_name: first_name.trim(),
-          last_name: last_name.trim(),
+      // Demo mode: accept signup, set demo session cookie
+      const res = NextResponse.json({
+        data: {
+          user: {
+            ...DEMO_USER,
+            firstName,
+            lastName,
+            email: email.trim().toLowerCase(),
+            organizationName: organizationName || 'NexusCorp',
+          },
+          message: 'Account created (demo mode)',
         },
-        message: 'Account created (demo mode)',
       })
+      res.cookies.set('nexuscorp-demo-session', 'true', {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+      })
+      return res
     }
 
     const { createSupabaseServerClient } = await import('@/lib/supabase/server')
@@ -43,8 +72,8 @@ export async function POST(request: NextRequest) {
       password,
       options: {
         data: {
-          first_name: first_name.trim(),
-          last_name: last_name.trim(),
+          first_name: firstName,
+          last_name: lastName,
         },
       },
     })
@@ -58,7 +87,7 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = authData.user.id
-    const orgName = organization_name?.trim() || `${first_name}'s Org`
+    const orgName = organizationName || `${firstName}'s Org`
     const orgSlug = orgName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
 
     // Create organization
@@ -82,8 +111,8 @@ export async function POST(request: NextRequest) {
     // Create user profile
     await supabase.from('user_profiles').insert({
       id: userId,
-      first_name: first_name.trim(),
-      last_name: last_name.trim(),
+      first_name: firstName,
+      last_name: lastName,
       email: email.trim().toLowerCase(),
       is_active: true,
     })
@@ -101,8 +130,8 @@ export async function POST(request: NextRequest) {
       user: {
         id: authData.user.id,
         email: authData.user.email,
-        first_name: first_name.trim(),
-        last_name: last_name.trim(),
+        firstName,
+        lastName,
       },
       session: authData.session,
       organization: { id: org.id, name: org.name, slug: org.slug },

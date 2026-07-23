@@ -1140,23 +1140,155 @@ function PipelineTab() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  Activities & Customer Timeline Tab
+// ═══════════════════════════════════════════════════════════════════════════
+
+function ActivitiesTab() {
+  const [activities, setActivities] = useState([
+    { id: '1', type: 'call', title: 'Discovery Call with Sarah Jenkins', contact: 'Sarah Jenkins (Acme Corp)', date: '2026-07-22 14:00', duration: '25 mins', outcome: 'Qualified — interested in Enterprise tier', loggedBy: 'Alex Morgan' },
+    { id: '2', type: 'meeting', title: 'Product Demo & Architecture Q&A', contact: 'Michael Chang (TechFlow)', date: '2026-07-21 11:00', duration: '45 mins', outcome: 'Sent proposal draft to Procurement', loggedBy: 'Alex Morgan' },
+    { id: '3', type: 'email', title: 'Follow-up Email regarding Contract Redline', contact: 'Elena Rostova (Global Inc)', date: '2026-07-20 09:30', duration: 'Sent', outcome: 'Awaiting legal signature', loggedBy: 'Jordan Lee' },
+  ]);
+
+  const [open, setOpen] = useState(false);
+  const [actType, setActType] = useState('call');
+  const [title, setTitle] = useState('');
+  const [contact, setContact] = useState('');
+  const [outcome, setOutcome] = useState('');
+
+  const handleCreate = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title || !contact) {
+      toast.error('Title and contact are required');
+      return;
+    }
+    const newAct = {
+      id: String(Date.now()),
+      type: actType,
+      title,
+      contact,
+      date: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      duration: actType === 'call' ? '15 mins' : actType === 'meeting' ? '30 mins' : 'Sent',
+      outcome: outcome || 'Logged activity',
+      loggedBy: 'Alex Morgan',
+    };
+    setActivities([newAct, ...activities]);
+    toast.success('Activity logged successfully');
+    setOpen(false);
+    setTitle('');
+    setContact('');
+    setOutcome('');
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Sales Activities & Timeline" description="Log calls, meetings, emails, and notes across all customer touchpoints">
+        <Button onClick={() => setOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">
+          <Plus className="size-4 mr-2" /> Log Activity
+        </Button>
+      </PageHeader>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {activities.map((act) => (
+          <Card key={act.id} className="border border-border hover:border-emerald-500/50 transition-all">
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Badge variant="outline" className="capitalize text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                  {act.type}
+                </Badge>
+                <span className="text-xs text-muted-foreground">{act.date}</span>
+              </div>
+              <div>
+                <h4 className="text-sm font-semibold text-foreground">{act.title}</h4>
+                <p className="text-xs text-muted-foreground mt-0.5">{act.contact}</p>
+              </div>
+              <div className="text-xs bg-muted/40 p-2.5 rounded-md border text-foreground/90">
+                <span className="font-medium">Outcome: </span>{act.outcome}
+              </div>
+              <div className="flex justify-between items-center text-[10px] text-muted-foreground pt-1">
+                <span>Logged by {act.loggedBy}</span>
+                <span>{act.duration}</span>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Log Sales Activity</DialogTitle>
+            <DialogDescription>Record a call, meeting, or email touchpoint with a prospect.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreate} className="space-y-4">
+            <Field label="Activity Type">
+              <Select value={actType} onValueChange={setActType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="call">Phone Call</SelectItem>
+                  <SelectItem value="meeting">Meeting / Demo</SelectItem>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="note">Internal Note</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Title / Subject">
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Discovery Call with Acme Corp" />
+            </Field>
+            <Field label="Contact / Company">
+              <Input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="e.g. Sarah Jenkins (Acme Corp)" />
+            </Field>
+            <Field label="Outcome / Notes">
+              <Textarea value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="Key takeaways and next steps..." rows={3} />
+            </Field>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700">Save Activity</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  Main CRM Module
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function CrmModule() {
   const [activeTab, setActiveTab] = useState('leads');
 
+  const handleExportCSV = () => {
+    const csvContent = "data:text/csv;charset=utf-8,ID,Type,Name,Email,Company,Status,Value\n1,Lead,Sarah Jenkins,sarah@acme.com,Acme Corp,Qualified,45000\n2,Deal,TechFlow Cloud,m.chang@techflow.io,TechFlow,Negotiation,85000";
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `crm-export-${new Date().toISOString().substring(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Exported CRM data to CSV');
+  };
+
   return (
     <div className="flex-1 flex flex-col gap-4 p-4 md:p-6 overflow-auto">
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="overflow-x-auto w-full sm:w-auto">
-          <TabsTrigger value="leads"><Users className="size-4 mr-1.5 hidden sm:inline" />Leads</TabsTrigger>
-          <TabsTrigger value="contacts"><Mail className="size-4 mr-1.5 hidden sm:inline" />Contacts</TabsTrigger>
-          <TabsTrigger value="companies"><Building2 className="size-4 mr-1.5 hidden sm:inline" />Companies</TabsTrigger>
-          <TabsTrigger value="deals"><Handshake className="size-4 mr-1.5 hidden sm:inline" />Deals</TabsTrigger>
-          <TabsTrigger value="pipeline"><Target className="size-4 mr-1.5 hidden sm:inline" />Pipeline</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="overflow-x-auto w-full sm:w-auto">
+            <TabsTrigger value="leads"><Users className="size-4 mr-1.5 hidden sm:inline" />Leads</TabsTrigger>
+            <TabsTrigger value="contacts"><Mail className="size-4 mr-1.5 hidden sm:inline" />Contacts</TabsTrigger>
+            <TabsTrigger value="companies"><Building2 className="size-4 mr-1.5 hidden sm:inline" />Companies</TabsTrigger>
+            <TabsTrigger value="deals"><Handshake className="size-4 mr-1.5 hidden sm:inline" />Deals</TabsTrigger>
+            <TabsTrigger value="pipeline"><Target className="size-4 mr-1.5 hidden sm:inline" />Pipeline</TabsTrigger>
+            <TabsTrigger value="activities"><Sparkles className="size-4 mr-1.5 hidden sm:inline" />Activities</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        <Button variant="outline" size="sm" onClick={handleExportCSV} className="gap-2 text-xs">
+          Export CSV
+        </Button>
+      </div>
 
       <AnimatePresence mode="wait">
         {activeTab === 'leads' && (
@@ -1182,6 +1314,11 @@ export default function CrmModule() {
         {activeTab === 'pipeline' && (
           <motion.div key="pipeline" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
             <PipelineTab />
+          </motion.div>
+        )}
+        {activeTab === 'activities' && (
+          <motion.div key="activities" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+            <ActivitiesTab />
           </motion.div>
         )}
       </AnimatePresence>

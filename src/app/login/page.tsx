@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { Suspense, useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Hexagon, Loader2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,8 +10,18 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 
-export default function LoginPage() {
-  const router = useRouter();
+/**
+ * Only accept same-origin relative paths from `?next=`. An absolute URL here
+ * would turn the login form into an open redirect.
+ */
+function safeNext(raw: string | null): string {
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/dashboard';
+  return raw;
+}
+
+function LoginForm() {
+  const searchParams = useSearchParams();
+  const nextPath = safeNext(searchParams.get('next'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -36,7 +46,12 @@ export default function LoginPage() {
       }
 
       toast.success('Welcome back!');
-      router.push('/');
+      // Full document navigation, not router.push: the session cookie is
+      // httpOnly and was set by the response above, so middleware must
+      // re-evaluate it on a fresh request. A client-side push would reuse the
+      // router cache, which still holds the "redirect to /login" result for
+      // this path from before we were signed in.
+      window.location.assign(nextPath);
     } catch {
       toast.error('Network error. Please try again.');
     } finally {
@@ -143,5 +158,21 @@ export default function LoginPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  // `useSearchParams` needs a Suspense boundary to avoid opting the whole
+  // route into client-side rendering.
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <Loader2 className="size-6 animate-spin text-emerald-500" />
+        </div>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

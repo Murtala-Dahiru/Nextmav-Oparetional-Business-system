@@ -19,7 +19,7 @@ import {
   Hexagon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { MODULES, type ModuleId } from '@/lib/constants';
+import { MODULES, ROLE_PERMISSIONS, type ModuleId } from '@/lib/constants';
 import { useAppStore } from '@/store/app-store';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -63,17 +63,20 @@ function SidebarNav({
   collapsed: boolean;
   onNavigate?: () => void;
 }) {
-  const { activeModule, setActiveModule } = useAppStore();
+  const { activeModule, setActiveModule, activeRole } = useAppStore();
 
   const handleNav = (id: ModuleId) => {
     setActiveModule(id);
     onNavigate?.();
   };
 
+  const allowedModules = ROLE_PERMISSIONS[activeRole] || ROLE_PERMISSIONS.owner;
+  const visibleModules = MODULES.filter((m) => allowedModules.includes(m.id));
+
   return (
     <ScrollArea className="flex-1 px-3 py-2">
       <nav className="flex flex-col gap-1" role="navigation" aria-label="Main navigation">
-        {MODULES.map((mod) => {
+        {visibleModules.map((mod) => {
           const Icon = iconMap[mod.icon] ?? LayoutDashboard;
           const isActive = activeModule === mod.id;
 

@@ -9,23 +9,53 @@ export const supabase = supabaseUrl && supabaseKey
   ? createClient(supabaseUrl, supabaseKey)
   : null
 
-// Realtime subscription helper
-export async function subscribeToTable<T>(
+export type TableChangeEvent = 'INSERT' | 'UPDATE' | 'DELETE' | '*'
+
+export interface TableChangePayload<T> {
+  eventType: 'INSERT' | 'UPDATE' | 'DELETE'
+  new: T | Record<string, never>
+  old: Partial<T> | Record<string, never>
+}
+
+export interface SubscribeToTableOptions {
+  /** Which change events to listen for. Defaults to all. */
+  event?: TableChangeEvent
+  /** PostgREST filter applied server-side, e.g. `organization_id=eq.${orgId}`. */
+  filter?: string
+  /** Postgres schema. Defaults to `public`. */
+  schema?: string
+}
+
+/**
+ * Subscribe to row-level changes on a table.
+ *
+ * Returns the channel so the caller can unsubscribe, or `null` when Supabase is
+ * not configured. Note the change handler belongs on `.on()`; `.subscribe()`
+ * only reports the connection status of the channel itself.
+ */
+export function subscribeToTable<T>(
   table: string,
-  filter?: (query: string, client: any) => void,
-  event: 'INSERT' | 'UPDATE' | 'DELETE' | '*' = '*',
-  callback?: (payload: { new: T[]; old: T[] } ) => void,
+  callback: (payload: TableChangePayload<T>) => void,
+  options: SubscribeToTableOptions = {},
 ) {
-  if (!supabase) return
-  
-  const channel = supabase
-    .channel(table)
-    .on('postgres_changes', { event, schema: 'public', table, filter: event === '*' ? undefined : event })
-    .subscribe((payload: { new: any[]; old: any[] }) => {
-      callback?.(payload as { new: T[]; old: T[] })
-    })
-  
-  return channel
+  if (!supabase) return null
+
+  const { event = '*', filter, schema = 'public' } = options
+
+  return supabase
+    .channel(`${schema}:${table}${filter ? `:${filter}` : ''}`)
+    .on(
+      'postgres_changes',
+      { event, schema, table, ...(filter ? { filter } : {}) } as any,
+      (payload: any) => {
+        callback({
+          eventType: payload.eventType,
+          new: payload.new ?? {},
+          old: payload.old ?? {},
+        })
+      },
+    )
+    .subscribe()
 }
 
 export default supabase

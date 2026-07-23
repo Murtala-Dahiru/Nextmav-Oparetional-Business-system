@@ -2,7 +2,6 @@
 
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Hexagon, Loader2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +10,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { toast } from 'sonner';
 
 export default function SignupPage() {
-  const router = useRouter();
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -51,7 +49,9 @@ export default function SignupPage() {
       }
 
       toast.success('Account created successfully!');
-      router.push('/');
+      // Full document navigation so middleware re-evaluates the httpOnly
+      // session cookie set by the response above (see login page for detail).
+      window.location.assign('/dashboard');
     } catch {
       toast.error('Network error. Please try again.');
     } finally {

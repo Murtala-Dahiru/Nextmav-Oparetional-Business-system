@@ -21,9 +21,13 @@ const DEMO_USER = {
 
 export async function GET(request: NextRequest) {
   try {
-    // If no Supabase configured, return demo user
+    // If no Supabase configured, check for demo session cookie
     if (!SUPABASE_URL) {
-      return success({ user: DEMO_USER })
+      const hasDemoSession = request.cookies.get('nexuscorp-demo-session')?.value === 'true'
+      if (hasDemoSession) {
+        return success({ user: DEMO_USER })
+      }
+      return success({ user: null })
     }
 
     // Dynamic import to avoid crash when env vars are empty
@@ -41,7 +45,7 @@ export async function GET(request: NextRequest) {
       .select('organization_id, role, organization:organizations(name, slug)')
       .eq('user_id', user.id)
       .eq('is_active', true)
-      .is('organization_id', 'not.is', null)
+      .not('organization_id', 'is', null)
       .single()
 
     return success({
@@ -61,8 +65,12 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (e: any) {
-    // If Supabase connection fails, fall back to demo user
-    console.warn('Session check failed, returning demo user:', e.message)
-    return success({ user: DEMO_USER })
+    // If Supabase connection fails, fall back to checking demo cookie
+    console.warn('Session check failed:', e.message)
+    const hasDemoSession = request.cookies.get('nexuscorp-demo-session')?.value === 'true'
+    if (hasDemoSession) {
+      return success({ user: DEMO_USER })
+    }
+    return success({ user: null })
   }
 }

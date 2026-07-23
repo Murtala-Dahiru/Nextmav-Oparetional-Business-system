@@ -5,8 +5,12 @@ import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/reac
 import { toast } from 'sonner';
 import {
   Package, Plus, Pencil, Trash2, MoreHorizontal, Warehouse, MapPin, BoxSelect,
-  DollarSign, AlertTriangle, Loader2,
+  DollarSign, AlertTriangle, Loader2, Truck, ArrowDownUp, ClipboardList,
 } from 'lucide-react';
+
+import {
+  SuppliersTab, MovementsTab, PurchaseOrdersTab, ReorderTab, type ReorderAlert,
+} from './supply-tabs';
 
 import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
@@ -41,7 +45,8 @@ interface ApiMeta { total: number; page: number; pageSize: number; totalPages: n
 interface Product {
   id: string; name: string; sku: string; category: string; price: number; cost: number;
   stock: number; unit: string; reorderLevel: number; isActive: boolean;
-  warehouseId: string; createdAt: string; updatedAt: string;
+  warehouseId: string | null; supplierId: string | null;
+  createdAt: string; updatedAt: string;
 }
 
 interface Warehouse {
@@ -273,6 +278,40 @@ export default function InventoryModule() {
 
   const [stats, setStats] = useState<Stats>({ totalProducts: 0, totalValue: 0, lowStock: 0 });
 
+  // ── Supply-chain tabs ──
+  // The tab is controlled so "Reorder" on a low-stock alert can jump straight
+  // into the purchase-order composer with the line item already filled in.
+  const [activeTab, setActiveTab] = useState('products');
+  const [reorderPrefill, setReorderPrefill] = useState<
+    { productId: string; quantity: number; supplierId?: string } | null
+  >(null);
+  /** Bumped whenever stock changes, so dependent tabs refetch. */
+  const [stockVersion, setStockVersion] = useState(0);
+  /** Unpaginated lookup list backing the product selects in the new tabs. */
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
+
+  const fetchAllProducts = useCallback(async () => {
+    try {
+      const res = await apiFetch<{ data: Product[] }>('/api/inventory/products?pageSize=100&isActive=true');
+      setAllProducts(res.data);
+    } catch { /* selects fall back to empty; the tables still work */ }
+  }, []);
+
+  useEffect(() => { fetchAllProducts(); }, [fetchAllProducts, stockVersion]);
+
+  const handleStockChanged = useCallback(() => {
+    setStockVersion(v => v + 1);
+  }, []);
+
+  const handleReorder = useCallback((alert: ReorderAlert) => {
+    setReorderPrefill({
+      productId: alert.id,
+      quantity: alert.suggestedOrderQty || alert.shortfall || 1,
+      supplierId: alert.supplier?.id,
+    });
+    setActiveTab('orders');
+  }, []);
+
   // ── Fetch products ──
   const fetchProducts = useCallback(async () => {
     setProductLoading(true);
@@ -480,10 +519,21 @@ export default function InventoryModule() {
 
   return (
     <div className="flex-1 overflow-auto p-6">
-      <Tabs defaultValue="products" className="space-y-6">
-        <TabsList>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="flex-wrap">
           <TabsTrigger value="products" className="gap-2"><Package className="size-4" /> Products</TabsTrigger>
           <TabsTrigger value="warehouses" className="gap-2"><Warehouse className="size-4" /> Warehouses</TabsTrigger>
+          <TabsTrigger value="suppliers" className="gap-2"><Truck className="size-4" /> Suppliers</TabsTrigger>
+          <TabsTrigger value="movements" className="gap-2"><ArrowDownUp className="size-4" /> Movements</TabsTrigger>
+          <TabsTrigger value="orders" className="gap-2"><ClipboardList className="size-4" /> Purchase Orders</TabsTrigger>
+          <TabsTrigger value="reorder" className="gap-2">
+            <AlertTriangle className="size-4" /> Reorder
+            {stats.lowStock > 0 && (
+              <Badge className="ml-1 bg-amber-100 px-1.5 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                {stats.lowStock}
+              </Badge>
+            )}
+          </TabsTrigger>
         </TabsList>
 
         {/* ═══════════ PRODUCTS TAB ═══════════ */}
@@ -586,6 +636,36 @@ export default function InventoryModule() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        {/* ═══════════ SUPPLIERS TAB ═══════════ */}
+        <TabsContent value="suppliers" className="space-y-6">
+          <SuppliersTab onChanged={handleStockChanged} />
+        </TabsContent>
+
+        {/* ═══════════ MOVEMENTS TAB ═══════════ */}
+        <TabsContent value="movements" className="space-y-6">
+          <MovementsTab
+            products={allProducts}
+            warehouses={warehouses}
+            onChanged={() => { handleStockChanged(); fetchProducts(); fetchStats(); }}
+          />
+        </TabsContent>
+
+        {/* ═══════════ PURCHASE ORDERS TAB ═══════════ */}
+        <TabsContent value="orders" className="space-y-6">
+          <PurchaseOrdersTab
+            products={allProducts}
+            warehouses={warehouses}
+            prefill={reorderPrefill}
+            onPrefillConsumed={() => setReorderPrefill(null)}
+            onChanged={() => { handleStockChanged(); fetchProducts(); fetchStats(); }}
+          />
+        </TabsContent>
+
+        {/* ═══════════ REORDER TAB ═══════════ */}
+        <TabsContent value="reorder" className="space-y-6">
+          <ReorderTab refreshKey={stockVersion} onReorder={handleReorder} />
         </TabsContent>
       </Tabs>
 

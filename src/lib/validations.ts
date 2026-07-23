@@ -4,6 +4,56 @@ import { z } from 'zod';
 export const DEFAULT_USER_ID = 'u1';
 
 // ═══════════════════════════════════════════════════════════════
+//  Schema helpers
+// ═══════════════════════════════════════════════════════════════
+
+/** Unwrap `.default()` / `.prefault()` wrappers to reach the underlying type. */
+function stripDefaults(schema: any): any {
+  let current = schema;
+  while (current?.def?.type === 'default' || current?.def?.type === 'prefault') {
+    current = current.def.innerType;
+  }
+  return current;
+}
+
+/**
+ * Build an update (PATCH-style) schema from a create schema.
+ *
+ * `createSchema.partial()` is NOT safe for this: `.partial()` only marks fields
+ * optional, it does not remove `.default()`. Any field the client omits is
+ * therefore filled in with its default and written to the database, silently
+ * resetting columns the user never touched. This strips defaults first, so an
+ * omitted field stays absent and is left untouched by the update.
+ */
+export function toUpdateSchema<T extends z.ZodObject<any>>(createSchema: T) {
+  const shape = createSchema.shape as Record<string, any>;
+  const next: Record<string, any> = {};
+  for (const key in shape) {
+    next[key] = stripDefaults(shape[key]).optional();
+  }
+  // The shape is rebuilt dynamically, so restate the resulting type for
+  // callers: every field of the source schema, made optional. Returning a
+  // ZodObject (rather than a bare ZodType) keeps `.omit()`/`.extend()` usable.
+  return z.object(next) as unknown as z.ZodObject<{
+    [K in keyof T['shape']]: z.ZodOptional<T['shape'][K]>;
+  }>;
+}
+
+/**
+ * An optional foreign key.
+ *
+ * Distinguishes "not provided" (leave the existing value alone) from an
+ * explicit null or empty string (clear the link). Empty strings must never
+ * reach the database, since they would be stored as dangling references.
+ */
+export const optionalFk = () =>
+  z
+    .string()
+    .trim()
+    .nullish()
+    .transform(v => (v === undefined ? undefined : v || null));
+
+// ═══════════════════════════════════════════════════════════════
 //  CRM Validations
 // ═══════════════════════════════════════════════════════════════
 
@@ -22,7 +72,7 @@ export const createLeadSchema = z.object({
   ownerId: z.string().optional().default('u1'),
 });
 
-export const updateLeadSchema = createLeadSchema.partial();
+export const updateLeadSchema = toUpdateSchema(createLeadSchema);
 
 export const createContactSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
@@ -36,7 +86,7 @@ export const createContactSchema = z.object({
   notes: z.string().optional().default(''),
 });
 
-export const updateContactSchema = createContactSchema.partial();
+export const updateContactSchema = toUpdateSchema(createContactSchema);
 
 export const createCompanySchema = z.object({
   name: z.string().min(1, 'Company name is required'),
@@ -51,7 +101,7 @@ export const createCompanySchema = z.object({
   notes: z.string().optional().default(''),
 });
 
-export const updateCompanySchema = createCompanySchema.partial();
+export const updateCompanySchema = toUpdateSchema(createCompanySchema);
 
 export const createDealSchema = z.object({
   name: z.string().min(1, 'Deal name is required'),
@@ -65,7 +115,7 @@ export const createDealSchema = z.object({
   ownerId: z.string().optional().default('u1'),
 });
 
-export const updateDealSchema = createDealSchema.partial();
+export const updateDealSchema = toUpdateSchema(createDealSchema);
 
 // ═══════════════════════════════════════════════════════════════
 //  Projects Validations
@@ -82,7 +132,7 @@ export const createProjectSchema = z.object({
   ownerId: z.string().optional().default('u1'),
 });
 
-export const updateProjectSchema = createProjectSchema.partial();
+export const updateProjectSchema = toUpdateSchema(createProjectSchema);
 
 export const createTaskSchema = z.object({
   title: z.string().min(1, 'Task title is required'),
@@ -97,7 +147,7 @@ export const createTaskSchema = z.object({
   sortOrder: z.number().int().optional().default(0),
 });
 
-export const updateTaskSchema = createTaskSchema.partial();
+export const updateTaskSchema = toUpdateSchema(createTaskSchema);
 
 // ═══════════════════════════════════════════════════════════════
 //  Workspace Validations
@@ -114,7 +164,7 @@ export const createPageSchema = z.object({
   lastEditedBy: z.string().optional().default(''),
 });
 
-export const updatePageSchema = createPageSchema.partial();
+export const updatePageSchema = toUpdateSchema(createPageSchema);
 
 // ═══════════════════════════════════════════════════════════════
 //  Communication Validations
@@ -128,7 +178,7 @@ export const createChannelSchema = z.object({
   isArchived: z.boolean().optional().default(false),
 });
 
-export const updateChannelSchema = createChannelSchema.partial();
+export const updateChannelSchema = toUpdateSchema(createChannelSchema);
 
 export const createMessageSchema = z.object({
   content: z.string().min(1, 'Message content is required'),
@@ -159,7 +209,7 @@ export const createTicketSchema = z.object({
   resolution: z.string().optional().default(''),
 });
 
-export const updateTicketSchema = createTicketSchema.partial();
+export const updateTicketSchema = toUpdateSchema(createTicketSchema);
 
 // ═══════════════════════════════════════════════════════════════
 //  HR Validations
@@ -178,7 +228,7 @@ export const createEmployeeSchema = z.object({
   isActive: z.boolean().optional().default(true),
 });
 
-export const updateEmployeeSchema = createEmployeeSchema.partial().omit({ password: true });
+export const updateEmployeeSchema = toUpdateSchema(createEmployeeSchema).omit({ password: true });
 
 export const createLeaveSchema = z.object({
   requesterId: z.string().min(1, 'Requester ID is required'),
@@ -190,7 +240,7 @@ export const createLeaveSchema = z.object({
   approverId: z.string().optional().default(''),
 });
 
-export const updateLeaveSchema = createLeaveSchema.partial();
+export const updateLeaveSchema = toUpdateSchema(createLeaveSchema);
 
 // ═══════════════════════════════════════════════════════════════
 //  Finance Validations
@@ -211,7 +261,7 @@ export const createInvoiceSchema = z.object({
   ownerId: z.string().optional().default('u1'),
 });
 
-export const updateInvoiceSchema = createInvoiceSchema.partial();
+export const updateInvoiceSchema = toUpdateSchema(createInvoiceSchema);
 
 export const createExpenseSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -225,7 +275,7 @@ export const createExpenseSchema = z.object({
   ownerId: z.string().optional().default('u1'),
 });
 
-export const updateExpenseSchema = createExpenseSchema.partial();
+export const updateExpenseSchema = toUpdateSchema(createExpenseSchema);
 
 // ═══════════════════════════════════════════════════════════════
 //  Inventory Validations
@@ -241,10 +291,13 @@ export const createProductSchema = z.object({
   unit: z.string().optional().default('unit'),
   reorderLevel: z.number().int().min(0).optional().default(10),
   isActive: z.boolean().optional().default(true),
-  warehouseId: z.string().optional().default(''),
+  // Empty string would be stored as a dangling foreign key, so normalise the
+  // "unassigned" case to null.
+  warehouseId: optionalFk(),
+  supplierId: optionalFk(),
 });
 
-export const updateProductSchema = createProductSchema.partial();
+export const updateProductSchema = toUpdateSchema(createProductSchema);
 
 export const createWarehouseSchema = z.object({
   name: z.string().min(1, 'Warehouse name is required'),
@@ -253,7 +306,67 @@ export const createWarehouseSchema = z.object({
   isActive: z.boolean().optional().default(true),
 });
 
-export const updateWarehouseSchema = createWarehouseSchema.partial();
+export const updateWarehouseSchema = toUpdateSchema(createWarehouseSchema);
+
+export const createSupplierSchema = z.object({
+  name: z.string().min(1, 'Supplier name is required'),
+  contactName: z.string().optional().default(''),
+  email: z.string().email('Invalid email').or(z.literal('')).optional().default(''),
+  phone: z.string().optional().default(''),
+  address: z.string().optional().default(''),
+  city: z.string().optional().default(''),
+  country: z.string().optional().default(''),
+  leadTimeDays: z.number().int().min(0).max(365).optional().default(7),
+  paymentTerms: z.string().optional().default('net30'),
+  notes: z.string().optional().default(''),
+  isActive: z.boolean().optional().default(true),
+});
+
+export const updateSupplierSchema = toUpdateSchema(createSupplierSchema);
+
+export const STOCK_MOVEMENT_TYPES = ['receipt', 'issue', 'transfer', 'adjustment', 'return'] as const;
+
+/**
+ * A movement records a signed delta against a product. `quantity` may not be
+ * zero — a movement that changes nothing is always a mistake, and silently
+ * accepting it would pollute the ledger.
+ */
+export const createStockMovementSchema = z.object({
+  productId: z.string().min(1, 'Product is required'),
+  type: z.enum(STOCK_MOVEMENT_TYPES).optional().default('adjustment'),
+  quantity: z.number().int().refine(v => v !== 0, 'Quantity cannot be zero'),
+  reason: z.string().optional().default(''),
+  reference: z.string().optional().default(''),
+  fromWarehouseId: optionalFk(),
+  toWarehouseId: optionalFk(),
+  userId: z.string().optional().default(DEFAULT_USER_ID),
+});
+
+export const PURCHASE_ORDER_STATUSES = ['draft', 'submitted', 'approved', 'received', 'cancelled'] as const;
+
+export const purchaseOrderItemSchema = z.object({
+  productId: z.string().min(1, 'Product is required'),
+  quantity: z.number().int().min(1, 'Quantity must be at least 1'),
+  unitCost: z.number().min(0).optional().default(0),
+});
+
+export const createPurchaseOrderSchema = z.object({
+  supplierId: z.string().min(1, 'Supplier is required'),
+  warehouseId: optionalFk(),
+  status: z.enum(PURCHASE_ORDER_STATUSES).optional().default('draft'),
+  expectedDate: z.string().nullish(),
+  taxRate: z.number().min(0).max(100).optional().default(0),
+  notes: z.string().optional().default(''),
+  createdById: z.string().optional().default(DEFAULT_USER_ID),
+  items: z.array(purchaseOrderItemSchema).min(1, 'Add at least one line item'),
+});
+
+export const updatePurchaseOrderSchema = z.object({
+  status: z.enum(PURCHASE_ORDER_STATUSES).optional(),
+  warehouseId: optionalFk(),
+  expectedDate: z.string().nullish(),
+  notes: z.string().optional(),
+});
 
 // ═══════════════════════════════════════════════════════════════
 //  Calendar Validations
@@ -270,7 +383,7 @@ export const createEventSchema = z.object({
   creatorId: z.string().optional().default('u1'),
 });
 
-export const updateEventSchema = createEventSchema.partial();
+export const updateEventSchema = toUpdateSchema(createEventSchema);
 
 // ═══════════════════════════════════════════════════════════════
 //  Admin Validations
@@ -287,7 +400,7 @@ export const createRoleSchema = z.object({
   permissions: z.string().optional().default('{}'),
 });
 
-export const updateRoleSchema = createRoleSchema.partial();
+export const updateRoleSchema = toUpdateSchema(createRoleSchema);
 
 export const updateSettingsSchema = z.object({
   settings: z.array(z.object({

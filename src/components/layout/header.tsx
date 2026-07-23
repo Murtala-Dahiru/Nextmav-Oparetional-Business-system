@@ -10,6 +10,7 @@ import {
   User,
   Settings,
   ChevronDown,
+  ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
@@ -31,7 +32,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MODULES } from '@/lib/constants';
+import { MODULES, ROLES } from '@/lib/constants';
 
 export function Header() {
   const isMobile = useIsMobile();
@@ -43,6 +44,9 @@ export function Header() {
     setSearchOpen,
     logout,
     notifications,
+    setActiveModule,
+    activeRole,
+    setActiveRole,
   } = useAppStore();
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
@@ -101,6 +105,41 @@ export function Header() {
 
       {/* Spacer */}
       <div className="flex-1" />
+
+      {/* Role Switcher (RBAC Tester) */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs font-medium bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/20">
+            <ShieldCheck className="size-3.5" />
+            <span className="hidden md:inline font-semibold">
+              Role: {ROLES.find((r) => r.id === activeRole)?.name || 'Owner'}
+            </span>
+            <ChevronDown className="size-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuLabel className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+            Switch Operating Role
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {ROLES.map((role) => (
+            <DropdownMenuItem
+              key={role.id}
+              onClick={() => setActiveRole(role.id as any)}
+              className={cn(
+                'flex flex-col items-start gap-0.5 p-2.5 cursor-pointer',
+                activeRole === role.id && 'bg-emerald-500/10 text-emerald-600 font-semibold'
+              )}
+            >
+              <div className="flex items-center justify-between w-full">
+                <span className="text-xs font-medium">{role.name}</span>
+                {activeRole === role.id && <Badge variant="outline" className="text-[9px] bg-emerald-500 text-white">Active</Badge>}
+              </div>
+              <span className="text-[10px] text-muted-foreground line-clamp-1">{role.description}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* Search */}
       <Tooltip>
@@ -199,11 +238,11 @@ export function Header() {
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setActiveModule('admin')}>
             <User className="mr-2 size-4" />
             Profile
           </DropdownMenuItem>
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setActiveModule('admin')}>
             <Settings className="mr-2 size-4" />
             Settings
           </DropdownMenuItem>

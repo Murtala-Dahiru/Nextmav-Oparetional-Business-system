@@ -1175,6 +1175,88 @@ function ExpensesTab() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  Purchase Requests & Approvals Tab
+// ═══════════════════════════════════════════════════════════════════════════
+
+function PurchaseRequestsTab() {
+  const [requests, setRequests] = useState([
+    { id: 'PR-101', item: '4x Apple MacBook Pro M3 (Engineering)', department: 'Engineering', requestedBy: 'Jordan Lee', amount: 11600, status: 'pending', date: '2026-07-22' },
+    { id: 'PR-102', item: 'Salesforce Enterprise Annual Renewal', department: 'Sales', requestedBy: 'Sarah Jenkins', amount: 48000, status: 'approved', date: '2026-07-20' },
+    { id: 'PR-103', item: 'AWS Cloud Reserved Instances', department: 'DevOps', requestedBy: 'Alex Morgan', amount: 24000, status: 'approved', date: '2026-07-18' },
+  ]);
+
+  const handleApprove = (id: string) => {
+    setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'approved' } : r));
+    toast.success(`Purchase Request ${id} approved`);
+  };
+
+  const handleReject = (id: string) => {
+    setRequests(prev => prev.map(r => r.id === id ? { ...r, status: 'rejected' } : r));
+    toast.info(`Purchase Request ${id} rejected`);
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Purchase Requests & Approval Workflows" description="Submit and review company expenditure requests requiring manager approval">
+        <Button className="bg-emerald-600 hover:bg-emerald-700">
+          <Plus className="size-4 mr-2" /> New Purchase Request
+        </Button>
+      </PageHeader>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard label="Pending Approvals" value={requests.filter(r => r.status === 'pending').length} icon={Receipt} />
+        <StatCard label="Approved (This Month)" value={formatCurrency(requests.filter(r => r.status === 'approved').reduce((sum, r) => sum + r.amount, 0))} icon={TrendingUp} />
+        <StatCard label="Active Purchase Orders" value="12" icon={FileText} />
+      </div>
+
+      <div className="border rounded-lg bg-card overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/40">
+              <th className="p-3 text-left font-medium text-muted-foreground">Request ID</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Item / Service</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Department</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Requested By</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Amount</th>
+              <th className="p-3 text-left font-medium text-muted-foreground">Status</th>
+              <th className="p-3 text-right font-medium text-muted-foreground">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {requests.map((r) => (
+              <tr key={r.id} className="border-b last:border-0 hover:bg-accent/30">
+                <td className="p-3 font-mono font-medium text-foreground">{r.id}</td>
+                <td className="p-3 font-medium text-foreground">{r.item}</td>
+                <td className="p-3 text-muted-foreground">{r.department}</td>
+                <td className="p-3 text-muted-foreground">{r.requestedBy}</td>
+                <td className="p-3 font-semibold text-foreground">{formatCurrency(r.amount)}</td>
+                <td className="p-3">
+                  <Badge variant="outline" className={r.status === 'approved' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : r.status === 'pending' ? 'bg-amber-500/10 text-amber-600 border-amber-500/20' : 'bg-red-500/10 text-red-600 border-red-500/20'}>
+                    {r.status}
+                  </Badge>
+                </td>
+                <td className="p-3 text-right space-x-1">
+                  {r.status === 'pending' && (
+                    <>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs text-emerald-600 hover:text-emerald-700" onClick={() => handleApprove(r.id)}>
+                        Approve
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 text-xs text-red-600 hover:text-red-700" onClick={() => handleReject(r.id)}>
+                        Reject
+                      </Button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  Main Finance Module
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1194,6 +1276,9 @@ export default function FinanceModule() {
           <TabsTrigger value="expenses">
             <Receipt className="size-4 mr-1.5 hidden sm:inline" />Expenses
           </TabsTrigger>
+          <TabsTrigger value="approvals">
+            <TrendingUp className="size-4 mr-1.5 hidden sm:inline" />Purchase Approvals
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -1211,6 +1296,11 @@ export default function FinanceModule() {
         {activeTab === 'expenses' && (
           <motion.div key="expenses" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
             <ExpensesTab />
+          </motion.div>
+        )}
+        {activeTab === 'approvals' && (
+          <motion.div key="approvals" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+            <PurchaseRequestsTab />
           </motion.div>
         )}
       </AnimatePresence>

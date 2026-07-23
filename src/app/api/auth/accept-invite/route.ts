@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     const { data: invitation, error: inviteError } = await supabase
       .from('invitations')
-      .select('id, email, role, token, organization_id, invited_by, expires_at, accepted_at, organization:organizations(id, name, slug)')
+      .select('id, email, role, token, organization_id, invited_by, expires_at, accepted_at, created_at, organization:organizations(id, name, slug)')
       .eq('token', token)
       .single()
 
@@ -79,12 +79,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Add to org
-    await supabase.from('organization_members').insert({
+    // A PostgrestFilterBuilder is thenable but not a Promise, so it has no
+    // `.catch`. Await it and inspect the returned error instead; a duplicate
+    // membership row is expected and safe to ignore.
+    const { error: memberError } = await supabase.from('organization_members').insert({
       user_id: userId, organization_id: invitation.organization_id,
       role: invitation.role, is_active: true,
       invited_by: invitation.invited_by, invited_at: invitation.created_at,
       joined_at: new Date().toISOString(),
-    }).catch(() => {}) // Ignore duplicate
+    })
+    if (memberError && memberError.code !== '23505') {
+      return error('Failed to add you to the organization', 500, 'INTERNAL_ERROR', memberError)
+    }
 
     // Mark accepted
     await supabase.from('invitations').update({ accepted_at: new Date().toISOString() }).eq('id', invitation.id)

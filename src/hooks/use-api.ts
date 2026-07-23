@@ -59,7 +59,7 @@ export function useApi<T = any>(opts: UseApiOptions<T>): UseApiReturn<T> {
   } = opts;
 
   const [data, setData] = useState<T[]>([]);
-  const [meta, setMeta] = useState<PaginatedResponse<T>['meta']>(null);
+  const [meta, setMeta] = useState<PaginatedResponse<T>['meta'] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ModuleId } from '@/lib/constants';
+import type { ModuleId, RoleId } from '@/lib/constants';
 
 export interface CurrentUser {
   id: string;
@@ -43,6 +43,10 @@ interface AppState {
   setNotifications: (n: Notification[]) => void;
   unreadCount: () => number;
   
+  // RBAC Role simulation
+  activeRole: RoleId;
+  setActiveRole: (r: RoleId) => void;
+
   // Actions
   setActiveModule: (m: ModuleId) => void;
   setSidebarCollapsed: (c: boolean) => void;
@@ -61,6 +65,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   isAuthenticated: false,
   isLoading: true,
   
+  // RBAC
+  activeRole: 'owner',
+  setActiveRole: (r) => set({ activeRole: r }),
+
   // Navigation
   activeModule: 'dashboard',
   sidebarCollapsed: false,
@@ -85,12 +93,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   
   logout: async () => {
     try {
-      const res = await fetch('/api/auth/logout', { method: 'POST' });
-      if (res.ok) {
-        set({ user: null, isAuthenticated: false });
-      }
+      await fetch('/api/auth/logout', { method: 'POST' });
     } catch (e) {
-      console.error('Logout failed:', e);
+      // Even if the request fails we still clear local state and leave the
+      // protected area — leaving someone on a dashboard they believe they
+      // signed out of is worse than a redundant redirect.
+      console.error('Logout request failed:', e);
+    } finally {
+      set({ user: null, isAuthenticated: false });
+      // Back to the public landing page, not the login form: signing out
+      // returns you to the marketing site.
+      window.location.href = '/';
     }
   },
   

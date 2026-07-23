@@ -9,12 +9,14 @@ export async function GET(req: Request) {
   const rawSort = searchParams.get('sort') || 'createdAt';
   const sort = safeSortField('auditLog', rawSort);
   const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
-  const module = searchParams.get('module');
+  // Named `moduleName`, not `module` — assigning to `module` shadows the
+  // CommonJS global and breaks Next's bundler.
+  const moduleName = searchParams.get('module');
   const action = searchParams.get('action');
   const userId = searchParams.get('userId');
 
   const where: any = {};
-  if (module) where.module = module;
+  if (moduleName) where.module = moduleName;
   if (action) where.action = action;
   if (userId) where.userId = userId;
 

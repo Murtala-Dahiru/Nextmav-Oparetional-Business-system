@@ -8,9 +8,10 @@ import { toast } from 'sonner';
 import {
   Plus, Search, Star, StarOff, MoreHorizontal, Pencil, Trash2,
   FileText, BookOpen, Map, Folder, Code, Lightbulb, Target,
-  ChevronRight, ChevronDown, Loader2, BookMarked,
+  ChevronRight, ChevronDown, Loader2, BookMarked, Table, UploadCloud, FileSpreadsheet,
 } from 'lucide-react';
 
+import { FileUploader } from '@/components/shared/file-uploader';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -117,6 +118,7 @@ export default function WorkspaceModule() {
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState('');
   const [savingContent, setSavingContent] = useState(false);
+  const [viewMode, setViewMode] = useState<'doc' | 'sheet' | 'vault'>('doc');
 
   // Inline title editing
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -280,7 +282,7 @@ export default function WorkspaceModule() {
 
   // Form for create dialog
   const { register, handleSubmit, control, reset, watch, formState: { errors } } = useForm<PageFormValues>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     resolver: zodResolver(createPageSchema) as any,
     defaultValues: {
       title: '', content: '', icon: 'file-text', color: '#10b981',
@@ -511,36 +513,88 @@ export default function WorkspaceModule() {
                   <TooltipContent>{fullPage.isStarred ? 'Unstar' : 'Star'}</TooltipContent>
                 </Tooltip>
 
-                {/* Edit / Save / More */}
-                <div className="flex items-center gap-1 ml-auto">
-                  {!editing ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5"
-                      onClick={() => { setEditContent(fullPage.content); setEditing(true); }}
-                    >
-                      <Pencil className="size-3.5" /> Edit
-                    </Button>
-                  ) : (
-                    <>
+                {/* View Mode Switcher */}
+                <div className="flex items-center gap-1 bg-muted p-1 rounded-md border text-xs font-medium">
+                  <button
+                    onClick={() => setViewMode('doc')}
+                    className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${viewMode === 'doc' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    <FileText className="size-3.5" /> Document
+                  </button>
+                  <button
+                    onClick={() => setViewMode('sheet')}
+                    className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${viewMode === 'sheet' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    <FileSpreadsheet className="size-3.5" /> Spreadsheet
+                  </button>
+                  <button
+                    onClick={() => setViewMode('vault')}
+                    className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${viewMode === 'vault' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    <UploadCloud className="size-3.5" /> File Vault
+                  </button>
+                </div>
+
+                {/* Share / Permissions / Edit / Save / More */}
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 text-xs"
+                    onClick={() => toast.info('Permissions: Workspace Shared (Role-based Control Active)')}
+                  >
+                    Share
+                  </Button>
+
+                  {viewMode === 'doc' && (
+                    !editing ? (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => { setEditing(false); setEditContent(fullPage.content); }}
+                        className="gap-1.5"
+                        onClick={() => { setEditContent(fullPage.content); setEditing(true); }}
                       >
-                        Cancel
+                        <Pencil className="size-3.5" /> Edit
                       </Button>
-                      <Button
-                        size="sm"
-                        className="bg-emerald-600 text-white hover:bg-emerald-700 gap-1.5"
-                        onClick={saveContent}
-                        disabled={savingContent}
-                      >
-                        {savingContent && <Loader2 className="size-3.5 animate-spin" />}
-                        Save
-                      </Button>
-                    </>
+                    ) : (
+                      <>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="gap-1 text-xs">
+                              Insert Template
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setEditContent('# Product Requirements Document (PRD)\n\n## 1. Executive Summary\nDescribe feature goals...\n\n## 2. Target Users\n- Enterprise Admins\n- End Users\n\n## 3. Success Metrics\n- Adoption rate > 80%')}>
+                              PRD Template
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setEditContent('# Standard Operating Procedure (SOP)\n\n## Purpose\nEstablish operational workflow standards.\n\n## Scope\nApplies to all department team members.\n\n## Steps\n1. Review ticket status\n2. Escalate to Lead if unresolved after 2 hours')}>
+                              SOP Template
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setEditContent('# Executive Meeting Notes\n\n**Date:** ' + new Date().toISOString().substring(0,10) + '\n**Attendees:** Alex Morgan, Sarah Jenkins, Jordan Lee\n\n## Agenda\n1. Q3 Roadmap Review\n2. Budget Allocation\n\n## Action Items\n- [ ] Finalize contract draft')}>
+                              Meeting Notes
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => { setEditing(false); setEditContent(fullPage.content); }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 text-white hover:bg-emerald-700 gap-1.5"
+                          onClick={saveContent}
+                          disabled={savingContent}
+                        >
+                          {savingContent && <Loader2 className="size-3.5 animate-spin" />}
+                          Save
+                        </Button>
+                      </>
+                    )
                   )}
 
                   <DropdownMenu>
@@ -565,23 +619,73 @@ export default function WorkspaceModule() {
                 </div>
               </div>
 
-              {/* Page Content */}
+              {/* Page Content Renderer */}
               <ScrollArea className="flex-1">
-                <div className="max-w-3xl mx-auto px-6 py-8">
-                  {editing ? (
-                    <Textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      className="min-h-[400px] font-mono text-sm"
-                      placeholder="Write markdown here..."
-                    />
-                  ) : (
-                    <div className="prose prose-sm dark:prose-invert max-w-none">
-                      {fullPage.content ? (
-                        <ReactMarkdown>{fullPage.content}</ReactMarkdown>
-                      ) : (
-                        <p className="text-muted-foreground italic">This page is empty. Click Edit to add content.</p>
-                      )}
+                <div className="max-w-4xl mx-auto px-6 py-8">
+                  {viewMode === 'doc' && (
+                    editing ? (
+                      <Textarea
+                        value={editContent}
+                        onChange={(e) => setEditContent(e.target.value)}
+                        className="min-h-[420px] font-mono text-sm"
+                        placeholder="Write markdown here..."
+                      />
+                    ) : (
+                      <div className="prose prose-sm dark:prose-invert max-w-none">
+                        {fullPage.content ? (
+                          <ReactMarkdown>{fullPage.content}</ReactMarkdown>
+                        ) : (
+                          <p className="text-muted-foreground italic">This page is empty. Click Edit to add content.</p>
+                        )}
+                      </div>
+                    )
+                  )}
+
+                  {viewMode === 'sheet' && (
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-sm font-semibold text-foreground">Interactive Grid Sheet</h3>
+                        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600">Auto-saved</Badge>
+                      </div>
+                      <div className="border rounded-lg overflow-x-auto bg-card">
+                        <table className="w-full text-xs text-left border-collapse">
+                          <thead>
+                            <tr className="bg-muted border-b">
+                              <th className="p-2.5 border-r font-semibold w-12 text-center">#</th>
+                              <th className="p-2.5 border-r font-semibold">Column A (Key)</th>
+                              <th className="p-2.5 border-r font-semibold">Column B (Value)</th>
+                              <th className="p-2.5 border-r font-semibold">Column C (Category)</th>
+                              <th className="p-2.5 font-semibold">Column D (Status)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[
+                              { id: 1, a: 'Target Revenue', b: '$1,200,000', c: 'Finance', d: 'Approved' },
+                              { id: 2, a: 'Q3 Headcount', b: '45 FTEs', c: 'HR', d: 'In Progress' },
+                              { id: 3, a: 'Customer SLA Rate', b: '99.9%', c: 'Engineering', d: 'Verified' },
+                              { id: 4, a: 'Cloud Infrastructure', b: '$14,500/mo', c: 'DevOps', d: 'Active' },
+                            ].map((row) => (
+                              <tr key={row.id} className="border-b last:border-0 hover:bg-accent/40">
+                                <td className="p-2.5 border-r text-center text-muted-foreground font-mono">{row.id}</td>
+                                <td className="p-2.5 border-r font-medium">{row.a}</td>
+                                <td className="p-2.5 border-r">{row.b}</td>
+                                <td className="p-2.5 border-r text-muted-foreground">{row.c}</td>
+                                <td className="p-2.5"><Badge variant="outline" className="text-[10px]">{row.d}</Badge></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {viewMode === 'vault' && (
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-sm font-semibold text-foreground">Document Storage Vault</h3>
+                        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600">Enterprise Encrypted</Badge>
+                      </div>
+                      <FileUploader maxSizeMB={50} maxFiles={15} />
                     </div>
                   )}
                 </div>

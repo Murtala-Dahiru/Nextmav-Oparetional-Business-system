@@ -15,21 +15,15 @@ export async function createSupabaseServerClient(request?: NextRequest) {
         },
         setAll(cookiesToSet) {
           try {
+            // Write every cookie unconditionally. `@supabase/ssr` signals cookie
+            // removal by emitting an empty value with `maxAge: 0`, so guarding on
+            // a truthy value here would silently break sign-out.
             for (const { name, value, options } of cookiesToSet) {
-              if (value) cookieStore.set(name, value, options as CookieOptions)
+              cookieStore.set(name, value, options as CookieOptions)
             }
           } catch {
             // The `setAll` method was called from a Server Component.
             // This can be ignored if you have middleware refreshing sessions.
-          }
-        },
-        remove(names) {
-          try {
-            for (const name of names) {
-              cookieStore.delete(name)
-            }
-          } catch {
-            // Ignore in Server Components
           }
         },
       },
@@ -51,7 +45,7 @@ export async function getAuthenticatedUser(request?: NextRequest) {
     .select('organization_id, role, organization:organizations(name, slug)')
     .eq('user_id', user.id)
     .eq('is_active', true)
-    .is('organization_id', 'not.is', null)
+    .not('organization_id', 'is', null)
     .single()
 
   return {

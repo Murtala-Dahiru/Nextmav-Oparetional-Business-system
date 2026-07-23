@@ -62,7 +62,7 @@ export async function POST(req: Request) {
       return error(`Unknown module: ${mod}. Valid: ${Object.keys(moduleMap).join(', ')}`, 400);
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const rows = await (db as any)[config.model].findMany({
       orderBy: { [config.sortKey]: 'desc' },
       take: 10000,

@@ -290,7 +290,7 @@ function TasksTab() {
 
   // Form
   const { register, handleSubmit, control, reset, formState: { errors } } = useForm<TaskFormValues>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     resolver: zodResolver(createTaskSchema) as any,
     defaultValues: {
       title: '', description: '', status: 'todo', priority: 'medium',
@@ -711,7 +711,7 @@ function ProjectsTab() {
 
   // Form
   const { register, handleSubmit, control, reset, formState: { errors } } = useForm<ProjectFormValues>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     resolver: zodResolver(createProjectSchema) as any,
     defaultValues: {
       name: '', description: '', status: 'planning', priority: 'medium',

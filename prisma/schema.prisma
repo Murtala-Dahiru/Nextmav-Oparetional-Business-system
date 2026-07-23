@@ -41,6 +41,8 @@ model User {
   notifications     Notification[]
   leaveRequests     LeaveRequest[]
   activities        ActivityLog[]
+  stockMovements    StockMovement[] @relation("StockMovementUser")
+  purchaseOrders    PurchaseOrder[] @relation("PurchaseOrderCreator")
 }
 
 model Role {
@@ -356,13 +358,25 @@ model Product {
   category  String  @default("general")
   price     Float   @default(0)
   cost      Float   @default(0)
+  /// Current on-hand quantity. Never write this directly outside of a
+  /// StockMovement — every change must leave an auditable trail.
   stock     Int     @default(0)
   unit      String  @default("unit")
   reorderLevel Int  @default(10)
   isActive  Boolean @default(true)
-  warehouseId String @default("")
+  warehouseId String?
+  supplierId  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id])
+  supplier  Supplier?  @relation(fields: [supplierId], references: [id])
+  movements StockMovement[]
+  orderItems PurchaseOrderItem[]
+
+  @@index([warehouseId])
+  @@index([supplierId])
+  @@index([category])
 }
 
 model Warehouse {
@@ -373,6 +387,103 @@ model Warehouse {
   isActive  Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  products       Product[]
+  movementsIn    StockMovement[] @relation("MovementToWarehouse")
+  movementsOut   StockMovement[] @relation("MovementFromWarehouse")
+  purchaseOrders PurchaseOrder[]
+}
+
+model Supplier {
+  id          String  @id @default(uuid())
+  name        String
+  contactName String  @default("")
+  email       String  @default("")
+  phone       String  @default("")
+  address     String  @default("")
+  city        String  @default("")
+  country     String  @default("")
+  /// Typical lead time in days, used to flag at-risk reorders.
+  leadTimeDays Int    @default(7)
+  paymentTerms String @default("net30")
+  notes       String  @default("")
+  isActive    Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  products       Product[]
+  purchaseOrders PurchaseOrder[]
+}
+
+/// Append-only ledger of every stock change. Product.stock is the running
+/// total of these rows, so on-hand quantity is always explainable.
+model StockMovement {
+  id          String   @id @default(uuid())
+  productId   String
+  /// "receipt" | "issue" | "transfer" | "adjustment" | "return"
+  type        String   @default("adjustment")
+  /// Signed delta applied to Product.stock: positive adds, negative removes.
+  quantity    Int
+  /// On-hand quantity after this movement was applied.
+  balanceAfter Int     @default(0)
+  reason      String   @default("")
+  reference   String   @default("")
+  fromWarehouseId String?
+  toWarehouseId   String?
+  userId      String   @default("u1")
+  createdAt   DateTime @default(now())
+
+  product       Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  fromWarehouse Warehouse? @relation("MovementFromWarehouse", fields: [fromWarehouseId], references: [id])
+  toWarehouse   Warehouse? @relation("MovementToWarehouse", fields: [toWarehouseId], references: [id])
+  user          User       @relation("StockMovementUser", fields: [userId], references: [id])
+
+  @@index([productId, createdAt])
+  @@index([type])
+}
+
+model PurchaseOrder {
+  id          String   @id @default(uuid())
+  orderNumber String   @unique
+  supplierId  String
+  warehouseId String?
+  /// "draft" | "submitted" | "approved" | "received" | "cancelled"
+  status      String   @default("draft")
+  orderDate   DateTime @default(now())
+  expectedDate DateTime?
+  receivedAt  DateTime?
+  subtotal    Float    @default(0)
+  tax         Float    @default(0)
+  total       Float    @default(0)
+  notes       String   @default("")
+  createdById String   @default("u1")
+  approvedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  supplier   Supplier   @relation(fields: [supplierId], references: [id])
+  warehouse  Warehouse? @relation(fields: [warehouseId], references: [id])
+  createdBy  User       @relation("PurchaseOrderCreator", fields: [createdById], references: [id])
+  items      PurchaseOrderItem[]
+
+  @@index([supplierId])
+  @@index([status])
+}
+
+model PurchaseOrderItem {
+  id        String @id @default(uuid())
+  orderId   String
+  productId String
+  quantity  Int    @default(1)
+  unitCost  Float  @default(0)
+  /// Quantity actually received so far; drives partial-receipt handling.
+  receivedQuantity Int @default(0)
+
+  order   PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product       @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
 }
 
 // ═══════════════════════════════════════════════════════════════════════

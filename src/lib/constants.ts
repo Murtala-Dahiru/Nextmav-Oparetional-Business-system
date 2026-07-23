@@ -14,6 +14,32 @@ export const MODULES = [
 
 export type ModuleId = (typeof MODULES)[number]['id'];
 
+export const ROLES = [
+  { id: 'owner', name: 'Company Owner', description: 'Full root control over all modules, billing, and system configuration.' },
+  { id: 'administrator', name: 'Administrator', description: 'System-wide access to all business operations and user management.' },
+  { id: 'manager', name: 'Department Manager', description: 'Manages team projects, approvals, and department resources.' },
+  { id: 'employee', name: 'Employee', description: 'Standard workplace access to assigned tasks, DMs, leave requests, and HR case desk.' },
+  { id: 'hr_staff', name: 'HR Staff', description: 'Manages employee profiles, leave approvals, payroll structures, and HR cases.' },
+  { id: 'finance_staff', name: 'Finance Staff', description: 'Manages invoices, expense approvals, vendor billing, and cash flow reports.' },
+  { id: 'sales_staff', name: 'Sales Staff', description: 'Access to CRM leads, deals pipeline, contacts, and customer sales activities.' },
+  { id: 'support_staff', name: 'Support Staff', description: 'Customer support ticket management, SLA tracking, and KB articles.' },
+  { id: 'client', name: 'Client Portal User', description: 'Restricted external view limited to client tickets and project deliverables.' },
+] as const;
+
+export type RoleId = (typeof ROLES)[number]['id'];
+
+export const ROLE_PERMISSIONS: Record<RoleId, ModuleId[]> = {
+  owner: ['dashboard', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar', 'admin'],
+  administrator: ['dashboard', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar', 'admin'],
+  manager: ['dashboard', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar'],
+  employee: ['dashboard', 'projects', 'workspace', 'communication', 'hr', 'calendar'],
+  hr_staff: ['dashboard', 'hr', 'workspace', 'communication', 'calendar'],
+  finance_staff: ['dashboard', 'finance', 'workspace', 'communication', 'calendar'],
+  sales_staff: ['dashboard', 'crm', 'workspace', 'communication', 'calendar'],
+  support_staff: ['dashboard', 'support', 'workspace', 'communication', 'calendar'],
+  client: ['dashboard', 'support', 'projects'],
+};
+
 export const LEAD_STATUSES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'] as const;
 export const DEAL_STAGES = ['prospecting', 'qualification', 'proposal', 'negotiation', 'closed-won', 'closed-lost'] as const;
 export const TASK_STATUSES = ['todo', 'in-progress', 'review', 'done'] as const;

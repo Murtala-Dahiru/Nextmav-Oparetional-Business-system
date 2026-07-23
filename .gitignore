@@ -52,3 +52,16 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# ─── Agent / session scratch output (not project source) ───────────────────
+# Raw tool logs, ad-hoc query scripts and generated screenshots produced by
+# earlier tooling sessions. None of it is referenced by the application.
+/tool-results/
+/.tmp-api/
+/download/
+*.pid
+test.txt
+
+# ─── Local runtime artifacts ──────────────────────────────────────────────
+dev.out.log
+*.tsbuildinfo

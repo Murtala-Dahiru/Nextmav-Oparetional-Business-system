@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { success, error } from '@/lib/api-response'
 
 export async function POST(request: NextRequest) {
@@ -6,7 +6,17 @@ export async function POST(request: NextRequest) {
     const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 
     if (!SUPABASE_URL) {
-      return success({ message: 'Logged out successfully' })
+      // Demo mode: clear demo session cookie
+      const res = NextResponse.json({
+        data: { message: 'Logged out successfully' },
+      })
+      res.cookies.set('nexuscorp-demo-session', '', {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 0, // Delete immediately
+      })
+      return res
     }
 
     const { createSupabaseServerClient } = await import('@/lib/supabase/server')
