@@ -1,101 +1,137 @@
-# Deploying to Vercel + Supabase
+# Deployment
 
-The app runs on PostgreSQL. It previously used a SQLite file, which cannot work
-on Vercel: serverless functions get a read-only, ephemeral filesystem, so the
-database file could not be opened — the cause of the
-"Couldn't load your dashboard" error.
-
-You need to do steps 1 and 3 yourself (they involve your credentials).
+Next.js 16 on the front, Supabase (PostgreSQL + Auth + Storage + Realtime) on
+the back. There is no ORM — data access goes through `supabase-js` carrying the
+signed-in user's JWT, so Row Level Security is what enforces tenant isolation.
 
 ---
 
-## 1. Create the database
+## 1. Environment
 
-1. Go to <https://supabase.com> → **New project**. Any region; note the database
-   password you set — it appears in the connection strings.
-2. Once it finishes provisioning, open
-   **Project Settings → Database → Connection string**.
-3. Copy **two** strings:
+Copy `.env.example` to `.env` and fill in five values from the Supabase
+dashboard.
 
-   | Label in Supabase | Port | Use for |
-   |---|---|---|
-   | **Transaction pooler** | `6543` | `DATABASE_URL` — runtime |
-   | **Direct connection**  | `5432` | `DIRECT_URL` — migrations |
+| Variable | Where | Notes |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Settings → API → Project URL | **Bare origin only.** The `/rest/v1/` shown next to it is the REST endpoint; including it makes every call resolve to `/rest/v1/rest/v1/…` and 404. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Settings → API → anon public | Public by design; ships in the browser bundle. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Settings → API → service_role | **Server only.** Bypasses RLS entirely. Never expose it to the browser. |
+| `DIRECT_URL` | Settings → Database → **Session pooler** (5432) | Applying migrations. |
+| `DATABASE_URL` | Settings → Database → **Transaction pooler** (6543) | Reserved for tooling; the app itself uses `supabase-js`. |
 
-Both are needed. Serverless functions open a connection per invocation, so
-runtime traffic must go through the pooler or Postgres exhausts its connection
-limit. Migrations cannot run through PgBouncer, so they use the direct
-connection.
+Two things that will otherwise cost you an hour:
 
-Append `?pgbouncer=true&connection_limit=1` to the pooled URL.
+- **`db.<ref>.supabase.co` no longer resolves over IPv4.** Supabase deprecated
+  direct IPv4 connections, so use the *session pooler* host on port 5432 for
+  `DIRECT_URL`. It supports DDL; the transaction pooler on 6543 does not.
+- **Percent-encode special characters in the password.** A literal `+` in a URI
+  decodes to a space and surfaces as `password authentication failed`, which
+  points nowhere near the real cause. `+` → `%2B`.
+
+`.env` is gitignored and must stay that way.
 
 ---
 
-## 2. Create the tables and load the data
-
-Run locally, once, with both variables set in your `.env`
-(copy `.env.example` to `.env` first):
+## 2. Database
 
 ```bash
 npm install
-npm run db:deploy
-npm run db:seed
+npm run db:setup
 ```
 
-`db:deploy` creates the tables from `prisma/schema.prisma`.
-`db:seed` loads `prisma/seed-data.json` — a snapshot of the original database,
-so the demo organisation, users and role assignments carry over. The seed is
-idempotent; re-running it will not duplicate anything.
+That runs three steps, and you can run them individually:
 
----
-
-## 3. Configure Vercel
-
-**Project Settings → Environment Variables**, for Production *and* Preview:
-
-| Name | Value |
+| Command | Does |
 |---|---|
-| `DATABASE_URL` | the pooled string (port **6543**, with `?pgbouncer=true&connection_limit=1`) |
-| `DIRECT_URL` | the direct string (port **5432**) |
+| `npm run db:check` | Parses all 8 migrations against the real PostgreSQL grammar, then checks cross-file consistency — undefined tables and functions, invalid enum members, broken foreign keys, views missing `security_invoker`, recursive policies, business tables missing `organization_id`. |
+| `npm run db:apply` | Applies every migration in order, each in its own transaction, so a failure stops at the last complete one rather than leaving a half-built schema. |
+| `npm run db:verify` | Verifies the deployed result — see below. |
 
-Then **redeploy** — Vercel does not pick up new environment variables on an
-existing deployment.
+Everything is idempotent; re-running is safe.
 
-Nothing else needs configuring. `prisma generate` runs on both `postinstall`
-and `build`, so the client is always generated.
+### What `db:verify` actually proves
+
+It creates **two real users in two real organizations** and tries to cross the
+boundary: by list query, by direct id, by cross-tenant insert, and by
+enumerating the other organization's members.
+
+Schema correctness can be established by reading the SQL. Isolation cannot —
+and its failure mode is a data breach rather than an error. It also checks that
+RLS is `FORCE`d rather than merely enabled, that every view sets
+`security_invoker`, that `clock_in()` writes server time and overwrites a
+forged client timestamp, that self-approval is blocked, that stock cannot go
+negative, and that the last owner cannot be demoted.
+
+Everything it creates is namespaced and torn down afterwards, including on
+failure.
+
+**If anything under "Tenant isolation" fails, stop.**
 
 ---
 
-## Verifying it worked
+## 3. Application
 
-Open the app and sign in. In demo mode any password works, and the email
-determines which role you get:
+```bash
+npm run dev              # http://localhost:3000
+npm run build && npm start
+```
 
-| Sign in as | Role | What you should see |
-|---|---|---|
-| `alex.johnson@nexuscorp.com` | Owner | Everything, including revenue |
-| `michael.lee@nexuscorp.com` | Finance | Finance + revenue, no HR directory |
-| `emily.martinez@nexuscorp.com` | HR | HR only — **no revenue**, no CRM |
-| `sarah.chen@nexuscorp.com` | Sales | CRM + inventory, **no** finance |
-| `john.davis@nexuscorp.com` | Employee | Own tasks/leave only, no finance |
+`npm run app:verify` exercises the HTTP API the browser actually calls, as two
+users in two organizations — 78 checks covering auth, onboarding, module CRUD,
+isolation, attendance, leave, inventory, finance, support, admin and export.
+The dev server must be running on `:3100`, or set `APP_URL`.
 
-If the dashboard still fails it will now say *why* rather than showing a blank
-panel. The messages map directly to causes:
+### Seeding demo data
+
+Sign in, then call the seeder once. It fills every module with interlinked
+records — deals attached to companies, tasks to projects, invoices to clients —
+so cross-module views have something real to show:
+
+```sql
+select public.seed_demo_organization('Acme Inc');
+```
+
+It is deliberately not a migration: a migration that inserts fake customers
+eventually runs against production.
+
+---
+
+## 4. Before you go live
+
+**Email confirmation must be resolved.** `mailer_autoconfirm` is currently
+false and the built-in SMTP is rate-limited, so public signup fails with
+`email rate limit exceeded` after a few attempts. Either:
+
+- turn off confirmation — Authentication → Providers → Email → *Confirm email*
+  off, suitable for an internal tool; or
+- configure custom SMTP — Authentication → Emails → SMTP Settings, which is
+  what a real deployment wants.
+
+Until one of those is done, accounts can only be created through the admin API.
+
+**Hosting.** Any Node host works. `output: "standalone"` is configured and the
+build copies `.next/static` and `public` into it, so
+`node .next/standalone/server.js` runs anywhere. On Vercel the standalone
+output is ignored and the platform handles it.
+
+**Rotate credentials** that have been shared during development — Settings →
+API → *Rotate* for the service-role key, Settings → Database → *Reset database
+password* for the connection strings.
+
+---
+
+## Troubleshooting
+
+The dashboard reports the actual cause rather than a blank panel:
 
 | Message | Cause |
 |---|---|
-| `DATABASE_URL is not set on this deployment` | Env var missing in Vercel, or not redeployed after adding it |
-| `...still points at a SQLite file` | `DATABASE_URL` is a `file:` path |
-| `The database server is unreachable` | Wrong host/port, or the Supabase project is paused |
-| `The database is reachable but empty` | `npm run db:deploy` was not run |
-| `Database credentials were rejected` | Password in the string is wrong |
+| `DATABASE_URL is not set on this deployment` | Environment variable missing, or the host was not redeployed after adding it |
+| `…still points at a SQLite file` | `DATABASE_URL` is a `file:` path left over from earlier |
+| `The database server is unreachable` | Wrong host or port, or the Supabase project is paused |
+| `The database is reachable but empty` | `npm run db:apply` has not been run |
+| `Database credentials were rejected` | Password wrong, or a special character is not percent-encoded |
+| `the database is missing a required function` | Migrations are behind the application — re-run `db:apply` |
 
----
-
-## Notes
-
-- `.env` is gitignored and must stay that way. `.env.example` is the template.
-- `db/custom.db` remains in the repository only as the origin of
-  `prisma/seed-data.json`. It is no longer used at runtime.
-- Supabase free-tier projects pause after a period of inactivity; the first
-  request after that will fail until the project resumes.
+Supabase free-tier projects pause after inactivity; the first request after
+that fails until the project wakes.

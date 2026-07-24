@@ -155,13 +155,26 @@ Run it before every commit that touches `supabase/migrations/`.
 
 ---
 
+## Status
+
+Applied and verified against a live project. `db:verify` passes 43 checks
+including two-tenant isolation, and the application passes 78 end-to-end checks
+through its HTTP API (`npm run app:verify`).
+
+Four defects were found by applying these migrations for the first time — all
+runtime behaviour that parsing could not catch, and all fixed:
+
+- `btrim(both '-' from x)` — `both … from` is `trim()` syntax, not `btrim()`.
+  Inside a `$$` body, so the parser treated it as opaque text.
+- A function parameter shadowed a column inside `ON CONFLICT`.
+- The audit trigger fired during cascade delete and violated its own foreign
+  key, making organizations impossible to delete.
+- `ALTER TABLE … DROP COLUMN` broke re-runs once a view depended on the column.
+
 ## Not yet done
 
-- **Nothing here has been executed against a live database.** It parses and is
-  internally consistent; that is not the same as working. Applying it is the
-  first real test.
-- The application still reads through Prisma on 54 route files. Those must move
-  to `supabase-js` before RLS does anything for the app — see
-  `BACKEND_ARCHITECTURE.md`.
 - Email delivery for invitations is the application's job; the database issues
-  the token.
+  the token and the API returns the link.
+- Storage buckets and policies exist and are verified, but no upload UI is
+  wired to them.
+- Nine tables are published to Realtime, but the client does not yet subscribe.
