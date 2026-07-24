@@ -1087,7 +1087,7 @@ SELECT
   COALESCE(SUM(
     CASE
       WHEN pt.due_date >= date_trunc('week', now())::date
-        AND pt.due_date < (date_trunc('week', now') + INTERVAL '7 days')::date
+        AND pt.due_date < (date_trunc('week', now()) + INTERVAL '7 days')::date
         AND pt.status != 'done'
         AND pt.deleted_at IS NULL
       THEN 1 ELSE 0 END
