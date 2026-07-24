@@ -20,6 +20,7 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { formatCurrency, formatRelativeTime, formatDate, getInitials } from '@/lib/format';
 import { useAppStore } from '@/store/app-store';
 import type { ModuleId } from '@/lib/constants';
+import { roleLabel as labelForRole, type Action } from '@/lib/permissions';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types — mirror of the /api/dashboard aggregation
@@ -27,20 +28,25 @@ import type { ModuleId } from '@/lib/constants';
 
 interface DashboardData {
   generatedAt: string;
-  company: {
+  /** Who this payload was built for — the server decides, not the client. */
+  viewer?: {
+    id: string; firstName: string; lastName: string;
+    role: string; department: string; jobTitle: string;
+  };
+  company?: {
     headcount: number; departments: number; onlineNow: number; newHires: number;
     revenue: number; revenueThisMonth: number; revenueTrend: number | null;
     pipelineValue: number; weightedPipeline: number; openDeals: number;
     activeProjects: number; openTickets: number; warehouses: number;
   };
-  crm: {
+  crm?: {
     totalLeads: number; newLeads: number; qualifiedLeads: number;
     pipelineValue: number; weightedPipeline: number; wonValue: number; winRate: number;
     dealsByStage: { stage: string; count: number; value: number }[];
     leadsByStatus: { status: string; count: number }[];
     topDeals: { id: string; name: string; companyName: string; value: number; stage: string; probability: number }[];
   };
-  finance: {
+  finance?: {
     revenue: number; revenueThisMonth: number; revenueTrend: number | null;
     outstanding: number; overdueCount: number; overdueValue: number;
     totalExpenses: number; expensesThisMonth: number;
@@ -48,7 +54,7 @@ interface DashboardData {
     revenueByMonth: { month: string; revenue: number; expenses: number }[];
     recentInvoices: { id: string; invoiceNumber: string; companyName: string; status: string; total: number; dueDate: string }[];
   };
-  projects: {
+  projects?: {
     total: number; active: number; atRisk: number; totalBudget: number;
     overdueTasks: number; tasksDueThisWeek: number;
     progress: {
@@ -61,17 +67,17 @@ interface DashboardData {
     userId: string; openTasks: number;
     tasks: { id: string; title: string; status: string; priority: string; dueDate: string | null; projectName: string | null; overdue: boolean }[];
   };
-  support: {
+  support?: {
     open: number; breached: number; critical: number; resolvedThisMonth: number;
     byPriority: { priority: string; count: number }[];
     recent: { id: string; ticketNumber: string; subject: string; status: string; priority: string; dueDate: string | null }[];
   };
-  hr: {
+  hr?: {
     headcount: number; departments: number; newHires: number; pendingLeave: number;
     leaveRequests: { id: string; type: string; startDate: string; endDate: string; requester?: { firstName: string; lastName: string; avatar: string; department: string } }[];
     team: { id: string; firstName: string; lastName: string; jobTitle: string; department: string; avatar: string; lastSeen: string }[];
   };
-  inventory: {
+  inventory?: {
     products: number; lowStockCount: number; outOfStockCount: number; stockValue: number;
     alerts: { id: string; name: string; sku: string; stock: number; reorderLevel: number; unit: string; severity: string }[];
   };
@@ -83,8 +89,8 @@ interface DashboardData {
     unread: number;
     items: { id: string; title: string; message: string; type: string; isRead: boolean; createdAt: string }[];
   };
-  activity: { id: string; module: string; action: string; title: string; description: string; createdAt: string; user?: { firstName: string; lastName: string; avatar: string } }[];
-  recentFiles: { id: string; title: string; icon: string; color: string; updatedAt: string; isStarred: boolean }[];
+  activity?: { id: string; module: string; action: string; title: string; description: string; createdAt: string; user?: { firstName: string; lastName: string; avatar: string } }[];
+  recentFiles?: { id: string; title: string; icon: string; color: string; updatedAt: string; isStarred: boolean }[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -202,7 +208,7 @@ function ChartTooltip({ active, payload, label }: any) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function DashboardModule() {
-  const { user, setActiveModule } = useAppStore();
+  const { user, setActiveModule, allows, activeRole } = useAppStore();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -272,14 +278,91 @@ export default function DashboardModule() {
     inventory, calendar, notifications, activity, recentFiles,
   } = data;
 
-  const quickActions: { label: string; icon: React.ElementType; module: ModuleId }[] = [
-    { label: 'New Lead', icon: Handshake, module: 'crm' },
-    { label: 'New Project', icon: FolderKanban, module: 'projects' },
-    { label: 'Create Invoice', icon: Receipt, module: 'finance' },
-    { label: 'Log Ticket', icon: TicketCheck, module: 'support' },
-    { label: 'Schedule Event', icon: CalendarDays, module: 'calendar' },
-    { label: 'New Document', icon: FileText, module: 'workspace' },
-  ];
+  /**
+   * Quick actions are filtered to what this role may actually do. Offering
+   * "Create Invoice" to someone who will get a 403 is worse than not offering
+   * it — the shortcut has to be a promise the platform keeps.
+   */
+  const quickActions = (
+    [
+      { label: 'New Lead', icon: Handshake, module: 'crm', action: 'create' },
+      { label: 'New Project', icon: FolderKanban, module: 'projects', action: 'create' },
+      { label: 'Create Invoice', icon: Receipt, module: 'finance', action: 'create' },
+      { label: 'Log Ticket', icon: TicketCheck, module: 'support', action: 'create' },
+      { label: 'Schedule Event', icon: CalendarDays, module: 'calendar', action: 'create' },
+      { label: 'New Document', icon: FileText, module: 'workspace', action: 'create' },
+      { label: 'Request Leave', icon: Clock, module: 'hr', action: 'create' },
+    ] as { label: string; icon: React.ElementType; module: ModuleId; action: Action }[]
+  ).filter(a => allows(a.module, a.action));
+
+  /**
+   * The headline strip, assembled from whichever sections this role received.
+   * A CEO sees revenue and pipeline; an employee sees their own workload.
+   */
+  const kpis: {
+    key: string; label: string; value: string | number; icon: React.ElementType;
+    trend?: number | null; hint?: string; tone?: 'default' | 'warning' | 'danger';
+    onClick?: () => void;
+  }[] = [];
+
+  if (finance) {
+    kpis.push({
+      key: 'revenue', label: 'Revenue (MTD)', value: formatCurrency(finance.revenueThisMonth),
+      icon: DollarSign, trend: finance.revenueTrend, onClick: go('finance'),
+    });
+  }
+  if (crm) {
+    kpis.push({
+      key: 'pipeline', label: 'Weighted pipeline', value: formatCurrency(crm.weightedPipeline),
+      icon: Target, hint: `${crm.dealsByStage.reduce((s, d) => s + d.count, 0)} deals`, onClick: go('crm'),
+    });
+  }
+  if (projects) {
+    kpis.push({
+      key: 'projects', label: 'Active projects', value: projects.active, icon: FolderKanban,
+      hint: projects.atRisk > 0 ? `${projects.atRisk} at risk` : 'All on track',
+      tone: projects.atRisk > 0 ? 'warning' : 'default', onClick: go('projects'),
+    });
+  }
+  if (support) {
+    kpis.push({
+      key: 'tickets', label: 'Open tickets', value: support.open, icon: TicketCheck,
+      hint: support.breached > 0 ? `${support.breached} past due` : 'Within SLA',
+      tone: support.breached > 0 ? 'danger' : 'default', onClick: go('support'),
+    });
+  }
+  if (finance) {
+    kpis.push({
+      key: 'outstanding', label: 'Outstanding', value: formatCurrency(finance.outstanding),
+      icon: Receipt,
+      hint: finance.overdueCount > 0 ? `${finance.overdueCount} overdue` : 'Nothing overdue',
+      tone: finance.overdueCount > 0 ? 'warning' : 'default', onClick: go('finance'),
+    });
+  }
+  if (inventory) {
+    kpis.push({
+      key: 'stock', label: 'Stock alerts', value: inventory.lowStockCount, icon: Package,
+      hint: inventory.outOfStockCount > 0 ? `${inventory.outOfStockCount} out of stock` : 'All above reorder point',
+      tone: inventory.outOfStockCount > 0 ? 'danger' : 'default', onClick: go('inventory'),
+    });
+  }
+  if (hr && hr.headcount > 0) {
+    kpis.push({
+      key: 'people', label: 'Headcount', value: hr.headcount, icon: Users,
+      hint: hr.pendingLeave > 0 ? `${hr.pendingLeave} leave requests` : `${hr.departments} departments`,
+      tone: hr.pendingLeave > 0 ? 'warning' : 'default', onClick: go('hr'),
+    });
+  }
+  // Personal workload — always meaningful, and the only KPI an employee or
+  // client is guaranteed to see.
+  kpis.push({
+    key: 'mytasks', label: 'My open tasks', value: myWork.tasks.length, icon: ListTodo,
+    hint: myWork.tasks.some(t => t.overdue)
+      ? `${myWork.tasks.filter(t => t.overdue).length} overdue`
+      : 'Nothing overdue',
+    tone: myWork.tasks.some(t => t.overdue) ? 'danger' : 'default',
+    onClick: allows('projects') ? go('projects') : undefined,
+  });
 
   return (
     <div className="flex-1 space-y-6 overflow-auto p-6">
@@ -291,10 +374,15 @@ export default function DashboardModule() {
           </h1>
           <p className="text-muted-foreground mt-1 text-sm">
             {formatDate(data.generatedAt, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            {' · '}
-            {company.onlineNow > 0
-              ? `${company.onlineNow} of ${company.headcount} teammates online`
-              : `${company.headcount} people across ${company.departments} departments`}
+            {company
+              ? ` · ${company.onlineNow > 0
+                ? `${company.onlineNow} of ${company.headcount} teammates online`
+                : `${company.headcount} people across ${company.departments} departments`}`
+              : ''}
+          </p>
+          <p className="text-muted-foreground/80 mt-0.5 text-xs">
+            {data.viewer?.jobTitle || labelForRole(activeRole)}
+            {data.viewer?.department ? ` · ${data.viewer.department}` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -312,27 +400,16 @@ export default function DashboardModule() {
 
       {/* ── Company overview ───────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
-        <Kpi label="Revenue (MTD)" value={formatCurrency(company.revenueThisMonth)} icon={DollarSign}
-          trend={company.revenueTrend} onClick={go('finance')} />
-        <Kpi label="Weighted pipeline" value={formatCurrency(company.weightedPipeline)} icon={Target}
-          hint={`${company.openDeals} open deals`} onClick={go('crm')} />
-        <Kpi label="Active projects" value={company.activeProjects} icon={FolderKanban}
-          hint={projects.atRisk > 0 ? `${projects.atRisk} at risk` : 'All on track'}
-          tone={projects.atRisk > 0 ? 'warning' : 'default'} onClick={go('projects')} />
-        <Kpi label="Open tickets" value={support.open} icon={TicketCheck}
-          hint={support.breached > 0 ? `${support.breached} past due` : 'Within SLA'}
-          tone={support.breached > 0 ? 'danger' : 'default'} onClick={go('support')} />
-        <Kpi label="Outstanding" value={formatCurrency(finance.outstanding)} icon={Receipt}
-          hint={finance.overdueCount > 0 ? `${finance.overdueCount} overdue` : 'Nothing overdue'}
-          tone={finance.overdueCount > 0 ? 'warning' : 'default'} onClick={go('finance')} />
-        <Kpi label="Headcount" value={company.headcount} icon={Users}
-          hint={hr.pendingLeave > 0 ? `${hr.pendingLeave} leave requests` : `${company.departments} departments`}
-          onClick={go('hr')} />
+        {kpis.map(k => (
+          <Kpi key={k.key} label={k.label} value={k.value} icon={k.icon}
+            trend={k.trend} hint={k.hint} tone={k.tone} onClick={k.onClick} />
+        ))}
       </div>
 
-      {/* ── Revenue + pipeline ─────────────────────────────────────────── */}
+      {/* ── Revenue + pipeline (finance / sales leadership) ─────────────── */}
+      {(finance || crm) && (
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Panel title="Revenue vs spend" subtitle="Trailing six months" icon={TrendingUp}
+        {finance && (<Panel title="Revenue vs spend" subtitle="Trailing six months" icon={TrendingUp}
           action={{ label: 'Finance', onClick: go('finance') }} className="lg:col-span-2">
           <div className="mb-4 flex flex-wrap gap-6">
             <div>
@@ -371,9 +448,9 @@ export default function DashboardModule() {
               <Area type="monotone" dataKey="expenses" name="Expenses" stroke="#f43f5e" strokeWidth={2} fill="url(#expFill)" />
             </AreaChart>
           </ResponsiveContainer>
-        </Panel>
+        </Panel>)}
 
-        <Panel title="Sales pipeline" subtitle={`${crm.winRate}% win rate · ${crm.newLeads} new leads`}
+        {crm && (<Panel title="Sales pipeline" subtitle={`${crm.winRate}% win rate · ${crm.newLeads} new leads`}
           icon={Handshake} action={{ label: 'CRM', onClick: go('crm') }}>
           <div className="mb-4">
             <p className="text-muted-foreground text-xs">Weighted forecast</p>
@@ -399,8 +476,9 @@ export default function DashboardModule() {
               );
             })}
           </div>
-        </Panel>
+        </Panel>)}
       </div>
+      )}
 
       {/* ── My tasks · Project health · Meetings ───────────────────────── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -434,7 +512,7 @@ export default function DashboardModule() {
           )}
         </Panel>
 
-        <Panel title="Project health" subtitle={`${projects.active} active · ${projects.overdueTasks} overdue tasks`}
+        {projects && (<Panel title="Project health" subtitle={`${projects.active} active · ${projects.overdueTasks} overdue tasks`}
           icon={FolderKanban} action={{ label: 'Projects', onClick: go('projects') }}>
           {projects.progress.length === 0 ? (
             <EmptyState icon={FolderKanban} title="No active projects" description="Projects you start will appear here." />
@@ -464,7 +542,7 @@ export default function DashboardModule() {
               ))}
             </ul>
           )}
-        </Panel>
+        </Panel>)}
 
         <Panel title="Upcoming meetings"
           subtitle={calendar.todayCount > 0 ? `${calendar.todayCount} today` : 'Next 7 days'}
@@ -500,7 +578,7 @@ export default function DashboardModule() {
 
       {/* ── Support · Inventory · People ───────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Panel title="Support queue" subtitle={`${support.resolvedThisMonth} resolved this month`}
+        {support && (<Panel title="Support queue" subtitle={`${support.resolvedThisMonth} resolved this month`}
           icon={TicketCheck} action={{ label: 'Support', onClick: go('support') }}>
           <div className="mb-4 grid grid-cols-3 gap-2 text-center">
             <div className="rounded-lg border p-2">
@@ -535,9 +613,9 @@ export default function DashboardModule() {
               ))}
             </ul>
           )}
-        </Panel>
+        </Panel>)}
 
-        <Panel title="Inventory alerts" subtitle={`${formatCurrency(inventory.stockValue)} stock on hand`}
+        {inventory && (<Panel title="Inventory alerts" subtitle={`${formatCurrency(inventory.stockValue)} stock on hand`}
           icon={Package} action={{ label: 'Inventory', onClick: go('inventory') }}>
           {inventory.alerts.length === 0 ? (
             <EmptyState icon={CheckCircle2} title="Everything well stocked"
@@ -571,9 +649,9 @@ export default function DashboardModule() {
               </ul>
             </>
           )}
-        </Panel>
+        </Panel>)}
 
-        <Panel title="People" subtitle={`${hr.newHires} joined recently`} icon={UserCog}
+        {hr && (<Panel title="People" subtitle={`${hr.newHires} joined recently`} icon={UserCog}
           action={{ label: 'HR', onClick: go('hr') }}>
           {hr.pendingLeave > 0 && (
             <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-900/20">
@@ -607,12 +685,12 @@ export default function DashboardModule() {
               </div>
             ))}
           </div>
-        </Panel>
+        </Panel>)}
       </div>
 
       {/* ── Activity · Notifications · Files ───────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Panel title="Team activity" subtitle="Across every module" icon={Activity}>
+        {activity && (<Panel title="Team activity" subtitle="Across every module" icon={Activity}>
           {activity.length === 0 ? (
             <EmptyState icon={Activity} title="No recent activity" description="Actions across modules will appear here." />
           ) : (
@@ -634,7 +712,7 @@ export default function DashboardModule() {
               ))}
             </ul>
           )}
-        </Panel>
+        </Panel>)}
 
         <Panel title="Notifications"
           subtitle={notifications.unread > 0 ? `${notifications.unread} unread` : 'All caught up'} icon={Bell}>
@@ -656,7 +734,7 @@ export default function DashboardModule() {
           )}
         </Panel>
 
-        <Panel title="Recent documents" subtitle="Recently edited in Workspace" icon={FileText}
+        {recentFiles && (<Panel title="Recent documents" subtitle="Recently edited in Workspace" icon={FileText}
           action={{ label: 'Workspace', onClick: go('workspace') }}>
           {recentFiles.length === 0 ? (
             <EmptyState icon={FileText} title="No documents yet" description="Pages you create will show up here." />
@@ -677,7 +755,7 @@ export default function DashboardModule() {
               ))}
             </ul>
           )}
-        </Panel>
+        </Panel>)}
       </div>
 
       {/* ── Quick actions ──────────────────────────────────────────────── */}

@@ -1,6 +1,7 @@
-import { db } from '@/lib/db';
+import { db, checkDatabase } from '@/lib/db';
 import { success, error } from '@/lib/api-response';
-import { DEFAULT_USER_ID } from '@/lib/validations';
+import { authorize } from '@/lib/auth-context';
+import { can, scopeFor } from '@/lib/permissions';
 
 /**
  * Executive command-centre aggregation.
@@ -29,9 +30,28 @@ function trend(current: number, previous: number): number | null {
 }
 
 export async function GET(req: Request) {
+  const guard = await authorize('dashboard', 'view');
+  if (guard instanceof Response) return guard;
+
+  // Surface a configuration problem as a configuration problem. Without this a
+  // missing DATABASE_URL or a read-only filesystem produced an opaque 500 and
+  // an empty dashboard, which is indistinguishable from a bug in the app.
+  const health = await checkDatabase();
+  if (!health.ok) {
+    return error(health.message, 503, 'DATABASE_UNAVAILABLE');
+  }
+
   try {
-    const { searchParams } = new URL(req.url);
-    const userId = searchParams.get('userId') || DEFAULT_USER_ID;
+    const { user } = guard;
+    const role = user.role;
+    // "My work" is always the signed-in person's. It used to be taken from a
+    // `?userId=` query parameter, which let anyone read anyone else's task list.
+    const userId = user.id;
+
+    /** Does this role see a given module's section at all? */
+    const sees = (m: Parameters<typeof can>[1]) => can(role, m, 'view');
+    /** Does it see the whole company, or only its own corner? */
+    const orgWide = (m: Parameters<typeof can>[1]) => scopeFor(role, m) === 'organization';
 
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -213,9 +233,22 @@ export async function GET(req: Request) {
     const newHires = activeUsers.filter(u => new Date(u.createdAt) >= startOfPrevMonth).length;
     const onlineNow = users.filter(u => new Date(u.lastSeen).getTime() > now.getTime() - 15 * 60_000).length;
 
-    return success({
+    // Sections are assembled conditionally: a section the role cannot view is
+    // absent from the payload entirely rather than sent and hidden in the UI.
+    // An employee's dashboard response contains no revenue figure at all.
+    const payload: Record<string, unknown> = {
       generatedAt: now.toISOString(),
+      viewer: {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role,
+        department: user.department,
+        jobTitle: user.jobTitle,
+      },
+    };
 
+    const full = {
       company: {
         headcount: activeUsers.length,
         departments: departments.length,
@@ -334,7 +367,58 @@ export async function GET(req: Request) {
 
       activity: activities,
       recentFiles: pages,
-    });
+    };
+
+    // ── Role-based composition ────────────────────────────────────────────
+    // Always personal, for every role including external clients.
+    payload.myWork = full.myWork;
+    payload.notifications = full.notifications;
+    payload.calendar = full.calendar;
+
+    // The company header strip is a leadership view: it aggregates revenue and
+    // headcount, so it is limited to roles with organisation-wide sight of
+    // both finance and HR.
+    if (orgWide('finance') && orgWide('hr')) {
+      payload.company = full.company;
+    } else {
+      // Everyone else still gets an orientation strip, minus the financials.
+      payload.company = {
+        headcount: full.company.headcount,
+        departments: full.company.departments,
+        onlineNow: full.company.onlineNow,
+        newHires: full.company.newHires,
+        activeProjects: full.company.activeProjects,
+        warehouses: full.company.warehouses,
+      };
+    }
+
+    if (sees('crm')) payload.crm = full.crm;
+    if (sees('finance')) payload.finance = full.finance;
+    if (sees('projects')) payload.projects = full.projects;
+    if (sees('support')) payload.support = full.support;
+    if (sees('inventory')) payload.inventory = full.inventory;
+    if (sees('workspace')) payload.recentFiles = full.recentFiles;
+
+    if (sees('hr')) {
+      payload.hr = orgWide('hr')
+        ? full.hr
+        // A manager sees pending approvals for their people; an employee sees
+        // neither the directory nor anyone else's leave.
+        : {
+            headcount: full.hr.headcount,
+            departments: full.hr.departments,
+            newHires: full.hr.newHires,
+            pendingLeave: scopeFor(role, 'hr') === 'department' ? full.hr.pendingLeave : 0,
+            leaveRequests: scopeFor(role, 'hr') === 'department' ? full.hr.leaveRequests : [],
+            team: [],
+          };
+    }
+
+    // The activity feed reveals what colleagues are doing across modules —
+    // appropriate internally, not for external client accounts.
+    if (sees('communication')) payload.activity = full.activity;
+
+    return success(payload);
   } catch (e: any) {
     return error(e.message || 'Dashboard fetch failed', 500);
   }

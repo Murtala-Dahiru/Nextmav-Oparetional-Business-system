@@ -46,7 +46,6 @@ export function Header() {
     notifications,
     setActiveModule,
     activeRole,
-    setActiveRole,
   } = useAppStore();
 
   const unreadCount = notifications.filter((n) => !n.isRead).length;
@@ -106,40 +105,37 @@ export function Header() {
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Role Switcher (RBAC Tester) */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs font-medium bg-emerald-500/10 text-emerald-600 border-emerald-500/20 hover:bg-emerald-500/20">
-            <ShieldCheck className="size-3.5" />
-            <span className="hidden md:inline font-semibold">
-              Role: {ROLES.find((r) => r.id === activeRole)?.name || 'Owner'}
+      {/*
+        Role indicator — read-only.
+
+        This was a "Switch Operating Role" dropdown that let anyone reassign
+        themselves to Owner and reveal Finance and HR in the sidebar. Role is
+        now resolved server-side from the session and displayed, not chosen.
+      */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          {/*
+            Always visible: what you can and cannot do here depends entirely on
+            this, so it should never be the first thing dropped on a narrow
+            screen. Only the label collapses below `sm`, not the indicator.
+          */}
+          <span className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 text-xs font-semibold text-emerald-600 sm:px-2.5">
+            <ShieldCheck className="size-3.5 shrink-0" />
+            <span className="hidden sm:inline">
+              {ROLES.find((r) => r.id === activeRole)?.name || 'Employee'}
             </span>
-            <ChevronDown className="size-3" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-64">
-          <DropdownMenuLabel className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-            Switch Operating Role
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {ROLES.map((role) => (
-            <DropdownMenuItem
-              key={role.id}
-              onClick={() => setActiveRole(role.id as any)}
-              className={cn(
-                'flex flex-col items-start gap-0.5 p-2.5 cursor-pointer',
-                activeRole === role.id && 'bg-emerald-500/10 text-emerald-600 font-semibold'
-              )}
-            >
-              <div className="flex items-center justify-between w-full">
-                <span className="text-xs font-medium">{role.name}</span>
-                {activeRole === role.id && <Badge variant="outline" className="text-[9px] bg-emerald-500 text-white">Active</Badge>}
-              </div>
-              <span className="text-[10px] text-muted-foreground line-clamp-1">{role.description}</span>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-xs">
+          <p className="text-xs">
+            {ROLES.find((r) => r.id === activeRole)?.description ||
+              'Standard workplace access.'}
+          </p>
+          <p className="text-muted-foreground mt-1 text-[10px]">
+            Assigned by your administrator. Contact them to change it.
+          </p>
+        </TooltipContent>
+      </Tooltip>
 
       {/* Search */}
       <Tooltip>

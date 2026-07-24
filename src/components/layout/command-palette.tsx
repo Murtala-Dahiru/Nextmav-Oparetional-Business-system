@@ -53,7 +53,11 @@ const moduleIcons: Record<string, React.ElementType> = {
 
 export function CommandPalette() {
   const [open, setOpen] = React.useState(false);
-  const { activeModule, setActiveModule, setSearchOpen, logout, setSidebarCollapsed } = useAppStore();
+  const { activeModule, setActiveModule, setSearchOpen, logout, setSidebarCollapsed, visibleModules } = useAppStore();
+
+  // The palette is a navigation surface like any other: it must only offer
+  // modules this role can actually open.
+  const allowedModuleIds = new Set(visibleModules());
   const router = useRouter();
   const { theme, setTheme } = useTheme();
 
@@ -96,7 +100,7 @@ export function CommandPalette() {
 
         {/* Navigation */}
         <CommandGroup heading="Navigation">
-          {MODULES.map((mod) => {
+          {MODULES.filter((m) => allowedModuleIds.has(m.id)).map((mod) => {
             const Icon = moduleIcons[mod.icon] || LayoutDashboard;
             const isActive = activeModule === mod.id;
             return (

@@ -1,5 +1,9 @@
 import { create } from 'zustand';
 import type { ModuleId, RoleId } from '@/lib/constants';
+import {
+  normalizeRole, canAccessModule, defaultModuleFor, allowedModules,
+  type CapabilitySummary, type Action,
+} from '@/lib/permissions';
 
 export interface CurrentUser {
   id: string;
@@ -14,6 +18,8 @@ export interface CurrentUser {
   organizationSlug: string | null;
   role: string;
   isActive: boolean;
+  /** Server-computed capability mirror, used for rendering decisions only. */
+  capabilities?: CapabilitySummary;
 }
 
 interface Notification {
@@ -43,9 +49,18 @@ interface AppState {
   setNotifications: (n: Notification[]) => void;
   unreadCount: () => number;
   
-  // RBAC Role simulation
+  /**
+   * The signed-in user's role, resolved by the server from the session.
+   *
+   * This used to be a client-settable "operating role" that defaulted to
+   * `owner` and drove sidebar visibility — meaning any user could grant
+   * themselves Finance and HR from a dropdown. It is now derived state.
+   */
   activeRole: RoleId;
-  setActiveRole: (r: RoleId) => void;
+  /** Modules this role may open, in navigation order. */
+  visibleModules: () => ModuleId[];
+  /** Whether the current role may perform `action` in `module`. */
+  allows: (module: ModuleId, action?: Action) => boolean;
 
   // Actions
   setActiveModule: (m: ModuleId) => void;
@@ -65,9 +80,23 @@ export const useAppStore = create<AppState>((set, get) => ({
   isAuthenticated: false,
   isLoading: true,
   
-  // RBAC
-  activeRole: 'owner',
-  setActiveRole: (r) => set({ activeRole: r }),
+  // RBAC — starts at the least-privileged role and is raised only by the
+  // server's answer in fetchUser(). Defaulting to `owner` here would flash
+  // modules the user may not actually open.
+  activeRole: 'employee',
+
+  visibleModules: () => {
+    const { user, activeRole } = get();
+    // Prefer the server's own list; fall back to computing from the role.
+    return user?.capabilities?.modules ?? allowedModules(activeRole);
+  },
+
+  allows: (module, action = 'view') => {
+    const { user, activeRole } = get();
+    const grant = user?.capabilities?.grants?.[module];
+    if (grant) return grant.actions.includes(action);
+    return canAccessModule(activeRole, module) && action === 'view';
+  },
 
   // Navigation
   activeModule: 'dashboard',
@@ -81,7 +110,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   unreadCount: () => get().notifications.filter(n => !n.isRead).length,
   
   // Navigation actions
-  setActiveModule: (m) => set({ activeModule: m }),
+  setActiveModule: (m) => {
+    // Guard the transition itself: a stale link, command-palette entry or
+    // dashboard widget must not be able to open a module this role lacks.
+    if (!canAccessModule(get().activeRole, m)) return;
+    set({ activeModule: m });
+  },
   setSidebarCollapsed: (c) => set({ sidebarCollapsed: c }),
   setSidebarOpen: (o) => set({ sidebarOpen: o }),
   setSearchOpen: (o) => set({ searchOpen: o }),
@@ -114,13 +148,22 @@ export const useAppStore = create<AppState>((set, get) => ({
       const json = await res.json();
       const userData = json?.data?.user ?? json?.user;
       if (userData) {
-        set({ 
-          user: userData, 
-          isAuthenticated: true, 
-          isLoading: false 
+        const role = normalizeRole(userData.capabilities?.role ?? userData.role);
+        const { activeModule } = get();
+        set({
+          user: userData,
+          isAuthenticated: true,
+          isLoading: false,
+          activeRole: role,
+          // If the stored module is one this role cannot open (e.g. after
+          // switching accounts), fall back to their natural landing module
+          // rather than rendering a module they have no access to.
+          activeModule: canAccessModule(role, activeModule)
+            ? activeModule
+            : defaultModuleFor(role),
         });
       } else {
-        set({ user: null, isAuthenticated: false, isLoading: false });
+        set({ user: null, isAuthenticated: false, isLoading: false, activeRole: 'employee' });
       }
     } catch (e) {
       console.error('Fetch user failed:', e);

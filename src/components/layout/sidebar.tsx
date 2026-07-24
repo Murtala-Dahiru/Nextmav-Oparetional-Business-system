@@ -63,15 +63,19 @@ function SidebarNav({
   collapsed: boolean;
   onNavigate?: () => void;
 }) {
-  const { activeModule, setActiveModule, activeRole } = useAppStore();
+  const { activeModule, setActiveModule, visibleModules: allowedIds } = useAppStore();
 
   const handleNav = (id: ModuleId) => {
     setActiveModule(id);
     onNavigate?.();
   };
 
-  const allowedModules = ROLE_PERMISSIONS[activeRole] || ROLE_PERMISSIONS.owner;
-  const visibleModules = MODULES.filter((m) => allowedModules.includes(m.id));
+  // Driven by the capability set the server returned for this session, not by
+  // a client-selected role. Falling back to an empty list (rather than every
+  // module) means a failure to resolve capabilities hides navigation instead
+  // of exposing it.
+  const allowed = new Set(allowedIds());
+  const visibleModules = MODULES.filter((m) => allowed.has(m.id));
 
   return (
     <ScrollArea className="flex-1 px-3 py-2">

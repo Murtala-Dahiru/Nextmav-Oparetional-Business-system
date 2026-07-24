@@ -10,12 +10,16 @@ export async function POST(request: NextRequest) {
       const res = NextResponse.json({
         data: { message: 'Logged out successfully' },
       })
-      res.cookies.set('nexuscorp-demo-session', '', {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 0, // Delete immediately
-      })
+      // Clear both the session flag and the identity it pointed at, or the
+      // next sign-in would silently inherit the previous user's role.
+      for (const name of ['nexuscorp-demo-session', 'nexuscorp-session-user']) {
+        res.cookies.set(name, '', {
+          httpOnly: true,
+          sameSite: 'lax',
+          path: '/',
+          maxAge: 0, // Delete immediately
+        })
+      }
       return res
     }
 

@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { success, error, paginated } from '@/lib/api-response';
 import { createPurchaseOrderSchema } from '@/lib/validations';
 import { safeSortField } from '@/lib/sort-whitelist';
+import { authorize } from '@/lib/auth-context';
 
 const ORDER_INCLUDE = {
   supplier: { select: { id: true, name: true, leadTimeDays: true } },
@@ -13,6 +14,9 @@ const ORDER_INCLUDE = {
 } as const;
 
 export async function GET(req: Request) {
+  const guard = await authorize('inventory', 'view');
+  if (guard instanceof Response) return guard;
+
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
   const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 20));
@@ -58,6 +62,9 @@ async function nextOrderNumber(tx: any): Promise<string> {
 }
 
 export async function POST(req: Request) {
+  const guard = await authorize('inventory', 'create');
+  if (guard instanceof Response) return guard;
+
   try {
     const body = await req.json();
     const { items, taxRate, expectedDate, ...header } = createPurchaseOrderSchema.parse(body);

@@ -21,13 +21,24 @@ const DEMO_USER = {
 
 export async function GET(request: NextRequest) {
   try {
-    // If no Supabase configured, check for demo session cookie
+    // If no Supabase configured, resolve the acting user from the session
+    // cookie. The role comes from the database, never from the client.
     if (!SUPABASE_URL) {
-      const hasDemoSession = request.cookies.get('nexuscorp-demo-session')?.value === 'true'
-      if (hasDemoSession) {
-        return success({ user: DEMO_USER })
-      }
-      return success({ user: null })
+      const { getActingUser } = await import('@/lib/auth-context')
+      const { capabilitySummary } = await import('@/lib/permissions')
+
+      const acting = await getActingUser()
+      if (!acting) return success({ user: null })
+
+      return success({
+        user: {
+          ...acting,
+          // Mirror of server truth, so navigation and affordances match what
+          // the API will actually allow. Rendering only — never an access
+          // decision.
+          capabilities: capabilitySummary(acting.role),
+        },
+      })
     }
 
     // Dynamic import to avoid crash when env vars are empty

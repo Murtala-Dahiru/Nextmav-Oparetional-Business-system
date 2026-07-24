@@ -31,16 +31,39 @@ export async function POST(request: NextRequest) {
     }
 
     if (!SUPABASE_URL) {
-      // Demo mode: accept any credentials, set a demo session cookie
+      // Demo mode: any password is accepted, but the *identity* is real. If
+      // the email matches a user in the directory we adopt that person's role
+      // and department, so signing in as the HR Manager actually yields the HR
+      // experience rather than a hardcoded super-admin. This is what makes
+      // role-based dashboards testable end to end.
+      const { findUserByEmail, SESSION_COOKIE, SESSION_USER_COOKIE } =
+        await import('@/lib/auth-context')
+      const { capabilitySummary } = await import('@/lib/permissions')
+
+      const matched = await findUserByEmail(email)
+      const identity = matched ?? DEMO_USER
+
       const res = NextResponse.json({
-        data: { user: DEMO_USER, message: 'Logged in (demo mode)' },
+        data: {
+          user: matched
+            ? { ...matched, capabilities: capabilitySummary(matched.role) }
+            : { ...DEMO_USER, capabilities: capabilitySummary('owner') },
+          message: matched
+            ? `Signed in as ${matched.firstName} ${matched.lastName} (${matched.role})`
+            : 'Logged in (demo mode)',
+        },
       })
-      res.cookies.set('nexuscorp-demo-session', 'true', {
+
+      const cookie = {
         httpOnly: true,
-        sameSite: 'lax',
+        sameSite: 'lax' as const,
         path: '/',
         maxAge: 60 * 60 * 24 * 7, // 7 days
-      })
+      }
+      res.cookies.set(SESSION_COOKIE, 'true', cookie)
+      // Records *which* user this session is, so the server can resolve their
+      // role on every subsequent request instead of trusting the client.
+      res.cookies.set(SESSION_USER_COOKIE, (identity as any).id ?? 'u1', cookie)
       return res
     }
 

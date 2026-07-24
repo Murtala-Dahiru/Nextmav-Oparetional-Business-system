@@ -1,5 +1,6 @@
 import { db } from '@/lib/db';
 import { success, error } from '@/lib/api-response';
+import { authorize } from '@/lib/auth-context';
 
 /**
  * Operational health of the inventory: what needs reordering, what it will
@@ -9,6 +10,9 @@ import { success, error } from '@/lib/api-response';
  * a fixed threshold, because a reorder point is per-product by nature.
  */
 export async function GET(req: Request) {
+  const guard = await authorize('inventory', 'view');
+  if (guard instanceof Response) return guard;
+
   try {
     const { searchParams } = new URL(req.url);
     const limit = Math.min(200, Math.max(1, Number(searchParams.get('limit')) || 50));

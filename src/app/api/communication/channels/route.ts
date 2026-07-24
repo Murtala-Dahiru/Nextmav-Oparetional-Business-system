@@ -2,8 +2,12 @@ import { db } from '@/lib/db';
 import { success, error, paginated } from '@/lib/api-response';
 import { createChannelSchema } from '@/lib/validations';
 import { safeSortField } from '@/lib/sort-whitelist';
+import { authorize } from '@/lib/auth-context';
 
 export async function GET(req: Request) {
+  const guard = await authorize('communication', 'view');
+  if (guard instanceof Response) return guard;
+
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
   const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 20));
@@ -39,6 +43,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const guard = await authorize('communication', 'create');
+  if (guard instanceof Response) return guard;
+
   try {
     const body = await req.json();
     const validated = createChannelSchema.parse(body);
