@@ -49,6 +49,8 @@ model User {
   activities        ActivityLog[]
   stockMovements    StockMovement[] @relation("StockMovementUser")
   purchaseOrders    PurchaseOrder[] @relation("PurchaseOrderCreator")
+  attendance        AttendanceRecord[] @relation("AttendanceUser")
+  attendanceAdjusted AttendanceRecord[] @relation("AttendanceAdjuster")
 }
 
 model Role {
@@ -490,6 +492,47 @@ model PurchaseOrderItem {
 
   @@index([orderId])
   @@index([productId])
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  HR: Attendance
+// ═══════════════════════════════════════════════════════════════════════
+
+/// One row per employee per working day.
+///
+/// The unique constraint on (userId, date) is what makes this an attendance
+/// system rather than an event log: a day has exactly one state, so "did Ana
+/// work on the 4th?" always has a single answer. Times are stored as absolute
+/// instants; `date` is midnight of the working day it belongs to.
+model AttendanceRecord {
+  id        String   @id @default(uuid())
+  userId    String
+  /// Midnight of the working day this record covers.
+  date      DateTime
+  checkInAt  DateTime?
+  checkOutAt DateTime?
+  /// "present" | "late" | "absent" | "on_leave" | "remote" | "holiday"
+  status    String   @default("present")
+  /// Minutes worked, computed server-side on check-out. Never client-supplied.
+  workedMinutes Int   @default(0)
+  /// Unpaid break deducted from workedMinutes.
+  breakMinutes  Int   @default(0)
+  /// Minutes late against the organisation's start time, 0 when on time.
+  lateMinutes   Int   @default(0)
+  note      String   @default("")
+  /// Set when a manager or HR corrects a record, so edits stay attributable.
+  adjustedById String?
+  adjustedAt   DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user       User  @relation("AttendanceUser", fields: [userId], references: [id], onDelete: Cascade)
+  adjustedBy User? @relation("AttendanceAdjuster", fields: [adjustedById], references: [id])
+
+  @@unique([userId, date])
+  @@index([date])
+  @@index([userId, date])
+  @@index([status])
 }
 
 // ═══════════════════════════════════════════════════════════════════════

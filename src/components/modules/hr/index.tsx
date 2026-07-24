@@ -9,6 +9,7 @@ import {
   Pencil, Trash2, Plus, Loader2, MoreHorizontal, CalendarDays, ShieldCheck, ShieldX,
 } from 'lucide-react';
 
+import AttendanceTab from './attendance-tab';
 import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -918,61 +919,8 @@ function LeaveTab() {
 //  Attendance & Shifts Tab
 // ═══════════════════════════════════════════════════════════════════════════
 
-function AttendanceTab() {
-  const [records] = useState([
-    { id: '1', name: 'Alex Morgan', dept: 'Engineering', checkIn: '08:55 AM', checkOut: '05:30 PM', status: 'On Time', totalHours: '8h 35m' },
-    { id: '2', name: 'Sarah Jenkins', dept: 'Sales', checkIn: '09:12 AM', checkOut: '06:00 PM', status: 'Late', totalHours: '8h 48m' },
-    { id: '3', name: 'Jordan Lee', dept: 'Design', checkIn: '08:45 AM', checkOut: '05:15 PM', status: 'On Time', totalHours: '8h 30m' },
-    { id: '4', name: 'Taylor Swift', dept: 'Support', checkIn: '09:00 AM', checkOut: '05:30 PM', status: 'On Time', totalHours: '8h 30m' },
-  ]);
-
-  return (
-    <div className="flex flex-col gap-4">
-      <PageHeader title="Attendance & Shifts" description="Track daily employee check-ins, shift schedules, and working hours">
-        <Button className="bg-emerald-600 hover:bg-emerald-700">
-          <Clock className="size-4 mr-2" /> Clock In / Out
-        </Button>
-      </PageHeader>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard label="Present Today" value="42 / 45" icon={CheckCircle} />
-        <StatCard label="On Time Rate" value="95.5%" icon={Clock} />
-        <StatCard label="Remote / Hybrid" value="18" icon={Building2} />
-      </div>
-
-      <div className="border rounded-lg bg-card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/40">
-              <th className="p-3 text-left font-medium text-muted-foreground">Employee</th>
-              <th className="p-3 text-left font-medium text-muted-foreground">Department</th>
-              <th className="p-3 text-left font-medium text-muted-foreground">Check In</th>
-              <th className="p-3 text-left font-medium text-muted-foreground">Check Out</th>
-              <th className="p-3 text-left font-medium text-muted-foreground">Hours</th>
-              <th className="p-3 text-right font-medium text-muted-foreground">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {records.map((r) => (
-              <tr key={r.id} className="border-b last:border-0 hover:bg-accent/30">
-                <td className="p-3 font-medium text-foreground">{r.name}</td>
-                <td className="p-3 text-muted-foreground">{r.dept}</td>
-                <td className="p-3 text-muted-foreground">{r.checkIn}</td>
-                <td className="p-3 text-muted-foreground">{r.checkOut}</td>
-                <td className="p-3 text-muted-foreground">{r.totalHours}</td>
-                <td className="p-3 text-right">
-                  <Badge variant="outline" className={r.status === 'On Time' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 border-amber-500/20'}>
-                    {r.status}
-                  </Badge>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
+// AttendanceTab now lives in ./attendance-tab.tsx — backed by the
+// AttendanceRecord model, not hardcoded rows.
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Onboarding & Recruitment Tab

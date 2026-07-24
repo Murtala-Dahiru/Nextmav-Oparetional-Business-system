@@ -14,7 +14,8 @@
     "postinstall": "prisma generate",
     "start:standalone": "node .next/standalone/server.js",
     "db:deploy": "prisma db push",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "test": "tsx scripts/attendance.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
