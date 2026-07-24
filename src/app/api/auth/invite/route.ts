@@ -1,77 +1,49 @@
-import { NextRequest } from 'next/server'
-import { success, error } from '@/lib/api-response'
+import { NextRequest } from 'next/server';
+import { authorize, pgError } from '@/lib/auth-context';
+import { success, error } from '@/lib/api-response';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-
-const VALID_INVITE_ROLES = ['admin', 'manager', 'sales', 'hr', 'finance', 'marketing', 'support', 'employee']
-
+/**
+ * Invite someone to the organization.
+ *
+ * Delegates to invite_to_organization(), which checks the caller is an admin,
+ * refuses addresses that already belong to a member, and refreshes an existing
+ * pending invitation rather than accumulating duplicates — issuing a new token
+ * so any previously sent link stops working.
+ *
+ * Sending the email is the application's job; the database issues the
+ * credential. The token is returned so the caller can build the link.
+ */
 export async function POST(request: NextRequest) {
+  const ctx = await authorize('admin', 'manage');
+  if (ctx instanceof Response) return ctx;
+
   try {
-    const body = await request.json()
-    const { email, organization_id, role } = body
-
-    if (!email || typeof email !== 'string' || !email.includes('@')) {
-      return error('A valid email address is required', 400, 'VALIDATION_ERROR')
-    }
-    if (!organization_id || typeof organization_id !== 'string') {
-      return error('Organization ID is required', 400, 'VALIDATION_ERROR')
-    }
-    if (!role || !VALID_INVITE_ROLES.includes(role)) {
-      return error(`Invalid role. Must be one of: ${VALID_INVITE_ROLES.join(', ')}`, 400, 'VALIDATION_ERROR')
+    const b = (await request.json()) ?? {};
+    if (!b.email || typeof b.email !== 'string' || !b.email.includes('@')) {
+      return error('A valid email address is required', 422, 'VALIDATION_ERROR');
     }
 
-    if (!SUPABASE_URL) {
-      return success({
-        id: 'demo-invite-001',
-        email: email.trim().toLowerCase(),
-        role,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        message: 'Invitation created (demo mode)',
-      })
-    }
+    const { data, error: e } = await ctx.supabase.rpc('invite_to_organization', {
+      org: ctx.org.organizationId,
+      invite_email: b.email.trim().toLowerCase(),
+      invite_role: b.role ?? 'employee',
+      invite_department: b.department_id || null,
+      invite_message: b.message ?? null,
+    });
 
-    const { createSupabaseServerClient } = await import('@/lib/supabase/server')
-    const supabase = await createSupabaseServerClient(request)
+    if (e) return pgError(e);
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return error('Authentication required', 401, 'UNAUTHORIZED')
-    }
+    const invitation = Array.isArray(data) ? data[0] : data;
+    const origin = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
 
-    const { data: membership } = await supabase
-      .from('organization_members')
-      .select('id, role')
-      .eq('user_id', user.id)
-      .eq('organization_id', organization_id)
-      .eq('is_active', true)
-      .single()
-
-    if (!membership || !['owner', 'admin'].includes(membership.role)) {
-      return error('Only owners and admins can send invitations', 403, 'FORBIDDEN')
-    }
-
-    const token = crypto.randomUUID()
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
-
-    const { data: invitation, error: inviteError } = await supabase
-      .from('invitations')
-      .insert({
-        organization_id,
-        email: email.trim().toLowerCase(),
-        role,
-        token,
-        invited_by: user.id,
-        expires_at: expiresAt,
-      })
-      .select('id, email, role, token, expires_at, created_at')
-      .single()
-
-    if (inviteError) {
-      return error('Failed to create invitation: ' + inviteError.message, 500, 'INVITE_ERROR', inviteError)
-    }
-
-    return success(invitation)
+    return success({
+      invitation,
+      inviteUrl: origin + '/accept-invite?token=' + invitation.token,
+      // Delivery is not wired up yet; surfacing the link means the workflow is
+      // usable now rather than silently doing nothing.
+      emailSent: false,
+    }, undefined, 201);
   } catch (e: any) {
-    return error(e.message || 'Failed to create invitation', 500, 'INTERNAL_ERROR')
+    return error(e.message || 'Could not create the invitation', 500);
   }
 }

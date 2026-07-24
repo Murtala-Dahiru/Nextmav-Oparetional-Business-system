@@ -1,61 +1,30 @@
-import { db } from '@/lib/db';
-import { success, error, paginated } from '@/lib/api-response';
-import { createPageSchema } from '@/lib/validations';
-import { safeSortField } from '@/lib/sort-whitelist';
-import { authorize } from '@/lib/auth-context';
+import { collectionHandlers } from '@/lib/supabase/crud';
 
-export async function GET(req: Request) {
-  const guard = await authorize('workspace', 'view');
-  if (guard instanceof Response) return guard;
+const SELECT =
+  '*, space:workspace_spaces(id, name), editor:organization_members!workspace_pages_last_edited_by_fkey(id, profiles!organization_members_user_id_fkey(full_name))';
 
-  const { searchParams } = new URL(req.url);
-  const page = Math.max(1, Number(searchParams.get('page')) || 1);
-  const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 20));
-  const search = searchParams.get('search') || '';
-  const rawSort = searchParams.get('sort') || 'createdAt';
-  const sort = safeSortField('workspacePage', rawSort);
-  const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
-  const parentId = searchParams.get('parentId');
-  const isFolder = searchParams.get('isFolder');
-
-  const where: any = {};
-  if (search) {
-    where.OR = [
-      { title: { contains: search, mode: 'insensitive' } },
-      { content: { contains: search, mode: 'insensitive' } },
-    ];
-  }
-  if (parentId !== null && parentId !== undefined && parentId !== '') {
-    where.parentId = parentId;
-  }
-  if (isFolder !== null && isFolder !== undefined && isFolder !== '') {
-    where.isFolder = isFolder === 'true';
-  }
-
-  const [data, total] = await Promise.all([
-    db.workspacePage.findMany({
-      where,
-      orderBy: { [sort]: sortDir },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+export const { GET, POST } = collectionHandlers(
+  {
+    table: 'workspace_pages', module: 'workspace', select: SELECT, softDelete: true,
+    searchColumns: ['title', 'content'],
+    sortable: ['created_at', 'updated_at', 'title', 'sort_order'],
+    filterable: ['space_id', 'parent_id', 'is_folder', 'is_template'],
+  },
+  {
+    table: 'workspace_pages', module: 'workspace', select: SELECT,
+    prepare: (b, ctx) => ({
+      // A page with no title is normal while drafting; naming it "Untitled"
+      // keeps it findable instead of rendering as a blank row.
+      title: b.title?.trim() || 'Untitled',
+      content: b.content ?? '',
+      icon: b.icon ?? null,
+      space_id: b.space_id || null,
+      parent_id: b.parent_id || null,
+      is_folder: b.is_folder ?? false,
+      is_template: b.is_template ?? false,
+      sort_order: Number(b.sort_order) || 0,
+      created_by: ctx.org.memberId,
+      last_edited_by: ctx.org.memberId,
     }),
-    db.workspacePage.count({ where }),
-  ]);
-
-  return paginated(data, total, page, pageSize);
-}
-
-export async function POST(req: Request) {
-  const guard = await authorize('workspace', 'create');
-  if (guard instanceof Response) return guard;
-
-  try {
-    const body = await req.json();
-    const validated = createPageSchema.parse(body);
-    const record = await db.workspacePage.create({ data: validated });
-    return success(record, undefined, 201);
-  } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    return error(e.message || 'Create failed', 500);
-  }
-}
+  },
+);

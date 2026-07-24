@@ -1,68 +1,30 @@
-import { db } from '@/lib/db';
-import { success, error, paginated } from '@/lib/api-response';
-import { createTaskSchema } from '@/lib/validations';
-import { safeSortField } from '@/lib/sort-whitelist';
-import { authorize, scopeWhere } from '@/lib/auth-context';
+import { collectionHandlers } from '@/lib/supabase/crud';
 
-export async function GET(req: Request) {
-  const guard = await authorize('projects', 'view');
-  if (guard instanceof Response) return guard;
-  const scoped = scopeWhere(guard, { ownerField: 'assigneeId' });
+const SELECT = '*, project:projects(id, name), assignee:organization_members!tasks_assignee_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url))';
 
-  const { searchParams } = new URL(req.url);
-  const page = Math.max(1, Number(searchParams.get('page')) || 1);
-  const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 20));
-  const search = searchParams.get('search') || '';
-  const rawSort = searchParams.get('sort') || 'createdAt';
-  const sort = safeSortField('projectTask', rawSort);
-  const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
-  const status = searchParams.get('status');
-  const priority = searchParams.get('priority');
-  const projectId = searchParams.get('projectId');
-  const assigneeId = searchParams.get('assigneeId');
-
-  const where: any = { ...scoped };
-  if (search) {
-    where.OR = [
-      { title: { contains: search, mode: 'insensitive' } },
-      { description: { contains: search, mode: 'insensitive' } },
-    ];
-  }
-  if (status) where.status = status;
-  if (priority) where.priority = priority;
-  if (projectId) where.projectId = projectId;
-  if (assigneeId) where.assigneeId = assigneeId;
-
-  const [data, total] = await Promise.all([
-    db.projectTask.findMany({
-      where,
-      orderBy: { [sort]: sortDir },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      include: {
-        assignee: { select: { id: true, firstName: true, lastName: true, email: true } },
-        project: { select: { id: true, name: true } },
-      },
-    }),
-    db.projectTask.count({ where }),
-  ]);
-
-  return paginated(data, total, page, pageSize);
-}
-
-export async function POST(req: Request) {
-  const guard = await authorize('projects', 'create');
-  if (guard instanceof Response) return guard;
-
-  try {
-    const body = await req.json();
-    const validated = createTaskSchema.parse(body);
-    const data: any = { ...validated };
-    if (data.dueDate) data.dueDate = new Date(data.dueDate);
-    const record = await db.projectTask.create({ data });
-    return success(record, undefined, 201);
-  } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    return error(e.message || 'Create failed', 500);
-  }
-}
+export const { GET, POST } = collectionHandlers(
+  {
+    table: 'tasks', module: 'projects', select: SELECT, softDelete: true,
+    searchColumns: ['title', 'description'],
+    sortable: ['created_at', 'updated_at', 'title', 'status', 'priority', 'due_date', 'sort_order'],
+    filterable: ['status', 'priority', 'project_id', 'assignee_id', 'milestone_id'],
+  },
+  {
+    table: 'tasks', module: 'projects', select: SELECT,
+    prepare: (b, ctx) => {
+      if (!b.title?.trim()) throw new Error('Task title is required');
+      return {
+        title: b.title.trim(), description: b.description ?? '',
+        status: b.status ?? 'todo', priority: b.priority ?? 'medium',
+        project_id: b.project_id || null, milestone_id: b.milestone_id || null,
+        parent_task_id: b.parent_task_id || null,
+        assignee_id: b.assignee_id || null,
+        // Who raised it, for accountability on the board.
+        reporter_id: ctx.org.memberId,
+        due_date: b.due_date || null,
+        estimated_hours: Math.max(0, Number(b.estimated_hours) || 0),
+        sort_order: Number(b.sort_order) || 0,
+      };
+    },
+  },
+);

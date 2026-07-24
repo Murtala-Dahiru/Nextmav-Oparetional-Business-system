@@ -1,60 +1,35 @@
-import { db } from '@/lib/db';
-import { success, error, paginated } from '@/lib/api-response';
-import { createProductSchema } from '@/lib/validations';
-import { safeSortField } from '@/lib/sort-whitelist';
-import { authorize } from '@/lib/auth-context';
+import { collectionHandlers } from '@/lib/supabase/crud';
 
-export async function GET(req: Request) {
-  const guard = await authorize('inventory', 'view');
-  if (guard instanceof Response) return guard;
+const SELECT = '*, warehouse:warehouses(id, name), supplier:suppliers(id, name, lead_time_days)';
 
-  const { searchParams } = new URL(req.url);
-  const page = Math.max(1, Number(searchParams.get('page')) || 1);
-  const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 20));
-  const search = searchParams.get('search') || '';
-  const rawSort = searchParams.get('sort') || 'createdAt';
-  const sort = safeSortField('product', rawSort);
-  const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
-  const category = searchParams.get('category');
-  const isActive = searchParams.get('isActive');
-
-  const where: any = {};
-  if (search) {
-    where.OR = [
-      { name: { contains: search, mode: 'insensitive' } },
-      { sku: { contains: search, mode: 'insensitive' } },
-    ];
-  }
-  if (category) where.category = category;
-  if (isActive !== null && isActive !== undefined && isActive !== '') {
-    where.isActive = isActive === 'true';
-  }
-
-  const [data, total] = await Promise.all([
-    db.product.findMany({
-      where,
-      orderBy: { [sort]: sortDir },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-    db.product.count({ where }),
-  ]);
-
-  return paginated(data, total, page, pageSize);
-}
-
-export async function POST(req: Request) {
-  const guard = await authorize('inventory', 'create');
-  if (guard instanceof Response) return guard;
-
-  try {
-    const body = await req.json();
-    const validated = createProductSchema.parse(body);
-    const record = await db.product.create({ data: validated });
-    return success(record, undefined, 201);
-  } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    if (e.code === 'P2002') return error('SKU already exists', 409);
-    return error(e.message || 'Create failed', 500);
-  }
-}
+export const { GET, POST } = collectionHandlers(
+  {
+    table: 'products', module: 'inventory', select: SELECT, softDelete: true,
+    searchColumns: ['name', 'sku', 'description', 'category'],
+    sortable: ['created_at', 'updated_at', 'name', 'sku', 'category', 'price', 'stock'],
+    filterable: ['category', 'warehouse_id', 'supplier_id', 'is_active'],
+  },
+  {
+    table: 'products', module: 'inventory', select: SELECT,
+    prepare: (b) => {
+      if (!b.sku?.trim()) throw new Error('SKU is required');
+      if (!b.name?.trim()) throw new Error('Product name is required');
+      return {
+        sku: b.sku.trim(),
+        name: b.name.trim(),
+        description: b.description ?? '',
+        category: b.category ?? 'general',
+        unit: b.unit ?? 'unit',
+        price: Math.max(0, Number(b.price) || 0),
+        cost: Math.max(0, Number(b.cost) || 0),
+        reorder_level: Math.max(0, Number(b.reorder_level) || 10),
+        warehouse_id: b.warehouse_id || null,
+        supplier_id: b.supplier_id || null,
+        is_active: b.is_active ?? true,
+        // `stock` is deliberately omitted: it is the running total of the
+        // movement ledger, written only by record_stock_movement(). Accepting
+        // it here would let the balance and its own history disagree.
+      };
+    },
+  },
+);

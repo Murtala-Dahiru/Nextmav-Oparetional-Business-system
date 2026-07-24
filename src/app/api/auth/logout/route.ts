@@ -1,38 +1,19 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { success, error } from '@/lib/api-response'
+import { supabaseServer } from '@/lib/supabase/server';
+import { success } from '@/lib/api-response';
 
-export async function POST(request: NextRequest) {
+/**
+ * Sign out.
+ *
+ * Always reports success. If revocation fails the local session cookies are
+ * still cleared by the SSR client, and leaving someone on a dashboard they
+ * believe they have left is worse than a redundant redirect.
+ */
+export async function POST() {
   try {
-    const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-
-    if (!SUPABASE_URL) {
-      // Demo mode: clear demo session cookie
-      const res = NextResponse.json({
-        data: { message: 'Logged out successfully' },
-      })
-      // Clear both the session flag and the identity it pointed at, or the
-      // next sign-in would silently inherit the previous user's role.
-      for (const name of ['nexuscorp-demo-session', 'nexuscorp-session-user']) {
-        res.cookies.set(name, '', {
-          httpOnly: true,
-          sameSite: 'lax',
-          path: '/',
-          maxAge: 0, // Delete immediately
-        })
-      }
-      return res
-    }
-
-    const { createSupabaseServerClient } = await import('@/lib/supabase/server')
-    const supabase = await createSupabaseServerClient(request)
-    const { error: signOutError } = await supabase.auth.signOut()
-
-    if (signOutError) {
-      return error(signOutError.message, 400, 'AUTH_ERROR', signOutError)
-    }
-
-    return success({ message: 'Logged out successfully' })
-  } catch (e: any) {
-    return error(e.message || 'Logout failed', 500, 'INTERNAL_ERROR')
+    const supabase = await supabaseServer();
+    await supabase.auth.signOut();
+  } catch {
+    // Fall through — the client clears local state regardless.
   }
+  return success({ message: 'Signed out' });
 }

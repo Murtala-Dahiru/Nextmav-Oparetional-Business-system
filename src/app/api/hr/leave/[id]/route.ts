@@ -1,141 +1,143 @@
-import { db } from '@/lib/db';
+import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
-import { updateLeaveSchema } from '@/lib/validations';
-import { authorize } from '@/lib/auth-context';
 import { can } from '@/lib/permissions';
 
-const REQUESTER = {
-  requester: { select: { id: true, firstName: true, lastName: true, avatar: true, department: true } },
-} as const;
+const SELECT =
+  '*, member:organization_members!leave_requests_member_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url)), approver:organization_members!leave_requests_approved_by_fkey(id, profiles!organization_members_user_id_fkey(full_name))';
 
-/** Statuses that represent an approval decision rather than an edit. */
-const DECISION_STATUSES = ['approved', 'rejected', 'cancelled'];
+const DECISIONS = ['approved', 'rejected', 'cancelled'];
 
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const guard = await authorize('hr', 'view');
-  if (guard instanceof Response) return guard;
+type Params = { params: Promise<{ id: string }> };
+
+export async function GET(_req: Request, { params }: Params) {
+  const ctx = await authorize('hr', 'view');
+  if (ctx instanceof Response) return ctx;
   const { id } = await params;
 
-  try {
-    const record = await db.leaveRequest.findUnique({ where: { id }, include: REQUESTER });
-    if (!record) return error('Not found', 404);
+  const { data, error: e } = await ctx.supabase
+    .from('leave_requests').select(SELECT)
+    .eq('organization_id', ctx.org.organizationId).eq('id', id)
+    .maybeSingle();
 
-    // Someone with `own` scope may only open their own request. Returning 404
-    // rather than 403 avoids confirming that another person's record exists.
-    if (guard.scope === 'own' && record.requesterId !== guard.user.id) {
-      return error('Not found', 404);
-    }
-    return success(record);
-  } catch (e: any) {
-    return error(e.message || 'Get failed', 500);
-  }
+  if (e) return pgError(e);
+  // Hidden-by-RLS and does-not-exist are the same answer by design.
+  if (!data) return error('Not found', 404, 'NOT_FOUND');
+  return success(data);
 }
 
 /**
- * Update a leave request.
+ * Amend or decide a leave request.
  *
  * Two different responsibilities share this endpoint and must not be
- * conflated: amending the details of your own pending request, and deciding
- * someone else's. Approval requires the `approve` capability, which employees
- * do not have — previously any caller could set `status: "approved"` on their
- * own request and self-authorise their leave.
+ * conflated: correcting the details of your own pending request, and deciding
+ * someone else's. Deciding requires the `approve` capability, which employees
+ * do not have.
+ *
+ * Self-approval is blocked by a database trigger as well, so the rule holds
+ * even for a caller who reaches the table another way. This check exists to
+ * produce a clear 403 rather than a raw constraint violation.
  */
-export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const guard = await authorize('hr', 'view');
-  if (guard instanceof Response) return guard;
+export async function PATCH(req: Request, { params }: Params) {
+  const ctx = await authorize('hr', 'view');
+  if (ctx instanceof Response) return ctx;
   const { id } = await params;
 
   try {
-    const body = await req.json();
-    const validated = updateLeaveSchema.parse(body);
+    const b = await req.json();
 
-    const existing = await db.leaveRequest.findUnique({
-      where: { id },
-      select: { id: true, requesterId: true, status: true },
-    });
-    if (!existing) return error('Not found', 404);
+    const { data: existing } = await ctx.supabase
+      .from('leave_requests')
+      .select('id, member_id, status')
+      .eq('organization_id', ctx.org.organizationId)
+      .eq('id', id)
+      .maybeSingle();
 
-    const isOwnRequest = existing.requesterId === guard.user.id;
+    if (!existing) return error('Not found', 404, 'NOT_FOUND');
+
+    const isOwn = existing.member_id === ctx.org.memberId;
     const isDecision =
-      typeof validated.status === 'string' &&
-      DECISION_STATUSES.includes(validated.status) &&
-      validated.status !== existing.status;
+      typeof b.status === 'string' && DECISIONS.includes(b.status) && b.status !== existing.status;
+
+    const update: Record<string, any> = {};
 
     if (isDecision) {
-      if (!can(guard.user.role, 'hr', 'approve')) {
-        return error('You are not permitted to approve leave requests.', 403, 'FORBIDDEN_ACTION');
+      if (!can(ctx.org.role, 'hr', 'approve')) {
+        return error('You are not permitted to decide leave requests.', 403, 'FORBIDDEN_ACTION');
       }
-      // Approving your own leave is a separation-of-duties failure even for a
-      // manager; it has to be decided by someone else.
-      if (isOwnRequest && validated.status === 'approved') {
+      if (isOwn && b.status === 'approved') {
         return error(
-          'You cannot approve your own leave request. It must be decided by another approver.',
-          403,
-          'SELF_APPROVAL',
+          'You cannot approve your own leave request. It must be decided by someone else.',
+          403, 'SELF_APPROVAL',
         );
       }
-    } else if (guard.scope === 'own' && !isOwnRequest) {
-      return error('Not found', 404);
-    } else if (!isOwnRequest && !can(guard.user.role, 'hr', 'edit')) {
-      return error('You are not permitted to edit this request.', 403, 'FORBIDDEN_ACTION');
+      update.status = b.status;
+      update.approved_by = ctx.org.memberId;
+      update.decided_at = new Date().toISOString();
+      if (b.decision_note) update.decision_note = b.decision_note;
+    } else {
+      if (!isOwn && !can(ctx.org.role, 'hr', 'edit')) {
+        return error('You are not permitted to edit this request.', 403, 'FORBIDDEN_ACTION');
+      }
+      // A decided request is the record of what was authorised; reopening it
+      // would erase the decision trail.
+      if (existing.status !== 'pending') {
+        return error(
+          `This request has already been ${existing.status} and can no longer be edited.`,
+          409, 'ALREADY_DECIDED',
+        );
+      }
+      for (const k of ['type', 'start_date', 'end_date', 'is_half_day', 'reason']) {
+        if (k in b) update[k] = b[k];
+      }
+      if (update.start_date && update.end_date && update.end_date < update.start_date) {
+        return error('End date cannot be before the start date', 422, 'VALIDATION_ERROR');
+      }
     }
 
-    // A decided request is the record of what was authorised; reopening it
-    // would erase the decision trail.
-    if (!isDecision && existing.status !== 'pending') {
-      return error(
-        `This request has already been ${existing.status} and can no longer be edited.`,
-        409,
-        'ALREADY_DECIDED',
-      );
-    }
+    const { data, error: e } = await ctx.supabase
+      .from('leave_requests').update(update)
+      .eq('organization_id', ctx.org.organizationId).eq('id', id)
+      .select(SELECT).maybeSingle();
 
-    const data: any = { ...validated };
-    if (data.startDate) data.startDate = new Date(data.startDate);
-    if (data.endDate) data.endDate = new Date(data.endDate);
-    if (isDecision) data.approverId = guard.user.id;
-    // Never let a requester reassign a request to someone else.
-    if (guard.scope === 'own') delete data.requesterId;
-
-    const record = await db.leaveRequest.update({ where: { id }, data, include: REQUESTER });
-    return success(record);
+    if (e) return pgError(e);
+    if (!data) return error('Not found', 404, 'NOT_FOUND');
+    return success(data);
   } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    if (e.code === 'P2025') return error('Not found', 404);
     return error(e.message || 'Update failed', 500);
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const guard = await authorize('hr', 'view');
-  if (guard instanceof Response) return guard;
+export { PATCH as PUT };
+
+export async function DELETE(_req: Request, { params }: Params) {
+  const ctx = await authorize('hr', 'view');
+  if (ctx instanceof Response) return ctx;
   const { id } = await params;
 
-  try {
-    const existing = await db.leaveRequest.findUnique({
-      where: { id },
-      select: { requesterId: true, status: true },
-    });
-    if (!existing) return error('Not found', 404);
+  const { data: existing } = await ctx.supabase
+    .from('leave_requests').select('member_id, status')
+    .eq('organization_id', ctx.org.organizationId).eq('id', id)
+    .maybeSingle();
 
-    const isOwnRequest = existing.requesterId === guard.user.id;
-    if (!isOwnRequest && !can(guard.user.role, 'hr', 'delete')) {
-      return error('You are not permitted to delete this request.', 403, 'FORBIDDEN_ACTION');
-    }
-    // Withdrawing a pending request is fine; deleting an approved one would
-    // remove an authorised absence from the record.
-    if (existing.status !== 'pending' && !can(guard.user.role, 'hr', 'manage')) {
-      return error(
-        `This request has already been ${existing.status} and cannot be deleted.`,
-        409,
-        'ALREADY_DECIDED',
-      );
-    }
+  if (!existing) return error('Not found', 404, 'NOT_FOUND');
 
-    await db.leaveRequest.delete({ where: { id } });
-    return success({ deleted: true });
-  } catch (e: any) {
-    if (e.code === 'P2025') return error('Not found', 404);
-    return error(e.message || 'Delete failed', 500);
+  const isOwn = existing.member_id === ctx.org.memberId;
+  if (!isOwn && !can(ctx.org.role, 'hr', 'delete')) {
+    return error('You are not permitted to delete this request.', 403, 'FORBIDDEN_ACTION');
   }
+  // Withdrawing a pending request is fine; removing an approved one would
+  // delete an authorised absence from the record.
+  if (existing.status !== 'pending' && !can(ctx.org.role, 'hr', 'manage')) {
+    return error(
+      `This request has already been ${existing.status} and cannot be deleted.`,
+      409, 'ALREADY_DECIDED',
+    );
+  }
+
+  const { error: e } = await ctx.supabase
+    .from('leave_requests').delete()
+    .eq('organization_id', ctx.org.organizationId).eq('id', id);
+
+  if (e) return pgError(e);
+  return success({ deleted: true });
 }

@@ -1,68 +1,34 @@
-import { db } from '@/lib/db';
-import { success, error, paginated } from '@/lib/api-response';
-import { createTicketSchema } from '@/lib/validations';
-import { safeSortField } from '@/lib/sort-whitelist';
-import { authorize, scopeWhere } from '@/lib/auth-context';
+import { collectionHandlers } from '@/lib/supabase/crud';
 
-export async function GET(req: Request) {
-  const guard = await authorize('support', 'view');
-  if (guard instanceof Response) return guard;
-  const scoped = scopeWhere(guard, { ownerField: 'assigneeId' });
+const SELECT =
+  '*, assignee:organization_members!support_tickets_assignee_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url)), contact:contacts(id, first_name, last_name)';
 
-  const { searchParams } = new URL(req.url);
-  const page = Math.max(1, Number(searchParams.get('page')) || 1);
-  const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 20));
-  const search = searchParams.get('search') || '';
-  const rawSort = searchParams.get('sort') || 'createdAt';
-  const sort = safeSortField('supportTicket', rawSort);
-  const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
-  const status = searchParams.get('status');
-  const priority = searchParams.get('priority');
-  const category = searchParams.get('category');
-
-  const where: any = { ...scoped };
-  if (search) {
-    where.OR = [
-      { subject: { contains: search, mode: 'insensitive' } },
-      { description: { contains: search, mode: 'insensitive' } },
-      { contactName: { contains: search, mode: 'insensitive' } },
-      { contactEmail: { contains: search, mode: 'insensitive' } },
-      { ticketNumber: { contains: search, mode: 'insensitive' } },
-    ];
-  }
-  if (status) where.status = status;
-  if (priority) where.priority = priority;
-  if (category) where.category = category;
-
-  const [data, total] = await Promise.all([
-    db.supportTicket.findMany({
-      where,
-      orderBy: { [sort]: sortDir },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      include: {
-        assignee: { select: { id: true, firstName: true, lastName: true, email: true } },
-      },
-    }),
-    db.supportTicket.count({ where }),
-  ]);
-
-  return paginated(data, total, page, pageSize);
-}
-
-export async function POST(req: Request) {
-  const guard = await authorize('support', 'create');
-  if (guard instanceof Response) return guard;
-
-  try {
-    const body = await req.json();
-    const validated = createTicketSchema.parse(body);
-    const data: any = { ...validated };
-    if (data.dueDate) data.dueDate = new Date(data.dueDate);
-    const record = await db.supportTicket.create({ data });
-    return success(record, undefined, 201);
-  } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    return error(e.message || 'Create failed', 500);
-  }
-}
+export const { GET, POST } = collectionHandlers(
+  {
+    table: 'support_tickets', module: 'support', select: SELECT, softDelete: true,
+    searchColumns: ['subject', 'description', 'ticket_number', 'category'],
+    sortable: ['created_at', 'updated_at', 'ticket_number', 'status', 'priority', 'due_at'],
+    filterable: ['status', 'priority', 'assignee_id', 'category'],
+  },
+  {
+    table: 'support_tickets', module: 'support', select: SELECT,
+    prepare: (b, ctx) => {
+      if (!b.subject?.trim()) throw new Error('Subject is required');
+      return {
+        subject: b.subject.trim(),
+        description: b.description ?? '',
+        status: b.status ?? 'open',
+        priority: b.priority ?? 'medium',
+        category: b.category ?? null,
+        contact_id: b.contact_id || null,
+        contact_email: b.contact_email || null,
+        assignee_id: b.assignee_id || null,
+        // Whoever raises it is the requester. That is what confines an external
+        // client to seeing only their own tickets.
+        requester_id: ctx.org.memberId,
+        // ticket_number and the SLA due_at are assigned by trigger, so every
+        // write path agrees on the numbering and on the promise being made.
+      };
+    },
+  },
+);

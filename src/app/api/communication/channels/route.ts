@@ -1,58 +1,28 @@
-import { db } from '@/lib/db';
-import { success, error, paginated } from '@/lib/api-response';
-import { createChannelSchema } from '@/lib/validations';
-import { safeSortField } from '@/lib/sort-whitelist';
-import { authorize } from '@/lib/auth-context';
+import { collectionHandlers } from '@/lib/supabase/crud';
 
-export async function GET(req: Request) {
-  const guard = await authorize('communication', 'view');
-  if (guard instanceof Response) return guard;
-
-  const { searchParams } = new URL(req.url);
-  const page = Math.max(1, Number(searchParams.get('page')) || 1);
-  const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 20));
-  const search = searchParams.get('search') || '';
-  const rawSort = searchParams.get('sort') || 'createdAt';
-  const sort = safeSortField('channel', rawSort);
-  const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
-  const type = searchParams.get('type');
-
-  const where: any = {};
-  if (search) {
-    where.OR = [
-      { name: { contains: search, mode: 'insensitive' } },
-      { description: { contains: search, mode: 'insensitive' } },
-    ];
-  }
-  if (type) where.type = type;
-
-  const [data, total] = await Promise.all([
-    db.channel.findMany({
-      where,
-      orderBy: { [sort]: sortDir },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      include: {
-        _count: { select: { messages: true } },
-      },
-    }),
-    db.channel.count({ where }),
-  ]);
-
-  return paginated(data, total, page, pageSize);
-}
-
-export async function POST(req: Request) {
-  const guard = await authorize('communication', 'create');
-  if (guard instanceof Response) return guard;
-
-  try {
-    const body = await req.json();
-    const validated = createChannelSchema.parse(body);
-    const record = await db.channel.create({ data: validated });
-    return success(record, undefined, 201);
-  } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    return error(e.message || 'Create failed', 500);
-  }
-}
+export const { GET, POST } = collectionHandlers(
+  {
+    table: 'channels', module: 'communication',
+    searchColumns: ['name', 'description'],
+    sortable: ['created_at', 'name', 'type'],
+    filterable: ['type', 'department_id', 'is_archived'],
+  },
+  {
+    table: 'channels', module: 'communication',
+    prepare: (b, ctx) => {
+      if (!b.name?.trim()) throw new Error('Channel name is required');
+      // Normalised to a slug so "#General" and "#general" cannot become two
+      // separate channels that half the company is missing from.
+      const slug = b.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      if (!slug) throw new Error('Channel name must contain letters or numbers');
+      return {
+        name: slug,
+        description: b.description ?? '',
+        type: b.type ?? 'public',
+        department_id: b.department_id || null,
+        team_id: b.team_id || null,
+        created_by: ctx.org.memberId,
+      };
+    },
+  },
+);

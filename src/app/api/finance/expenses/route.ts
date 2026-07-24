@@ -1,66 +1,47 @@
-import { db } from '@/lib/db';
-import { success, error, paginated } from '@/lib/api-response';
-import { createExpenseSchema } from '@/lib/validations';
-import { safeSortField } from '@/lib/sort-whitelist';
-import { authorize, scopeWhere } from '@/lib/auth-context';
+import { collectionHandlers } from '@/lib/supabase/crud';
 
-export async function GET(req: Request) {
-  const guard = await authorize('finance', 'view');
-  if (guard instanceof Response) return guard;
-  // Sales staff and employees never reach finance at all; a manager sees only
-  // what they own, finance staff and above see the whole organisation.
-  const scoped = scopeWhere(guard, { ownerField: 'ownerId' });
+const SELECT =
+  '*, submitter:organization_members!expenses_submitted_by_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url)), approver:organization_members!expenses_approved_by_fkey(id, profiles!organization_members_user_id_fkey(full_name)), project:projects(id, name), department:departments(id, name)';
 
-  const { searchParams } = new URL(req.url);
-  const page = Math.max(1, Number(searchParams.get('page')) || 1);
-  const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 20));
-  const search = searchParams.get('search') || '';
-  const rawSort = searchParams.get('sort') || 'createdAt';
-  const sort = safeSortField('expense', rawSort);
-  const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
-  const category = searchParams.get('category');
-  const status = searchParams.get('status');
-
-  const where: any = { ...scoped };
-  if (search) {
-    where.OR = [
-      { title: { contains: search, mode: 'insensitive' } },
-      { vendor: { contains: search, mode: 'insensitive' } },
-      { notes: { contains: search, mode: 'insensitive' } },
-    ];
-  }
-  if (category) where.category = category;
-  if (status) where.status = status;
-
-  const [data, total] = await Promise.all([
-    db.expense.findMany({
-      where,
-      orderBy: { [sort]: sortDir },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      include: {
-        owner: { select: { id: true, firstName: true, lastName: true, email: true } },
-      },
-    }),
-    db.expense.count({ where }),
-  ]);
-
-  return paginated(data, total, page, pageSize);
-}
-
-export async function POST(req: Request) {
-  const guard = await authorize('finance', 'create');
-  if (guard instanceof Response) return guard;
-
-  try {
-    const body = await req.json();
-    const validated = createExpenseSchema.parse(body);
-    const data: any = { ...validated };
-    data.date = new Date(data.date);
-    const record = await db.expense.create({ data });
-    return success(record, undefined, 201);
-  } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    return error(e.message || 'Create failed', 500);
-  }
-}
+/**
+ * Expenses.
+ *
+ * The exception within finance: anyone may submit and track their own claim,
+ * but only finance roles see the organisation's full spend. That split is
+ * enforced by RLS — the policy admits a row if you submitted it *or* you have
+ * finance access — so this handler does not restate it.
+ */
+export const { GET, POST } = collectionHandlers(
+  {
+    table: 'expenses', module: 'hr', select: SELECT, softDelete: true,
+    searchColumns: ['title', 'vendor', 'category', 'notes'],
+    sortable: ['created_at', 'updated_at', 'title', 'amount', 'expense_date', 'status'],
+    filterable: ['status', 'category', 'submitted_by', 'project_id', 'department_id'],
+  },
+  {
+    table: 'expenses', module: 'hr', select: SELECT,
+    prepare: (b, ctx) => {
+      if (!b.title?.trim()) throw new Error('Title is required');
+      const amount = Number(b.amount);
+      if (!Number.isFinite(amount) || amount < 0) {
+        throw new Error('Amount must be a positive number');
+      }
+      return {
+        title: b.title.trim(),
+        amount,
+        currency: b.currency ?? 'USD',
+        category: b.category ?? 'general',
+        vendor: b.vendor ?? null,
+        expense_date: b.expense_date ?? new Date().toISOString().slice(0, 10),
+        // Always enters as pending: a claim that arrives pre-approved is a
+        // self-authorisation. A trigger blocks approving your own regardless.
+        status: 'pending',
+        receipt_path: b.receipt_path ?? null,
+        project_id: b.project_id || null,
+        department_id: b.department_id || ctx.org.departmentId || null,
+        submitted_by: ctx.org.memberId,
+        notes: b.notes ?? '',
+      };
+    },
+  },
+);

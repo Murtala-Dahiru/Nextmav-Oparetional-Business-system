@@ -1,190 +1,182 @@
-import { cookies } from 'next/headers';
-import { db } from '@/lib/db';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { supabaseServer } from '@/lib/supabase/server';
 import { error } from '@/lib/api-response';
 import type { ModuleId, RoleId } from '@/lib/constants';
-import {
-  normalizeRole, can, scopeFor, canAccessModule,
-  type Action, type Scope,
-} from '@/lib/permissions';
+import { normalizeRole, can, canAccessModule, type Action } from '@/lib/permissions';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- *  Acting user — server-side identity resolution.
+ *  Request context: who is calling, and for which organization.
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * Route handlers must never take the caller's role from the request body,
- * a header, or a query parameter. They resolve it here, from the session
- * cookie, against the database.
+ *  Two layers of enforcement, deliberately:
+ *
+ *   1. RLS in the database. The client here carries the user's JWT, so every
+ *      query is filtered by policy. This is the layer that actually protects
+ *      the data — it holds even if a route handler is wrong.
+ *
+ *   2. `authorize()` below. Checks the capability model before the query runs,
+ *      so a forbidden action returns a clear 403 instead of an empty list.
+ *      RLS alone cannot distinguish "no rows" from "not allowed", and that
+ *      distinction is the difference between a usable error and a mystery.
+ *
+ *  Layer 2 is for the user experience. Layer 1 is the security boundary.
+ *  Never rely on layer 2 alone.
  */
-
-export const SESSION_COOKIE = 'nexuscorp-demo-session';
-/** Identifies which user the demo session represents. */
-export const SESSION_USER_COOKIE = 'nexuscorp-session-user';
 
 export interface ActingUser {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
-  jobTitle: string;
-  department: string;
+  fullName: string;
+  avatarUrl: string | null;
+  jobTitle: string | null;
+}
+
+export interface OrgContext {
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  /** The caller's membership row id — what business tables reference. */
+  memberId: string;
   role: RoleId;
-  isActive: boolean;
+  departmentId: string | null;
+}
+
+export interface RequestContext {
+  supabase: SupabaseClient;
+  user: ActingUser;
+  org: OrgContext;
 }
 
 /**
- * Fallback identity when a demo session exists but names no specific user
- * (older cookies, or a signup that has not been seeded into the User table).
+ * Resolve the signed-in user and their active organization.
+ *
+ * Returns null when unauthenticated, or when the user has a session but
+ * belongs to no organization — which happens between signing up and either
+ * creating an organization or accepting an invitation.
  */
-const FALLBACK_USER: ActingUser = {
-  id: 'u1',
-  email: 'admin@nexuscorp.io',
-  firstName: 'Alex',
-  lastName: 'Morgan',
-  jobTitle: 'Platform Administrator',
-  department: 'Executive',
-  role: 'owner',
-  isActive: true,
-};
+export async function getContext(
+  preferredOrgId?: string,
+): Promise<RequestContext | null> {
+  const supabase = await supabaseServer();
 
-function toActingUser(row: {
-  id: string; email: string; firstName: string; lastName: string;
-  jobTitle: string; department: string; roleId: string; isActive: boolean;
-}): ActingUser {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  // The profile row is created by a trigger on auth.users; its absence means
+  // provisioning failed rather than that the user is unauthenticated.
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id, email, first_name, last_name, full_name, avatar_url, job_title')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  // Memberships this user can see. RLS already restricts this to their own.
+  const { data: memberships } = await supabase
+    .from('organization_members')
+    .select('id, organization_id, role, department_id, organizations(id, name, slug)')
+    .eq('user_id', user.id)
+    .eq('is_active', true);
+
+  if (!memberships?.length) return null;
+
+  // Honour the requested organization when the caller genuinely belongs to it;
+  // otherwise fall back to the first. Never trust the parameter on its own —
+  // that would be a tenant-selection bypass.
+  const membership =
+    (preferredOrgId && memberships.find(m => m.organization_id === preferredOrgId)) ||
+    memberships[0];
+
+  const orgRel = membership.organizations as any;
+  const organization = Array.isArray(orgRel) ? orgRel[0] : orgRel;
+
   return {
-    id: row.id,
-    email: row.email,
-    firstName: row.firstName,
-    lastName: row.lastName,
-    jobTitle: row.jobTitle,
-    department: row.department,
-    // The stored value may be a legacy identifier; normalise it so every
-    // downstream check speaks one vocabulary.
-    role: normalizeRole(row.roleId),
-    isActive: row.isActive,
+    supabase,
+    user: {
+      id: user.id,
+      email: profile?.email ?? user.email ?? '',
+      firstName: profile?.first_name ?? '',
+      lastName: profile?.last_name ?? '',
+      fullName: profile?.full_name ?? '',
+      avatarUrl: profile?.avatar_url ?? null,
+      jobTitle: profile?.job_title ?? null,
+    },
+    org: {
+      organizationId: membership.organization_id,
+      organizationName: organization?.name ?? '',
+      organizationSlug: organization?.slug ?? '',
+      memberId: membership.id,
+      role: normalizeRole(membership.role),
+      departmentId: membership.department_id ?? null,
+    },
   };
 }
 
 /**
- * Resolve the acting user for this request, or null when unauthenticated.
+ * Guard a route handler.
  *
- * Demo mode note: the session cookie is httpOnly but unsigned, so it is a
- * convenience mechanism, not a cryptographic one. It is no weaker than the
- * existing demo login (which accepts any password) — but before this is used
- * with real data the cookie must be replaced by a signed token or the
- * Supabase session, at which point only this function needs to change.
- */
-export async function getActingUser(): Promise<ActingUser | null> {
-  const store = await cookies();
-  if (store.get(SESSION_COOKIE)?.value !== 'true') return null;
-
-  const userId = store.get(SESSION_USER_COOKIE)?.value;
-  if (!userId) return FALLBACK_USER;
-
-  try {
-    const row = await db.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true, email: true, firstName: true, lastName: true,
-        jobTitle: true, department: true, roleId: true, isActive: true,
-      },
-    });
-    if (!row) return FALLBACK_USER;
-    // A deactivated account keeps its cookie until expiry; deny immediately.
-    if (!row.isActive) return null;
-    return toActingUser(row);
-  } catch {
-    return FALLBACK_USER;
-  }
-}
-
-/** Look up a user by email for sign-in, so demo logins adopt a real role. */
-export async function findUserByEmail(email: string): Promise<ActingUser | null> {
-  try {
-    const row = await db.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
-      select: {
-        id: true, email: true, firstName: true, lastName: true,
-        jobTitle: true, department: true, roleId: true, isActive: true,
-      },
-    });
-    return row && row.isActive ? toActingUser(row) : null;
-  } catch {
-    return null;
-  }
-}
-
-// ─── Route guards ──────────────────────────────────────────────────────────
-
-export interface AuthorizedContext {
-  user: ActingUser;
-  scope: Scope;
-}
-
-/**
- * Guard for a route handler.
+ *     const ctx = await authorize('finance', 'create');
+ *     if (ctx instanceof Response) return ctx;
+ *     const { supabase, org } = ctx;
  *
- * Returns either the authorised context or a `Response` to return directly:
- *
- *   const guard = await authorize('finance', 'approve');
- *   if (guard instanceof Response) return guard;
- *   const { user, scope } = guard;
- *
- * 401 means "no session"; 403 means "session, but not permitted" — a
- * distinction clients need in order to decide between redirecting to login
- * and showing a permission message.
+ * 401 means "no session or no organization"; 403 means "signed in, but not
+ * permitted". Clients need that distinction to choose between redirecting to
+ * login and showing a permission message.
  */
 export async function authorize(
   module: ModuleId,
   action: Action = 'view',
-): Promise<AuthorizedContext | Response> {
-  const user = await getActingUser();
-  if (!user) return error('Authentication required', 401, 'UNAUTHENTICATED');
+  opts: { organizationId?: string } = {},
+): Promise<RequestContext | Response> {
+  const ctx = await getContext(opts.organizationId);
+  if (!ctx) return error('Authentication required', 401, 'UNAUTHENTICATED');
 
-  if (!canAccessModule(user.role, module)) {
+  const { role } = ctx.org;
+
+  if (!canAccessModule(role, module)) {
     return error(
-      `Your role (${user.role}) does not have access to ${module}.`,
+      `Your role (${role}) does not have access to ${module}.`,
       403,
       'FORBIDDEN_MODULE',
     );
   }
-  if (!can(user.role, module, action)) {
+  if (!can(role, module, action)) {
     return error(
-      `Your role (${user.role}) cannot ${action} in ${module}.`,
+      `Your role (${role}) cannot ${action} in ${module}.`,
       403,
       'FORBIDDEN_ACTION',
     );
   }
 
-  return { user, scope: scopeFor(user.role, module)! };
+  return ctx;
 }
 
 /**
- * Translate a scope into a Prisma `where` fragment.
+ * Translate a PostgREST error into an HTTP response.
  *
- * `ownerField` is whichever column identifies the subject of the record for
- * this module (`ownerId`, `assigneeId`, `requesterId`, …). Passing null means
- * the model has no per-user owner, in which case `own` degrades to
- * `department` — never silently to organization-wide.
+ * RLS rejections surface as 42501 (insufficient privilege) or as an empty
+ * result. Mapping them to 403 rather than 500 keeps "you may not do this"
+ * distinguishable from "something broke".
  */
-export function scopeWhere(
-  ctx: AuthorizedContext,
-  opts: { ownerField?: string | null; departmentField?: string | null } = {},
-): Record<string, unknown> {
-  const { user, scope } = ctx;
-  const { ownerField = 'ownerId', departmentField = null } = opts;
+export function pgError(e: { code?: string; message?: string; details?: string } | null) {
+  if (!e) return error('Unknown database error', 500);
 
-  if (scope === 'organization') return {};
-
-  if (scope === 'department') {
-    if (departmentField) return { [departmentField]: user.department };
-    // No department column on this model: fall back to the user's own records
-    // rather than exposing the whole organisation.
-    return ownerField ? { [ownerField]: user.id } : {};
+  switch (e.code) {
+    case '42501':
+      return error('You do not have permission to perform this action.', 403, 'RLS_DENIED');
+    case '23505':
+      return error('That record already exists.', 409, 'DUPLICATE');
+    case '23503':
+      return error('A referenced record does not exist.', 400, 'FK_VIOLATION');
+    case '23514':
+      // Business-rule triggers raise check_violation with a written message,
+      // so pass it through — it is the explanation the user needs.
+      return error(e.message ?? 'That change is not allowed.', 409, 'RULE_VIOLATION');
+    case 'PGRST116':
+      return error('Not found', 404, 'NOT_FOUND');
+    default:
+      return error(e.message ?? 'Database error', 500, e.code);
   }
-
-  // scope === 'own'
-  if (ownerField) return { [ownerField]: user.id };
-  if (departmentField) return { [departmentField]: user.department };
-  return {};
 }

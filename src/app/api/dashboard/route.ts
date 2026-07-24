@@ -1,425 +1,189 @@
-import { db, checkDatabase } from '@/lib/db';
-import { success, error } from '@/lib/api-response';
-import { authorize } from '@/lib/auth-context';
+import { authorize, pgError } from '@/lib/auth-context';
+import { success } from '@/lib/api-response';
 import { can, scopeFor } from '@/lib/permissions';
+import type { ModuleId } from '@/lib/constants';
 
 /**
- * Executive command-centre aggregation.
+ * Role-composed dashboard.
  *
- * Every widget on the dashboard is served from this single endpoint. The
- * alternative — one request per widget — would mean ~15 round trips before the
- * page is usable. Aggregates are computed here rather than shipping raw rows to
- * the browser, so the payload stays small and the numbers are consistent with
- * each other (all read within the same request).
+ * Sections a role cannot view are absent from the payload entirely rather than
+ * sent and hidden in the UI — an employee's response contains no revenue
+ * figure at all, so there is nothing to leak in the network tab.
+ *
+ * Headline aggregates come from `v_dashboard_stats`, a `security_invoker` view,
+ * so the same RLS that governs the tables governs the rollup. Detail lists are
+ * fetched in parallel and are individually tenant-filtered.
  */
+export async function GET() {
+  const ctx = await authorize('dashboard', 'view');
+  if (ctx instanceof Response) return ctx;
 
-const MS_DAY = 86_400_000;
+  const { supabase, org, user } = ctx;
+  const role = org.role;
+  const orgId = org.organizationId;
 
-/** Open (unwon, unlost) pipeline stages. */
-const CLOSED_STAGES = ['closed-won', 'closed-lost', 'won', 'lost'];
+  const sees = (m: ModuleId) => can(role, m, 'view');
+  const orgWide = (m: ModuleId) => scopeFor(role, m) === 'organization';
 
-function pct(part: number, whole: number): number {
-  if (!whole) return 0;
-  return Math.round((part / whole) * 1000) / 10;
-}
+  const today = new Date().toISOString().slice(0, 10);
+  const in7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
 
-/** Percentage change from `previous` to `current`, null when there is no base. */
-function trend(current: number, previous: number): number | null {
-  if (!previous) return null;
-  return Math.round(((current - previous) / previous) * 1000) / 10;
-}
+  const [
+    statsRes, myTasksRes, notifsRes, eventsRes, activityRes,
+    projectsRes, pipelineRes, alertsRes, leaveRes, ticketsRes, financeRes, attendanceRes,
+  ] = await Promise.all([
+    supabase.from('v_dashboard_stats').select('*').eq('organization_id', orgId).maybeSingle(),
 
-export async function GET(req: Request) {
-  const guard = await authorize('dashboard', 'view');
-  if (guard instanceof Response) return guard;
-
-  // Surface a configuration problem as a configuration problem. Without this a
-  // missing DATABASE_URL or a read-only filesystem produced an opaque 500 and
-  // an empty dashboard, which is indistinguishable from a bug in the app.
-  const health = await checkDatabase();
-  if (!health.ok) {
-    return error(health.message, 503, 'DATABASE_UNAVAILABLE');
-  }
-
-  try {
-    const { user } = guard;
-    const role = user.role;
-    // "My work" is always the signed-in person's. It used to be taken from a
-    // `?userId=` query parameter, which let anyone read anyone else's task list.
-    const userId = user.id;
-
-    /** Does this role see a given module's section at all? */
-    const sees = (m: Parameters<typeof can>[1]) => can(role, m, 'view');
-    /** Does it see the whole company, or only its own corner? */
-    const orgWide = (m: Parameters<typeof can>[1]) => scopeFor(role, m) === 'organization';
-
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const endOfToday = new Date(startOfToday.getTime() + MS_DAY);
-    const in7Days = new Date(now.getTime() + 7 * MS_DAY);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfPrevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
-
-    const [
-      users, leads, deals, projects, tasks, tickets, invoices, expenses,
-      leaveRequests, events, notifications, activities, pages, products,
-      myTasks, warehouses,
-    ] = await Promise.all([
-      db.user.findMany({
-        select: {
-          id: true, firstName: true, lastName: true, email: true, avatar: true,
-          jobTitle: true, department: true, isActive: true, lastSeen: true, createdAt: true,
-        },
-      }),
-      db.lead.findMany({ select: { id: true, status: true, value: true, score: true, createdAt: true } }),
-      db.deal.findMany({
-        select: { id: true, name: true, stage: true, value: true, probability: true, closeDate: true, companyName: true, createdAt: true },
-      }),
-      db.project.findMany({
-        select: { id: true, name: true, status: true, priority: true, budget: true, endDate: true },
-      }),
-      db.projectTask.findMany({ select: { id: true, status: true, projectId: true, dueDate: true, estimatedHours: true, loggedHours: true } }),
-      db.supportTicket.findMany({
-        select: { id: true, ticketNumber: true, subject: true, status: true, priority: true, category: true, dueDate: true, createdAt: true },
-      }),
-      db.invoice.findMany({ select: { id: true, invoiceNumber: true, companyName: true, status: true, total: true, dueDate: true, paidAt: true, createdAt: true } }),
-      db.expense.findMany({ select: { id: true, amount: true, category: true, status: true, date: true } }),
-      db.leaveRequest.findMany({
-        where: { status: 'pending' },
-        take: 6,
-        orderBy: { startDate: 'asc' },
-        include: { requester: { select: { id: true, firstName: true, lastName: true, avatar: true, department: true } } },
-      }),
-      db.calendarEvent.findMany({
-        where: { startDate: { gte: startOfToday, lte: in7Days } },
-        orderBy: { startDate: 'asc' },
-        take: 8,
-        include: { creator: { select: { id: true, firstName: true, lastName: true, avatar: true } } },
-      }),
-      db.notification.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 8 }),
-      db.activityLog.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-        include: { user: { select: { id: true, firstName: true, lastName: true, avatar: true } } },
-      }),
-      db.workspacePage.findMany({
-        where: { isFolder: false },
-        orderBy: { updatedAt: 'desc' },
-        take: 6,
-        select: { id: true, title: true, icon: true, color: true, updatedAt: true, isStarred: true, lastEditedBy: true },
-      }),
-      db.product.findMany({ select: { id: true, name: true, sku: true, stock: true, reorderLevel: true, cost: true, unit: true, isActive: true } }),
-      db.projectTask.findMany({
-        where: { assigneeId: userId, status: { not: 'done' } },
-        orderBy: [{ dueDate: 'asc' }, { priority: 'desc' }],
-        take: 8,
-        include: { project: { select: { id: true, name: true } } },
-      }),
-      db.warehouse.count(),
-    ]);
-
-    // ── CRM pipeline ──────────────────────────────────────────────────────
-    const openDeals = deals.filter(d => !CLOSED_STAGES.includes(d.stage));
-    const wonDeals = deals.filter(d => d.stage === 'closed-won' || d.stage === 'won');
-    const pipelineValue = openDeals.reduce((s, d) => s + d.value, 0);
-    // Weighting by probability is what makes a pipeline forecastable rather
-    // than just a sum of wishful thinking.
-    const weightedPipeline = openDeals.reduce((s, d) => s + d.value * (d.probability / 100), 0);
-    const wonValue = wonDeals.reduce((s, d) => s + d.value, 0);
-
-    const stageOrder = ['prospecting', 'qualification', 'proposal', 'negotiation', 'closed-won'];
-    const dealsByStage = stageOrder.map(stage => {
-      const rows = deals.filter(d => d.stage === stage);
-      return { stage, count: rows.length, value: rows.reduce((s, d) => s + d.value, 0) };
-    }).filter(s => s.count > 0 || stageOrder.indexOf(s.stage) < 5);
-
-    const leadsByStatus = Object.entries(
-      leads.reduce<Record<string, number>>((acc, l) => {
-        acc[l.status] = (acc[l.status] ?? 0) + 1;
-        return acc;
-      }, {}),
-    ).map(([status, count]) => ({ status, count }));
-
-    // ── Finance ───────────────────────────────────────────────────────────
-    const paidInvoices = invoices.filter(i => i.status === 'paid');
-    const revenue = paidInvoices.reduce((s, i) => s + i.total, 0);
-    const revenueThisMonth = paidInvoices
-      .filter(i => i.paidAt && new Date(i.paidAt) >= startOfMonth)
-      .reduce((s, i) => s + i.total, 0);
-    const revenuePrevMonth = paidInvoices
-      .filter(i => i.paidAt && new Date(i.paidAt) >= startOfPrevMonth && new Date(i.paidAt) < startOfMonth)
-      .reduce((s, i) => s + i.total, 0);
-
-    const outstanding = invoices
-      .filter(i => i.status === 'sent' || i.status === 'overdue')
-      .reduce((s, i) => s + i.total, 0);
-    const overdueInvoices = invoices.filter(
-      i => i.status !== 'paid' && i.status !== 'draft' && new Date(i.dueDate) < now,
-    );
-
-    const approvedExpenses = expenses.filter(e => e.status === 'approved');
-    const totalExpenses = approvedExpenses.reduce((s, e) => s + e.amount, 0);
-    const expensesThisMonth = approvedExpenses
-      .filter(e => new Date(e.date) >= startOfMonth)
-      .reduce((s, e) => s + e.amount, 0);
-    const pendingExpenses = expenses.filter(e => e.status === 'pending');
-
-    // Trailing 6 months of revenue vs spend, oldest first.
-    const revenueByMonth: { month: string; revenue: number; expenses: number }[] = [];
-    for (let i = 0; i < 6; i++) {
-      const from = new Date(sixMonthsAgo.getFullYear(), sixMonthsAgo.getMonth() + i, 1);
-      const to = new Date(from.getFullYear(), from.getMonth() + 1, 1);
-      revenueByMonth.push({
-        month: from.toLocaleString('en-US', { month: 'short' }),
-        revenue: paidInvoices
-          .filter(inv => inv.paidAt && new Date(inv.paidAt) >= from && new Date(inv.paidAt) < to)
-          .reduce((s, inv) => s + inv.total, 0),
-        expenses: approvedExpenses
-          .filter(e => new Date(e.date) >= from && new Date(e.date) < to)
-          .reduce((s, e) => s + e.amount, 0),
-      });
-    }
-
-    // ── Projects ──────────────────────────────────────────────────────────
-    const tasksByProject = tasks.reduce<Record<string, { total: number; done: number }>>((acc, t) => {
-      const bucket = (acc[t.projectId] ??= { total: 0, done: 0 });
-      bucket.total++;
-      if (t.status === 'done') bucket.done++;
-      return acc;
-    }, {});
-
-    const projectProgress = projects
-      .filter(p => p.status !== 'completed' && p.status !== 'cancelled')
-      .map(p => {
-        const counts = tasksByProject[p.id] ?? { total: 0, done: 0 };
-        const daysLeft = p.endDate
-          ? Math.ceil((new Date(p.endDate).getTime() - now.getTime()) / MS_DAY)
-          : null;
-        const progress = pct(counts.done, counts.total);
-        return {
-          id: p.id, name: p.name, status: p.status, priority: p.priority,
-          budget: p.budget, totalTasks: counts.total, doneTasks: counts.done,
-          progress, daysLeft,
-          // A project is "at risk" when the deadline is closer than the work
-          // remaining suggests it should be.
-          atRisk: daysLeft !== null && daysLeft <= 14 && progress < 75,
-        };
-      })
-      .sort((a, b) => Number(b.atRisk) - Number(a.atRisk) || (a.daysLeft ?? 9999) - (b.daysLeft ?? 9999))
-      .slice(0, 6);
-
-    const overdueTasks = tasks.filter(t => t.status !== 'done' && t.dueDate && new Date(t.dueDate) < now).length;
-    const tasksDueThisWeek = tasks.filter(
-      t => t.status !== 'done' && t.dueDate && new Date(t.dueDate) >= startOfToday && new Date(t.dueDate) <= in7Days,
-    ).length;
-
-    // ── Support ───────────────────────────────────────────────────────────
-    const openTickets = tickets.filter(t => t.status !== 'resolved' && t.status !== 'closed');
-    const breachedTickets = openTickets.filter(t => t.dueDate && new Date(t.dueDate) < now);
-    const ticketsByPriority = ['critical', 'high', 'medium', 'low'].map(priority => ({
-      priority,
-      count: openTickets.filter(t => t.priority === priority).length,
-    }));
-
-    // ── Inventory ─────────────────────────────────────────────────────────
-    const activeProducts = products.filter(p => p.isActive);
-    const lowStock = activeProducts.filter(p => p.stock <= p.reorderLevel);
-    const stockValue = activeProducts.reduce((s, p) => s + p.stock * p.cost, 0);
-
-    // ── HR ────────────────────────────────────────────────────────────────
-    const activeUsers = users.filter(u => u.isActive);
-    const departments = [...new Set(activeUsers.map(u => u.department).filter(Boolean))];
-    const newHires = activeUsers.filter(u => new Date(u.createdAt) >= startOfPrevMonth).length;
-    const onlineNow = users.filter(u => new Date(u.lastSeen).getTime() > now.getTime() - 15 * 60_000).length;
-
-    // Sections are assembled conditionally: a section the role cannot view is
-    // absent from the payload entirely rather than sent and hidden in the UI.
-    // An employee's dashboard response contains no revenue figure at all.
-    const payload: Record<string, unknown> = {
-      generatedAt: now.toISOString(),
-      viewer: {
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role,
-        department: user.department,
-        jobTitle: user.jobTitle,
-      },
-    };
-
-    const full = {
-      company: {
-        headcount: activeUsers.length,
-        departments: departments.length,
-        onlineNow,
-        newHires,
-        revenue,
-        revenueThisMonth,
-        revenueTrend: trend(revenueThisMonth, revenuePrevMonth),
-        pipelineValue,
-        weightedPipeline,
-        openDeals: openDeals.length,
-        activeProjects: projects.filter(p => p.status === 'active').length,
-        openTickets: openTickets.length,
-        warehouses,
-      },
-
-      crm: {
-        totalLeads: leads.length,
-        newLeads: leads.filter(l => new Date(l.createdAt) >= startOfMonth).length,
-        qualifiedLeads: leads.filter(l => l.status === 'qualified').length,
-        pipelineValue,
-        weightedPipeline,
-        wonValue,
-        winRate: pct(wonDeals.length, deals.filter(d => CLOSED_STAGES.includes(d.stage)).length),
-        dealsByStage,
-        leadsByStatus,
-        topDeals: [...openDeals].sort((a, b) => b.value - a.value).slice(0, 5),
-      },
-
-      finance: {
-        revenue,
-        revenueThisMonth,
-        revenueTrend: trend(revenueThisMonth, revenuePrevMonth),
-        outstanding,
-        overdueCount: overdueInvoices.length,
-        overdueValue: overdueInvoices.reduce((s, i) => s + i.total, 0),
-        totalExpenses,
-        expensesThisMonth,
-        pendingExpenseCount: pendingExpenses.length,
-        pendingExpenseValue: pendingExpenses.reduce((s, e) => s + e.amount, 0),
-        netPosition: revenue - totalExpenses,
-        revenueByMonth,
-        recentInvoices: invoices
-          .slice()
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 5),
-      },
-
-      projects: {
-        total: projects.length,
-        active: projects.filter(p => p.status === 'active').length,
-        atRisk: projectProgress.filter(p => p.atRisk).length,
-        totalBudget: projects.reduce((s, p) => s + p.budget, 0),
-        overdueTasks,
-        tasksDueThisWeek,
-        progress: projectProgress,
-      },
-
-      myWork: {
-        userId,
-        openTasks: tasks.filter(t => t.status !== 'done').length,
-        tasks: myTasks.map(t => ({
-          id: t.id, title: t.title, status: t.status, priority: t.priority,
-          dueDate: t.dueDate, projectName: t.project?.name ?? null,
-          overdue: !!t.dueDate && new Date(t.dueDate) < now,
-        })),
-      },
-
-      support: {
-        open: openTickets.length,
-        breached: breachedTickets.length,
-        critical: openTickets.filter(t => t.priority === 'critical').length,
-        resolvedThisMonth: tickets.filter(
-          t => (t.status === 'resolved' || t.status === 'closed') && new Date(t.createdAt) >= startOfMonth,
-        ).length,
-        byPriority: ticketsByPriority,
-        recent: openTickets
-          .slice()
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 5),
-      },
-
-      hr: {
-        headcount: activeUsers.length,
-        departments: departments.length,
-        newHires,
-        pendingLeave: leaveRequests.length,
-        leaveRequests,
-        team: activeUsers.slice(0, 8),
-      },
-
-      inventory: {
-        products: activeProducts.length,
-        lowStockCount: lowStock.length,
-        outOfStockCount: activeProducts.filter(p => p.stock <= 0).length,
-        stockValue,
-        alerts: lowStock
-          .sort((a, b) => a.stock - b.stock)
-          .slice(0, 5)
-          .map(p => ({
-            id: p.id, name: p.name, sku: p.sku, stock: p.stock,
-            reorderLevel: p.reorderLevel, unit: p.unit,
-            severity: p.stock <= 0 ? 'out_of_stock' : 'low',
-          })),
-      },
-
-      calendar: {
-        todayCount: events.filter(e => new Date(e.startDate) < endOfToday).length,
-        upcoming: events,
-      },
-
-      notifications: {
-        unread: notifications.filter(n => !n.isRead).length,
-        items: notifications,
-      },
-
-      activity: activities,
-      recentFiles: pages,
-    };
-
-    // ── Role-based composition ────────────────────────────────────────────
     // Always personal, for every role including external clients.
-    payload.myWork = full.myWork;
-    payload.notifications = full.notifications;
-    payload.calendar = full.calendar;
+    supabase.from('tasks')
+      .select('id, title, status, priority, due_date, project:projects(id, name)')
+      .eq('organization_id', orgId).eq('assignee_id', org.memberId)
+      .neq('status', 'done').is('deleted_at', null)
+      .order('due_date', { ascending: true, nullsFirst: false }).limit(8),
 
-    // The company header strip is a leadership view: it aggregates revenue and
-    // headcount, so it is limited to roles with organisation-wide sight of
-    // both finance and HR.
-    if (orgWide('finance') && orgWide('hr')) {
-      payload.company = full.company;
-    } else {
-      // Everyone else still gets an orientation strip, minus the financials.
-      payload.company = {
-        headcount: full.company.headcount,
-        departments: full.company.departments,
-        onlineNow: full.company.onlineNow,
-        newHires: full.company.newHires,
-        activeProjects: full.company.activeProjects,
-        warehouses: full.company.warehouses,
-      };
-    }
+    supabase.from('notifications')
+      .select('*').eq('recipient_id', org.memberId)
+      .order('created_at', { ascending: false }).limit(8),
 
-    if (sees('crm')) payload.crm = full.crm;
-    if (sees('finance')) payload.finance = full.finance;
-    if (sees('projects')) payload.projects = full.projects;
-    if (sees('support')) payload.support = full.support;
-    if (sees('inventory')) payload.inventory = full.inventory;
-    if (sees('workspace')) payload.recentFiles = full.recentFiles;
+    supabase.from('calendar_events')
+      .select('id, title, starts_at, ends_at, all_day, location, colour')
+      .eq('organization_id', orgId)
+      .gte('starts_at', today).lte('starts_at', in7)
+      .order('starts_at', { ascending: true }).limit(6),
 
-    if (sees('hr')) {
-      payload.hr = orgWide('hr')
-        ? full.hr
-        // A manager sees pending approvals for their people; an employee sees
-        // neither the directory nor anyone else's leave.
-        : {
-            headcount: full.hr.headcount,
-            departments: full.hr.departments,
-            newHires: full.hr.newHires,
-            pendingLeave: scopeFor(role, 'hr') === 'department' ? full.hr.pendingLeave : 0,
-            leaveRequests: scopeFor(role, 'hr') === 'department' ? full.hr.leaveRequests : [],
-            team: [],
-          };
-    }
+    sees('communication')
+      ? supabase.from('activity_log')
+          .select('id, module, action, title, created_at, member:organization_members(profiles!organization_members_user_id_fkey(full_name, avatar_url))')
+          .eq('organization_id', orgId)
+          .order('created_at', { ascending: false }).limit(8)
+      : Promise.resolve({ data: null, error: null } as any),
 
-    // The activity feed reveals what colleagues are doing across modules —
-    // appropriate internally, not for external client accounts.
-    if (sees('communication')) payload.activity = full.activity;
+    sees('projects')
+      ? supabase.from('v_project_health').select('*').eq('organization_id', orgId)
+          .order('days_remaining', { ascending: true, nullsFirst: false }).limit(6)
+      : Promise.resolve({ data: null, error: null } as any),
 
-    return success(payload);
-  } catch (e: any) {
-    return error(e.message || 'Dashboard fetch failed', 500);
+    sees('crm')
+      ? supabase.from('v_pipeline_summary').select('*').eq('organization_id', orgId)
+      : Promise.resolve({ data: null, error: null } as any),
+
+    sees('inventory')
+      ? supabase.from('v_inventory_alerts').select('*').eq('organization_id', orgId).limit(6)
+      : Promise.resolve({ data: null, error: null } as any),
+
+    // Pending approvals are only actionable by someone who can approve.
+    can(role, 'hr', 'approve')
+      ? supabase.from('leave_requests')
+          .select('id, type, start_date, end_date, member:organization_members(profiles!organization_members_user_id_fkey(full_name))')
+          .eq('organization_id', orgId).eq('status', 'pending')
+          .order('start_date', { ascending: true }).limit(6)
+      : Promise.resolve({ data: null, error: null } as any),
+
+    sees('support')
+      ? supabase.from('support_tickets')
+          .select('id, ticket_number, subject, status, priority, due_at')
+          .eq('organization_id', orgId).not('status', 'in', '("resolved","closed")')
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false }).limit(5)
+      : Promise.resolve({ data: null, error: null } as any),
+
+    sees('finance')
+      ? supabase.from('v_finance_monthly').select('*').eq('organization_id', orgId)
+          .order('period', { ascending: true }).limit(6)
+      : Promise.resolve({ data: null, error: null } as any),
+
+    // Own attendance for today — drives the clock widget.
+    supabase.from('attendance_records')
+      .select('*').eq('member_id', org.memberId).eq('work_date', today).maybeSingle(),
+  ]);
+
+  if (statsRes.error) return pgError(statsRes.error);
+
+  const stats: any = statsRes.data ?? {};
+
+  const payload: Record<string, unknown> = {
+    generatedAt: new Date().toISOString(),
+    viewer: {
+      id: user.id,
+      firstName: user.firstName,
+      fullName: user.fullName,
+      role,
+      jobTitle: user.jobTitle,
+      organizationName: org.organizationName,
+    },
+    // Orientation figures that carry no financial detail.
+    company: {
+      headcount: stats.headcount ?? 0,
+      departments: stats.department_count ?? 0,
+      onlineNow: stats.online_now ?? 0,
+      activeProjects: stats.active_projects ?? 0,
+    },
+    myWork: {
+      tasks: (myTasksRes.data ?? []).map((t: any) => ({
+        ...t,
+        overdue: !!t.due_date && t.due_date < today,
+      })),
+      openTasks: stats.open_tasks ?? 0,
+      attendanceToday: attendanceRes.data ?? null,
+    },
+    notifications: {
+      items: notifsRes.data ?? [],
+      unread: (notifsRes.data ?? []).filter((n: any) => !n.is_read).length,
+    },
+    calendar: { upcoming: eventsRes.data ?? [] },
+  };
+
+  if (activityRes.data) payload.activity = activityRes.data;
+
+  if (sees('projects')) {
+    payload.projects = {
+      active: stats.active_projects ?? 0,
+      overdueTasks: stats.overdue_tasks ?? 0,
+      progress: projectsRes.data ?? [],
+      atRisk: (projectsRes.data ?? []).filter((p: any) => p.is_at_risk).length,
+    };
   }
+
+  if (sees('crm')) {
+    payload.crm = {
+      weightedPipeline: Number(stats.weighted_pipeline ?? 0),
+      openPipeline: Number(stats.open_pipeline ?? 0),
+      byStage: pipelineRes.data ?? [],
+    };
+  }
+
+  // Revenue is limited to roles with organisation-wide sight of finance.
+  if (sees('finance') && orgWide('finance')) {
+    payload.finance = {
+      revenueCollected: Number(stats.revenue_collected ?? 0),
+      receivables: Number(stats.receivables ?? 0),
+      pendingExpenses: stats.pending_expenses ?? 0,
+      monthly: financeRes.data ?? [],
+    };
+  }
+
+  if (sees('support')) {
+    payload.support = {
+      open: stats.open_tickets ?? 0,
+      breached: stats.breached_tickets ?? 0,
+      recent: ticketsRes.data ?? [],
+    };
+  }
+
+  if (sees('inventory')) {
+    payload.inventory = {
+      lowStockCount: stats.low_stock_products ?? 0,
+      alerts: alertsRes.data ?? [],
+    };
+  }
+
+  if (sees('hr')) {
+    payload.hr = {
+      headcount: orgWide('hr') ? stats.headcount ?? 0 : 0,
+      pendingLeave: stats.pending_leave ?? 0,
+      approvals: leaveRes.data ?? [],
+    };
+  }
+
+  return success(payload);
 }

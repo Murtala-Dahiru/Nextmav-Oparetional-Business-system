@@ -1,59 +1,31 @@
-import { db } from '@/lib/db';
-import { success, error, paginated } from '@/lib/api-response';
-import { createLeadSchema } from '@/lib/validations';
-import { safeSortField } from '@/lib/sort-whitelist';
-import { authorize, scopeWhere } from '@/lib/auth-context';
+import { collectionHandlers } from '@/lib/supabase/crud';
 
-export async function GET(req: Request) {
-  const guard = await authorize('crm', 'view');
-  if (guard instanceof Response) return guard;
-  const scoped = scopeWhere(guard, { ownerField: 'ownerId' });
+const SELECT = '*, owner:organization_members!leads_owner_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url))';
 
-  const { searchParams } = new URL(req.url);
-  const page = Math.max(1, Number(searchParams.get('page')) || 1);
-  const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 20));
-  const search = searchParams.get('search') || '';
-  const rawSort = searchParams.get('sort') || 'createdAt';
-  const sort = safeSortField('lead', rawSort);
-  const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
-  const status = searchParams.get('status');
-
-  const where: any = { ...scoped };
-  if (search) {
-    where.OR = [
-      { firstName: { contains: search, mode: 'insensitive' } },
-      { lastName: { contains: search, mode: 'insensitive' } },
-      { email: { contains: search, mode: 'insensitive' } },
-      { company: { contains: search, mode: 'insensitive' } },
-    ];
-  }
-  if (status) where.status = status;
-
-  const [data, total] = await Promise.all([
-    db.lead.findMany({
-      where,
-      orderBy: { [sort]: sortDir },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      include: { owner: { select: { id: true, firstName: true, lastName: true, email: true } } },
-    }),
-    db.lead.count({ where }),
-  ]);
-
-  return paginated(data, total, page, pageSize);
-}
-
-export async function POST(req: Request) {
-  const guard = await authorize('crm', 'create');
-  if (guard instanceof Response) return guard;
-
-  try {
-    const body = await req.json();
-    const validated = createLeadSchema.parse(body);
-    const record = await db.lead.create({ data: validated });
-    return success(record, undefined, 201);
-  } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    return error(e.message || 'Create failed', 500);
-  }
-}
+export const { GET, POST } = collectionHandlers(
+  {
+    table: 'leads', module: 'crm', select: SELECT, softDelete: true,
+    searchColumns: ['first_name', 'last_name', 'email', 'company_name'],
+    sortable: ['created_at', 'updated_at', 'first_name', 'last_name', 'status', 'score', 'estimated_value'],
+    filterable: ['status', 'owner_id', 'source'],
+  },
+  {
+    table: 'leads', module: 'crm', select: SELECT,
+    prepare: (b, ctx) => {
+      if (!b.first_name?.trim() && !b.last_name?.trim() && !b.company_name?.trim()) {
+        throw new Error('A lead needs at least a name or a company');
+      }
+      return {
+        first_name: b.first_name ?? '', last_name: b.last_name ?? '',
+        email: b.email || null, phone: b.phone ?? null,
+        company_name: b.company_name ?? null, job_title: b.job_title ?? null,
+        source: b.source ?? 'manual', status: b.status ?? 'new',
+        score: Math.min(100, Math.max(0, Number(b.score) || 0)),
+        estimated_value: Math.max(0, Number(b.estimated_value) || 0),
+        notes: b.notes ?? '',
+        // Unassigned leads get lost; default ownership to whoever created it.
+        owner_id: b.owner_id ?? ctx.org.memberId,
+      };
+    },
+  },
+);

@@ -1,109 +1,83 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { success, error } from '@/lib/api-response'
+import { NextRequest } from 'next/server';
+import { supabaseServer } from '@/lib/supabase/server';
+import { success, error } from '@/lib/api-response';
+import { normalizeRole, capabilitySummary } from '@/lib/permissions';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-
-const DEMO_USER = {
-  id: 'demo-user-001',
-  email: 'admin@nexuscorp.io',
-  firstName: 'Alex',
-  lastName: 'Morgan',
-  avatarUrl: null,
-  jobTitle: 'Platform Administrator',
-  department: 'Engineering',
-  organizationId: 'demo-org-001',
-  organizationName: 'NexusCorp',
-  organizationSlug: 'nexuscorp',
-  role: 'super_admin',
-  isActive: true,
-}
-
+/**
+ * Sign in.
+ *
+ * On success the session cookies are written by the SSR client, so subsequent
+ * requests carry the user's JWT and RLS applies to everything they do.
+ *
+ * The response includes the resolved role and capability set so navigation
+ * matches what the database will actually permit. It is a mirror of server
+ * truth for rendering — never the basis of an access decision.
+ */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { email, password } = body
+    const { email, password } = (await request.json()) ?? {};
 
     if (!email || typeof email !== 'string' || !email.includes('@')) {
-      return error('A valid email address is required', 400, 'VALIDATION_ERROR')
+      return error('A valid email address is required', 422, 'VALIDATION_ERROR');
     }
-    if (!password || typeof password !== 'string' || password.length === 0) {
-      return error('Password is required', 400, 'VALIDATION_ERROR')
-    }
-
-    if (!SUPABASE_URL) {
-      // Demo mode: any password is accepted, but the *identity* is real. If
-      // the email matches a user in the directory we adopt that person's role
-      // and department, so signing in as the HR Manager actually yields the HR
-      // experience rather than a hardcoded super-admin. This is what makes
-      // role-based dashboards testable end to end.
-      const { findUserByEmail, SESSION_COOKIE, SESSION_USER_COOKIE } =
-        await import('@/lib/auth-context')
-      const { capabilitySummary } = await import('@/lib/permissions')
-
-      const matched = await findUserByEmail(email)
-      const identity = matched ?? DEMO_USER
-
-      const res = NextResponse.json({
-        data: {
-          user: matched
-            ? { ...matched, capabilities: capabilitySummary(matched.role) }
-            : { ...DEMO_USER, capabilities: capabilitySummary('owner') },
-          message: matched
-            ? `Signed in as ${matched.firstName} ${matched.lastName} (${matched.role})`
-            : 'Logged in (demo mode)',
-        },
-      })
-
-      const cookie = {
-        httpOnly: true,
-        sameSite: 'lax' as const,
-        path: '/',
-        maxAge: 60 * 60 * 24 * 7, // 7 days
-      }
-      res.cookies.set(SESSION_COOKIE, 'true', cookie)
-      // Records *which* user this session is, so the server can resolve their
-      // role on every subsequent request instead of trusting the client.
-      res.cookies.set(SESSION_USER_COOKIE, (identity as any).id ?? 'u1', cookie)
-      return res
+    if (!password || typeof password !== 'string') {
+      return error('Password is required', 422, 'VALIDATION_ERROR');
     }
 
-    const { createSupabaseServerClient } = await import('@/lib/supabase/server')
-    const supabase = await createSupabaseServerClient(request)
+    const supabase = await supabaseServer();
 
-    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+    const { data, error: authError } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
-    })
+    });
 
     if (authError) {
-      return error(authError.message, 401, 'AUTH_ERROR', authError)
+      // Deliberately not distinguishing "no such user" from "wrong password":
+      // that difference lets an attacker enumerate valid addresses.
+      return error('Invalid email or password', 401, 'AUTH_ERROR');
     }
+    if (!data.user) return error('Invalid email or password', 401, 'AUTH_ERROR');
 
-    if (!authData.user || !authData.session) {
-      return error('Failed to sign in', 401, 'AUTH_ERROR')
-    }
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id, email, first_name, last_name, full_name, avatar_url, job_title')
+      .eq('id', data.user.id)
+      .maybeSingle();
 
-    const { data: orgMember } = await supabase
+    const { data: memberships } = await supabase
       .from('organization_members')
-      .select('organization_id, role, organization:organizations(name, slug)')
-      .eq('user_id', authData.user.id)
-      .eq('is_active', true)
-      .single()
+      .select('id, organization_id, role, department_id, organizations(id, name, slug)')
+      .eq('user_id', data.user.id)
+      .eq('is_active', true);
+
+    const membership = memberships?.[0];
+    const orgRel = membership?.organizations as any;
+    const organization = Array.isArray(orgRel) ? orgRel[0] : orgRel;
+    const role = normalizeRole(membership?.role);
 
     return success({
       user: {
-        id: authData.user.id,
-        email: authData.user.email,
-        firstName: authData.user.user_metadata?.first_name || '',
-        lastName: authData.user.user_metadata?.last_name || '',
-        avatarUrl: authData.user.user_metadata?.avatar_url || null,
-        orgId: orgMember?.organization_id || null,
-        orgName: (orgMember?.organization as any)?.name || null,
-        role: orgMember?.role || 'employee',
+        id: data.user.id,
+        email: profile?.email ?? data.user.email,
+        firstName: profile?.first_name ?? '',
+        lastName: profile?.last_name ?? '',
+        fullName: profile?.full_name ?? '',
+        avatarUrl: profile?.avatar_url ?? null,
+        jobTitle: profile?.job_title ?? null,
+        organizationId: membership?.organization_id ?? null,
+        organizationName: organization?.name ?? null,
+        organizationSlug: organization?.slug ?? null,
+        memberId: membership?.id ?? null,
+        role,
         isActive: true,
+        capabilities: capabilitySummary(role),
       },
-    })
+      // A confirmed account with no membership has signed up but not yet
+      // created or joined an organization. The client needs to route them to
+      // onboarding rather than to an empty dashboard.
+      needsOrganization: !membership,
+    });
   } catch (e: any) {
-    return error(e.message || 'Login failed', 500, 'INTERNAL_ERROR')
+    return error(e.message || 'Login failed', 500, 'INTERNAL_ERROR');
   }
 }

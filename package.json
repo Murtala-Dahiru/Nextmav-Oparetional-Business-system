@@ -19,7 +19,8 @@
     "db:check": "node scripts/check-migrations-parse.mjs && node scripts/check-migrations-consistency.mjs",
     "db:apply": "node scripts/db-apply.mjs",
     "db:verify": "node scripts/db-verify.mjs",
-    "db:setup": "npm run db:check && npm run db:apply && npm run db:verify"
+    "db:setup": "npm run db:check && npm run db:apply && npm run db:verify",
+    "app:verify": "node scripts/app-verify.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

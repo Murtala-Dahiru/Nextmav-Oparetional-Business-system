@@ -1,142 +1,100 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { success, error } from '@/lib/api-response'
+import { NextRequest } from 'next/server';
+import { supabaseServer } from '@/lib/supabase/server';
+import { success, error } from '@/lib/api-response';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-
-const DEMO_USER = {
-  id: 'demo-user-001',
-  email: 'admin@nexuscorp.io',
-  firstName: 'Alex',
-  lastName: 'Morgan',
-  avatarUrl: null,
-  jobTitle: 'Platform Administrator',
-  department: 'Engineering',
-  organizationId: 'demo-org-001',
-  organizationName: 'NexusCorp',
-  organizationSlug: 'nexuscorp',
-  role: 'super_admin',
-  isActive: true,
-}
-
+/**
+ * Sign up and create an organization.
+ *
+ * These are one workflow, not two: a user with no organization has nowhere to
+ * land and no rows they are permitted to read, so splitting them leaves a real
+ * account in a dead end whenever the second call fails. `create_organization()`
+ * is SECURITY DEFINER and writes the organization and the owner membership
+ * atomically.
+ *
+ * Joining an existing company goes through the invitation flow instead, which
+ * is why an organization name is required here.
+ */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const email = body.email
-    const password = body.password
-    const firstName = (body.firstName || body.first_name || '').trim()
-    const lastName = (body.lastName || body.last_name || '').trim()
-    const organizationName = (body.organizationName || body.organization_name || '').trim()
+    const body = await request.json();
+    const { email, password, firstName, lastName, organizationName } = body ?? {};
 
-    // Validation
     if (!email || typeof email !== 'string' || !email.includes('@')) {
-      return error('A valid email address is required', 400, 'VALIDATION_ERROR')
+      return error('A valid email address is required', 422, 'VALIDATION_ERROR');
     }
-    if (!password || typeof password !== 'string' || password.length < 6) {
-      return error('Password must be at least 6 characters long', 400, 'VALIDATION_ERROR')
+    if (!password || typeof password !== 'string' || password.length < 8) {
+      return error('Password must be at least 8 characters', 422, 'VALIDATION_ERROR');
     }
-    if (!firstName) {
-      return error('First name is required', 400, 'VALIDATION_ERROR')
-    }
-    if (!lastName) {
-      return error('Last name is required', 400, 'VALIDATION_ERROR')
+    if (!organizationName || !String(organizationName).trim()) {
+      return error('Organization name is required', 422, 'VALIDATION_ERROR');
     }
 
-    if (!SUPABASE_URL) {
-      // Demo mode: accept signup, set demo session cookie
-      const res = NextResponse.json({
-        data: {
-          user: {
-            ...DEMO_USER,
-            firstName,
-            lastName,
-            email: email.trim().toLowerCase(),
-            organizationName: organizationName || 'NexusCorp',
-          },
-          message: 'Account created (demo mode)',
-        },
-      })
-      res.cookies.set('nexuscorp-demo-session', 'true', {
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 60 * 60 * 24 * 7, // 7 days
-      })
-      return res
-    }
+    const supabase = await supabaseServer();
 
-    const { createSupabaseServerClient } = await import('@/lib/supabase/server')
-    const supabase = await createSupabaseServerClient(request)
-
-    const { data: authData, error: authError } = await supabase.auth.signUp({
+    const { data: signUp, error: signUpError } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
+      // Read by the handle_new_user trigger to populate the profile row.
       options: {
         data: {
-          first_name: firstName,
-          last_name: lastName,
+          first_name: String(firstName ?? '').trim(),
+          last_name: String(lastName ?? '').trim(),
         },
       },
-    })
+    });
 
-    if (authError) {
-      return error(authError.message, 400, 'AUTH_ERROR', authError)
+    if (signUpError) return error(signUpError.message, 400, 'AUTH_ERROR');
+    if (!signUp.user) return error('Could not create the account.', 500, 'AUTH_ERROR');
+
+    // With email confirmation enabled, signUp returns no session. The account
+    // exists but cannot yet create an organization, so say so plainly rather
+    // than failing later with something opaque.
+    if (!signUp.session) {
+      return success(
+        {
+          user: { id: signUp.user.id, email: signUp.user.email },
+          organization: null,
+          requiresEmailConfirmation: true,
+          message:
+            'Check your email to confirm your address, then sign in to finish setting up your organization.',
+        },
+        undefined,
+        201,
+      );
     }
 
-    if (!authData.user) {
-      return error('Failed to create user account', 500, 'AUTH_ERROR')
-    }
-
-    const userId = authData.user.id
-    const orgName = organizationName || `${firstName}'s Org`
-    const orgSlug = orgName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
-
-    // Create organization
-    const { data: org, error: orgError } = await supabase
-      .from('organizations')
-      .insert({
-        name: orgName,
-        slug: orgSlug,
-        currency: 'USD',
-        tax_rate: 0,
-        invoice_prefix: 'INV',
-        fiscal_year_start: '01-01',
-      })
-      .select()
-      .single()
+    const { data: org, error: orgError } = await supabase.rpc('create_organization', {
+      org_name: String(organizationName).trim(),
+    });
 
     if (orgError) {
-      return error('Failed to create organization: ' + orgError.message, 500, 'ORG_ERROR', orgError)
+      // The account is real and usable; only the organization step failed.
+      // Reporting that precisely lets the client retry just the organization
+      // instead of re-signing-up with an address that is now taken.
+      return error(
+        `Account created, but the organization could not be set up: ${orgError.message}`,
+        500,
+        'ORG_CREATE_FAILED',
+      );
     }
 
-    // Create user profile
-    await supabase.from('user_profiles').insert({
-      id: userId,
-      first_name: firstName,
-      last_name: lastName,
-      email: email.trim().toLowerCase(),
-      is_active: true,
-    })
+    const organization = Array.isArray(org) ? org[0] : org;
 
-    // Create organization member with owner role
-    await supabase.from('organization_members').insert({
-      user_id: userId,
-      organization_id: org.id,
-      role: 'owner',
-      is_active: true,
-      joined_at: new Date().toISOString(),
-    })
-
-    return success({
-      user: {
-        id: authData.user.id,
-        email: authData.user.email,
-        firstName,
-        lastName,
+    return success(
+      {
+        user: {
+          id: signUp.user.id,
+          email: signUp.user.email,
+          firstName: String(firstName ?? '').trim(),
+          lastName: String(lastName ?? '').trim(),
+        },
+        organization,
+        requiresEmailConfirmation: false,
       },
-      session: authData.session,
-      organization: { id: org.id, name: org.name, slug: org.slug },
-    })
+      undefined,
+      201,
+    );
   } catch (e: any) {
-    return error(e.message || 'Signup failed', 500, 'INTERNAL_ERROR')
+    return error(e.message || 'Signup failed', 500, 'INTERNAL_ERROR');
   }
 }

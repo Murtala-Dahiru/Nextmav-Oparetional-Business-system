@@ -1,91 +1,98 @@
-import { db } from '@/lib/db';
+import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
-import { createEmployeeSchema } from '@/lib/validations';
-import { safeSortField } from '@/lib/sort-whitelist';
-import { authorize, scopeWhere } from '@/lib/auth-context';
 
+/**
+ * The employee directory.
+ *
+ * Reads `v_org_directory`, which resolves the membership, profile, department
+ * and reporting line in one query. The view is `security_invoker`, so it is
+ * subject to the caller's RLS exactly as the underlying tables are.
+ *
+ * There is no POST here: employees are not created, they are *invited*.
+ * A row in this table without a corresponding auth user is an account nobody
+ * can sign into. Use /api/admin/invitations.
+ */
 export async function GET(req: Request) {
-  const guard = await authorize('hr', 'view');
-  if (guard instanceof Response) return guard;
-
-  // The employee directory is scoped: an employee resolves only themselves,
-  // a manager their department, HR and above the whole organisation.
-  const scoped = scopeWhere(guard, { ownerField: 'id', departmentField: 'department' });
+  const ctx = await authorize('hr', 'view');
+  if (ctx instanceof Response) return ctx;
 
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
   const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 20));
-  const search = searchParams.get('search') || '';
-  const rawSort = searchParams.get('sort') || 'createdAt';
-  const sort = safeSortField('user', rawSort);
-  const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
-  const department = searchParams.get('department');
-  const isActive = searchParams.get('isActive');
 
-  const where: any = { ...scoped };
+  let q = ctx.supabase
+    .from('v_org_directory')
+    .select('*', { count: 'exact' })
+    .eq('organization_id', ctx.org.organizationId);
+
+  const search = searchParams.get('search')?.trim();
   if (search) {
-    where.OR = [
-      { firstName: { contains: search, mode: 'insensitive' } },
-      { lastName: { contains: search, mode: 'insensitive' } },
-      { email: { contains: search, mode: 'insensitive' } },
-      { jobTitle: { contains: search, mode: 'insensitive' } },
-    ];
-  }
-  if (department) where.department = department;
-  if (isActive !== null && isActive !== undefined && isActive !== '') {
-    where.isActive = isActive === 'true';
+    const safe = search.replace(/[,()*]/g, ' ').trim();
+    if (safe) {
+      q = q.or(
+        ['full_name', 'email', 'job_title', 'department_name']
+          .map(c => `${c}.ilike.%${safe}%`)
+          .join(','),
+      );
+    }
   }
 
-  const [data, total] = await Promise.all([
-    db.user.findMany({
-      where,
-      orderBy: { [sort]: sortDir },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      select: {
-        id: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        avatar: true,
-        jobTitle: true,
-        phone: true,
-        department: true,
-        roleId: true,
-        isActive: true,
-        lastSeen: true,
-        createdAt: true,
-        updatedAt: true,
-        role: { select: { id: true, name: true } },
-        _count: { select: { assignedTickets: true, ownedProjects: true, assignedTasks: true, leaveRequests: true } },
-      },
-    }),
-    db.user.count({ where }),
-  ]);
+  for (const key of ['department_id', 'role', 'is_active', 'employment_type']) {
+    const v = searchParams.get(key);
+    if (v !== null && v !== '') {
+      q = q.eq(key, v === 'true' ? true : v === 'false' ? false : v);
+    }
+  }
 
-  return paginated(data, total, page, pageSize);
+  const offset = (page - 1) * pageSize;
+  const { data, count, error: e } = await q
+    .order('full_name', { ascending: true })
+    .range(offset, offset + pageSize - 1);
+
+  if (e) return pgError(e);
+  return paginated(data ?? [], count ?? 0, page, pageSize);
 }
 
-export async function POST(req: Request) {
-  // Creating an employee record is an HR function, not a self-service one.
-  const guard = await authorize('hr', 'create');
-  if (guard instanceof Response) return guard;
+/**
+ * Update employment details on a membership.
+ *
+ * Changing someone's role or department is an administrative act, so this
+ * requires `manage` rather than `edit`. Profile fields (name, avatar, phone)
+ * belong to the person and are changed through their own profile, not here.
+ */
+export async function PATCH(req: Request) {
+  const ctx = await authorize('hr', 'manage');
+  if (ctx instanceof Response) return ctx;
 
   try {
-    const body = await req.json();
-    const validated = createEmployeeSchema.parse(body);
-    const record = await db.user.create({
-      data: validated,
-      select: {
-        id: true, email: true, firstName: true, lastName: true, avatar: true,
-        jobTitle: true, phone: true, department: true, roleId: true,
-        isActive: true, lastSeen: true, createdAt: true, updatedAt: true,
-      },
-    });
-    return success(record, undefined, 201);
+    const b = await req.json();
+    if (!b.member_id) return error('member_id is required', 422, 'VALIDATION_ERROR');
+
+    const update: Record<string, any> = {};
+    for (const k of [
+      'role', 'department_id', 'manager_id', 'employee_number',
+      'employment_type', 'hired_on', 'is_active',
+    ]) {
+      if (k in b) update[k] = b[k] === '' ? null : b[k];
+    }
+    if (!Object.keys(update).length) {
+      return error('Nothing to update', 422, 'VALIDATION_ERROR');
+    }
+
+    const { data, error: e } = await ctx.supabase
+      .from('organization_members')
+      .update(update)
+      .eq('organization_id', ctx.org.organizationId)
+      .eq('id', b.member_id)
+      .select('id, role, department_id, manager_id, employment_type, hired_on, is_active')
+      .maybeSingle();
+
+    // The last-owner trigger raises check_violation here when someone tries to
+    // demote or deactivate the only owner. pgError passes its message through.
+    if (e) return pgError(e);
+    if (!data) return error('Not found', 404, 'NOT_FOUND');
+    return success(data);
   } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    if (e.code === 'P2002') return error('Email already exists', 409);
-    return error(e.message || 'Create failed', 500);
+    return error(e.message || 'Update failed', 500);
   }
 }

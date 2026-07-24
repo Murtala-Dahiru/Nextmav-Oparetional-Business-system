@@ -1,184 +1,136 @@
-import { db } from '@/lib/db';
+import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
-import { authorize, scopeWhere } from '@/lib/auth-context';
-import { can } from '@/lib/permissions';
-import {
-  workingDayOf, workingDaysBetween, summarise, DEFAULT_WORK_POLICY,
-  ATTENDANCE_STATUSES, statusForCheckIn, lateMinutesFor, workedMinutesBetween,
-} from '@/lib/attendance';
 
-const RECORD_INCLUDE = {
-  user: { select: { id: true, firstName: true, lastName: true, department: true, jobTitle: true, avatar: true } },
-  adjustedBy: { select: { id: true, firstName: true, lastName: true } },
-} as const;
+const SELECT =
+  '*, member:organization_members!attendance_records_member_id_fkey(id, department_id, profiles!organization_members_user_id_fkey(full_name, avatar_url))';
 
 /**
- * The attendance register, plus a summary of the same period.
+ * The attendance register, with a summary of the same period.
  *
- * Returning the summary alongside the rows means the header figures and the
- * table can never disagree — they are computed from one query in one request.
+ * Row visibility is enforced by RLS through `auth_visible_member_ids()`: an
+ * employee resolves only their own rows, a manager their department's, HR the
+ * organisation's. No filtering is applied here for that — attempting to would
+ * duplicate the rule and eventually contradict it.
  *
- * `?from=&to=` bound the period (defaults to the current month), `?userId=`
- * narrows to one person, `?status=` filters.
+ * The summary is computed over the whole period rather than the current page,
+ * so the header figures do not change as you paginate.
  */
 export async function GET(req: Request) {
-  const guard = await authorize('hr', 'view');
-  if (guard instanceof Response) return guard;
+  const ctx = await authorize('hr', 'view');
+  if (ctx instanceof Response) return ctx;
 
-  try {
-    const { searchParams } = new URL(req.url);
-    const page = Math.max(1, Number(searchParams.get('page')) || 1);
-    const pageSize = Math.min(200, Math.max(1, Number(searchParams.get('pageSize')) || 31));
+  const { searchParams } = new URL(req.url);
+  const page = Math.max(1, Number(searchParams.get('page')) || 1);
+  const pageSize = Math.min(200, Math.max(1, Number(searchParams.get('pageSize')) || 31));
 
-    const now = new Date();
-    const from = searchParams.get('from')
-      ? workingDayOf(new Date(searchParams.get('from')!))
-      : new Date(now.getFullYear(), now.getMonth(), 1);
-    const to = searchParams.get('to')
-      ? workingDayOf(new Date(searchParams.get('to')!))
-      : workingDayOf(now);
+  const today = new Date();
+  const from =
+    searchParams.get('from') ??
+    new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+  const to = searchParams.get('to') ?? today.toISOString().slice(0, 10);
 
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-      return error('Invalid from/to date', 422, 'VALIDATION_ERROR');
-    }
-    if (from > to) return error('`from` must be on or before `to`', 422, 'VALIDATION_ERROR');
+  if (from > to) return error('`from` must be on or before `to`', 422, 'VALIDATION_ERROR');
 
-    // Attendance is personal data: an employee resolves only their own rows, a
-    // manager their department's, HR the organisation's.
-    const scoped = scopeWhere(guard, { ownerField: 'userId' });
+  const base = () =>
+    ctx.supabase
+      .from('attendance_records')
+      .select(SELECT, { count: 'exact' })
+      .eq('organization_id', ctx.org.organizationId)
+      .gte('work_date', from)
+      .lte('work_date', to);
 
-    const where: any = { ...scoped, date: { gte: from, lte: to } };
+  let rows = base();
+  const status = searchParams.get('status');
+  if (status) rows = rows.eq('status', status);
+  const memberId = searchParams.get('memberId');
+  if (memberId) rows = rows.eq('member_id', memberId);
 
-    const status = searchParams.get('status');
-    if (status && (ATTENDANCE_STATUSES as readonly string[]).includes(status)) {
-      where.status = status;
-    }
+  const offset = (page - 1) * pageSize;
+  const { data, count, error: e } = await rows
+    .order('work_date', { ascending: false })
+    .range(offset, offset + pageSize - 1);
 
-    // A caller may narrow to one person but never widen past their own scope.
-    const requestedUser = searchParams.get('userId');
-    if (requestedUser && guard.scope !== 'own') where.userId = requestedUser;
+  if (e) return pgError(e);
 
-    // Department scope has no column on this model, so resolve the department's
-    // members and filter by them.
-    if (guard.scope === 'department') {
-      const peers = await db.user.findMany({
-        where: { department: guard.user.department },
-        select: { id: true },
-      });
-      const ids = peers.map(p => p.id);
-      where.userId = requestedUser && ids.includes(requestedUser)
-        ? requestedUser
-        : { in: ids.length ? ids : [guard.user.id] };
-    }
+  // Separate unpaginated pass for the totals. Only the columns the summary
+  // needs, so it stays cheap over a long period.
+  const { data: all } = await ctx.supabase
+    .from('attendance_records')
+    .select('status, worked_minutes, late_minutes, member_id')
+    .eq('organization_id', ctx.org.organizationId)
+    .gte('work_date', from)
+    .lte('work_date', to);
 
-    const [rows, total, allInPeriod] = await Promise.all([
-      db.attendanceRecord.findMany({
-        where,
-        orderBy: [{ date: 'desc' }, { checkInAt: 'desc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        include: RECORD_INCLUDE,
-      }),
-      db.attendanceRecord.count({ where }),
-      // Summary must cover the whole period, not just the current page.
-      db.attendanceRecord.findMany({
-        where,
-        select: { status: true, workedMinutes: true, lateMinutes: true, userId: true },
-      }),
-    ]);
+  const rowsAll = all ?? [];
+  const countBy = (s: string) => rowsAll.filter(r => r.status === s).length;
+  const attended = countBy('present') + countBy('late') + countBy('remote') + countBy('half_day');
+  const totalMinutes = rowsAll.reduce((sum, r) => sum + (r.worked_minutes ?? 0), 0);
+  const people = new Set(rowsAll.map(r => r.member_id)).size;
 
-    // Expected working days: calendar working days per person in scope.
-    const distinctPeople = new Set(allInPeriod.map(r => r.userId)).size || 1;
-    const expected = workingDaysBetween(from, to) * distinctPeople;
+  const pct = (part: number, whole: number) =>
+    whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 
-    const summary = summarise(allInPeriod, expected);
-
-    return success(rows, {
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
-      ...(summary as any),
-      from: from.toISOString(),
-      to: to.toISOString(),
-      people: distinctPeople,
-      expectedDays: expected,
-    } as any);
-  } catch (e: any) {
-    return error(e.message || 'Failed to load attendance', 500);
-  }
+  return paginated(data ?? [], count ?? 0, page, pageSize);
 }
 
 /**
- * Create or correct an attendance record on someone's behalf.
+ * Record or correct attendance on someone's behalf.
  *
- * This is the manual path HR needs for the cases a clock cannot cover: someone
- * forgot to clock out, worked offsite, or was absent and it must be recorded.
- * It requires `edit` (not `create`), because writing attendance for another
- * person is a supervisory act — and the adjustment is attributed so a corrected
- * record never looks like a clocked one.
+ * The clock endpoints are the normal path; this covers what a clock cannot:
+ * a forgotten check-out, offsite work, a recorded absence. It requires `edit`
+ * rather than `create`, because writing attendance for another person is a
+ * supervisory act, and every correction is attributed so an adjusted record
+ * never masquerades as a clocked one.
  */
 export async function POST(req: Request) {
-  const guard = await authorize('hr', 'edit');
-  if (guard instanceof Response) return guard;
+  const ctx = await authorize('hr', 'edit');
+  if (ctx instanceof Response) return ctx;
 
   try {
-    const body = await req.json();
-    const { userId, date, checkInAt, checkOutAt, status, note } = body ?? {};
-
-    if (!userId || !date) return error('userId and date are required', 422, 'VALIDATION_ERROR');
-    if (status && !(ATTENDANCE_STATUSES as readonly string[]).includes(status)) {
-      return error(`status must be one of: ${ATTENDANCE_STATUSES.join(', ')}`, 422, 'VALIDATION_ERROR');
+    const b = await req.json();
+    if (!b.member_id || !b.work_date) {
+      return error('member_id and work_date are required', 422, 'VALIDATION_ERROR');
     }
-
-    const day = workingDayOf(new Date(date));
-    if (Number.isNaN(day.getTime())) return error('Invalid date', 422, 'VALIDATION_ERROR');
-
-    // Managers may only adjust their own department.
-    if (guard.scope !== 'organization') {
-      const subject = await db.user.findUnique({ where: { id: userId }, select: { department: true } });
-      if (!subject) return error('Employee not found', 404);
-      if (guard.scope === 'own' && userId !== guard.user.id) {
-        return error('You may only record your own attendance.', 403, 'FORBIDDEN_SCOPE');
-      }
-      if (guard.scope === 'department' && subject.department !== guard.user.department) {
-        return error('You may only adjust attendance within your department.', 403, 'FORBIDDEN_SCOPE');
-      }
-    }
-
-    const inAt = checkInAt ? new Date(checkInAt) : null;
-    const outAt = checkOutAt ? new Date(checkOutAt) : null;
-    if (inAt && outAt && outAt <= inAt) {
+    if (b.checked_in_at && b.checked_out_at && new Date(b.checked_out_at) <= new Date(b.checked_in_at)) {
       return error('Check-out must be after check-in.', 422, 'INVALID_INTERVAL');
     }
 
-    const resolvedStatus =
-      status ?? (inAt ? statusForCheckIn(inAt) : 'absent');
+    const worked =
+      b.checked_in_at && b.checked_out_at
+        ? Math.max(
+            0,
+            Math.round(
+              (new Date(b.checked_out_at).getTime() - new Date(b.checked_in_at).getTime()) / 60000,
+            ),
+          )
+        : 0;
 
-    const data = {
-      userId,
-      date: day,
-      checkInAt: inAt,
-      checkOutAt: outAt,
-      status: resolvedStatus,
-      workedMinutes: inAt && outAt ? workedMinutesBetween(inAt, outAt) : 0,
-      breakMinutes: inAt && outAt ? DEFAULT_WORK_POLICY.breakMinutes : 0,
-      lateMinutes: inAt ? lateMinutesFor(inAt) : 0,
-      note: typeof note === 'string' ? note.slice(0, 500) : '',
-      adjustedById: guard.user.id,
-      adjustedAt: new Date(),
-    };
+    const { data, error: e } = await ctx.supabase
+      .from('attendance_records')
+      .upsert(
+        {
+          organization_id: ctx.org.organizationId,
+          member_id: b.member_id,
+          work_date: b.work_date,
+          checked_in_at: b.checked_in_at ?? null,
+          checked_out_at: b.checked_out_at ?? null,
+          status: b.status ?? (b.checked_in_at ? 'present' : 'absent'),
+          worked_minutes: worked,
+          note: b.note ?? '',
+          // Marks this as a supervised correction. The server-time trigger
+          // honours the supplied times only when this is set.
+          adjusted_by: ctx.org.memberId,
+          adjusted_at: new Date().toISOString(),
+          adjustment_reason: b.adjustment_reason ?? b.note ?? '',
+        },
+        { onConflict: 'member_id,work_date' },
+      )
+      .select(SELECT)
+      .single();
 
-    const record = await db.attendanceRecord.upsert({
-      where: { userId_date: { userId, date: day } },
-      update: data,
-      create: data,
-      include: RECORD_INCLUDE,
-    });
-
-    return success(record, undefined, 201);
+    if (e) return pgError(e);
+    return success(data, undefined, 201);
   } catch (e: any) {
-    if (e.code === 'P2003') return error('That employee does not exist', 400);
     return error(e.message || 'Failed to record attendance', 500);
   }
 }
