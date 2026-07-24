@@ -37,7 +37,14 @@ interface AppState {
   user: CurrentUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  
+  /**
+   * Authenticated, but belonging to no organization — the state between
+   * confirming an email and creating or joining a workspace. Distinct from
+   * `!isAuthenticated`: the session is valid, so sending them back to the
+   * login form would loop. They need onboarding instead.
+   */
+  needsOrganization: boolean;
+
   // Navigation
   activeModule: ModuleId;
   sidebarCollapsed: boolean;
@@ -79,7 +86,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   user: null,
   isAuthenticated: false,
   isLoading: true,
-  
+  needsOrganization: false,
+
   // RBAC — starts at the least-privileged role and is raised only by the
   // server's answer in fetchUser(). Defaulting to `owner` here would flash
   // modules the user may not actually open.
@@ -153,6 +161,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({
           user: userData,
           isAuthenticated: true,
+          needsOrganization: !!(json?.data?.needsOrganization ?? json?.needsOrganization),
           isLoading: false,
           activeRole: role,
           // If the stored module is one this role cannot open (e.g. after
@@ -163,11 +172,14 @@ export const useAppStore = create<AppState>((set, get) => ({
             : defaultModuleFor(role),
         });
       } else {
-        set({ user: null, isAuthenticated: false, isLoading: false, activeRole: 'employee' });
+        set({
+          user: null, isAuthenticated: false, needsOrganization: false,
+          isLoading: false, activeRole: 'employee',
+        });
       }
     } catch (e) {
       console.error('Fetch user failed:', e);
-      set({ user: null, isAuthenticated: false, isLoading: false });
+      set({ user: null, isAuthenticated: false, needsOrganization: false, isLoading: false });
     }
   },
 }));

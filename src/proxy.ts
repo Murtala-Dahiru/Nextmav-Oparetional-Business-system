@@ -12,10 +12,13 @@ import { NextRequest, NextResponse } from 'next/server';
  * Flow:  Landing (/)  →  /login or /signup  →  authenticated  →  /dashboard
  */
 
-const DEMO_SESSION_COOKIE = 'nexuscorp-demo-session';
-
-/** Pages that require a session. */
-const PROTECTED_PAGES = ['/dashboard'];
+/**
+ * Pages that require a session.
+ *
+ * `/onboarding` belongs here: it is where an authenticated user with no
+ * organization completes setup, so it must be unreachable while signed out.
+ */
+const PROTECTED_PAGES = ['/dashboard', '/onboarding'];
 
 /** Auth pages that a signed-in user should never sit on. */
 const AUTH_PAGES = ['/login', '/signup', '/forgot-password', '/reset-password'];
@@ -39,8 +42,6 @@ const PROTECTED_API_PREFIXES = [
  * returning data.
  */
 function hasSession(req: NextRequest): boolean {
-  if (req.cookies.get(DEMO_SESSION_COOKIE)?.value === 'true') return true;
-
   // Supabase stores its session as `sb-<project-ref>-auth-token`, optionally
   // split across `.0`, `.1`, ... chunks when the token is large.
   return req.cookies.getAll().some(

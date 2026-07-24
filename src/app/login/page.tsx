@@ -46,12 +46,16 @@ function LoginForm() {
       }
 
       toast.success('Welcome back!');
+      // A confirmed account with no membership has nowhere to land: every
+      // dashboard query would fail authorization and strand them on an error
+      // with no way forward. Onboarding is the only useful destination.
+      const destination = data.data?.needsOrganization ? '/onboarding' : nextPath;
       // Full document navigation, not router.push: the session cookie is
       // httpOnly and was set by the response above, so middleware must
       // re-evaluate it on a fresh request. A client-side push would reuse the
       // router cache, which still holds the "redirect to /login" result for
       // this path from before we were signed in.
-      window.location.assign(nextPath);
+      window.location.assign(destination);
     } catch {
       toast.error('Network error. Please try again.');
     } finally {
@@ -141,7 +145,7 @@ function LoginForm() {
               </Button>
             </form>
           </CardContent>
-          <CardFooter className="flex flex-col gap-4">
+          <CardFooter>
             <div className="text-sm text-center text-muted-foreground w-full">
               Don&apos;t have an account?{' '}
               <Link
@@ -151,9 +155,6 @@ function LoginForm() {
                 Sign up
               </Link>
             </div>
-            <p className="text-xs text-center text-muted-foreground">
-              Demo: use any email &amp; password to sign in
-            </p>
           </CardFooter>
         </Card>
       </div>

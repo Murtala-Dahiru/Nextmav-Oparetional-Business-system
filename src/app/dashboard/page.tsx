@@ -7,7 +7,7 @@ import { AppShell } from '@/components/layout/app-shell';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { isAuthenticated, fetchUser } = useAppStore();
+  const { isAuthenticated, needsOrganization, fetchUser } = useAppStore();
   const [profileLoaded, setProfileLoaded] = useState(false);
   const fetchStarted = useRef(false);
 
@@ -22,10 +22,16 @@ export default function DashboardPage() {
   }, [fetchUser]);
 
   useEffect(() => {
-    if (profileLoaded && !isAuthenticated) {
+    if (!profileLoaded) return;
+    if (!isAuthenticated) {
       router.replace('/login');
+    } else if (needsOrganization) {
+      // Valid session, no membership. Rendering the shell here would leave
+      // every module failing authorization with a Try again that can never
+      // succeed, so send them to the step that actually unblocks them.
+      router.replace('/onboarding');
     }
-  }, [profileLoaded, isAuthenticated, router]);
+  }, [profileLoaded, isAuthenticated, needsOrganization, router]);
 
   if (!profileLoaded) {
     return (
@@ -36,8 +42,9 @@ export default function DashboardPage() {
     );
   }
 
-  // Stale cookie — the redirect above is already in flight.
-  if (!isAuthenticated) return null;
+  // Stale cookie, or a session with no organization — in both cases the
+  // redirect above is already in flight.
+  if (!isAuthenticated || needsOrganization) return null;
 
   return <AppShell />;
 }

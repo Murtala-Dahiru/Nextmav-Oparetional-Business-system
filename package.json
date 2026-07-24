@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "next build && node scripts/prepare-standalone.mjs",
+    "build": "node scripts/check-env.mjs && next build && node scripts/prepare-standalone.mjs",
     "start": "next start",
     "lint": "eslint .",
     "start:standalone": "node .next/standalone/server.js",

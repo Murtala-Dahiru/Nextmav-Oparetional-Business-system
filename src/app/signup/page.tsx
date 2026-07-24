@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { Hexagon, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Hexagon, Loader2, Eye, EyeOff, MailCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,7 @@ export default function SignupPage() {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [confirmationSent, setConfirmationSent] = useState(false);
 
   function updateField(field: string, value: string) {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -48,6 +49,14 @@ export default function SignupPage() {
         return;
       }
 
+      // With email confirmation enabled the response carries no session, so
+      // navigating to /dashboard would bounce straight back to /login with
+      // nothing explaining why. Show what actually has to happen next.
+      if (data.data?.requiresEmailConfirmation) {
+        setConfirmationSent(true);
+        return;
+      }
+
       toast.success('Account created successfully!');
       // Full document navigation so middleware re-evaluates the httpOnly
       // session cookie set by the response above (see login page for detail).
@@ -57,6 +66,46 @@ export default function SignupPage() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  if (confirmationSent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4 py-12">
+        <div className="w-full max-w-md">
+          <div className="flex flex-col items-center mb-8">
+            <div className="flex items-center gap-2 mb-2">
+              <Hexagon className="size-8 text-emerald-500" />
+              <span className="text-2xl font-bold tracking-tight">NexusCorp</span>
+            </div>
+            <p className="text-sm text-muted-foreground">Almost there</p>
+          </div>
+
+          <Card className="border-gray-200 dark:border-gray-800 shadow-lg">
+            <CardHeader className="space-y-1 items-center text-center">
+              <MailCheck className="size-10 text-emerald-500 mb-2" />
+              <CardTitle className="text-xl">Confirm your email</CardTitle>
+              <CardDescription>
+                We sent a confirmation link to{' '}
+                <span className="font-medium text-foreground">{formData.email}</span>.
+                Open it, then sign in to finish setting up{' '}
+                <span className="font-medium text-foreground">{formData.organization}</span>.
+              </CardDescription>
+            </CardHeader>
+            <CardFooter className="flex flex-col gap-3">
+              <Button
+                asChild
+                className="w-full h-11 bg-emerald-500 hover:bg-emerald-600 text-white"
+              >
+                <Link href="/login">Go to sign in</Link>
+              </Button>
+              <p className="text-xs text-center text-muted-foreground">
+                No email after a few minutes? Check your spam folder.
+              </p>
+            </CardFooter>
+          </Card>
+        </div>
+      </div>
+    );
   }
 
   return (
