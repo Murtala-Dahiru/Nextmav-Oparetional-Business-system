@@ -1,91 +1,47 @@
-import { db } from '@/lib/db';
-import { success, error } from '@/lib/api-response';
-import { authorize } from '@/lib/auth-context';
+import { authorize, pgError } from '@/lib/auth-context';
+import { success } from '@/lib/api-response';
 
 /**
- * Operational health of the inventory: what needs reordering, what it will
- * cost, and what is already on the way.
+ * The reorder report.
  *
- * Severity is deliberately based on the product's own reorderLevel rather than
- * a fixed threshold, because a reorder point is per-product by nature.
+ * Reads `v_inventory_alerts`, which nets off quantities already on order so a
+ * buyer is not told to reorder something in transit — the difference between a
+ * report that gets used and one that gets ignored. The view is
+ * `security_invoker`, so it is tenant-scoped by the same RLS as the tables.
  */
 export async function GET(req: Request) {
-  const guard = await authorize('inventory', 'view');
-  if (guard instanceof Response) return guard;
+  const ctx = await authorize('inventory', 'view');
+  if (ctx instanceof Response) return ctx;
 
-  try {
-    const { searchParams } = new URL(req.url);
-    const limit = Math.min(200, Math.max(1, Number(searchParams.get('limit')) || 50));
+  const { searchParams } = new URL(req.url);
+  const limit = Math.min(200, Math.max(1, Number(searchParams.get('limit')) || 50));
 
-    const [products, incomingItems] = await Promise.all([
-      db.product.findMany({
-        where: {
-          isActive: true,
-          // Compare stock against each row's own reorder level.
-          stock: { lte: db.product.fields.reorderLevel },
-        },
-        include: {
-          warehouse: { select: { id: true, name: true } },
-          supplier: { select: { id: true, name: true, leadTimeDays: true } },
-        },
-        orderBy: { stock: 'asc' },
-        take: limit,
-      }),
-      // Quantities already ordered but not yet received.
-      db.purchaseOrderItem.findMany({
-        where: { order: { status: { in: ['submitted', 'approved'] } } },
-        select: { productId: true, quantity: true, receivedQuantity: true },
-      }),
-    ]);
+  const { data, error: e } = await ctx.supabase
+    .from('v_inventory_alerts')
+    .select('*')
+    .eq('organization_id', ctx.org.organizationId)
+    // Outages first, then the deepest shortfalls.
+    .order('stock', { ascending: true })
+    .limit(limit);
 
-    const incomingByProduct = new Map<string, number>();
-    for (const item of incomingItems) {
-      const outstanding = item.quantity - item.receivedQuantity;
-      if (outstanding > 0) {
-        incomingByProduct.set(item.productId, (incomingByProduct.get(item.productId) ?? 0) + outstanding);
-      }
-    }
+  if (e) return pgError(e);
 
-    const alerts = products.map(p => {
-      const incoming = incomingByProduct.get(p.id) ?? 0;
-      const shortfall = Math.max(0, p.reorderLevel - p.stock);
-      const suggestedOrderQty = Math.max(0, shortfall - incoming);
+  const rows = data ?? [];
+  const severityRank: Record<string, number> = { out_of_stock: 0, low: 1, covered: 2 };
+  rows.sort(
+    (a: any, b: any) =>
+      (severityRank[a.severity] ?? 3) - (severityRank[b.severity] ?? 3) || a.stock - b.stock,
+  );
 
-      return {
-        id: p.id,
-        name: p.name,
-        sku: p.sku,
-        category: p.category,
-        unit: p.unit,
-        stock: p.stock,
-        reorderLevel: p.reorderLevel,
-        cost: p.cost,
-        warehouse: p.warehouse,
-        supplier: p.supplier,
-        incoming,
-        shortfall,
-        suggestedOrderQty,
-        estimatedCost: Number((suggestedOrderQty * p.cost).toFixed(2)),
-        // Out of stock is an active outage; at-or-below reorder point is a warning,
-        // and it is downgraded to "covered" when enough stock is already inbound.
-        severity:
-          p.stock <= 0 ? 'out_of_stock' : incoming >= shortfall ? 'covered' : 'low',
-      };
-    });
+  const summary = {
+    totalAlerts: rows.length,
+    outOfStock: rows.filter((r: any) => r.severity === 'out_of_stock').length,
+    low: rows.filter((r: any) => r.severity === 'low').length,
+    covered: rows.filter((r: any) => r.severity === 'covered').length,
+    unassignedSupplier: rows.filter((r: any) => !r.supplier_name).length,
+    estimatedReorderCost:
+      Math.round(rows.reduce((sum: number, r: any) => sum + Number(r.estimated_cost ?? 0), 0) * 100) / 100,
+  };
 
-    const summary = {
-      totalAlerts: alerts.length,
-      outOfStock: alerts.filter(a => a.severity === 'out_of_stock').length,
-      low: alerts.filter(a => a.severity === 'low').length,
-      covered: alerts.filter(a => a.severity === 'covered').length,
-      unassignedSupplier: alerts.filter(a => !a.supplier).length,
-      estimatedReorderCost: Number(
-        alerts.reduce((sum, a) => sum + a.estimatedCost, 0).toFixed(2),
-      ),
-    };
-
-    return success(alerts, summary as any);
-  } catch (e: any) {
-    return error(e.message || 'Failed to load alerts', 500);
-  }
+  return success(rows, summary as any);
 }

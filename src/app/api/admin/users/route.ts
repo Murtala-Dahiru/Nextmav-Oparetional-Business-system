@@ -1,70 +1,36 @@
-import { db } from '@/lib/db';
+import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
-import { createUserSchema } from '@/lib/validations';
-import { safeSortField } from '@/lib/sort-whitelist';
 
+/**
+ * Organization members, for the administration screen.
+ *
+ * Reads v_org_directory so role, department and reporting line arrive
+ * resolved. There is no POST: people are invited, never inserted. A member
+ * row with no auth user is an account nobody can sign into.
+ */
 export async function GET(req: Request) {
+  const ctx = await authorize('admin', 'view');
+  if (ctx instanceof Response) return ctx;
+
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
   const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 20));
-  const search = searchParams.get('search') || '';
-  const rawSort = searchParams.get('sort') || 'createdAt';
-  const sort = safeSortField('user', rawSort);
-  const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
-  const department = searchParams.get('department');
-  const roleId = searchParams.get('roleId');
-  const isActive = searchParams.get('isActive');
 
-  const where: any = {};
+  let q = ctx.supabase.from('v_org_directory').select('*', { count: 'exact' })
+    .eq('organization_id', ctx.org.organizationId);
+
+  const search = searchParams.get('search')?.trim();
   if (search) {
-    where.OR = [
-      { firstName: { contains: search, mode: 'insensitive' } },
-      { lastName: { contains: search, mode: 'insensitive' } },
-      { email: { contains: search, mode: 'insensitive' } },
-      { jobTitle: { contains: search, mode: 'insensitive' } },
-    ];
+    const safe = search.replace(/[,()*]/g, ' ').trim();
+    if (safe) q = q.or(['full_name','email','job_title'].map(c => c + '.ilike.%' + safe + '%').join(','));
   }
-  if (department) where.department = department;
-  if (roleId) where.roleId = roleId;
-  if (isActive !== null && isActive !== undefined && isActive !== '') {
-    where.isActive = isActive === 'true';
+  for (const k of ['role','department_id','is_active']) {
+    const v = searchParams.get(k);
+    if (v) q = q.eq(k, v === 'true' ? true : v === 'false' ? false : v);
   }
 
-  const [data, total] = await Promise.all([
-    db.user.findMany({
-      where,
-      orderBy: { [sort]: sortDir },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      select: {
-        id: true, email: true, firstName: true, lastName: true, avatar: true,
-        jobTitle: true, phone: true, department: true, roleId: true,
-        isActive: true, lastSeen: true, createdAt: true, updatedAt: true,
-        role: { select: { id: true, name: true } },
-      },
-    }),
-    db.user.count({ where }),
-  ]);
-
-  return paginated(data, total, page, pageSize);
-}
-
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const validated = createUserSchema.parse(body);
-    const record = await db.user.create({
-      data: validated,
-      select: {
-        id: true, email: true, firstName: true, lastName: true, avatar: true,
-        jobTitle: true, phone: true, department: true, roleId: true,
-        isActive: true, lastSeen: true, createdAt: true, updatedAt: true,
-      },
-    });
-    return success(record, undefined, 201);
-  } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    if (e.code === 'P2002') return error('Email already exists', 409);
-    return error(e.message || 'Create failed', 500);
-  }
+  const off = (page - 1) * pageSize;
+  const { data, count, error: e } = await q.order('full_name').range(off, off + pageSize - 1);
+  if (e) return pgError(e);
+  return paginated(data ?? [], count ?? 0, page, pageSize);
 }

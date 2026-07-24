@@ -1,91 +1,164 @@
-import { db } from '@/lib/db';
+import { authorize } from '@/lib/auth-context';
 import { error } from '@/lib/api-response';
-import { exportSchema } from '@/lib/validations';
-import { NextResponse } from 'next/server';
+import { can } from '@/lib/permissions';
+import type { ModuleId } from '@/lib/constants';
 
-function escapeCSV(val: unknown): string {
-  const s = String(val ?? '');
-  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-    return `"${s.replace(/"/g, '""')}"`;
-  }
-  return s;
+/**
+ * CSV export.
+ *
+ * Every dataset requires the `export` capability on its own module, not merely
+ * `view`. Exporting is a different act from reading: it removes the data from
+ * the platform's access controls entirely, and a spreadsheet of the customer
+ * list or the salary register cannot be un-shared. Most roles can read their
+ * module without being able to extract it.
+ *
+ * Rows are still filtered by RLS, so an export can never contain more than the
+ * caller could see on screen.
+ */
+
+interface Dataset {
+  table: string;
+  module: ModuleId;
+  select: string;
+  columns: { key: string; label: string }[];
+  order?: string;
 }
 
-function toCSV(rows: Record<string, unknown>[]): string {
-  if (rows.length === 0) return '';
-  const headers = Object.keys(rows[0]);
-  const lines = [headers.map(escapeCSV).join(',')];
-  for (const row of rows) {
-    lines.push(headers.map((h) => escapeCSV(row[h])).join(','));
-  }
-  return lines.join('\n');
-}
-
-function flatten(obj: Record<string, unknown>, prefix = ''): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    const key = prefix ? `${prefix}.${k}` : k;
-    if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) {
-      Object.assign(out, flatten(v as Record<string, unknown>, key));
-    } else {
-      out[key] = v instanceof Date ? v.toISOString() : v;
-    }
-  }
-  return out;
-}
-
-const moduleMap: Record<string, { model: any; sortKey: string }> = {
-  leads: { model: 'lead', sortKey: 'createdAt' },
-  contacts: { model: 'contact', sortKey: 'createdAt' },
-  companies: { model: 'company', sortKey: 'createdAt' },
-  deals: { model: 'deal', sortKey: 'createdAt' },
-  projects: { model: 'project', sortKey: 'createdAt' },
-  tasks: { model: 'projectTask', sortKey: 'createdAt' },
-  tickets: { model: 'supportTicket', sortKey: 'createdAt' },
-  invoices: { model: 'invoice', sortKey: 'createdAt' },
-  expenses: { model: 'expense', sortKey: 'createdAt' },
-  products: { model: 'product', sortKey: 'createdAt' },
-  warehouses: { model: 'warehouse', sortKey: 'createdAt' },
-  events: { model: 'calendarEvent', sortKey: 'startDate' },
-  users: { model: 'user', sortKey: 'createdAt' },
-  pages: { model: 'workspacePage', sortKey: 'createdAt' },
+const DATASETS: Record<string, Dataset> = {
+  leads: {
+    table: 'leads', module: 'crm',
+    select: 'first_name, last_name, email, phone, company_name, status, score, estimated_value, created_at',
+    columns: [
+      { key: 'first_name', label: 'First name' }, { key: 'last_name', label: 'Last name' },
+      { key: 'email', label: 'Email' }, { key: 'phone', label: 'Phone' },
+      { key: 'company_name', label: 'Company' }, { key: 'status', label: 'Status' },
+      { key: 'score', label: 'Score' }, { key: 'estimated_value', label: 'Value' },
+      { key: 'created_at', label: 'Created' },
+    ],
+  },
+  deals: {
+    table: 'deals', module: 'crm',
+    select: 'name, stage, value, probability, expected_close, created_at',
+    columns: [
+      { key: 'name', label: 'Deal' }, { key: 'stage', label: 'Stage' },
+      { key: 'value', label: 'Value' }, { key: 'probability', label: 'Probability' },
+      { key: 'expected_close', label: 'Expected close' }, { key: 'created_at', label: 'Created' },
+    ],
+  },
+  invoices: {
+    table: 'invoices', module: 'finance',
+    select: 'invoice_number, status, issue_date, due_date, subtotal, tax_amount, total, amount_paid, currency',
+    columns: [
+      { key: 'invoice_number', label: 'Invoice' }, { key: 'status', label: 'Status' },
+      { key: 'issue_date', label: 'Issued' }, { key: 'due_date', label: 'Due' },
+      { key: 'subtotal', label: 'Subtotal' }, { key: 'tax_amount', label: 'Tax' },
+      { key: 'total', label: 'Total' }, { key: 'amount_paid', label: 'Paid' },
+      { key: 'currency', label: 'Currency' },
+    ],
+    order: 'issue_date',
+  },
+  expenses: {
+    table: 'expenses', module: 'finance',
+    select: 'title, amount, currency, category, vendor, expense_date, status',
+    columns: [
+      { key: 'title', label: 'Title' }, { key: 'amount', label: 'Amount' },
+      { key: 'currency', label: 'Currency' }, { key: 'category', label: 'Category' },
+      { key: 'vendor', label: 'Vendor' }, { key: 'expense_date', label: 'Date' },
+      { key: 'status', label: 'Status' },
+    ],
+    order: 'expense_date',
+  },
+  products: {
+    table: 'products', module: 'inventory',
+    select: 'sku, name, category, unit, price, cost, stock, reorder_level',
+    columns: [
+      { key: 'sku', label: 'SKU' }, { key: 'name', label: 'Name' },
+      { key: 'category', label: 'Category' }, { key: 'unit', label: 'Unit' },
+      { key: 'price', label: 'Price' }, { key: 'cost', label: 'Cost' },
+      { key: 'stock', label: 'Stock' }, { key: 'reorder_level', label: 'Reorder at' },
+    ],
+    order: 'name',
+  },
+  tickets: {
+    table: 'support_tickets', module: 'support',
+    select: 'ticket_number, subject, status, priority, category, created_at, resolved_at',
+    columns: [
+      { key: 'ticket_number', label: 'Ticket' }, { key: 'subject', label: 'Subject' },
+      { key: 'status', label: 'Status' }, { key: 'priority', label: 'Priority' },
+      { key: 'category', label: 'Category' }, { key: 'created_at', label: 'Created' },
+      { key: 'resolved_at', label: 'Resolved' },
+    ],
+  },
+  attendance: {
+    table: 'attendance_records', module: 'hr',
+    select: 'work_date, status, checked_in_at, checked_out_at, worked_minutes, late_minutes',
+    columns: [
+      { key: 'work_date', label: 'Date' }, { key: 'status', label: 'Status' },
+      { key: 'checked_in_at', label: 'In' }, { key: 'checked_out_at', label: 'Out' },
+      { key: 'worked_minutes', label: 'Worked (min)' }, { key: 'late_minutes', label: 'Late (min)' },
+    ],
+    order: 'work_date',
+  },
 };
 
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const validated = exportSchema.parse(body);
-    const { module: mod, format } = validated;
+/** RFC 4180 escaping: quotes doubled, and any field containing a delimiter quoted. */
+function csvCell(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  const s = String(value);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
 
-    const config = moduleMap[mod];
-    if (!config) {
-      return error(`Unknown module: ${mod}. Valid: ${Object.keys(moduleMap).join(', ')}`, 400);
-    }
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const name = searchParams.get('dataset') ?? searchParams.get('type') ?? '';
+  const spec = DATASETS[name];
 
-     
-    const rows = await (db as any)[config.model].findMany({
-      orderBy: { [config.sortKey]: 'desc' },
-      take: 10000,
-    });
-
-    const flatRows = rows.map((r: Record<string, unknown>) => {
-      const { id, ...rest } = r;
-      return flatten(rest);
-    });
-
-    if (format === 'csv') {
-      const csv = toCSV(flatRows);
-      return new NextResponse(csv, {
-        headers: {
-          'Content-Type': 'text/csv; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${mod}-export.csv"`,
-        },
-      });
-    }
-
-    return error('Unsupported format', 400);
-  } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    return error(e.message || 'Export failed', 500);
+  if (!spec) {
+    return error(
+      `Unknown dataset. Available: ${Object.keys(DATASETS).join(', ')}`,
+      422, 'UNKNOWN_DATASET',
+    );
   }
+
+  const ctx = await authorize(spec.module, 'view');
+  if (ctx instanceof Response) return ctx;
+
+  if (!can(ctx.org.role, spec.module, 'export')) {
+    return error(
+      `Your role (${ctx.org.role}) cannot export ${spec.module} data.`,
+      403, 'FORBIDDEN_EXPORT',
+    );
+  }
+
+  // Capped: an unbounded export is a memory and timeout hazard, and in
+  // practice a request for 100k rows is a report, not a download.
+  const limit = Math.min(10_000, Math.max(1, Number(searchParams.get('limit')) || 5_000));
+
+  const { data, error: e } = await ctx.supabase
+    .from(spec.table)
+    .select(spec.select)
+    .eq('organization_id', ctx.org.organizationId)
+    .order(spec.order ?? 'created_at', { ascending: false })
+    .limit(limit);
+
+  if (e) return error(e.message, 500, e.code);
+
+  // The select string is dynamic, so supabase-js cannot infer a row shape.
+  const rows = (data ?? []) as unknown as Record<string, unknown>[];
+  const csv = [
+    spec.columns.map(c => csvCell(c.label)).join(','),
+    ...rows.map(r => spec.columns.map(c => csvCell(r[c.key])).join(',')),
+  ].join('\r\n');
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  const filename = `${ctx.org.organizationSlug || 'export'}-${name}-${stamp}.csv`;
+
+  return new Response(csv, {
+    headers: {
+      // BOM so Excel opens UTF-8 correctly rather than mangling accents.
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Cache-Control': 'no-store',
+    },
+  });
 }

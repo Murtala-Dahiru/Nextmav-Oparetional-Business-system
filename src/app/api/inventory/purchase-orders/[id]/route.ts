@@ -1,149 +1,159 @@
-import { db } from '@/lib/db';
+import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
-import { updatePurchaseOrderSchema, DEFAULT_USER_ID } from '@/lib/validations';
 
-const ORDER_INCLUDE = {
-  supplier: { select: { id: true, name: true, leadTimeDays: true } },
-  warehouse: { select: { id: true, name: true } },
-  createdBy: { select: { id: true, firstName: true, lastName: true } },
-  items: {
-    include: { product: { select: { id: true, name: true, sku: true, unit: true } } },
-  },
-} as const;
+const SELECT =
+  '*, supplier:suppliers(id, name, lead_time_days), warehouse:warehouses(id, name), items:purchase_order_items(*, product:products(id, name, sku, unit))';
 
-/** Which status changes are legal. A received order is terminal. */
-const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+/** Legal status transitions. A received order is terminal. */
+const NEXT: Record<string, string[]> = {
   draft: ['submitted', 'cancelled'],
   submitted: ['approved', 'draft', 'cancelled'],
-  approved: ['received', 'cancelled'],
+  approved: ['received', 'partially_received', 'cancelled'],
+  partially_received: ['received', 'cancelled'],
   received: [],
   cancelled: [],
 };
 
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+type Params = { params: Promise<{ id: string }> };
+
+export async function GET(_req: Request, { params }: Params) {
+  const ctx = await authorize('inventory', 'view');
+  if (ctx instanceof Response) return ctx;
   const { id } = await params;
-  try {
-    const record = await db.purchaseOrder.findUnique({ where: { id }, include: ORDER_INCLUDE });
-    if (!record) return error('Not found', 404);
-    return success(record);
-  } catch (e: any) {
-    return error(e.message || 'Get failed', 500);
-  }
+
+  const { data, error: e } = await ctx.supabase
+    .from('purchase_orders').select(SELECT)
+    .eq('organization_id', ctx.org.organizationId).eq('id', id)
+    .maybeSingle();
+
+  if (e) return pgError(e);
+  if (!data) return error('Not found', 404, 'NOT_FOUND');
+  return success(data);
 }
 
 /**
  * Update an order, including status transitions.
  *
- * Moving an order to `received` is what actually brings stock into the
- * building, so it writes a StockMovement per line item inside the same
- * transaction as the status change. Receiving is therefore auditable and
- * cannot leave the ledger and the on-hand quantity disagreeing.
+ * Receiving is the consequential one: it is what actually brings stock into
+ * the building, so it walks every outstanding line through
+ * record_stock_movement(). That keeps the ledger, the on-hand quantity and the
+ * order's received quantities in agreement, and makes the receipt auditable —
+ * setting `status = received` without moving stock would leave the warehouse
+ * and the system disagreeing about what is on the shelf.
  */
-export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(req: Request, { params }: Params) {
+  const ctx = await authorize('inventory', 'edit');
+  if (ctx instanceof Response) return ctx;
   const { id } = await params;
+
   try {
-    const body = await req.json();
-    const { status, expectedDate, ...rest } = updatePurchaseOrderSchema.parse(body);
+    const b = await req.json();
 
-    const record = await db.$transaction(async tx => {
-      const existing = await tx.purchaseOrder.findUnique({
-        where: { id },
-        include: { items: true },
-      });
-      if (!existing) throw Object.assign(new Error('Not found'), { status: 404 });
+    const { data: existing } = await ctx.supabase
+      .from('purchase_orders')
+      .select('id, status, order_number, warehouse_id, items:purchase_order_items(id, product_id, quantity, received_quantity)')
+      .eq('organization_id', ctx.org.organizationId)
+      .eq('id', id)
+      .maybeSingle();
 
-      if (status && status !== existing.status) {
-        const allowed = ALLOWED_TRANSITIONS[existing.status] ?? [];
-        if (!allowed.includes(status)) {
-          throw Object.assign(
-            new Error(`Cannot change status from "${existing.status}" to "${status}".`),
-            { status: 409 },
-          );
+    if (!existing) return error('Not found', 404, 'NOT_FOUND');
+
+    const status = b.status as string | undefined;
+
+    if (status && status !== existing.status) {
+      const allowed = NEXT[existing.status] ?? [];
+      if (!allowed.includes(status)) {
+        return error(
+          `Cannot change status from "${existing.status}" to "${status}".`,
+          409, 'INVALID_TRANSITION',
+        );
+      }
+      // Approving and receiving commit money and stock respectively.
+      if (['approved', 'received', 'partially_received'].includes(status)) {
+        const { data: canApprove } = await ctx.supabase.rpc('can_approve', {
+          org: ctx.org.organizationId, domain: 'purchase',
+        });
+        if (canApprove === false) {
+          return error('You are not permitted to approve or receive purchase orders.', 403, 'FORBIDDEN_ACTION');
         }
       }
+    }
 
-      const receiving = status === 'received' && existing.status !== 'received';
+    const receiving = status === 'received' && existing.status !== 'received';
 
-      if (receiving) {
-        for (const item of existing.items) {
-          const outstanding = item.quantity - item.receivedQuantity;
-          if (outstanding <= 0) continue;
+    if (receiving) {
+      for (const item of (existing.items ?? []) as any[]) {
+        const outstanding = item.quantity - item.received_quantity;
+        if (outstanding <= 0) continue;
 
-          const product = await tx.product.findUnique({
-            where: { id: item.productId },
-            select: { stock: true },
-          });
-          if (!product) continue;
+        const { error: mvErr } = await ctx.supabase.rpc('record_stock_movement', {
+          org: ctx.org.organizationId,
+          product: item.product_id,
+          qty: outstanding,
+          movement_type: 'receipt',
+          reason: `Received against ${existing.order_number}`,
+          reference: existing.order_number,
+        });
+        // Stop on the first failure rather than continuing: a partially
+        // applied receipt is worse than one that clearly did not complete.
+        if (mvErr) return pgError(mvErr);
 
-          const balanceAfter = product.stock + outstanding;
-
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { stock: balanceAfter },
-          });
-          await tx.purchaseOrderItem.update({
-            where: { id: item.id },
-            data: { receivedQuantity: item.quantity },
-          });
-          await tx.stockMovement.create({
-            data: {
-              productId: item.productId,
-              type: 'receipt',
-              quantity: outstanding,
-              balanceAfter,
-              reason: `Received against ${existing.orderNumber}`,
-              reference: existing.orderNumber,
-              toWarehouseId: existing.warehouseId,
-              userId: existing.createdById || DEFAULT_USER_ID,
-            },
-          });
-        }
+        await ctx.supabase
+          .from('purchase_order_items')
+          .update({ received_quantity: item.quantity })
+          .eq('id', item.id);
       }
+    }
 
-      return tx.purchaseOrder.update({
-        where: { id },
-        data: {
-          ...rest,
-          ...(status ? { status } : {}),
-          ...(expectedDate !== undefined
-            ? { expectedDate: expectedDate ? new Date(expectedDate) : null }
-            : {}),
-          ...(receiving ? { receivedAt: new Date() } : {}),
-        },
-        include: ORDER_INCLUDE,
-      });
-    });
+    const update: Record<string, any> = {};
+    for (const k of ['warehouse_id', 'expected_date', 'notes']) {
+      if (k in b) update[k] = b[k] || null;
+    }
+    if (status) update.status = status;
+    if (receiving) update.received_at = new Date().toISOString();
+    if (status === 'approved') {
+      update.approved_by = ctx.org.memberId;
+      update.approved_at = new Date().toISOString();
+    }
 
-    return success(record);
+    const { data, error: e } = await ctx.supabase
+      .from('purchase_orders').update(update)
+      .eq('organization_id', ctx.org.organizationId).eq('id', id)
+      .select(SELECT).maybeSingle();
+
+    if (e) return pgError(e);
+    return success(data);
   } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    if (e.status) return error(e.message, e.status);
-    if (e.code === 'P2025') return error('Not found', 404);
     return error(e.message || 'Update failed', 500);
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export { PATCH as PUT };
+
+export async function DELETE(_req: Request, { params }: Params) {
+  const ctx = await authorize('inventory', 'delete');
+  if (ctx instanceof Response) return ctx;
   const { id } = await params;
-  try {
-    const existing = await db.purchaseOrder.findUnique({
-      where: { id },
-      select: { status: true, orderNumber: true },
-    });
-    if (!existing) return error('Not found', 404);
 
-    // A received order has moved real stock and is part of the audit trail.
-    if (existing.status === 'received') {
-      return error(
-        `${existing.orderNumber} has already been received and cannot be deleted. Cancel a replacement order instead.`,
-        409,
-      );
-    }
+  const { data: existing } = await ctx.supabase
+    .from('purchase_orders').select('status, order_number')
+    .eq('organization_id', ctx.org.organizationId).eq('id', id)
+    .maybeSingle();
 
-    await db.purchaseOrder.delete({ where: { id } });
-    return success({ deleted: true });
-  } catch (e: any) {
-    if (e.code === 'P2025') return error('Not found', 404);
-    return error(e.message || 'Delete failed', 500);
+  if (!existing) return error('Not found', 404, 'NOT_FOUND');
+
+  // A received order has moved real stock and is part of the audit trail.
+  if (existing.status === 'received') {
+    return error(
+      `${existing.order_number} has already been received and cannot be deleted. Raise a return instead.`,
+      409, 'ALREADY_RECEIVED',
+    );
   }
+
+  const { error: e } = await ctx.supabase
+    .from('purchase_orders').delete()
+    .eq('organization_id', ctx.org.organizationId).eq('id', id);
+
+  if (e) return pgError(e);
+  return success({ deleted: true });
 }

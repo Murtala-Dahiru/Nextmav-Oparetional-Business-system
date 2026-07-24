@@ -1,51 +1,73 @@
-import { db } from '@/lib/db';
+import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
-import { updateMessageSchema } from '@/lib/validations';
 
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  try {
-    const record = await db.message.findUnique({
-      where: { id },
-      include: {
-        sender: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-        channel: { select: { id: true, name: true } },
-      },
-    });
-    if (!record) return error('Not found', 404);
-    return success(record);
-  } catch (e: any) {
-    return error(e.message || 'Get failed', 500);
-  }
-}
+type Params = { params: Promise<{ id: string }> };
 
-export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+/**
+ * Edit a message.
+ *
+ * Only the sender may change the text — enforced by RLS, which restricts
+ * UPDATE to rows whose sender is the caller. `edited_at` is stamped so the UI
+ * can mark it, since a silently altered message is a small integrity problem
+ * in a shared channel.
+ */
+export async function PATCH(req: Request, { params }: Params) {
+  const ctx = await authorize('communication', 'edit');
+  if (ctx instanceof Response) return ctx;
   const { id } = await params;
+
   try {
-    const body = await req.json();
-    const validated = updateMessageSchema.parse(body);
-    const record = await db.message.update({
-      where: { id },
-      data: validated,
-      include: {
-        sender: { select: { id: true, firstName: true, lastName: true, avatar: true } },
-      },
-    });
-    return success(record);
+    const b = await req.json();
+    const update: Record<string, any> = {};
+
+    if (typeof b.body === 'string') {
+      const text = b.body.trim();
+      if (!text) return error('A message cannot be emptied; delete it instead', 422, 'VALIDATION_ERROR');
+      update.body = text;
+      update.edited_at = new Date().toISOString();
+    }
+    // Pinning is a channel action rather than an edit, but shares the row.
+    if ('is_pinned' in b) update.is_pinned = !!b.is_pinned;
+
+    if (!Object.keys(update).length) return error('Nothing to update', 422, 'VALIDATION_ERROR');
+
+    const { data, error: e } = await ctx.supabase
+      .from('messages')
+      .update(update)
+      .eq('organization_id', ctx.org.organizationId)
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+
+    if (e) return pgError(e);
+    if (!data) return error('Not found', 404, 'NOT_FOUND');
+    return success(data);
   } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    if (e.code === 'P2025') return error('Not found', 404);
     return error(e.message || 'Update failed', 500);
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+/**
+ * Delete a message.
+ *
+ * Soft delete: a thread with holes in it is confusing, and replies reference
+ * the parent. The row stays so the conversation structure survives, and the
+ * client renders it as removed.
+ */
+export async function DELETE(_req: Request, { params }: Params) {
+  const ctx = await authorize('communication', 'view');
+  if (ctx instanceof Response) return ctx;
   const { id } = await params;
-  try {
-    await db.message.delete({ where: { id } });
-    return success({ deleted: true });
-  } catch (e: any) {
-    if (e.code === 'P2025') return error('Not found', 404);
-    return error(e.message || 'Delete failed', 500);
-  }
+
+  const { data, error: e } = await ctx.supabase
+    .from('messages')
+    .update({ deleted_at: new Date().toISOString(), body: '' })
+    .eq('organization_id', ctx.org.organizationId)
+    .eq('id', id)
+    .select('id')
+    .maybeSingle();
+
+  if (e) return pgError(e);
+  if (!data) return error('Not found', 404, 'NOT_FOUND');
+  return success({ deleted: true });
 }

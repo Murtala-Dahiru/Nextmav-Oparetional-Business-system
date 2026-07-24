@@ -174,8 +174,24 @@ export function pgError(e: { code?: string; message?: string; details?: string }
       // Business-rule triggers raise check_violation with a written message,
       // so pass it through — it is the explanation the user needs.
       return error(e.message ?? 'That change is not allowed.', 409, 'RULE_VIOLATION');
+    case 'P0002':
+      // no_data_found, raised by RPCs when the target row is absent — which
+      // includes the cross-tenant case, where the row exists but not for this
+      // caller. 404 rather than 500: nothing broke, the record is not theirs.
+      return error(e.message ?? 'Not found', 404, 'NOT_FOUND');
+    case 'P0001':
+      // raise_exception without an explicit ERRCODE. Business rules written
+      // this way carry their explanation in the message.
+      return error(e.message ?? 'That operation is not allowed.', 409, 'RULE_VIOLATION');
     case 'PGRST116':
       return error('Not found', 404, 'NOT_FOUND');
+    case 'PGRST202':
+      // The function or its argument list does not exist — a deployment
+      // mismatch between the app and the database, not a user error.
+      return error(
+        'This operation is unavailable: the database is missing a required function. Re-run the migrations.',
+        500, 'SCHEMA_MISMATCH',
+      );
     default:
       return error(e.message ?? 'Database error', 500, e.code);
   }

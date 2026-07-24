@@ -1,106 +1,88 @@
-import { db } from '@/lib/db';
+import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
-import { createStockMovementSchema } from '@/lib/validations';
-import { safeSortField } from '@/lib/sort-whitelist';
-import { authorize } from '@/lib/auth-context';
 
+const SELECT =
+  '*, product:products(id, name, sku, unit), member:organization_members!stock_movements_member_id_fkey(id, profiles!organization_members_user_id_fkey(full_name)), from_warehouse:warehouses!stock_movements_from_warehouse_id_fkey(id, name), to_warehouse:warehouses!stock_movements_to_warehouse_id_fkey(id, name)';
+
+/**
+ * The stock ledger.
+ *
+ * Append-only by policy: there is no UPDATE or DELETE on this table, so a
+ * movement cannot be rewritten. Corrections are new compensating movements,
+ * which is what makes an on-hand quantity explainable.
+ */
 export async function GET(req: Request) {
-  const guard = await authorize('inventory', 'view');
-  if (guard instanceof Response) return guard;
+  const ctx = await authorize('inventory', 'view');
+  if (ctx instanceof Response) return ctx;
 
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
   const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 20));
-  const sort = safeSortField('stockMovement', searchParams.get('sort') || 'createdAt');
-  const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
-  const productId = searchParams.get('productId');
+
+  let query = ctx.supabase
+    .from('stock_movements')
+    .select(SELECT, { count: 'exact' })
+    .eq('organization_id', ctx.org.organizationId);
+
+  const productId = searchParams.get('product_id') ?? searchParams.get('productId');
+  if (productId) query = query.eq('product_id', productId);
   const type = searchParams.get('type');
-  const search = searchParams.get('search') || '';
+  if (type) query = query.eq('type', type);
 
-  const where: any = {};
-  if (productId) where.productId = productId;
-  if (type) where.type = type;
-  if (search) {
-    where.OR = [
-      { reason: { contains: search, mode: 'insensitive' } },
-      { reference: { contains: search, mode: 'insensitive' } },
-      { product: { name: { contains: search, mode: 'insensitive' } } },
-      { product: { sku: { contains: search, mode: 'insensitive' } } },
-    ];
-  }
+  const off = (page - 1) * pageSize;
+  const { data, count, error: e } = await query
+    .order('created_at', { ascending: false })
+    .range(off, off + pageSize - 1);
 
-  const [data, total] = await Promise.all([
-    db.stockMovement.findMany({
-      where,
-      orderBy: { [sort]: sortDir },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      include: {
-        product: { select: { id: true, name: true, sku: true, unit: true } },
-        user: { select: { id: true, firstName: true, lastName: true } },
-        fromWarehouse: { select: { id: true, name: true } },
-        toWarehouse: { select: { id: true, name: true } },
-      },
-    }),
-    db.stockMovement.count({ where }),
-  ]);
-
-  return paginated(data, total, page, pageSize);
+  if (e) return pgError(e);
+  return paginated(data ?? [], count ?? 0, page, pageSize);
 }
 
 /**
- * Record a stock movement and apply it to the product's on-hand quantity.
+ * Record a movement.
  *
- * The ledger row and the product balance must never disagree, so both writes
- * happen inside a single transaction. Stock is re-read inside that transaction
- * so two concurrent movements cannot both validate against a stale balance.
+ * Delegates to record_stock_movement(), which locks the product row, refuses
+ * to drive stock negative, and writes the ledger entry and the new balance
+ * together. Doing those as separate statements here would let two concurrent
+ * movements both validate against the same stale quantity.
+ *
+ * The client sends a positive amount and a type; the sign is derived, because
+ * asking a user to send -5 to issue five units invites the wrong sign.
  */
 export async function POST(req: Request) {
-  const guard = await authorize('inventory', 'create');
-  if (guard instanceof Response) return guard;
+  const ctx = await authorize('inventory', 'create');
+  if (ctx instanceof Response) return ctx;
 
   try {
-    const body = await req.json();
-    const input = createStockMovementSchema.parse(body);
+    const b = await req.json();
+    if (!b.product_id) return error('product_id is required', 422, 'VALIDATION_ERROR');
 
-    const record = await db.$transaction(async tx => {
-      const product = await tx.product.findUnique({
-        where: { id: input.productId },
-        select: { id: true, stock: true, name: true },
-      });
-      if (!product) throw Object.assign(new Error('Product not found'), { status: 404 });
+    const type = b.type ?? 'adjustment';
+    const amount = Number(b.quantity);
+    if (!Number.isFinite(amount) || amount === 0) {
+      return error('Quantity must be a non-zero number', 422, 'VALIDATION_ERROR');
+    }
 
-      const balanceAfter = product.stock + input.quantity;
-      if (balanceAfter < 0) {
-        throw Object.assign(
-          new Error(
-            `Cannot remove ${Math.abs(input.quantity)} unit(s) from "${product.name}" — only ${product.stock} on hand.`,
-          ),
-          { status: 409 },
-        );
-      }
+    // `issue`, `transfer` and `damage` remove stock; the rest add it. An
+    // explicit negative is honoured so a correction can still be expressed.
+    const outbound = ['issue', 'transfer', 'damage'].includes(type);
+    const signed = amount < 0 ? amount : outbound ? -Math.abs(amount) : Math.abs(amount);
 
-      await tx.product.update({
-        where: { id: product.id },
-        data: { stock: balanceAfter },
-      });
-
-      return tx.stockMovement.create({
-        data: { ...input, balanceAfter },
-        include: {
-          product: { select: { id: true, name: true, sku: true, unit: true } },
-          user: { select: { id: true, firstName: true, lastName: true } },
-          fromWarehouse: { select: { id: true, name: true } },
-          toWarehouse: { select: { id: true, name: true } },
-        },
-      });
+    const { data, error: e } = await ctx.supabase.rpc('record_stock_movement', {
+      org: ctx.org.organizationId,
+      product: b.product_id,
+      qty: signed,
+      movement_type: type,
+      reason: b.reason ?? '',
+      reference: b.reference ?? '',
     });
 
-    return success(record, undefined, 201);
+    // The function raises a written message when stock would go negative
+    // ("only N on hand"), which is exactly what the user needs to see.
+    if (e) return pgError(e);
+
+    return success(Array.isArray(data) ? data[0] : data, undefined, 201);
   } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    if (e.status) return error(e.message, e.status);
-    if (e.code === 'P2003') return error('Referenced product, warehouse or user does not exist', 400);
-    return error(e.message || 'Create failed', 500);
+    return error(e.message || 'Failed to record the movement', 500);
   }
 }

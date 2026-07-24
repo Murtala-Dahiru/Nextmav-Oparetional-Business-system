@@ -1,54 +1,60 @@
-import { db } from '@/lib/db';
+import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
-import { updateUserSchema } from '@/lib/validations';
 
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+type Params = { params: Promise<{ id: string }> };
+
+export async function GET(_r: Request, { params }: Params) {
+  const ctx = await authorize('admin', 'view');
+  if (ctx instanceof Response) return ctx;
   const { id } = await params;
-  try {
-    const record = await db.user.findUnique({
-      where: { id },
-      include: {
-        role: true,
-        _count: { select: { assignedTickets: true, ownedProjects: true, assignedTasks: true, leaveRequests: true, auditLogs: true, notifications: true } },
-      },
-    });
-    if (!record) return error('Not found', 404);
-    return success(record);
-  } catch (e: any) {
-    return error(e.message || 'Get failed', 500);
-  }
+  const { data, error: e } = await ctx.supabase.from('v_org_directory').select('*')
+    .eq('organization_id', ctx.org.organizationId).eq('member_id', id).maybeSingle();
+  if (e) return pgError(e);
+  if (!data) return error('Not found', 404, 'NOT_FOUND');
+  return success(data);
 }
 
-export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+/**
+ * Change a member's role, department or status.
+ *
+ * The last-owner trigger rejects demoting or deactivating the only owner, so
+ * an organization can never be left unadministrable. pgError passes its
+ * message through unchanged.
+ */
+export async function PATCH(req: Request, { params }: Params) {
+  const ctx = await authorize('admin', 'manage');
+  if (ctx instanceof Response) return ctx;
   const { id } = await params;
+
   try {
-    const body = await req.json();
-    const validated = updateUserSchema.parse(body);
-    const record = await db.user.update({
-      where: { id },
-      data: validated,
-      select: {
-        id: true, email: true, firstName: true, lastName: true, avatar: true,
-        jobTitle: true, phone: true, department: true, roleId: true,
-        isActive: true, lastSeen: true, createdAt: true, updatedAt: true,
-      },
-    });
-    return success(record);
-  } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    if (e.code === 'P2025') return error('Not found', 404);
-    if (e.code === 'P2002') return error('Email already exists', 409);
-    return error(e.message || 'Update failed', 500);
-  }
+    const b = await req.json();
+    const update: Record<string, any> = {};
+    for (const k of ['role','department_id','manager_id','employee_number','employment_type','hired_on','is_active']) {
+      if (k in b) update[k] = b[k] === '' ? null : b[k];
+    }
+    if (!Object.keys(update).length) return error('Nothing to update', 422, 'VALIDATION_ERROR');
+
+    const { data, error: e } = await ctx.supabase.from('organization_members').update(update)
+      .eq('organization_id', ctx.org.organizationId).eq('id', id).select('*').maybeSingle();
+    if (e) return pgError(e);
+    if (!data) return error('Not found', 404, 'NOT_FOUND');
+    return success(data);
+  } catch (e: any) { return error(e.message || 'Update failed', 500); }
 }
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+/** Deactivate rather than delete: the audit trail must keep pointing at a real row. */
+export async function DELETE(_r: Request, { params }: Params) {
+  const ctx = await authorize('admin', 'manage');
+  if (ctx instanceof Response) return ctx;
   const { id } = await params;
-  try {
-    await db.user.delete({ where: { id } });
-    return success({ deleted: true });
-  } catch (e: any) {
-    if (e.code === 'P2025') return error('Not found', 404);
-    return error(e.message || 'Delete failed', 500);
+
+  if (id === ctx.org.memberId) {
+    return error('You cannot remove yourself from the organization.', 409, 'SELF_REMOVAL');
   }
+  const { data, error: e } = await ctx.supabase.from('organization_members')
+    .update({ is_active: false })
+    .eq('organization_id', ctx.org.organizationId).eq('id', id).select('id').maybeSingle();
+  if (e) return pgError(e);
+  if (!data) return error('Not found', 404, 'NOT_FOUND');
+  return success({ deactivated: true });
 }

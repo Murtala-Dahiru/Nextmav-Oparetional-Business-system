@@ -1,28 +1,41 @@
-import { db } from '@/lib/db';
+import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
-import { updateNotificationSchema } from '@/lib/validations';
 
-export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+type Params = { params: Promise<{ id: string }> };
+
+/** Toggle a single notification's read state. */
+export async function PATCH(req: Request, { params }: Params) {
+  const ctx = await authorize('dashboard', 'view');
+  if (ctx instanceof Response) return ctx;
   const { id } = await params;
-  try {
-    const body = await req.json();
-    const validated = updateNotificationSchema.parse(body);
-    const record = await db.notification.update({ where: { id }, data: validated });
-    return success(record);
-  } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    if (e.code === 'P2025') return error('Not found', 404);
-    return error(e.message || 'Update failed', 500);
-  }
+
+  const body = await req.json().catch(() => ({}));
+  const read = body?.is_read ?? true;
+
+  const { data, error: e } = await ctx.supabase
+    .from('notifications')
+    .update({ is_read: read, read_at: read ? new Date().toISOString() : null })
+    .eq('recipient_id', ctx.org.memberId)
+    .eq('id', id)
+    .select('*')
+    .maybeSingle();
+
+  if (e) return pgError(e);
+  if (!data) return error('Not found', 404, 'NOT_FOUND');
+  return success(data);
 }
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(_req: Request, { params }: Params) {
+  const ctx = await authorize('dashboard', 'view');
+  if (ctx instanceof Response) return ctx;
   const { id } = await params;
-  try {
-    await db.notification.delete({ where: { id } });
-    return success({ deleted: true });
-  } catch (e: any) {
-    if (e.code === 'P2025') return error('Not found', 404);
-    return error(e.message || 'Delete failed', 500);
-  }
+
+  const { error: e } = await ctx.supabase
+    .from('notifications')
+    .delete()
+    .eq('recipient_id', ctx.org.memberId)
+    .eq('id', id);
+
+  if (e) return pgError(e);
+  return success({ deleted: true });
 }

@@ -1,50 +1,63 @@
-import { db } from '@/lib/db';
-import { success, error, paginated } from '@/lib/api-response';
-import { createRoleSchema } from '@/lib/validations';
-import { safeSortField } from '@/lib/sort-whitelist';
+import { authorize, pgError } from '@/lib/auth-context';
+import { success } from '@/lib/api-response';
+import { ROLES, MODULES, type RoleId } from '@/lib/constants';
+import { ROLE_GRANTS, allowedModules } from '@/lib/permissions';
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const page = Math.max(1, Number(searchParams.get('page')) || 1);
-  const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 50));
-  const search = searchParams.get('search') || '';
-  const rawSort = searchParams.get('sort') || 'createdAt';
-  const sort = safeSortField('role', rawSort);
-  const sortDir = searchParams.get('sortDir') === 'asc' ? 'asc' : 'desc';
+/**
+ * Roles and what each one can do.
+ *
+ * Roles are a fixed capability model in `lib/permissions.ts` and a matching
+ * Postgres enum, not editable rows. That is deliberate: RLS policies are
+ * written against specific role names, so a role invented at runtime would
+ * have no policy and would silently see nothing — the worst kind of
+ * permissions bug, because it looks like missing data rather than missing
+ * access.
+ *
+ * The endpoint therefore describes the model and reports how many members hold
+ * each role, which is what an administration screen actually needs. Assigning
+ * a role to a person is done through /api/admin/users/[id].
+ */
+export async function GET() {
+  const ctx = await authorize('admin', 'view');
+  if (ctx instanceof Response) return ctx;
 
-  const where: any = {};
-  if (search) {
-    where.OR = [
-      { name: { contains: search, mode: 'insensitive' } },
-      { description: { contains: search, mode: 'insensitive' } },
-    ];
-  }
+  const { data: members, error: e } = await ctx.supabase
+    .from('organization_members')
+    .select('role, is_active')
+    .eq('organization_id', ctx.org.organizationId);
 
-  const [data, total] = await Promise.all([
-    db.role.findMany({
-      where,
-      orderBy: { [sort]: sortDir },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      include: {
-        _count: { select: { users: true } },
-      },
-    }),
-    db.role.count({ where }),
-  ]);
+  if (e) return pgError(e);
 
-  return paginated(data, total, page, pageSize);
-}
+  const counts = (members ?? []).reduce<Record<string, number>>((acc, m: any) => {
+    if (m.is_active) acc[m.role] = (acc[m.role] ?? 0) + 1;
+    return acc;
+  }, {});
 
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const validated = createRoleSchema.parse(body);
-    const record = await db.role.create({ data: validated });
-    return success(record, undefined, 201);
-  } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    if (e.code === 'P2002') return error('Role name already exists', 409);
-    return error(e.message || 'Create failed', 500);
-  }
+  const roles = ROLES.map(r => {
+    const id = r.id as RoleId;
+    const grants = ROLE_GRANTS[id] ?? {};
+    return {
+      id,
+      name: r.name,
+      description: r.description,
+      memberCount: counts[id] ?? 0,
+      modules: allowedModules(id),
+      // Flattened so the UI can render a capability matrix without
+      // re-deriving the model and risking a different answer.
+      permissions: MODULES.map(m => {
+        const g = (grants as any)[m.id];
+        return {
+          module: m.id,
+          label: m.label,
+          allowed: !!g,
+          actions: g ? [...g.actions] : [],
+          scope: g?.scope ?? null,
+        };
+      }),
+      // System roles cannot be deleted; every role here is one.
+      isSystem: true,
+    };
+  });
+
+  return success(roles, { total: roles.length } as any);
 }

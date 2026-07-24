@@ -234,6 +234,206 @@ try {
   check(!!d.viewer && !!d.myWork && !!d.notifications, 'dashboard returns the personal sections');
   check(d.viewer?.role === 'owner', 'dashboard reports the resolved role');
   check('finance' in d, 'an owner receives the finance section');
+
+  section('8. Inventory — ledger and purchase orders');
+
+  const wh = await A.json('/api/inventory/warehouses', {
+    method: 'POST', body: JSON.stringify({ name: `WH-${run}`, location: 'Test' }),
+  });
+  check(wh.status === 201, `create a warehouse (${wh.status})`, wh.body?.error?.message);
+
+  const sup = await A.json('/api/inventory/suppliers', {
+    method: 'POST', body: JSON.stringify({ name: `Supplier-${run}`, lead_time_days: 14 }),
+  });
+  check(sup.status === 201, `create a supplier (${sup.status})`, sup.body?.error?.message);
+
+  const prod = await A.json('/api/inventory/products', {
+    method: 'POST',
+    body: JSON.stringify({
+      sku: `SKU-${run}`, name: 'Widget', cost: 10, price: 25, reorder_level: 20,
+      warehouse_id: wh.body?.data?.id, supplier_id: sup.body?.data?.id,
+    }),
+  });
+  check(prod.status === 201, `create a product (${prod.status})`, prod.body?.error?.message);
+  const productId = prod.body?.data?.id;
+  check(prod.body?.data?.stock === 0, 'new product starts at zero stock, not a client value');
+
+  if (productId) {
+    const receipt = await A.json('/api/inventory/movements', {
+      method: 'POST',
+      body: JSON.stringify({ product_id: productId, quantity: 50, type: 'receipt', reason: 'verify' }),
+    });
+    check(receipt.status === 201, `record a receipt (${receipt.status})`, receipt.body?.error?.message);
+    check(receipt.body?.data?.balance_after === 50, 'ledger reports the new balance');
+
+    // Sign is derived from the movement type, so a positive number issues out.
+    const issue = await A.json('/api/inventory/movements', {
+      method: 'POST',
+      body: JSON.stringify({ product_id: productId, quantity: 10, type: 'issue', reason: 'verify' }),
+    });
+    check(issue.body?.data?.balance_after === 40, 'issue subtracts without the client sending a negative');
+
+    const over = await A.json('/api/inventory/movements', {
+      method: 'POST',
+      body: JSON.stringify({ product_id: productId, quantity: 9999, type: 'issue' }),
+    });
+    check(!over.ok, `stock cannot go negative (${over.status})`);
+
+    const alerts = await A.json('/api/inventory/alerts');
+    check(alerts.ok, `reorder report loads (${alerts.status})`);
+  }
+
+  const po = await A.json('/api/inventory/purchase-orders', {
+    method: 'POST',
+    body: JSON.stringify({
+      supplier_id: sup.body?.data?.id, warehouse_id: wh.body?.data?.id, tax_rate: 10,
+      items: [{ product_id: productId, quantity: 25, unit_cost: 10 }],
+    }),
+  });
+  check(po.status === 201, `create a purchase order (${po.status})`, po.body?.error?.message);
+  check(po.body?.data?.total === 275, `totals computed server-side (got ${po.body?.data?.total}, expected 275)`);
+  const poId = po.body?.data?.id;
+
+  if (poId) {
+    const jump = await A.json(`/api/inventory/purchase-orders/${poId}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'received' }),
+    });
+    check(jump.status === 409, `draft cannot jump straight to received (${jump.status})`);
+
+    await A.json(`/api/inventory/purchase-orders/${poId}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'submitted' }),
+    });
+    await A.json(`/api/inventory/purchase-orders/${poId}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'approved' }),
+    });
+    const recv = await A.json(`/api/inventory/purchase-orders/${poId}`, {
+      method: 'PATCH', body: JSON.stringify({ status: 'received' }),
+    });
+    check(recv.ok, `approved order can be received (${recv.status})`, recv.body?.error?.message);
+
+    const after = await A.json(`/api/inventory/products/${productId}`);
+    check(after.body?.data?.stock === 65, `receiving moved real stock (40 + 25 = ${after.body?.data?.stock})`);
+
+    const del = await A.json(`/api/inventory/purchase-orders/${poId}`, { method: 'DELETE' });
+    check(del.status === 409, `a received order cannot be deleted (${del.status})`);
+  }
+
+  section('9. Finance');
+
+  const inv = await A.json('/api/finance/invoices', {
+    method: 'POST',
+    body: JSON.stringify({
+      tax_rate: 10,
+      line_items: [
+        { description: 'Consulting', quantity: 10, unit_price: 100 },
+        { description: 'Licence', quantity: 1, unit_price: 500 },
+      ],
+    }),
+  });
+  check(inv.status === 201, `create an invoice (${inv.status})`, inv.body?.error?.message);
+  check(inv.body?.data?.subtotal === 1500, `subtotal derived from line items (${inv.body?.data?.subtotal})`);
+  check(inv.body?.data?.total === 1650, `total includes tax (${inv.body?.data?.total})`);
+  check(!!inv.body?.data?.invoice_number, `invoice number assigned (${inv.body?.data?.invoice_number})`);
+
+  const emptyInv = await A.json('/api/finance/invoices', {
+    method: 'POST', body: JSON.stringify({ line_items: [] }),
+  });
+  check(emptyInv.status === 422, `an invoice with no lines is rejected (${emptyInv.status})`);
+
+  const exp = await A.json('/api/finance/expenses', {
+    method: 'POST',
+    body: JSON.stringify({ title: 'Travel', amount: 250, category: 'travel', status: 'approved' }),
+  });
+  check(exp.status === 201, `submit an expense (${exp.status})`, exp.body?.error?.message);
+  check(exp.body?.data?.status === 'pending', 'expense forced to pending despite the request body');
+
+  section('10. Support, workspace, communication');
+
+  const ticket = await A.json('/api/support/tickets', {
+    method: 'POST',
+    body: JSON.stringify({ subject: `Broken widget ${run}`, priority: 'high', description: 'verify' }),
+  });
+  check(ticket.status === 201, `raise a ticket (${ticket.status})`, ticket.body?.error?.message);
+  check(!!ticket.body?.data?.ticket_number, `ticket number assigned (${ticket.body?.data?.ticket_number})`);
+  check(!!ticket.body?.data?.due_at, 'SLA due date set from priority');
+
+  const page = await A.json('/api/workspace/pages', {
+    method: 'POST', body: JSON.stringify({ title: `Runbook ${run}`, content: 'Steps.' }),
+  });
+  check(page.status === 201, `create a document (${page.status})`, page.body?.error?.message);
+
+  const chan = await A.json('/api/communication/channels', {
+    method: 'POST', body: JSON.stringify({ name: `Team ${run}`, type: 'public' }),
+  });
+  check(chan.status === 201, `create a channel (${chan.status})`, chan.body?.error?.message);
+  check(/^team-/.test(chan.body?.data?.name ?? ''), `channel name slugified (${chan.body?.data?.name})`);
+
+  if (chan.body?.data?.id) {
+    const msg = await A.json('/api/communication/messages', {
+      method: 'POST', body: JSON.stringify({ channel_id: chan.body.data.id, body: 'Hello team' }),
+    });
+    check(msg.status === 201, `post a message (${msg.status})`, msg.body?.error?.message);
+
+    const emptyMsg = await A.json('/api/communication/messages', {
+      method: 'POST', body: JSON.stringify({ channel_id: chan.body.data.id, body: '   ' }),
+    });
+    check(emptyMsg.status === 422, `an empty message is rejected (${emptyMsg.status})`);
+  }
+
+  section('11. Search, export, admin, audit');
+
+  const search = await A.json(`/api/search?q=${run}`);
+  check(search.ok, `search runs (${search.status})`);
+  check((search.body?.data?.results ?? []).length > 0,
+    `search finds the records just created (${(search.body?.data?.results ?? []).length})`);
+
+  const csv = await A.fetch('/api/export?dataset=leads');
+  check(csv.status === 200, `CSV export downloads (${csv.status})`);
+  check((csv.headers.get('content-type') ?? '').includes('text/csv'), 'export is served as CSV');
+
+  const badExport = await A.json('/api/export?dataset=nonsense');
+  check(badExport.status === 422, `unknown dataset rejected (${badExport.status})`);
+
+  const users = await A.json('/api/admin/users');
+  check(users.ok, `admin user list loads (${users.status})`);
+
+  const roles = await A.json('/api/admin/roles');
+  check(roles.ok && (roles.body?.data ?? []).length === 9,
+    `all 9 roles described (${(roles.body?.data ?? []).length})`);
+
+  const roleEdit = await A.json('/api/admin/roles/employee', {
+    method: 'PATCH', body: JSON.stringify({ name: 'Hacked' }),
+  });
+  check(roleEdit.status === 405, `roles are immutable at runtime (${roleEdit.status})`);
+
+  const settings = await A.json('/api/admin/settings');
+  check(settings.ok && !!settings.body?.data?.organization, `settings load (${settings.status})`);
+
+  const audit = await A.json('/api/admin/audit-log');
+  check(audit.ok, `audit log loads (${audit.status})`);
+  check((audit.body?.data ?? []).length > 0,
+    `audit trail captured this run (${(audit.body?.data ?? []).length} entries)`);
+
+  const notifs = await A.json('/api/admin/notifications');
+  check(notifs.ok, `notifications load (${notifs.status})`);
+
+  section('12. Cross-tenant on the new modules');
+
+  const bProducts = await B.json('/api/inventory/products');
+  check(!(bProducts.body?.data ?? []).some((p) => p.id === productId),
+    "B CANNOT see A's product");
+
+  if (productId) {
+    const bMove = await B.json('/api/inventory/movements', {
+      method: 'POST',
+      body: JSON.stringify({ product_id: productId, quantity: 5, type: 'receipt' }),
+    });
+    check(bMove.status === 404, `B CANNOT move A's stock — 404, not a 500 (${bMove.status})`);
+  }
+
+  const bAudit = await B.json('/api/admin/audit-log');
+  check(!(bAudit.body?.data ?? []).some((r) => r.organization_id === orgA.body?.data?.id),
+    "B CANNOT read A's audit trail");
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);

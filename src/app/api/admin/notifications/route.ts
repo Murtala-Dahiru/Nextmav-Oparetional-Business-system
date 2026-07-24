@@ -1,57 +1,59 @@
-import { db } from '@/lib/db';
-import { success, error, paginated } from '@/lib/api-response';
-import { bulkMarkReadSchema } from '@/lib/validations';
+import { authorize, pgError } from '@/lib/auth-context';
+import { success, paginated } from '@/lib/api-response';
 
+/**
+ * The signed-in user's notifications.
+ *
+ * Strictly personal: the RLS policy admits only rows whose recipient is the
+ * caller, so there is no organization-wide feed here to leak.
+ */
 export async function GET(req: Request) {
+  const ctx = await authorize('dashboard', 'view');
+  if (ctx instanceof Response) return ctx;
+
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
   const pageSize = Math.min(100, Math.max(1, Number(searchParams.get('pageSize')) || 20));
-  const userId = searchParams.get('userId') || 'u1';
-  const isRead = searchParams.get('isRead');
 
-  const where: any = { userId };
-  if (isRead !== null && isRead !== undefined && isRead !== '') {
-    where.isRead = isRead === 'true';
-  }
+  let query = ctx.supabase
+    .from('notifications')
+    .select('*', { count: 'exact' })
+    .eq('recipient_id', ctx.org.memberId);
 
-  const [data, total] = await Promise.all([
-    db.notification.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-    db.notification.count({ where }),
-  ]);
+  if (searchParams.get('unread') === 'true') query = query.eq('is_read', false);
 
-  return paginated(data, total, page, pageSize);
+  const off = (page - 1) * pageSize;
+  const { data, count, error: e } = await query
+    .order('created_at', { ascending: false })
+    .range(off, off + pageSize - 1);
+
+  if (e) return pgError(e);
+  return paginated(data ?? [], count ?? 0, page, pageSize);
 }
 
-export async function PUT(req: Request) {
-  try {
-    const body = await req.json();
-    const validated = bulkMarkReadSchema.parse(body);
-    const userId = validated.ids ? undefined : 'u1';
+/**
+ * Mark notifications read.
+ *
+ * Accepts a list of ids, or marks everything read when none are given — the
+ * "clear all" affordance every notification tray needs. Scoped to the caller's
+ * own rows, so one user can never dismiss another's.
+ */
+export async function PATCH(req: Request) {
+  const ctx = await authorize('dashboard', 'view');
+  if (ctx instanceof Response) return ctx;
 
-    if (validated.markAll) {
-      await db.notification.updateMany({
-        where: { userId, isRead: false },
-        data: { isRead: true },
-      });
-      return success({ markedRead: true });
-    }
+  const body = await req.json().catch(() => ({}));
+  const ids: string[] = Array.isArray(body?.ids) ? body.ids : [];
 
-    if (validated.ids && validated.ids.length > 0) {
-      await db.notification.updateMany({
-        where: { id: { in: validated.ids } },
-        data: { isRead: true },
-      });
-      return success({ markedRead: true, count: validated.ids.length });
-    }
+  let query = ctx.supabase
+    .from('notifications')
+    .update({ is_read: true, read_at: new Date().toISOString() })
+    .eq('recipient_id', ctx.org.memberId)
+    .eq('is_read', false);
 
-    return error('Provide ids or markAll', 400);
-  } catch (e: any) {
-    if (e.name === 'ZodError') return error('Validation failed: ' + JSON.stringify(e.issues), 422);
-    return error(e.message || 'Update failed', 500);
-  }
+  if (ids.length) query = query.in('id', ids);
+
+  const { data, error: e } = await query.select('id');
+  if (e) return pgError(e);
+  return success({ updated: (data ?? []).length });
 }
