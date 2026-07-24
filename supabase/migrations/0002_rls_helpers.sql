@@ -223,6 +223,16 @@ AS $$
 DECLARE
   remaining int;
 BEGIN
+  -- Deleting the organization itself cascades to its memberships. Guarding
+  -- those would make an organization impossible to delete: the cascade removes
+  -- the owner, the trigger refuses, and the whole DELETE aborts. The parent row
+  -- is already gone by the time the cascade fires, so its absence identifies
+  -- this case precisely.
+  IF TG_OP = 'DELETE'
+     AND NOT EXISTS (SELECT 1 FROM organizations WHERE id = OLD.organization_id) THEN
+    RETURN OLD;
+  END IF;
+
   IF TG_OP = 'UPDATE'
      AND OLD.role = 'owner' AND NEW.role = 'owner' AND NEW.is_active THEN
     RETURN NEW;
@@ -284,7 +294,8 @@ BEGIN
 
   final_slug := COALESCE(NULLIF(btrim(org_slug), ''),
                          lower(regexp_replace(org_name, '[^a-zA-Z0-9]+', '-', 'g')));
-  final_slug := btrim(both '-' from final_slug);
+  -- btrim(str, chars) — the `both … from` form belongs to trim(), not btrim().
+  final_slug := btrim(final_slug, '-');
   IF final_slug = '' THEN final_slug := 'org'; END IF;
   IF EXISTS (SELECT 1 FROM organizations WHERE slug = final_slug) THEN
     final_slug := final_slug || '-' || substr(md5(random()::text), 1, 6);

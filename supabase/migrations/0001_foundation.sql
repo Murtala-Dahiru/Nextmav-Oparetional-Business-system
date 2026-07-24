@@ -197,11 +197,20 @@ CREATE TABLE IF NOT EXISTS profiles (
 COMMENT ON TABLE profiles IS 'Person. Role and organization live on organization_members, not here.';
 
 -- Generated full name, so search and display do not each concatenate it.
-ALTER TABLE profiles
-  DROP COLUMN IF EXISTS full_name;
-ALTER TABLE profiles
-  ADD COLUMN full_name text
-  GENERATED ALWAYS AS (btrim(first_name || ' ' || last_name)) STORED;
+--
+-- Added conditionally rather than dropped and recreated: once a view depends
+-- on the column, DROP fails and the whole migration stops being re-runnable.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'full_name'
+  ) THEN
+    ALTER TABLE profiles
+      ADD COLUMN full_name text
+      GENERATED ALWAYS AS (btrim(first_name || ' ' || last_name)) STORED;
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_profiles_full_name_trgm
   ON profiles USING gin (full_name gin_trgm_ops);

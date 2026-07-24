@@ -330,14 +330,32 @@ try {
                            warehouse_id: wh?.id, cost: 10, price: 25 }) }).then(r => r.json()))[0];
 
   if (prod?.id) {
-    await q(`SELECT public.record_stock_movement($1,$2,50,'receipt','verify','')`, [orgA.id, prod.id]);
+    // Called over REST as user A, not through the raw pg connection: the
+    // function resolves the caller with auth.uid(), which is NULL on a direct
+    // connection — it would correctly refuse, and the test would be measuring
+    // the harness rather than the rule.
+    const mv = await rpc('record_stock_movement', userA.token, {
+      org: orgA.id, product: prod.id, qty: 50,
+      movement_type: 'receipt', reason: 'verify', reference: '',
+    });
+    check(mv.ok, 'record_stock_movement() succeeds for a member',
+      mv.ok ? '' : JSON.stringify(await mv.json()));
+
     const [{ stock }] = await q(`SELECT stock FROM products WHERE id=$1`, [prod.id]);
     check(stock === 50, `stock movement updates the balance (${stock})`);
 
-    let negativeBlocked = false;
-    try { await q(`SELECT public.record_stock_movement($1,$2,-999,'issue','verify','')`, [orgA.id, prod.id]); }
-    catch (e) { negativeBlocked = /only .* on hand/i.test(e.message); }
-    check(negativeBlocked, 'stock cannot be driven negative');
+    const neg = await rpc('record_stock_movement', userA.token, {
+      org: orgA.id, product: prod.id, qty: -999,
+      movement_type: 'issue', reason: 'verify', reference: '',
+    });
+    check(!neg.ok, 'stock cannot be driven negative');
+
+    // A non-member must not be able to move another organization's stock.
+    const cross = await rpc('record_stock_movement', userB.token, {
+      org: orgA.id, product: prod.id, qty: 5,
+      movement_type: 'receipt', reason: 'intrusion', reference: '',
+    });
+    check(!cross.ok, "B cannot move stock in A's organization");
   }
 
   // Audit trail is written automatically.

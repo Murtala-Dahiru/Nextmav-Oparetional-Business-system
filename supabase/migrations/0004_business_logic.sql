@@ -106,6 +106,15 @@ BEGIN
     org := NULL;
   END;
 
+  -- Deleting an organization cascades to every table it owns, and each of
+  -- those deletions fires this trigger. Writing an audit row that references
+  -- the organization being deleted violates the foreign key and aborts the
+  -- whole DELETE — making an organization impossible to remove. Record the
+  -- event without the tenant reference instead of losing it.
+  IF org IS NOT NULL AND NOT EXISTS (SELECT 1 FROM organizations WHERE id = org) THEN
+    org := NULL;
+  END IF;
+
   IF TG_OP = 'UPDATE' THEN
     SELECT array_agg(key) INTO changed
     FROM jsonb_each(new_j)
@@ -182,7 +191,10 @@ CREATE TABLE IF NOT EXISTS document_counters (
  * The UPDATE takes a row lock, so two concurrent invoices cannot receive the
  * same number. `MAX(...)+1` in application code cannot make that guarantee.
  */
-CREATE OR REPLACE FUNCTION public.next_document_number(org uuid, doc_type text)
+-- The parameter is `p_doc_type`, not `doc_type`: an unprefixed name would
+-- shadow document_counters.doc_type inside the ON CONFLICT clause, and
+-- Postgres rejects the ambiguity at runtime.
+CREATE OR REPLACE FUNCTION public.next_document_number(org uuid, p_doc_type text)
 RETURNS text
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public, pg_temp
@@ -191,12 +203,12 @@ DECLARE
   n bigint;
 BEGIN
   INSERT INTO document_counters (organization_id, doc_type, last_number)
-  VALUES (org, doc_type, 1)
+  VALUES (org, p_doc_type, 1)
   ON CONFLICT (organization_id, doc_type)
   DO UPDATE SET last_number = document_counters.last_number + 1
-  RETURNING last_number INTO n;
+  RETURNING document_counters.last_number INTO n;
 
-  RETURN doc_type || '-' || lpad(n::text, 6, '0');
+  RETURN p_doc_type || '-' || lpad(n::text, 6, '0');
 END;
 $$;
 
