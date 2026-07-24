@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 /**
  * Invite someone to the organization.
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
   if (ctx instanceof Response) return ctx;
 
   try {
-    const b = (await request.json()) ?? {};
+    const b = (acceptBody(await request.json())) ?? {};
     if (!b.email || typeof b.email !== 'string' || !b.email.includes('@')) {
       return error('A valid email address is required', 422, 'VALIDATION_ERROR');
     }

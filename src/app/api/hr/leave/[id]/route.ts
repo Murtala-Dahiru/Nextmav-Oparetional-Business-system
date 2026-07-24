@@ -1,6 +1,7 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
 import { can } from '@/lib/permissions';
+import { acceptBody } from '@/lib/case';
 
 const SELECT =
   '*, member:organization_members!leave_requests_member_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url)), approver:organization_members!leave_requests_approved_by_fkey(id, profiles!organization_members_user_id_fkey(full_name))';
@@ -43,7 +44,7 @@ export async function PATCH(req: Request, { params }: Params) {
   const { id } = await params;
 
   try {
-    const b = await req.json();
+    const b = acceptBody(await req.json());
 
     const { data: existing } = await ctx.supabase
       .from('leave_requests')

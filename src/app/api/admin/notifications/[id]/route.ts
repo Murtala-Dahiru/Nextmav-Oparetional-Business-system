@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -9,7 +10,7 @@ export async function PATCH(req: Request, { params }: Params) {
   if (ctx instanceof Response) return ctx;
   const { id } = await params;
 
-  const body = await req.json().catch(() => ({}));
+  const body = acceptBody(await req.json().catch(() => ({})));
   const read = body?.is_read ?? true;
 
   const { data, error: e } = await ctx.supabase

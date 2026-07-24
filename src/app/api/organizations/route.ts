@@ -1,6 +1,7 @@
 import { supabaseServer } from '@/lib/supabase/server';
 import { getContext, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 /**
  * The organizations the caller belongs to.
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
   if (!user) return error('Authentication required', 401, 'UNAUTHENTICATED');
 
   try {
-    const { name, slug } = (await req.json()) ?? {};
+    const { name, slug } = (acceptBody(await req.json())) ?? {};
     if (!name || !String(name).trim()) {
       return error('Organization name is required', 422, 'VALIDATION_ERROR');
     }
@@ -91,7 +92,7 @@ export async function PATCH(req: Request) {
   }
 
   try {
-    const b = await req.json();
+    const b = acceptBody(await req.json());
     const update: Record<string, any> = {};
     for (const k of [
       'name', 'logo_url', 'website', 'industry', 'timezone',

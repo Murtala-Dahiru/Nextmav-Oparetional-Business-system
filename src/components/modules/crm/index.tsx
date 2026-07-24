@@ -97,18 +97,18 @@ const DEAL_STAGE_COLORS: Record<string, string> = {
   qualification: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
   proposal: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
   negotiation: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-  'closed-won': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  'closed-lost': 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  'closed_won': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  'closed_lost': 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
 };
 
 const DEAL_STAGE_CHART_COLORS: Record<string, string> = {
   prospecting: '#06b6d4', qualification: '#3b82f6', proposal: '#8b5cf6',
-  negotiation: '#f97316', 'closed-won': '#10b981', 'closed-lost': '#ef4444',
+  negotiation: '#f97316', 'closed_won': '#10b981', 'closed_lost': '#ef4444',
 };
 
 const DEAL_STAGE_LABELS: Record<string, string> = {
   prospecting: 'Prospecting', qualification: 'Qualification', proposal: 'Proposal',
-  negotiation: 'Negotiation', 'closed-won': 'Closed Won', 'closed-lost': 'Closed Lost',
+  negotiation: 'Negotiation', 'closed_won': 'Closed Won', 'closed_lost': 'Closed Lost',
 };
 
 const SOURCE_OPTIONS = [

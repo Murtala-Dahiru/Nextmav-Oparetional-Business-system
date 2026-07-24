@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 const SELECT =
   '*, member:organization_members!leave_requests_member_id_fkey(id, department_id, profiles!organization_members_user_id_fkey(full_name, avatar_url)), approver:organization_members!leave_requests_approved_by_fkey(id, profiles!organization_members_user_id_fkey(full_name))';
@@ -52,7 +53,7 @@ export async function POST(req: Request) {
   if (ctx instanceof Response) return ctx;
 
   try {
-    const b = await req.json();
+    const b = acceptBody(await req.json());
     if (!b.start_date || !b.end_date) {
       return error('Start and end dates are required', 422, 'VALIDATION_ERROR');
     }

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ModuleId } from '@/lib/constants';
 import { authorize, pgError, type RequestContext } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -125,7 +126,8 @@ export function createHandler(opts: CreateOptions) {
 
     let payload: Record<string, any>;
     try {
-      const body = await req.json();
+      // Forms send a mix of camelCase (pre-migration fields) and snake_case.
+      const body = acceptBody(await req.json());
       payload = prepare ? prepare(body, ctx) : body;
     } catch (e: any) {
       return error(e.message || 'Invalid request body', 422, 'VALIDATION_ERROR');
@@ -188,7 +190,8 @@ export function updateHandler(opts: RecordOptions) {
 
     let payload: Record<string, any>;
     try {
-      const body = await req.json();
+      // Forms send a mix of camelCase (pre-migration fields) and snake_case.
+      const body = acceptBody(await req.json());
       payload = prepare ? prepare(body, ctx) : body;
     } catch (e: any) {
       return error(e.message || 'Invalid request body', 422, 'VALIDATION_ERROR');

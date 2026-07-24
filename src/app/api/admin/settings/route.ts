@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 /**
  * Organization settings.
@@ -48,7 +49,7 @@ export async function PATCH(req: Request) {
   if (ctx instanceof Response) return ctx;
 
   try {
-    const b = await req.json();
+    const b = acceptBody(await req.json());
 
     const orgUpdate: Record<string, any> = {};
     for (const k of [

@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 /**
  * The employee directory.
@@ -65,7 +66,7 @@ export async function PATCH(req: Request) {
   if (ctx instanceof Response) return ctx;
 
   try {
-    const b = await req.json();
+    const b = acceptBody(await req.json());
     if (!b.member_id) return error('member_id is required', 422, 'VALIDATION_ERROR');
 
     const update: Record<string, any> = {};

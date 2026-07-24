@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 /**
  * The personal clock.
@@ -51,7 +52,7 @@ export async function POST(req: Request) {
   const ctx = await authorize('hr', 'create');
   if (ctx instanceof Response) return ctx;
 
-  const body = await req.json().catch(() => ({}));
+  const body = acceptBody(await req.json().catch(() => ({})));
   const action = body?.action;
 
   if (action !== 'in' && action !== 'out') {

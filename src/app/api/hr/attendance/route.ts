@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 const SELECT =
   '*, member:organization_members!attendance_records_member_id_fkey(id, department_id, profiles!organization_members_user_id_fkey(full_name, avatar_url))';
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
   if (ctx instanceof Response) return ctx;
 
   try {
-    const b = await req.json();
+    const b = acceptBody(await req.json());
     if (!b.member_id || !b.work_date) {
       return error('member_id and work_date are required', 422, 'VALIDATION_ERROR');
     }

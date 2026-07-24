@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -60,7 +61,7 @@ export async function PATCH(req: Request, { params }: Params) {
   const { id } = await params;
 
   try {
-    const b = await req.json();
+    const b = acceptBody(await req.json());
     const update: Record<string, any> = {};
     for (const k of [
       'role', 'department_id', 'manager_id', 'employee_number',

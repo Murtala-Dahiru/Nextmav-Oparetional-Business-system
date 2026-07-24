@@ -106,7 +106,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 const STAGE_LABELS: Record<string, string> = {
   prospecting: 'Prospecting', qualification: 'Qualification', proposal: 'Proposal',
-  negotiation: 'Negotiation', 'closed-won': 'Closed Won',
+  negotiation: 'Negotiation', 'closed_won': 'Closed Won',
 };
 
 function greeting(): string {

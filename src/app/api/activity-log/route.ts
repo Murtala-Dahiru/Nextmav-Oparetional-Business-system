@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, paginated } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 const SELECT =
   '*, member:organization_members!activity_log_member_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url))';
@@ -25,8 +26,10 @@ export async function GET(req: Request) {
     .select(SELECT, { count: 'exact' })
     .eq('organization_id', ctx.org.organizationId);
 
-  const module = searchParams.get('module');
-  if (module) query = query.eq('module', module);
+  // Named `moduleName`: assigning to `module` shadows the CommonJS global and
+  // breaks Next's bundler.
+  const moduleName = searchParams.get('module');
+  if (moduleName) query = query.eq('module', moduleName);
   const memberId = searchParams.get('member_id');
   if (memberId) query = query.eq('member_id', memberId);
 
@@ -50,7 +53,7 @@ export async function POST(req: Request) {
   const ctx = await authorize('communication', 'create');
   if (ctx instanceof Response) return ctx;
 
-  const b = await req.json().catch(() => ({}));
+  const b = acceptBody(await req.json().catch(() => ({})));
   if (!b?.title || !b?.module) {
     return success({ skipped: true });
   }

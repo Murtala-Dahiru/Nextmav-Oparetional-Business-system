@@ -283,7 +283,7 @@ const PRIORITY_STYLES: Record<string, string> = {
 
 const STATUS_STYLES: Record<string, string> = {
   open: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800',
-  'in-progress': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800',
+  'in_progress': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800',
   pending: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 border-violet-200 dark:border-violet-800',
   resolved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800',
   closed: 'bg-muted text-muted-foreground border-muted',
@@ -319,10 +319,10 @@ function KbArticleIcon({ iconName, className }: { iconName: string; className?: 
 // ─── Status workflow ─────────────────────────────────────────────────
 
 const STATUS_WORKFLOW: Record<string, string[]> = {
-  open: ['in-progress', 'closed'],
-  'in-progress': ['pending', 'resolved'],
-  pending: ['in-progress', 'resolved'],
-  resolved: ['closed', 'in-progress'],
+  open: ['in_progress', 'closed'],
+  'in_progress': ['pending', 'resolved'],
+  pending: ['in_progress', 'resolved'],
+  resolved: ['closed', 'in_progress'],
   closed: ['open'],
 };
 
@@ -394,7 +394,7 @@ export default function SupportModule() {
       const allTickets: Ticket[] = statsJson.data ?? [];
       setStats({
         open: allTickets.filter((t) => t.status === 'open').length,
-        inProgress: allTickets.filter((t) => t.status === 'in-progress').length,
+        inProgress: allTickets.filter((t) => t.status === 'in_progress').length,
         pending: allTickets.filter((t) => t.status === 'pending').length,
         resolved: allTickets.filter((t) => t.status === 'resolved').length,
       });

@@ -166,14 +166,29 @@ export function pgError(e: { code?: string; message?: string; details?: string }
   switch (e.code) {
     case '42501':
       return error('You do not have permission to perform this action.', 403, 'RLS_DENIED');
-    case '23505':
-      return error('That record already exists.', 409, 'DUPLICATE');
+    case '23505': {
+      // A raised business rule ("You have already checked in today") is far
+      // more useful than a generic duplicate notice. Postgres' own constraint
+      // messages start with "duplicate key value", so anything else came from
+      // a RAISE in a function and should reach the user intact.
+      const raised = e.message && !/duplicate key value|violates unique constraint/i.test(e.message);
+      return error(raised ? e.message! : 'That record already exists.', 409, 'DUPLICATE');
+    }
     case '23503':
       return error('A referenced record does not exist.', 400, 'FK_VIOLATION');
     case '23514':
       // Business-rule triggers raise check_violation with a written message,
       // so pass it through — it is the explanation the user needs.
       return error(e.message ?? 'That change is not allowed.', 409, 'RULE_VIOLATION');
+    case '22P02':
+      // invalid_text_representation — usually a filter value that is not a
+      // member of the target enum. That is a bad request, not a server fault,
+      // and returning 500 makes a stale client look like a broken backend.
+      return error(
+        'One of the filter values is not valid for this field.',
+        422,
+        'INVALID_FILTER_VALUE',
+      );
     case 'P0002':
       // no_data_found, raised by RPCs when the target row is absent — which
       // includes the cross-tenant case, where the row exists but not for this

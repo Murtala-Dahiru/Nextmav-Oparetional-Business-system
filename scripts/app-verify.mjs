@@ -192,8 +192,8 @@ try {
     method: 'POST', body: JSON.stringify({ action: 'in' }),
   });
   check(ci.status === 201, `check in (${ci.status})`, ci.body?.error?.message);
-  if (ci.body?.data?.checked_in_at) {
-    const drift = Math.abs(Date.now() - new Date(ci.body.data.checked_in_at).getTime());
+  if (ci.body?.data?.checkedInAt) {
+    const drift = Math.abs(Date.now() - new Date(ci.body.data.checkedInAt).getTime());
     check(drift < 120_000, `check-in used server time (drift ${Math.round(drift / 1000)}s)`);
   }
 
@@ -264,14 +264,14 @@ try {
       body: JSON.stringify({ product_id: productId, quantity: 50, type: 'receipt', reason: 'verify' }),
     });
     check(receipt.status === 201, `record a receipt (${receipt.status})`, receipt.body?.error?.message);
-    check(receipt.body?.data?.balance_after === 50, 'ledger reports the new balance');
+    check(receipt.body?.data?.balanceAfter === 50, 'ledger reports the new balance');
 
     // Sign is derived from the movement type, so a positive number issues out.
     const issue = await A.json('/api/inventory/movements', {
       method: 'POST',
       body: JSON.stringify({ product_id: productId, quantity: 10, type: 'issue', reason: 'verify' }),
     });
-    check(issue.body?.data?.balance_after === 40, 'issue subtracts without the client sending a negative');
+    check(issue.body?.data?.balanceAfter === 40, 'issue subtracts without the client sending a negative');
 
     const over = await A.json('/api/inventory/movements', {
       method: 'POST',
@@ -333,7 +333,7 @@ try {
   check(inv.status === 201, `create an invoice (${inv.status})`, inv.body?.error?.message);
   check(inv.body?.data?.subtotal === 1500, `subtotal derived from line items (${inv.body?.data?.subtotal})`);
   check(inv.body?.data?.total === 1650, `total includes tax (${inv.body?.data?.total})`);
-  check(!!inv.body?.data?.invoice_number, `invoice number assigned (${inv.body?.data?.invoice_number})`);
+  check(!!inv.body?.data?.invoiceNumber, `invoice number assigned (${inv.body?.data?.invoiceNumber})`);
 
   const emptyInv = await A.json('/api/finance/invoices', {
     method: 'POST', body: JSON.stringify({ line_items: [] }),
@@ -354,8 +354,8 @@ try {
     body: JSON.stringify({ subject: `Broken widget ${run}`, priority: 'high', description: 'verify' }),
   });
   check(ticket.status === 201, `raise a ticket (${ticket.status})`, ticket.body?.error?.message);
-  check(!!ticket.body?.data?.ticket_number, `ticket number assigned (${ticket.body?.data?.ticket_number})`);
-  check(!!ticket.body?.data?.due_at, 'SLA due date set from priority');
+  check(!!ticket.body?.data?.ticketNumber, `ticket number assigned (${ticket.body?.data?.ticketNumber})`);
+  check(!!ticket.body?.data?.dueAt, 'SLA due date set from priority');
 
   const page = await A.json('/api/workspace/pages', {
     method: 'POST', body: JSON.stringify({ title: `Runbook ${run}`, content: 'Steps.' }),
@@ -432,7 +432,7 @@ try {
   }
 
   const bAudit = await B.json('/api/admin/audit-log');
-  check(!(bAudit.body?.data ?? []).some((r) => r.organization_id === orgA.body?.data?.id),
+  check(!(bAudit.body?.data ?? []).some((r) => r.organizationId === orgA.body?.data?.id),
     "B CANNOT read A's audit trail");
 } catch (e) {
   fail++; failed.push('harness error');

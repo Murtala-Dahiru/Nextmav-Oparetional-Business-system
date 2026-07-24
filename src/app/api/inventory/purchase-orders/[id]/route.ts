@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 const SELECT =
   '*, supplier:suppliers(id, name, lead_time_days), warehouse:warehouses(id, name), items:purchase_order_items(*, product:products(id, name, sku, unit))';
@@ -47,7 +48,7 @@ export async function PATCH(req: Request, { params }: Params) {
   const { id } = await params;
 
   try {
-    const b = await req.json();
+    const b = acceptBody(await req.json());
 
     const { data: existing } = await ctx.supabase
       .from('purchase_orders')

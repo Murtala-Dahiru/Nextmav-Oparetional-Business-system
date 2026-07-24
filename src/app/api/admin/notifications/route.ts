@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, paginated } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 /**
  * The signed-in user's notifications.
@@ -42,7 +43,7 @@ export async function PATCH(req: Request) {
   const ctx = await authorize('dashboard', 'view');
   if (ctx instanceof Response) return ctx;
 
-  const body = await req.json().catch(() => ({}));
+  const body = acceptBody(await req.json().catch(() => ({})));
   const ids: string[] = Array.isArray(body?.ids) ? body.ids : [];
 
   let query = ctx.supabase

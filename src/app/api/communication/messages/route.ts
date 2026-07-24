@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 const SELECT =
   '*, sender:organization_members!messages_sender_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url)), reactions:message_reactions(emoji, member_id)';
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
   if (ctx instanceof Response) return ctx;
 
   try {
-    const b = await req.json();
+    const b = acceptBody(await req.json());
     if (!b.channel_id) return error('channel_id is required', 422, 'VALIDATION_ERROR');
 
     const body = String(b.body ?? '').trim();

@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 const SELECT =
   '*, product:products(id, name, sku, unit), member:organization_members!stock_movements_member_id_fkey(id, profiles!organization_members_user_id_fkey(full_name)), from_warehouse:warehouses!stock_movements_from_warehouse_id_fkey(id, name), to_warehouse:warehouses!stock_movements_to_warehouse_id_fkey(id, name)';
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
   if (ctx instanceof Response) return ctx;
 
   try {
-    const b = await req.json();
+    const b = acceptBody(await req.json());
     if (!b.product_id) return error('product_id is required', 422, 'VALIDATION_ERROR');
 
     const type = b.type ?? 'adjustment';

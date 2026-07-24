@@ -40,13 +40,56 @@ export const ROLE_PERMISSIONS: Record<RoleId, ModuleId[]> = {
   client: ['dashboard', 'support', 'projects'],
 };
 
+/**
+ * Status vocabularies.
+ *
+ * These MUST match the Postgres enums in supabase/migrations/0001_foundation.sql
+ * exactly. They previously used hyphens ('in-progress', 'closed-won') from the
+ * pre-Supabase schema, which meant every filter and counter silently matched
+ * nothing — the list still rendered, so it looked like missing data rather
+ * than a broken comparison. Underscores are the database's spelling and
+ * therefore the only correct one.
+ */
 export const LEAD_STATUSES = ['new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'] as const;
-export const DEAL_STAGES = ['prospecting', 'qualification', 'proposal', 'negotiation', 'closed-won', 'closed-lost'] as const;
-export const TASK_STATUSES = ['todo', 'in-progress', 'review', 'done'] as const;
-export const PROJECT_STATUSES = ['planning', 'active', 'on-hold', 'completed', 'archived'] as const;
-export const TICKET_PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
-export const TICKET_STATUSES = ['open', 'in-progress', 'pending', 'resolved', 'closed'] as const;
-export const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'overdue', 'cancelled'] as const;
-export const EXPENSE_CATEGORIES = ['general', 'travel', 'office', 'software', 'marketing'] as const;
+export const DEAL_STAGES = ['prospecting', 'qualification', 'proposal', 'negotiation', 'closed_won', 'closed_lost'] as const;
+export const TASK_STATUSES = ['todo', 'in_progress', 'review', 'blocked', 'done'] as const;
+export const PROJECT_STATUSES = ['planning', 'active', 'on_hold', 'completed', 'cancelled', 'archived'] as const;
+export const TICKET_PRIORITIES = ['low', 'medium', 'high', 'critical'] as const;
+export const TICKET_STATUSES = ['open', 'in_progress', 'pending', 'resolved', 'closed'] as const;
+export const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'partially_paid', 'overdue', 'cancelled', 'refunded'] as const;
+export const EXPENSE_CATEGORIES = ['general', 'travel', 'office', 'software', 'marketing', 'equipment', 'training'] as const;
+
+/**
+ * Display labels for enum values.
+ *
+ * A raw `in_progress` in a table cell reads as a leaked database value. Rather
+ * than a lookup per module — which drifts — `statusLabel()` title-cases
+ * anything it does not have an explicit entry for, so a new enum value renders
+ * acceptably the moment it is added.
+ */
+const STATUS_LABELS: Record<string, string> = {
+  in_progress: 'In Progress',
+  on_hold: 'On Hold',
+  closed_won: 'Closed Won',
+  closed_lost: 'Closed Lost',
+  partially_paid: 'Partially Paid',
+  partially_received: 'Partially Received',
+  half_day: 'Half Day',
+  on_leave: 'On Leave',
+  out_of_stock: 'Out of Stock',
+  full_time: 'Full Time',
+  part_time: 'Part Time',
+  todo: 'To Do',
+  kb: 'Knowledge Base',
+};
+
+export function statusLabel(value: string | null | undefined): string {
+  if (!value) return '—';
+  if (STATUS_LABELS[value]) return STATUS_LABELS[value];
+  return value
+    .split(/[_-]/)
+    .map(w => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(' ');
+}
 
 export const PAGE_SIZE = 20;

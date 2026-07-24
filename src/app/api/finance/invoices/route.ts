@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 const SELECT =
   '*, company:companies(id, name), contact:contacts(id, first_name, last_name), line_items:invoice_line_items(*)';
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
   if (ctx instanceof Response) return ctx;
 
   try {
-    const b = await req.json();
+    const b = acceptBody(await req.json());
     const items = Array.isArray(b.line_items) ? b.line_items : [];
 
     if (!items.length) {

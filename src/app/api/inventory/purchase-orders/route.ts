@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
+import { acceptBody } from '@/lib/case';
 
 const SELECT =
   '*, supplier:suppliers(id, name, lead_time_days), warehouse:warehouses(id, name), items:purchase_order_items(*, product:products(id, name, sku, unit))';
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
   if (ctx instanceof Response) return ctx;
 
   try {
-    const b = await req.json();
+    const b = acceptBody(await req.json());
     if (!b.supplier_id) return error('supplier_id is required', 422, 'VALIDATION_ERROR');
 
     const items = Array.isArray(b.items) ? b.items : [];
