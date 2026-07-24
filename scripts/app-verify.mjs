@@ -76,10 +76,51 @@ async function adminCreateUser(email, password) {
   if (!r.ok) throw new Error(`admin create: ${r.status} ${await r.text()}`);
   return r.json();
 }
-const adminDeleteUser = id =>
-  fetch(`${SUPABASE}/auth/v1/admin/users/${id}`, {
-    method: 'DELETE', headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` },
-  }).catch(() => {});
+const REST = { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' };
+const rest = (q, init) => fetch(`${SUPABASE}/rest/v1/${q}`, { headers: REST, ...init });
+
+/**
+ * Remove a test account and everything it owns.
+ *
+ * The organization has to go first. Deleting the user cascades to their
+ * membership, and the last-owner rule refuses that while the organization is
+ * still there — so a bare user delete fails, and this used to swallow the
+ * error and move on. Every run left its two accounts and their organizations
+ * behind; twenty of them had accumulated before anyone noticed.
+ *
+ * Purchase orders come first in turn: purchase_order_items.product_id and
+ * purchase_orders.supplier_id are ON DELETE RESTRICT, so the cascade from the
+ * organization hits them and aborts. Same order as delete_organization()
+ * in migration 0009.
+ *
+ * Failures are reported rather than ignored. Cleanup that fails quietly is
+ * how the leak went unnoticed in the first place.
+ */
+async function adminDeleteUser(id) {
+  try {
+    const members = await (await rest(`organization_members?user_id=eq.${id}&select=organization_id`)).json();
+
+    for (const { organization_id: org } of members ?? []) {
+      const orders = await (await rest(`purchase_orders?organization_id=eq.${org}&select=id`)).json();
+      if (orders?.length) {
+        await rest(`purchase_order_items?order_id=in.(${orders.map(o => o.id).join(',')})`, { method: 'DELETE' });
+      }
+      await rest(`purchase_orders?organization_id=eq.${org}`, { method: 'DELETE' });
+
+      const dropped = await rest(`organizations?id=eq.${org}`, { method: 'DELETE' });
+      if (!dropped.ok) {
+        console.warn(`  cleanup: organization ${org} not removed (${dropped.status}) — ${(await dropped.text()).slice(0, 160)}`);
+      }
+    }
+
+    const res = await fetch(`${SUPABASE}/auth/v1/admin/users/${id}`, { method: 'DELETE', headers: REST });
+    if (!res.ok) {
+      console.warn(`  cleanup: user ${id} not removed (${res.status}) — ${(await res.text()).slice(0, 160)}`);
+    }
+  } catch (e) {
+    console.warn(`  cleanup: ${id} failed — ${e.message}`);
+  }
+}
 
 // ── run ────────────────────────────────────────────────────────────────────
 
