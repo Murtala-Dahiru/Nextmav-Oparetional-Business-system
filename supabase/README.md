@@ -20,62 +20,67 @@ Apply them **in order** — each depends on the ones before it.
 
 ## Applying
 
-### Supabase CLI (preferred)
+### Credentials
+
+Three values in `.env`. Supabase dashboard →
+
+| Value | Where | Why |
+|---|---|---|
+| `DIRECT_URL` | Settings → Database → Connection string → **Direct** (5432) | Migrations are DDL, which cannot run through the pooler |
+| `DATABASE_URL` | Settings → Database → Connection string → **Transaction pooler** (6543) | Runtime; serverless opens a connection per invocation |
+| `SUPABASE_SERVICE_ROLE_KEY` | Settings → API | Admin operations and the verification harness |
+
+`.env` is gitignored. The service-role key bypasses RLS entirely — server-side
+only, never in a browser bundle.
+
+### One command
 
 ```bash
-supabase link --project-ref yecikzliedigggzqzxan
+npm run db:setup
+```
+
+Checks the migrations, applies them in order, then verifies the result.
+Equivalent to `db:check && db:apply && db:verify`.
+
+Each file applies inside its own transaction, so a failure stops at the last
+complete migration rather than leaving a half-built schema. Everything is
+idempotent — a re-run is safe.
+
+Files under `_archive/` are superseded and must **not** be applied.
+
+### Alternatives
+
+```bash
+supabase link --project-ref yecikzliedigggzqzxan -p '<db-password>'
 supabase db push
 ```
 
-### SQL Editor
-
-Open each file in order and run it. They are idempotent, so a re-run is safe.
-
-Files under `_archive/` are superseded and must **not** be applied.
+Or paste each file into the SQL editor in order.
 
 ---
 
 ## Verifying it worked
 
-Run these in the SQL editor after applying.
-
-**1. Everything is present**
-
-```sql
-SELECT
-  (SELECT count(*) FROM pg_tables  WHERE schemaname='public')                    AS tables,
-  (SELECT count(*) FROM pg_views   WHERE schemaname='public')                    AS views,
-  (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-     WHERE n.nspname='public')                                                   AS functions,
-  (SELECT count(*) FROM pg_policies WHERE schemaname='public')                   AS policies;
+```bash
+npm run db:verify
 ```
 
-**2. No table is left unprotected** — must return zero rows:
+Checks schema completeness, that RLS is enabled **and forced** on every table,
+that every view sets `security_invoker`, that the helpers are
+`SECURITY DEFINER`, storage buckets and their visibility, the realtime
+publication, and then the business rules — server-authoritative attendance,
+self-approval blocking, per-organization document numbering, the stock ledger
+refusing to go negative, the audit trail, and the last-owner guard.
 
-```sql
-SELECT tablename FROM pg_tables t
-WHERE schemaname='public'
-  AND NOT EXISTS (
-    SELECT 1 FROM pg_class c
-    WHERE c.relname=t.tablename AND c.relrowsecurity AND c.relforcerowsecurity);
-```
+**The section that matters is tenant isolation.** The harness creates two real
+users in two real organizations and then tries to read across the boundary:
+by list query, by direct id, by cross-tenant insert, and by enumerating the
+other organization's members. Everything it creates is namespaced and torn
+down afterwards, including on failure.
 
-**3. Tenant isolation actually holds.** This is the test that matters — the
-rest is structure. Sign up two users in the dashboard, then as each one:
-
-```sql
-SELECT public.seed_demo_organization('Acme Inc');     -- as user A
-SELECT public.seed_demo_organization('Globex Ltd');   -- as user B
-```
-
-Then, still authenticated as user A:
-
-```sql
-SELECT count(*) FROM companies;   -- expect only Acme's rows
-SELECT count(*) FROM invoices;    -- expect only Acme's rows
-```
-
-If A sees B's data, stop and investigate before going further.
+Schema correctness can be established by inspection. Isolation cannot — and
+its failure mode is a data breach rather than an error. If anything under
+that heading fails, stop and fix it before migrating any application module.
 
 ---
 
