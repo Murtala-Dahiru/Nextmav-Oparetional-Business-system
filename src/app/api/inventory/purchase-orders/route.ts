@@ -31,9 +31,9 @@ export async function GET(req: Request) {
   if (supplierId) where.supplierId = supplierId;
   if (search) {
     where.OR = [
-      { orderNumber: { contains: search } },
-      { notes: { contains: search } },
-      { supplier: { name: { contains: search } } },
+      { orderNumber: { contains: search, mode: 'insensitive' } },
+      { notes: { contains: search, mode: 'insensitive' } },
+      { supplier: { name: { contains: search, mode: 'insensitive' } } },
     ];
   }
 

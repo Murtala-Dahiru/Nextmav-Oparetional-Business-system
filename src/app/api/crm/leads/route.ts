@@ -21,10 +21,10 @@ export async function GET(req: Request) {
   const where: any = { ...scoped };
   if (search) {
     where.OR = [
-      { firstName: { contains: search } },
-      { lastName: { contains: search } },
-      { email: { contains: search } },
-      { company: { contains: search } },
+      { firstName: { contains: search, mode: 'insensitive' } },
+      { lastName: { contains: search, mode: 'insensitive' } },
+      { email: { contains: search, mode: 'insensitive' } },
+      { company: { contains: search, mode: 'insensitive' } },
     ];
   }
   if (status) where.status = status;

@@ -19,11 +19,11 @@ export async function GET(req: Request) {
   const where: any = {};
   if (search) {
     where.OR = [
-      { name: { contains: search } },
-      { industry: { contains: search } },
-      { city: { contains: search } },
-      { country: { contains: search } },
-      { email: { contains: search } },
+      { name: { contains: search, mode: 'insensitive' } },
+      { industry: { contains: search, mode: 'insensitive' } },
+      { city: { contains: search, mode: 'insensitive' } },
+      { country: { contains: search, mode: 'insensitive' } },
+      { email: { contains: search, mode: 'insensitive' } },
     ];
   }
 

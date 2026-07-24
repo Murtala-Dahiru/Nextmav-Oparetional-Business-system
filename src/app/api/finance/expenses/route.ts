@@ -24,9 +24,9 @@ export async function GET(req: Request) {
   const where: any = { ...scoped };
   if (search) {
     where.OR = [
-      { title: { contains: search } },
-      { vendor: { contains: search } },
-      { notes: { contains: search } },
+      { title: { contains: search, mode: 'insensitive' } },
+      { vendor: { contains: search, mode: 'insensitive' } },
+      { notes: { contains: search, mode: 'insensitive' } },
     ];
   }
   if (category) where.category = category;

@@ -9,7 +9,9 @@ export async function GET(req: Request) {
     return success({ results: {} });
   }
 
-  const searchWildcard = { contains: q };
+  // `as const` keeps `mode` as the literal 'insensitive' rather than widening
+  // to `string`, which Prisma's QueryMode will not accept.
+  const searchWildcard = { contains: q, mode: 'insensitive' as const };
 
   const [
     leads,

@@ -21,9 +21,9 @@ export async function GET(req: Request) {
   const where: any = { ...scoped };
   if (search) {
     where.OR = [
-      { name: { contains: search } },
-      { contactName: { contains: search } },
-      { companyName: { contains: search } },
+      { name: { contains: search, mode: 'insensitive' } },
+      { contactName: { contains: search, mode: 'insensitive' } },
+      { companyName: { contains: search, mode: 'insensitive' } },
     ];
   }
   if (stage) where.stage = stage;

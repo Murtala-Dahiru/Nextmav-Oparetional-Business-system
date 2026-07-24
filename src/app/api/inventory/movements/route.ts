@@ -22,10 +22,10 @@ export async function GET(req: Request) {
   if (type) where.type = type;
   if (search) {
     where.OR = [
-      { reason: { contains: search } },
-      { reference: { contains: search } },
-      { product: { name: { contains: search } } },
-      { product: { sku: { contains: search } } },
+      { reason: { contains: search, mode: 'insensitive' } },
+      { reference: { contains: search, mode: 'insensitive' } },
+      { product: { name: { contains: search, mode: 'insensitive' } } },
+      { product: { sku: { contains: search, mode: 'insensitive' } } },
     ];
   }
 

@@ -1,20 +1,13 @@
 import { PrismaClient } from '@prisma/client'
 
 /**
- * Prisma client.
+ * Prisma client (PostgreSQL / Supabase).
  *
- * `.env` is gitignored (it must never be committed), so a freshly cloned or
- * freshly deployed instance has no `DATABASE_URL` and every query fails with
- * "Environment variable not found: DATABASE_URL" — which surfaces as a broken
- * dashboard rather than an obvious configuration error.
- *
- * Falling back to the SQLite database that ships with the repository means a
- * clone runs immediately. A real deployment should still set `DATABASE_URL`
- * explicitly; this is a safe default, not a substitute for configuration.
+ * There is deliberately no fallback connection string. The previous SQLite
+ * default let a misconfigured deployment look healthy until the first query;
+ * on Postgres a missing `DATABASE_URL` is a configuration error that should be
+ * reported plainly by `checkDatabase()` instead of being papered over.
  */
-if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL = 'file:../db/custom.db'
-}
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -48,8 +41,25 @@ export async function checkDatabase(): Promise<{ ok: true } | { ok: false; messa
       return {
         ok: false,
         message:
-          'The database file could not be opened. On a read-only or ephemeral host (most serverless platforms) SQLite will not work — point DATABASE_URL at a hosted database instead.',
+          'DATABASE_URL still points at a SQLite file, which cannot work on a serverless host. Set it to your Supabase pooled connection string (port 6543).',
       }
+    }
+    if (raw.includes("Can't reach database server") || raw.includes('P1001')) {
+      return {
+        ok: false,
+        message:
+          'The database server is unreachable. Check that DATABASE_URL uses the Supabase pooled host (port 6543) and that the project is not paused.',
+      }
+    }
+    if (raw.includes('does not exist in the current database') || raw.includes('P2021')) {
+      return {
+        ok: false,
+        message:
+          'The database is reachable but empty. Run `npm run db:deploy` to create the tables, then `npm run db:seed`.',
+      }
+    }
+    if (raw.includes('password authentication failed') || raw.includes('P1000')) {
+      return { ok: false, message: 'Database credentials were rejected. Re-copy the connection string from Supabase.' }
     }
     if (raw.includes('did not initialize yet') || raw.includes('prisma generate')) {
       return {

@@ -3,8 +3,14 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
+  // Supabase's pooled connection (port 6543). Serverless functions open a new
+  // connection per invocation, so the pooler is required — the direct
+  // connection exhausts Postgres' connection limit under any real traffic.
   url      = env("DATABASE_URL")
+  // Migrations and introspection cannot run through PgBouncer in transaction
+  // mode, so they use the direct connection (port 5432).
+  directUrl = env("DIRECT_URL")
 }
 
 // ═══════════════════════════════════════════════════════════════════════

@@ -26,8 +26,8 @@ export async function GET(req: Request) {
   const where: any = { ...scoped };
   if (search) {
     where.OR = [
-      { reason: { contains: search } },
-      { type: { contains: search } },
+      { reason: { contains: search, mode: 'insensitive' } },
+      { type: { contains: search, mode: 'insensitive' } },
     ];
   }
   if (status) where.status = status;

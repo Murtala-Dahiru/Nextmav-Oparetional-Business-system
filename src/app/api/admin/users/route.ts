@@ -18,10 +18,10 @@ export async function GET(req: Request) {
   const where: any = {};
   if (search) {
     where.OR = [
-      { firstName: { contains: search } },
-      { lastName: { contains: search } },
-      { email: { contains: search } },
-      { jobTitle: { contains: search } },
+      { firstName: { contains: search, mode: 'insensitive' } },
+      { lastName: { contains: search, mode: 'insensitive' } },
+      { email: { contains: search, mode: 'insensitive' } },
+      { jobTitle: { contains: search, mode: 'insensitive' } },
     ];
   }
   if (department) where.department = department;

@@ -23,11 +23,11 @@ export async function GET(req: Request) {
   const where: any = { ...scoped };
   if (search) {
     where.OR = [
-      { subject: { contains: search } },
-      { description: { contains: search } },
-      { contactName: { contains: search } },
-      { contactEmail: { contains: search } },
-      { ticketNumber: { contains: search } },
+      { subject: { contains: search, mode: 'insensitive' } },
+      { description: { contains: search, mode: 'insensitive' } },
+      { contactName: { contains: search, mode: 'insensitive' } },
+      { contactEmail: { contains: search, mode: 'insensitive' } },
+      { ticketNumber: { contains: search, mode: 'insensitive' } },
     ];
   }
   if (status) where.status = status;

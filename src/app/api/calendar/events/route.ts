@@ -22,9 +22,9 @@ export async function GET(req: Request) {
   const where: any = { ...scoped };
   if (search) {
     where.OR = [
-      { title: { contains: search } },
-      { description: { contains: search } },
-      { location: { contains: search } },
+      { title: { contains: search, mode: 'insensitive' } },
+      { description: { contains: search, mode: 'insensitive' } },
+      { location: { contains: search, mode: 'insensitive' } },
     ];
   }
   if (startDateAfter) {

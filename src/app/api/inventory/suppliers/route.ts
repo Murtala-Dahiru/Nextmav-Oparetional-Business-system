@@ -19,10 +19,10 @@ export async function GET(req: Request) {
   const where: any = {};
   if (search) {
     where.OR = [
-      { name: { contains: search } },
-      { contactName: { contains: search } },
-      { email: { contains: search } },
-      { city: { contains: search } },
+      { name: { contains: search, mode: 'insensitive' } },
+      { contactName: { contains: search, mode: 'insensitive' } },
+      { email: { contains: search, mode: 'insensitive' } },
+      { city: { contains: search, mode: 'insensitive' } },
     ];
   }
   if (isActive === 'true' || isActive === 'false') where.isActive = isActive === 'true';

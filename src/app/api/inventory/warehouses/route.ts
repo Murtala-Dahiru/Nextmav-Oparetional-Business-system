@@ -19,8 +19,8 @@ export async function GET(req: Request) {
   const where: any = {};
   if (search) {
     where.OR = [
-      { name: { contains: search } },
-      { location: { contains: search } },
+      { name: { contains: search, mode: 'insensitive' } },
+      { location: { contains: search, mode: 'insensitive' } },
     ];
   }
 
