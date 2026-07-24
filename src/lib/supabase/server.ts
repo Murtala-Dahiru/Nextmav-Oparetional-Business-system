@@ -21,8 +21,51 @@ import { cookies } from 'next/headers';
  *                        every isolation guarantee the schema provides.
  */
 
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+/**
+ * Fail with an explanation rather than Supabase's generic
+ * "Your project's URL and Key are required to create a Supabase client!".
+ *
+ * That message sends people to the API settings page, which is rarely the
+ * actual problem. `NEXT_PUBLIC_*` values are substituted into the bundle when
+ * `next build` runs, not read at request time — so on a host they must be
+ * present *before* the build. Adding them afterwards and restarting changes
+ * nothing: the compiled output still contains `undefined`, and only a
+ * redeploy picks them up.
+ *
+ * The trailing-slash check is here for the same reason: the dashboard shows
+ * the project URL next to the REST endpoint, and pasting
+ * `https://<ref>.supabase.co/rest/v1/` makes every call resolve to
+ * `/rest/v1/rest/v1/…` and 404 with nothing that points at the cause.
+ */
+function requireConfig(): { url: string; anon: string } {
+  const missing = [
+    !URL && 'NEXT_PUBLIC_SUPABASE_URL',
+    !ANON && 'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+  ].filter(Boolean);
+
+  if (missing.length) {
+    throw new Error(
+      `Supabase is not configured: ${missing.join(' and ')} ${missing.length > 1 ? 'are' : 'is'} missing.\n` +
+        'These are inlined when `next build` runs, so setting them on your host ' +
+        'and restarting is not enough — set them in the project environment ' +
+        'settings and then trigger a new deployment. Locally, put them in .env ' +
+        'and rebuild.',
+    );
+  }
+
+  if (/\/rest\/v1\/?$/.test(URL!)) {
+    throw new Error(
+      'NEXT_PUBLIC_SUPABASE_URL must be the bare project origin ' +
+        '(https://<project-ref>.supabase.co), not the REST endpoint. ' +
+        'The trailing /rest/v1 makes every request resolve to /rest/v1/rest/v1/… and 404.',
+    );
+  }
+
+  return { url: URL!, anon: ANON! };
+}
 
 /**
  * Request-scoped client authenticated as the caller.
@@ -33,7 +76,9 @@ const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 export async function supabaseServer() {
   const store = await cookies();
 
-  return createServerClient(URL, ANON, {
+  const { url, anon } = requireConfig();
+
+  return createServerClient(url, anon, {
     cookies: {
       getAll() {
         return store.getAll();
@@ -69,7 +114,9 @@ export function supabaseAdmin() {
       'SUPABASE_SERVICE_ROLE_KEY is not set. Required for admin operations.',
     );
   }
-  return createClient(URL, key, {
+  const { url } = requireConfig();
+
+  return createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }

@@ -19,7 +19,31 @@ dashboard.
 | `DIRECT_URL` | Settings → Database → **Session pooler** (5432) | Applying migrations. |
 | `DATABASE_URL` | Settings → Database → **Transaction pooler** (6543) | Reserved for tooling; the app itself uses `supabase-js`. |
 
-Two things that will otherwise cost you an hour:
+### `NEXT_PUBLIC_*` is baked in at build time
+
+This catches nearly everyone, so it is worth stating plainly.
+
+Next.js **substitutes `NEXT_PUBLIC_*` values into the compiled output when
+`next build` runs.** They are not read per request. So on a host:
+
+1. Set them in the project's environment settings **first**.
+2. **Then trigger a new deployment.**
+
+Adding the variables and restarting is not enough — the existing build still
+contains `undefined`, and Supabase fails with:
+
+```
+Your project's URL and Key are required to create a Supabase client!
+```
+
+That message points at the API settings page, which is usually not the problem.
+The app now replaces it with one that names the actual cause.
+
+On Vercel: Settings → Environment Variables → add all five → Deployments →
+**Redeploy**. Make sure they are enabled for the environment you are deploying
+(Production and Preview are separate).
+
+Two more things that will otherwise cost you an hour:
 
 - **`db.<ref>.supabase.co` no longer resolves over IPv4.** Supabase deprecated
   direct IPv4 connections, so use the *session pooler* host on port 5432 for
@@ -126,6 +150,9 @@ The dashboard reports the actual cause rather than a blank panel:
 
 | Message | Cause |
 |---|---|
+| `Your project's URL and Key are required…` | `NEXT_PUBLIC_*` was not set **before** the build. Set it, then redeploy — restarting is not enough |
+| `Supabase is not configured: … is missing` | Same cause, reported by this app with the fix spelled out |
+| `must be the bare project origin` | The URL has `/rest/v1` on the end; use `https://<ref>.supabase.co` |
 | `DATABASE_URL is not set on this deployment` | Environment variable missing, or the host was not redeployed after adding it |
 | `…still points at a SQLite file` | `DATABASE_URL` is a `file:` path left over from earlier |
 | `The database server is unreachable` | Wrong host or port, or the Supabase project is paused |
