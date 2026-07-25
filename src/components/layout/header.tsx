@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Menu,
@@ -36,6 +37,7 @@ import { MODULES, ROLES } from '@/lib/constants';
 
 export function Header() {
   const isMobile = useIsMobile();
+  const router = useRouter();
   const {
     user,
     activeModule,
@@ -234,13 +236,19 @@ export function Header() {
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setActiveModule('admin')}>
+          {/*
+            Both of these used to open the Admin module, which almost nobody
+            can: `setActiveModule` refuses a module the role lacks, so for an
+            ordinary employee the menu items simply did nothing. They now go to
+            the account page, which belongs to whoever is signed in.
+          */}
+          <DropdownMenuItem onClick={() => router.push('/settings')}>
             <User className="mr-2 size-4" />
             Profile
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => setActiveModule('admin')}>
+          <DropdownMenuItem onClick={() => router.push('/change-password')}>
             <Settings className="mr-2 size-4" />
-            Settings
+            Change password
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
