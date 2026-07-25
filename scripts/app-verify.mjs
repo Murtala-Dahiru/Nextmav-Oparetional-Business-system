@@ -67,13 +67,30 @@ function makeClient() {
   };
 }
 
-async function adminCreateUser(email, password) {
+async function adminCreateUser(email, password, opts = {}) {
   const r = await fetch(`${SUPABASE}/auth/v1/admin/users`, {
     method: 'POST',
     headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, email_confirm: true }),
+    body: JSON.stringify({ email, password, email_confirm: true, ...opts }),
   });
   if (!r.ok) throw new Error(`admin create: ${r.status} ${await r.text()}`);
+  return r.json();
+}
+
+/**
+ * The token an authentication email would carry.
+ *
+ * Lets the emailed half of the flow be tested without depending on delivery —
+ * which on the built-in SMTP is a few messages an hour and cannot be relied on
+ * in a test at all.
+ */
+async function adminGenerateLink(type, email, redirectTo) {
+  const r = await fetch(`${SUPABASE}/auth/v1/admin/generate_link`, {
+    method: 'POST',
+    headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type, email, redirect_to: redirectTo }),
+  });
+  if (!r.ok) throw new Error(`generate_link: ${r.status} ${await r.text()}`);
   return r.json();
 }
 const REST = { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' };
@@ -129,7 +146,7 @@ const emailA = `appverify-${run}-a@example.com`;
 const emailB = `appverify-${run}-b@example.com`;
 const PW = 'Passw0rd!verify';
 
-let userA, userB, userC, userD;
+let userA, userB, userC, userD, userE, userF;
 const A = makeClient(), B = makeClient(), C = makeClient();
 
 try {
@@ -635,6 +652,104 @@ try {
   });
   check(editedMsg.ok, `a message can be edited (${editedMsg.status})`, editedMsg.body?.error?.message);
   check(editedMsg.body?.data?.body === 'edited', 'the edit is persisted');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('17. Emailed links can be redeemed');
+  // No route consumed the code an authentication email returns with, so
+  // confirming an address signed nobody in and every password reset failed.
+
+  const resetEmail = `verify-reset-${Date.now()}@example.com`;
+  userE = await adminCreateUser(resetEmail, PW);
+  const recovery = await adminGenerateLink(
+    'recovery', resetEmail, `${BASE}/auth/callback?next=/reset-password`,
+  );
+
+  const R = makeClient();
+  const cb = await R.fetch(
+    `/auth/callback?token_hash=${recovery.hashed_token}&type=recovery&next=/reset-password`,
+  );
+  check(cb.status === 307 || cb.status === 302, `the callback redeems a recovery link (${cb.status})`);
+  check((cb.headers.get('location') ?? '').endsWith('/reset-password'),
+    'and forwards to the page that sets the password');
+
+  // /reset-password used to sit in the proxy's "auth pages" list, so the
+  // recovery session it depends on got it redirected to /dashboard instead.
+  const resetPage = await R.fetch('/reset-password');
+  check(resetPage.status === 200, `/reset-password is reachable with a recovery session (${resetPage.status})`);
+
+  const NEW_PW = 'Passw0rd!verify-2';
+  const changed = await R.json('/api/auth/reset-password', {
+    method: 'POST', body: JSON.stringify({ password: NEW_PW }),
+  });
+  check(changed.ok, `the password is actually changed (${changed.status})`, changed.body?.error?.message);
+
+  const withNew = await makeClient().json('/api/auth/login', {
+    method: 'POST', body: JSON.stringify({ email: resetEmail, password: NEW_PW }),
+  });
+  check(withNew.ok, `the new password signs in (${withNew.status})`);
+  const withOld = await makeClient().json('/api/auth/login', {
+    method: 'POST', body: JSON.stringify({ email: resetEmail, password: PW }),
+  });
+  check(withOld.status === 401, `the old password no longer works (${withOld.status})`);
+
+  const badLink = await makeClient().fetch('/auth/callback?token_hash=not-a-real-token&type=recovery');
+  const badTarget = badLink.headers.get('location') ?? '';
+  check(badTarget.includes('/login?error='),
+    'a dead link lands on sign-in carrying the reason, not a blank page');
+
+  section('18. Sessions that are no longer valid');
+  // The proxy routes on cookie presence, so an expired token used to be a
+  // lockout: /dashboard was allowed through, the page bounced to /login, and
+  // the proxy bounced it straight back. A blank screen with no way out.
+
+  const stale = makeClient();
+  const staleName = `sb-${new URL(SUPABASE).hostname.split('.')[0]}-auth-token`;
+
+  const staleApi = await stale.json('/api/auth/session', {
+    headers: { cookie: `${staleName}=not-a-real-token` },
+  });
+  check(staleApi.body?.data?.user === null,
+    'the server reports no user for an unusable token');
+
+  const cleared = await fetch(`${BASE}/api/auth/logout`, {
+    method: 'POST', headers: { cookie: `${staleName}=not-a-real-token` },
+  });
+  const clearing = (cleared.headers.getSetCookie?.() ?? []).filter(
+    c => c.startsWith(staleName) && /Max-Age=0|Expires=Thu, 01 Jan 1970/i.test(c),
+  );
+  check(clearing.length > 0,
+    'signing out clears an unparseable cookie, which is what breaks the loop');
+
+  section('19. Sign-in tells people what is actually wrong');
+
+  const unconfirmedEmail = `verify-unconfirmed-${Date.now()}@example.com`;
+  userF = await adminCreateUser(unconfirmedEmail, PW, { email_confirm: false });
+
+  const unconfirmed = await makeClient().json('/api/auth/login', {
+    method: 'POST', body: JSON.stringify({ email: unconfirmedEmail, password: PW }),
+  });
+  check(unconfirmed.body?.error?.code === 'EMAIL_NOT_CONFIRMED',
+    `an unconfirmed account is named as such, not "invalid password" (${unconfirmed.status})`);
+
+  // The disclosure above is bounded: it takes the correct password to see it.
+  const unconfirmedWrongPw = await makeClient().json('/api/auth/login', {
+    method: 'POST', body: JSON.stringify({ email: unconfirmedEmail, password: 'not-the-password' }),
+  });
+  check(unconfirmedWrongPw.body?.error?.code === 'AUTH_ERROR',
+    'without the password it stays indistinguishable from any other failure');
+
+  // Resend asks for no password, so it must give nothing away at all.
+  const resendKnown = await makeClient().json('/api/auth/resend-confirmation', {
+    method: 'POST', body: JSON.stringify({ email: unconfirmedEmail }),
+  });
+  const resendUnknown = await makeClient().json('/api/auth/resend-confirmation', {
+    method: 'POST', body: JSON.stringify({ email: `nobody-${Date.now()}@example.com` }),
+  });
+  check(
+    resendKnown.status === resendUnknown.status &&
+      JSON.stringify(resendKnown.body) === JSON.stringify(resendUnknown.body),
+    'resend answers identically for a registered and an unknown address',
+  );
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);
@@ -643,6 +758,8 @@ try {
   if (userB?.id) await adminDeleteUser(userB.id);
   if (userC?.id) await adminDeleteUser(userC.id);
   if (userD?.id) await adminDeleteUser(userD.id);
+  if (userE?.id) await adminDeleteUser(userE.id);
+  if (userF?.id) await adminDeleteUser(userF.id);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);

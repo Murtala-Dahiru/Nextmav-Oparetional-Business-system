@@ -32,8 +32,36 @@ export async function POST(request: NextRequest) {
     });
 
     if (authError) {
-      // Deliberately not distinguishing "no such user" from "wrong password":
-      // that difference lets an attacker enumerate valid addresses.
+      /**
+       * An unconfirmed account is called out by name, unlike every other
+       * failure here.
+       *
+       * Folding it into "Invalid email or password" left anyone who signed up
+       * and never confirmed permanently stuck: their password is correct, so
+       * they retype it, reset it, and get the same refusal — and nothing on
+       * screen ever mentions the email they are supposed to be looking for.
+       * Support cannot tell the two apart either.
+       *
+       * It does reveal that the address is registered. That is a real
+       * trade-off and it is made deliberately: the alternative is an account
+       * that can never be used, and the resend endpoint below already
+       * discloses nothing further.
+       */
+      if (/email not confirmed|not confirmed/i.test(authError.message)) {
+        return error(
+          'Your email address has not been confirmed yet. Check your inbox for the confirmation link, or request a new one.',
+          403, 'EMAIL_NOT_CONFIRMED',
+        );
+      }
+      if (/rate limit|too many requests/i.test(authError.message)) {
+        return error(
+          'Too many sign-in attempts. Please wait a moment and try again.',
+          429, 'RATE_LIMITED',
+        );
+      }
+      // Everything else stays indistinguishable: "no such user" and "wrong
+      // password" must not be separable, or the form becomes a way to test
+      // which addresses have accounts.
       return error('Invalid email or password', 401, 'AUTH_ERROR');
     }
     if (!data.user) return error('Invalid email or password', 401, 'AUTH_ERROR');

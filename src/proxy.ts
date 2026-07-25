@@ -20,8 +20,16 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 const PROTECTED_PAGES = ['/dashboard', '/onboarding'];
 
-/** Auth pages that a signed-in user should never sit on. */
-const AUTH_PAGES = ['/login', '/signup', '/forgot-password', '/reset-password'];
+/**
+ * Auth pages that a signed-in user should never sit on.
+ *
+ * `/reset-password` is deliberately not one of them. Following a reset link
+ * establishes a recovery session, so by the time that page loads the visitor
+ * *is* signed in — bouncing them to the dashboard from here meant the password
+ * could never actually be changed. Someone already signed in who opens it is
+ * simply changing their password, which is allowed.
+ */
+const AUTH_PAGES = ['/login', '/signup', '/forgot-password'];
 
 /**
  * API namespaces that serve business data. `/api/auth/*` is intentionally

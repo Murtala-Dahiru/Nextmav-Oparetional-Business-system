@@ -172,6 +172,24 @@ export const useAppStore = create<AppState>((set, get) => ({
             : defaultModuleFor(role),
         });
       } else {
+        /**
+         * Cookies say there is a session; the server says there is not.
+         *
+         * This is an expired or revoked token, and until the cookie is removed
+         * it is a lockout rather than an inconvenience: `proxy.ts` routes on
+         * cookie *presence*, so it lets /dashboard through, this store finds no
+         * user, the page redirects to /login — and the proxy sends /login
+         * straight back to /dashboard because the cookie is still there. The
+         * result is a blank page that no amount of reloading escapes, and the
+         * only cure was clearing site data by hand.
+         *
+         * Signing out breaks the cycle: it clears the cookie, so the redirect
+         * that follows finally reaches the login form.
+         */
+        await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {
+          // Best effort. If it fails the redirect still happens; the user is
+          // no worse off than before.
+        });
         set({
           user: null, isAuthenticated: false, needsOrganization: false,
           isLoading: false, activeRole: 'employee',

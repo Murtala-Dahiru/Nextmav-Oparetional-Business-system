@@ -48,6 +48,13 @@ export default function OnboardingPage() {
           router.replace('/dashboard');
           return;
         }
+        // The organization name typed during signup, carried through the
+        // confirmation email in user metadata. Email confirmation means the
+        // signup request cannot create the organization itself, and without
+        // this the very first thing the product asks after confirming is a
+        // question it already asked.
+        const pending = json?.data?.user?.pendingOrganizationName;
+        if (pending) setName(pending);
         setChecking(false);
       } catch {
         // Treat an unreachable session endpoint as "still needs onboarding"

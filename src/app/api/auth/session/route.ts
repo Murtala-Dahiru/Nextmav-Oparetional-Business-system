@@ -54,6 +54,10 @@ export async function GET() {
       organizationId: null,
       role: 'employee',
       capabilities: capabilitySummary('employee'),
+      // Only meaningful in this branch: it is what the user asked to call
+      // their workspace at signup, and onboarding is the screen that finally
+      // gets to use it.
+      pendingOrganizationName: user.user_metadata?.pending_organization_name ?? null,
     },
     needsOrganization: true,
   });

@@ -18,8 +18,18 @@ export async function POST(request: NextRequest) {
     const supabase = await supabaseServer();
     const origin = process.env.NEXT_PUBLIC_APP_URL ?? new URL(request.url).origin;
 
+    /**
+     * Sent through /auth/callback rather than straight to /reset-password.
+     *
+     * The emailed link carries a code, not a session. Pointing it at the page
+     * meant the page rendered with nothing signed in, so the form posted to
+     * /api/auth/reset-password, which found no recovery session and answered
+     * "This reset link is invalid or has expired" — for every reset, always.
+     * The callback performs the exchange first and then forwards here with the
+     * recovery session in place.
+     */
     await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: origin + '/reset-password',
+      redirectTo: `${origin}/auth/callback?next=/reset-password`,
     });
 
     return success({

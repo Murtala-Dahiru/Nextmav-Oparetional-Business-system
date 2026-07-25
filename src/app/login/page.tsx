@@ -26,10 +26,41 @@ function LoginForm() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  /** Set when the account exists but has never been confirmed. */
+  const [needsConfirmation, setNeedsConfirmation] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  // /auth/callback sends people here with a reason when an emailed link could
+  // not be redeemed — expired, already used, or missing its token. Shown on
+  // arrival, because otherwise they are looking at an ordinary sign-in form
+  // with no hint that the link they just followed failed.
+  const linkError = searchParams.get('error');
+
+  async function resendConfirmation() {
+    setResending(true);
+    try {
+      const res = await fetch('/api/auth/resend-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error?.message || 'Could not resend the confirmation email');
+        return;
+      }
+      toast.success(data.data?.message ?? 'Confirmation email sent.');
+    } catch {
+      toast.error('Network error. Please try again.');
+    } finally {
+      setResending(false);
+    }
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setIsLoading(true);
+    setNeedsConfirmation(false);
 
     try {
       const res = await fetch('/api/auth/login', {
@@ -41,6 +72,9 @@ function LoginForm() {
       const data = await res.json();
 
       if (!res.ok) {
+        if (data.error?.code === 'EMAIL_NOT_CONFIRMED') {
+          setNeedsConfirmation(true);
+        }
         toast.error(data.error?.message || 'Invalid email or password');
         return;
       }
@@ -82,6 +116,44 @@ function LoginForm() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {linkError && !needsConfirmation && (
+              <div
+                role="alert"
+                className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200"
+              >
+                {linkError}
+              </div>
+            )}
+
+            {needsConfirmation && (
+              <div
+                role="alert"
+                className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200"
+              >
+                <p>
+                  This account still needs its email address confirmed. Check your
+                  inbox for the link we sent.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={resendConfirmation}
+                  disabled={resending || !email}
+                >
+                  {resending ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Sending…
+                    </>
+                  ) : (
+                    'Send a new link'
+                  )}
+                </Button>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email address</Label>
