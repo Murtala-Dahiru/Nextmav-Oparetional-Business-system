@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, type ReactNode } from 'react';
+import { useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import { toast } from 'sonner';
 import {
@@ -12,7 +12,8 @@ import { DataTable, type DataTableFilter } from '@/components/shared/data-table'
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import { formatDateTime, formatRelativeTime, getInitials } from '@/lib/format';
+import { formatDateTime, formatRelativeTime, initialsOf } from '@/lib/format';
+import { normalizeRole, roleLabel } from '@/lib/permissions';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -39,11 +40,25 @@ import {
 
 interface ApiMeta { total: number; page: number; pageSize: number; totalPages: number }
 
+/**
+ * A row of `v_org_directory`, which is what `/api/admin/users` returns.
+ *
+ * This previously described the pre-migration ORM's user shape — `id`,
+ * `firstName`/`lastName`, `department`, `roleId` — none of which the view has.
+ * Every column in the employee table rendered blank, and edit and deactivate
+ * addressed `undefined`, because the primary key here is `memberId`: the
+ * membership, not the account. One person can hold memberships in several
+ * organizations, so the account id is not what a per-organization screen acts
+ * on.
+ */
 interface UserRecord {
-  id: string; email: string; firstName: string; lastName: string; avatar: string;
-  jobTitle: string; phone: string; department: string; roleId: string;
-  isActive: boolean; lastSeen: string; createdAt: string; updatedAt: string;
-  role?: { id: string; name: string };
+  memberId: string; userId: string; organizationId: string;
+  email: string; fullName: string; avatarUrl: string | null;
+  jobTitle: string | null; phone: string | null;
+  role: string; departmentId: string | null; departmentName: string | null;
+  managerId: string | null; managerName: string | null;
+  employeeNumber: string | null; employmentType: string | null;
+  hiredOn: string | null; isActive: boolean; lastSeenAt: string | null;
 }
 
 interface RoleRecord {
@@ -131,28 +146,50 @@ function SectionCard({ title, children, icon: Icon }: { title: string; children:
 //  User Form Dialog
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * What the member endpoints actually accept.
+ *
+ * `password` is gone. The form used to default it to the literal string
+ * "changeme" and send it from the browser with every account it created; the
+ * server now generates a secret nobody records and the new member sets their
+ * own through password reset.
+ *
+ * `role` and `departmentId` replace `roleId` and a free-text `department`:
+ * the membership row stores a role enum and a department foreign key, so the
+ * previous names were silently discarded on save.
+ */
 interface UserFormState {
-  firstName: string; lastName: string; email: string; phone: string;
-  jobTitle: string; department: string; roleId: string; password: string;
+  firstName: string; lastName: string; email: string;
+  role: string; departmentId: string;
 }
 
 const defaultUserForm: UserFormState = {
-  firstName: '', lastName: '', email: '', phone: '',
-  jobTitle: '', department: 'Engineering', roleId: '', password: 'changeme',
+  firstName: '', lastName: '', email: '', role: 'employee', departmentId: '',
 };
 
+interface DepartmentOption { id: string; name: string }
+
+/** Radix Select reads "" as "no value", so "unassigned" needs its own token. */
+const NO_DEPARTMENT = '__none__';
+
 function UserFormDialog({
-  open, onOpenChange, editing, onSubmit, isLoading, roles,
+  open, onOpenChange, editing, onSubmit, isLoading, roles, departments,
 }: {
   open: boolean; onOpenChange: (v: boolean) => void;
   editing: UserRecord | null; onSubmit: (data: UserFormState) => void;
-  isLoading: boolean; roles: RoleRecord[];
+  isLoading: boolean; roles: RoleRecord[]; departments: DepartmentOption[];
 }) {
+  // The directory carries one `fullName`; the form edits the two halves the
+  // profile stores, so split on the first space rather than inventing a field.
+  const [editFirst = '', ...editRest] = (editing?.fullName ?? '').split(' ');
+
   const getInitialForm = (): UserFormState => editing ? {
-    firstName: editing.firstName, lastName: editing.lastName, email: editing.email,
-    phone: editing.phone, jobTitle: editing.jobTitle, department: editing.department,
-    roleId: editing.roleId, password: '',
-  } : { ...defaultUserForm, roleId: roles[0]?.id || '' };
+    firstName: editFirst,
+    lastName: editRest.join(' '),
+    email: editing.email,
+    role: editing.role,
+    departmentId: editing.departmentId ?? '',
+  } : { ...defaultUserForm, role: roles[0]?.id || 'employee' };
 
   const [form, setForm] = useState<UserFormState>(getInitialForm);
 
@@ -171,25 +208,40 @@ function UserFormDialog({
             <div className="grid gap-2"><Label htmlFor="u-first">First Name</Label><Input id="u-first" value={form.firstName} onChange={(e) => update('firstName', e.target.value)} /></div>
             <div className="grid gap-2"><Label htmlFor="u-last">Last Name</Label><Input id="u-last" value={form.lastName} onChange={(e) => update('lastName', e.target.value)} /></div>
           </div>
-          <div className="grid gap-2"><Label htmlFor="u-email">Email</Label><Input id="u-email" type="email" value={form.email} onChange={(e) => update('email', e.target.value)} /></div>
-          {!editing && (
-            <div className="grid gap-2"><Label htmlFor="u-pass">Password</Label><Input id="u-pass" type="password" value={form.password} onChange={(e) => update('password', e.target.value)} /></div>
-          )}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2"><Label htmlFor="u-phone">Phone</Label><Input id="u-phone" value={form.phone} onChange={(e) => update('phone', e.target.value)} /></div>
-            <div className="grid gap-2"><Label htmlFor="u-job">Job Title</Label><Input id="u-job" value={form.jobTitle} onChange={(e) => update('jobTitle', e.target.value)} /></div>
+          <div className="grid gap-2">
+            <Label htmlFor="u-email">Email</Label>
+            <Input id="u-email" type="email" value={form.email} disabled={!!editing}
+              onChange={(e) => update('email', e.target.value)} />
+            {!editing && (
+              <p className="text-xs text-muted-foreground">
+                No password is set here. They&apos;ll use &ldquo;Forgot password&rdquo; on the
+                sign-in page to choose their own.
+              </p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label htmlFor="u-dept">Department</Label>
-              <Select value={form.department} onValueChange={(v) => update('department', v)}>
-                <SelectTrigger id="u-dept"><SelectValue /></SelectTrigger>
-                <SelectContent>{DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+              {/*
+                Real department ids, gathered from the directory. The list used
+                to be a hardcoded set of names ("Engineering", …) that matched
+                no row in the departments table, so the selection had nowhere
+                to be stored.
+              */}
+              <Select
+                value={form.departmentId || NO_DEPARTMENT}
+                onValueChange={(v) => update('departmentId', v === NO_DEPARTMENT ? '' : v)}
+              >
+                <SelectTrigger id="u-dept"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_DEPARTMENT}>Unassigned</SelectItem>
+                  {departments.map((d) => <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>)}
+                </SelectContent>
               </Select>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="u-role">Role</Label>
-              <Select value={form.roleId} onValueChange={(v) => update('roleId', v)}>
+              <Select value={form.role} onValueChange={(v) => update('role', v)}>
                 <SelectTrigger id="u-role"><SelectValue /></SelectTrigger>
                 <SelectContent>{roles.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}</SelectContent>
               </Select>
@@ -273,6 +325,24 @@ function RoleFormDialog({
 export default function AdminModule() {
   // ── Users State ──
   const [users, setUsers] = useState<UserRecord[]>([]);
+
+  /**
+   * Departments, derived from the directory rather than fetched.
+   *
+   * There is no endpoint that lists them, and the assignment dropdown needs
+   * real ids to store. Every department that has at least one member appears
+   * here, which covers assignment; a department with nobody in it yet cannot
+   * be offered until such an endpoint exists.
+   */
+  const departments = useMemo<DepartmentOption[]>(() => {
+    const seen = new Map<string, string>();
+    for (const u of users) {
+      if (u.departmentId && !seen.has(u.departmentId)) {
+        seen.set(u.departmentId, u.departmentName ?? 'Unnamed department');
+      }
+    }
+    return [...seen].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [users]);
   const [userMeta, setUserMeta] = useState<ApiMeta>({ total: 0, page: 1, pageSize: 20, totalPages: 0 });
   const [userLoading, setUserLoading] = useState(true);
   const [userPage, setUserPage] = useState(0);
@@ -396,16 +466,21 @@ export default function AdminModule() {
   const handleUserSubmit = async (form: UserFormState) => {
     setUserSubmitting(true);
     try {
-      const payload: any = {
-        firstName: form.firstName, lastName: form.lastName, email: form.email,
-        phone: form.phone, jobTitle: form.jobTitle, department: form.department,
-        roleId: form.roleId,
-      };
-      if (!editingUser) payload.password = form.password;
-      else payload.isActive = true;
+      // Creating takes the account details; editing only ever changes the
+      // membership, because name and email belong to the person's profile and
+      // are not an administrator's to rewrite from here.
+      const payload: any = editingUser
+        ? { role: form.role, departmentId: form.departmentId }
+        : {
+            email: form.email,
+            firstName: form.firstName,
+            lastName: form.lastName,
+            role: form.role,
+            departmentId: form.departmentId,
+          };
 
       if (editingUser) {
-        await apiFetch(`/api/admin/users/${editingUser.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+        await apiFetch(`/api/admin/users/${editingUser.memberId}`, { method: 'PUT', body: JSON.stringify(payload) });
         toast.success('User updated');
       } else {
         await apiFetch('/api/admin/users', { method: 'POST', body: JSON.stringify(payload) });
@@ -482,31 +557,37 @@ export default function AdminModule() {
   // ════════════════════════════════════════════════════════════
   const userColumns: ColumnDef<UserRecord>[] = [
     {
-      accessorKey: 'avatar', header: '', size: 50,
+      accessorKey: 'avatarUrl', header: '', size: 50,
       cell: ({ row }) => {
         const u = row.original;
         return (
           <Avatar className="size-8">
-            <AvatarImage src={u.avatar} alt={u.firstName} />
+            <AvatarImage src={u.avatarUrl ?? undefined} alt={u.fullName} />
             <AvatarFallback className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-              {getInitials(u.firstName, u.lastName)}
+              {initialsOf(u.fullName)}
             </AvatarFallback>
           </Avatar>
         );
       },
     },
     {
-      accessorKey: 'firstName', header: 'Name', size: 160,
-      cell: ({ row }) => <span className="font-medium">{row.original.firstName} {row.original.lastName}</span>,
+      accessorKey: 'fullName', header: 'Name', size: 160,
+      cell: ({ row }) => <span className="font-medium">{row.original.fullName || '—'}</span>,
     },
     { accessorKey: 'email', header: 'Email', size: 200 },
-    { accessorKey: 'jobTitle', header: 'Job Title', size: 140 },
-    { accessorKey: 'department', header: 'Department', size: 120 },
+    {
+      accessorKey: 'jobTitle', header: 'Job Title', size: 140,
+      cell: ({ row }) => <span>{row.original.jobTitle || '—'}</span>,
+    },
+    {
+      accessorKey: 'departmentName', header: 'Department', size: 120,
+      cell: ({ row }) => <span>{row.original.departmentName || '—'}</span>,
+    },
     {
       accessorKey: 'role', header: 'Role', size: 120,
       cell: ({ row }) => (
         <Badge variant="secondary" className="bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
-          {row.original.role?.name || '—'}
+          {roleLabel(normalizeRole(row.original.role))}
         </Badge>
       ),
     },
@@ -520,8 +601,12 @@ export default function AdminModule() {
       ),
     },
     {
-      accessorKey: 'lastSeen', header: 'Last Seen', size: 120,
-      cell: ({ row }) => <span className="text-muted-foreground text-sm">{formatRelativeTime(row.original.lastSeen)}</span>,
+      accessorKey: 'lastSeenAt', header: 'Last Seen', size: 120,
+      cell: ({ row }) => (
+        <span className="text-muted-foreground text-sm">
+          {row.original.lastSeenAt ? formatRelativeTime(row.original.lastSeenAt) : 'Never'}
+        </span>
+      ),
     },
     {
       id: 'actions', size: 60,
@@ -530,8 +615,8 @@ export default function AdminModule() {
           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => { setEditingUser(row.original); setUserDialogOpen(true); }}><Pencil className="size-4 mr-2" /> Edit</DropdownMenuItem>
-            <DropdownMenuItem className="text-red-600" onClick={() => setDeleteTarget({ type: 'user', id: row.original.id, name: `${row.original.firstName} ${row.original.lastName}` })}>
-              <Trash2 className="size-4 mr-2" /> Delete
+            <DropdownMenuItem className="text-red-600" onClick={() => setDeleteTarget({ type: 'user', id: row.original.memberId, name: row.original.fullName || row.original.email })}>
+              <Trash2 className="size-4 mr-2" /> Deactivate
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -806,9 +891,10 @@ export default function AdminModule() {
       </Tabs>
 
       {/* ═══════════ DIALOGS ═══════════ */}
-      <UserFormDialog key={editingUser?.id ?? 'new-user'}
+      <UserFormDialog key={editingUser?.memberId ?? 'new-user'}
         open={userDialogOpen} onOpenChange={setUserDialogOpen}
-        editing={editingUser} onSubmit={handleUserSubmit} isLoading={userSubmitting} roles={roles} />
+        editing={editingUser} onSubmit={handleUserSubmit} isLoading={userSubmitting}
+        roles={roles} departments={departments} />
 
       <RoleFormDialog key={editingRole?.id ?? 'new-role'}
         open={roleDialogOpen} onOpenChange={setRoleDialogOpen}

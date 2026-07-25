@@ -14,7 +14,8 @@ import { DataTable, type DataTableFilter } from '@/components/shared/data-table'
 import { PageHeader } from '@/components/shared/page-header';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { StatCard } from '@/components/shared/stat-card';
-import { formatDate, formatRelativeTime, getInitials } from '@/lib/format';
+import { formatDate, formatRelativeTime, initialsOf } from '@/lib/format';
+import { normalizeRole, roleLabel } from '@/lib/permissions';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,11 +43,25 @@ import { Separator } from '@/components/ui/separator';
 
 interface ApiMeta { total: number; page: number; pageSize: number; totalPages: number }
 
+/**
+ * A row of `v_org_directory`, which is what `/api/admin/users` returns.
+ *
+ * This previously described the pre-migration ORM's user shape — `id`,
+ * `firstName`/`lastName`, `department`, `roleId` — none of which the view has.
+ * Every column in the employee table rendered blank, and edit and deactivate
+ * addressed `undefined`, because the primary key here is `memberId`: the
+ * membership, not the account. One person can hold memberships in several
+ * organizations, so the account id is not what a per-organization screen acts
+ * on.
+ */
 interface UserRecord {
-  id: string; email: string; firstName: string; lastName: string; avatar: string;
-  jobTitle: string; phone: string; department: string; roleId: string;
-  isActive: boolean; lastSeen: string; createdAt: string; updatedAt: string;
-  role?: { id: string; name: string };
+  memberId: string; userId: string; organizationId: string;
+  email: string; fullName: string; avatarUrl: string | null;
+  jobTitle: string | null; phone: string | null;
+  role: string; departmentId: string | null; departmentName: string | null;
+  managerId: string | null; managerName: string | null;
+  employeeNumber: string | null; employmentType: string | null;
+  hiredOn: string | null; isActive: boolean; lastSeenAt: string | null;
 }
 
 interface RoleRecord {
@@ -54,10 +69,18 @@ interface RoleRecord {
   permissions: string; createdAt: string; _count?: { users: number };
 }
 
+/**
+ * A row of `/api/hr/leave`. The person is `member` — the membership that filed
+ * the request — with their name on the joined profile, not a flat `requester`
+ * carrying `firstName`/`lastName`.
+ */
 interface LeaveRequest {
-  id: string; requesterId: string; type: string; startDate: string; endDate: string;
-  status: string; reason: string; approverId: string; createdAt: string; updatedAt: string;
-  requester?: { id: string; firstName: string; lastName: string; avatar: string; department: string };
+  id: string; memberId: string; type: string; startDate: string; endDate: string;
+  status: string; reason: string; isHalfDay: boolean;
+  approvedBy: string | null; decidedAt: string | null;
+  createdAt: string; updatedAt: string;
+  member?: { id: string; departmentId: string | null; profiles?: { fullName: string; avatarUrl: string | null } };
+  approver?: { id: string; profiles?: { fullName: string } } | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -133,7 +156,7 @@ async function fetchList<T>(url: string): Promise<{ data: T[]; meta: ApiMeta }> 
   const res = await fetch(url);
   if (!res.ok) {
     const e = await res.json().catch(() => ({ message: 'Request failed' }));
-    throw new Error((e as any).message || `Error ${res.status}`);
+    throw new Error((e as any).error?.message ?? `Error ${res.status}`);
   }
   return res.json();
 }
@@ -146,7 +169,7 @@ async function createRecord<T>(url: string, data: unknown): Promise<T> {
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({ message: 'Create failed' }));
-    throw new Error((e as any).message || 'Create failed');
+    throw new Error((e as any).error?.message ?? 'Create failed');
   }
   const json = await res.json();
   return json.data;
@@ -160,7 +183,7 @@ async function updateRecord<T>(url: string, data: unknown): Promise<T> {
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({ message: 'Update failed' }));
-    throw new Error((e as any).message || 'Update failed');
+    throw new Error((e as any).error?.message ?? 'Update failed');
   }
   const json = await res.json();
   return json.data;
@@ -170,7 +193,7 @@ async function deleteRecord(url: string): Promise<void> {
   const res = await fetch(url, { method: 'DELETE' });
   if (!res.ok) {
     const e = await res.json().catch(() => ({ message: 'Delete failed' }));
-    throw new Error((e as any).message || 'Delete failed');
+    throw new Error((e as any).error?.message ?? 'Delete failed');
   }
 }
 
@@ -214,24 +237,52 @@ function isDateInRange(dateStr: string, start: string, end: string): boolean {
 //  Employees Tab
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * What `/api/admin/users` accepts. `role` is the membership's role enum and
+ * `departmentId` a department foreign key; the previous `roleId` and free-text
+ * `department` matched nothing and were dropped on save, as was the
+ * `password: 'changeme'` this form used to send with every new employee.
+ */
 interface EmployeeFormData {
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
-  jobTitle: string;
-  department: string;
-  roleId: string;
+  role: string;
+  departmentId: string;
 }
 
 const EMPLOYEE_DEFAULTS: EmployeeFormData = {
-  firstName: '', lastName: '', email: '', phone: '',
-  jobTitle: '', department: '', roleId: '',
+  firstName: '', lastName: '', email: '', role: 'employee', departmentId: '',
 };
+
+interface DepartmentOption { id: string; name: string }
+
+/** Radix Select reads "" as "no value", so "unassigned" needs its own token. */
+const NO_DEPARTMENT = '__none__';
 
 function EmployeesTab() {
   // Table state
   const [users, setUsers] = useState<UserRecord[]>([]);
+
+  /** How the new employee gets an account. Invitation is the default. */
+  const [mode, setMode] = useState<'invite' | 'direct'>('invite');
+  /** The generated link, shown until dismissed — nothing emails it for us. */
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+
+  /**
+   * Departments, derived from the directory rather than fetched — no endpoint
+   * lists them, and the assignment dropdown needs real ids to store. Covers
+   * every department that already has a member.
+   */
+  const departments = useMemo<DepartmentOption[]>(() => {
+    const seen = new Map<string, string>();
+    for (const u of users) {
+      if (u.departmentId && !seen.has(u.departmentId)) {
+        seen.set(u.departmentId, u.departmentName ?? 'Unnamed department');
+      }
+    }
+    return [...seen].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [users]);
   const [usersMeta, setUsersMeta] = useState<ApiMeta>({ total: 0, page: 1, pageSize: 10, totalPages: 0 });
   const [usersLoading, setUsersLoading] = useState(false);
   const [page, setPage] = useState(0);
@@ -269,7 +320,7 @@ function EmployeesTab() {
       setOnLeaveCount(
         approvedLeavesRes.data.filter((l) => isDateInRange(today, l.startDate, l.endDate)).length,
       );
-      const depts = new Set(allUsers.filter((u) => u.department).map((u) => u.department));
+      const depts = new Set(allUsers.filter((u) => u.departmentId).map((u) => u.departmentId));
       setDeptCount(depts.size);
     } catch {
       // stats are non-critical
@@ -330,10 +381,10 @@ function EmployeesTab() {
           <div className="flex items-center gap-2.5">
             <Avatar className="size-8">
               <AvatarFallback className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                {getInitials(u.firstName, u.lastName)}
+                {initialsOf(u.fullName)}
               </AvatarFallback>
             </Avatar>
-            <span className="font-medium whitespace-nowrap">{u.firstName} {u.lastName}</span>
+            <span className="font-medium whitespace-nowrap">{u.fullName || '—'}</span>
           </div>
         );
       },
@@ -341,11 +392,11 @@ function EmployeesTab() {
     { accessorKey: 'email', header: 'Email' },
     { accessorKey: 'phone', header: 'Phone' },
     { accessorKey: 'jobTitle', header: 'Job Title' },
-    { accessorKey: 'department', header: 'Department' },
+    { accessorKey: 'departmentName', header: 'Department' },
     {
       accessorKey: 'role',
       header: 'Role',
-      cell: ({ row }) => row.original.role?.name || '—',
+      cell: ({ row }) => roleLabel(normalizeRole(row.original.role)),
     },
     {
       accessorKey: 'isActive',
@@ -366,7 +417,7 @@ function EmployeesTab() {
       header: 'Last Seen',
       cell: ({ row }) => (
         <span className="text-muted-foreground text-sm whitespace-nowrap">
-          {formatRelativeTime(row.original.lastSeen)}
+          {row.original.lastSeenAt ? formatRelativeTime(row.original.lastSeenAt) : 'Never'}
         </span>
       ),
     },
@@ -382,7 +433,7 @@ function EmployeesTab() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => { setSelected(row.original); setForm({ firstName: row.original.firstName, lastName: row.original.lastName, email: row.original.email, phone: row.original.phone, jobTitle: row.original.jobTitle, department: row.original.department, roleId: row.original.roleId }); setEditOpen(true); }}>
+            <DropdownMenuItem onClick={() => { setSelected(row.original); setForm({ firstName: '', lastName: '', email: row.original.email, role: row.original.role, departmentId: row.original.departmentId ?? '' }); setEditOpen(true); }}>
               <Pencil className="size-4 mr-2" />Edit
             </DropdownMenuItem>
             <DropdownMenuItem className="text-red-600" onClick={() => { setSelected(row.original); setDeleteOpen(true); }}>
@@ -394,17 +445,47 @@ function EmployeesTab() {
     },
   ], []);
 
-  // Create handler
+  /**
+   * Add an employee, either by invitation or by provisioning directly.
+   *
+   * Invitation is the default and the better path: the person sets their own
+   * password and proves they control the address. Direct provisioning exists
+   * for staff who cannot be reached by email yet, and tells the administrator
+   * what has to happen next rather than implying an email was sent.
+   */
   const handleCreate = async () => {
-    if (!form.firstName || !form.lastName || !form.email) {
-      toast.error('First name, last name, and email are required');
+    if (!form.email) {
+      toast.error('An email address is required');
+      return;
+    }
+    if (mode === 'direct' && (!form.firstName || !form.lastName)) {
+      toast.error('First and last name are required when adding someone directly');
       return;
     }
     setFormLoading(true);
     try {
-      await createRecord('/api/admin/users', { ...form, password: 'changeme' });
-      toast.success('Employee created successfully');
-      setCreateOpen(false);
+      if (mode === 'invite') {
+        const res = await createRecord<{ inviteUrl: string }>('/api/auth/invite', {
+          email: form.email,
+          role: form.role,
+          departmentId: form.departmentId || null,
+        });
+        setInviteUrl(res.inviteUrl);
+        // Kept on screen rather than toasted away: nothing sends this link, so
+        // it is the administrator's job to pass it on and they need to be able
+        // to copy it.
+        toast.success('Invitation created — copy the link to send it.');
+      } else {
+        const res = await createRecord<{ nextStep: string }>('/api/admin/users', {
+          email: form.email,
+          firstName: form.firstName,
+          lastName: form.lastName,
+          role: form.role,
+          departmentId: form.departmentId || null,
+        });
+        toast.success(res.nextStep ?? 'Employee added');
+        setCreateOpen(false);
+      }
       setForm(EMPLOYEE_DEFAULTS);
       fetchUsers();
       fetchStats();
@@ -420,7 +501,7 @@ function EmployeesTab() {
     if (!selected) return;
     setFormLoading(true);
     try {
-      await updateRecord(`/api/admin/users/${selected.id}`, form);
+      await updateRecord(`/api/admin/users/${selected.memberId}`, { role: form.role, departmentId: form.departmentId });
       toast.success('Employee updated successfully');
       setEditOpen(false);
       setSelected(null);
@@ -438,7 +519,7 @@ function EmployeesTab() {
     if (!selected) return;
     setFormLoading(true);
     try {
-      await deleteRecord(`/api/admin/users/${selected.id}`);
+      await deleteRecord(`/api/admin/users/${selected.memberId}`);
       toast.success('Employee deleted successfully');
       setDeleteOpen(false);
       setSelected(null);
@@ -490,36 +571,86 @@ function EmployeesTab() {
         <DialogContent className="sm:max-w-[520px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Employee</DialogTitle>
-            <DialogDescription>Create a new employee account.</DialogDescription>
+            <DialogDescription>
+              Invite them to join, or create the account yourself.
+            </DialogDescription>
           </DialogHeader>
+
+          {inviteUrl ? (
+            /*
+              Shown instead of the form once an invitation exists. Delivery is
+              not wired up, so this link is the whole deliverable — dismissing
+              the dialog without showing it would lose it, and the only way to
+              recover is to re-invite, which invalidates the first link.
+            */
+            <div className="flex flex-col gap-3 py-2">
+              <p className="text-sm">
+                Invitation created. Send this link to{' '}
+                <span className="font-medium">{form.email || 'them'}</span> — it expires in 7 days
+                and can only be used by that address.
+              </p>
+              <div className="flex gap-2">
+                <Input readOnly value={inviteUrl} onFocus={(e) => e.currentTarget.select()} className="font-mono text-xs" />
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(inviteUrl);
+                      toast.success('Link copied');
+                    } catch {
+                      toast.error('Could not copy — select the link and copy it manually.');
+                    }
+                  }}
+                >
+                  Copy
+                </Button>
+              </div>
+              <p className="text-muted-foreground text-xs">
+                No email is sent from here yet, so the link has to be passed on by hand.
+              </p>
+            </div>
+          ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-2">
-            <Field label="First Name *">
-              <Input value={form.firstName} onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))} placeholder="John" />
-            </Field>
-            <Field label="Last Name *">
-              <Input value={form.lastName} onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))} placeholder="Doe" />
-            </Field>
+            <div className="sm:col-span-2">
+              <Field label="How should they get access?">
+                <Select value={mode} onValueChange={(v) => setMode(v as 'invite' | 'direct')}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="invite">Invite by email (recommended)</SelectItem>
+                    <SelectItem value="direct">Create the account directly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+            {mode === 'direct' && (
+              <>
+                <Field label="First Name *">
+                  <Input value={form.firstName} onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))} placeholder="John" />
+                </Field>
+                <Field label="Last Name *">
+                  <Input value={form.lastName} onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))} placeholder="Doe" />
+                </Field>
+              </>
+            )}
             <div className="sm:col-span-2">
               <Field label="Email *">
                 <Input type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} placeholder="john@example.com" />
               </Field>
             </div>
-            <Field label="Phone">
-              <Input value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} placeholder="+1 555-0100" />
-            </Field>
-            <Field label="Job Title">
-              <Input value={form.jobTitle} onChange={(e) => setForm((p) => ({ ...p, jobTitle: e.target.value }))} placeholder="Software Engineer" />
-            </Field>
             <Field label="Department">
-              <Select value={form.department} onValueChange={(v) => setForm((p) => ({ ...p, department: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+              <Select
+                value={form.departmentId || NO_DEPARTMENT}
+                onValueChange={(v) => setForm((p) => ({ ...p, departmentId: v === NO_DEPARTMENT ? '' : v }))}
+              >
+                <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
                 <SelectContent>
-                  {DEPARTMENTS.map((d) => (<SelectItem key={d} value={d}>{d}</SelectItem>))}
+                  <SelectItem value={NO_DEPARTMENT}>Unassigned</SelectItem>
+                  {departments.map((d) => (<SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>))}
                 </SelectContent>
               </Select>
             </Field>
             <Field label="Role">
-              <Select value={form.roleId} onValueChange={(v) => setForm((p) => ({ ...p, roleId: v }))}>
+              <Select value={form.role} onValueChange={(v) => setForm((p) => ({ ...p, role: v }))}>
                 <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
                 <SelectContent>
                   {roles.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}
@@ -527,11 +658,29 @@ function EmployeesTab() {
               </Select>
             </Field>
           </div>
+          )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={formLoading} className="bg-emerald-600 text-white hover:bg-emerald-700">
-              {formLoading && <Loader2 className="size-4 mr-2 animate-spin" />}Create
-            </Button>
+            {inviteUrl ? (
+              <>
+                <Button variant="outline" onClick={() => { setInviteUrl(null); }}>
+                  Invite someone else
+                </Button>
+                <Button
+                  onClick={() => { setInviteUrl(null); setCreateOpen(false); }}
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                >
+                  Done
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+                <Button onClick={handleCreate} disabled={formLoading} className="bg-emerald-600 text-white hover:bg-emerald-700">
+                  {formLoading && <Loader2 className="size-4 mr-2 animate-spin" />}
+                  {mode === 'invite' ? 'Create invitation' : 'Add employee'}
+                </Button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -555,22 +704,20 @@ function EmployeesTab() {
                 <Input type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
               </Field>
             </div>
-            <Field label="Phone">
-              <Input value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} />
-            </Field>
-            <Field label="Job Title">
-              <Input value={form.jobTitle} onChange={(e) => setForm((p) => ({ ...p, jobTitle: e.target.value }))} />
-            </Field>
             <Field label="Department">
-              <Select value={form.department} onValueChange={(v) => setForm((p) => ({ ...p, department: v }))}>
-                <SelectTrigger><SelectValue placeholder="Select department" /></SelectTrigger>
+              <Select
+                value={form.departmentId || NO_DEPARTMENT}
+                onValueChange={(v) => setForm((p) => ({ ...p, departmentId: v === NO_DEPARTMENT ? '' : v }))}
+              >
+                <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
                 <SelectContent>
-                  {DEPARTMENTS.map((d) => (<SelectItem key={d} value={d}>{d}</SelectItem>))}
+                  <SelectItem value={NO_DEPARTMENT}>Unassigned</SelectItem>
+                  {departments.map((d) => (<SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>))}
                 </SelectContent>
               </Select>
             </Field>
             <Field label="Role">
-              <Select value={form.roleId} onValueChange={(v) => setForm((p) => ({ ...p, roleId: v }))}>
+              <Select value={form.role} onValueChange={(v) => setForm((p) => ({ ...p, role: v }))}>
                 <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
                 <SelectContent>
                   {roles.map((r) => (<SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>))}
@@ -603,7 +750,7 @@ function EmployeesTab() {
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title="Delete Employee"
-        description={`Are you sure you want to delete ${selected?.firstName} ${selected?.lastName}? This action cannot be undone.`}
+        description={`Are you sure you want to delete ${selected?.fullName || selected?.email}? This action cannot be undone.`}
         confirmLabel="Delete"
         variant="destructive"
         onConfirm={handleDelete}
@@ -691,7 +838,7 @@ function LeaveTab() {
       const res = await fetchList<UserRecord>('/api/admin/users?pageSize=100');
       setUsersList(res.data);
       if (res.data.length > 0 && !form.requesterId) {
-        setForm((p) => ({ ...p, requesterId: res.data[0].id }));
+        setForm((p) => ({ ...p, requesterId: res.data[0].memberId }));
       }
     } catch {
       // non-critical
@@ -710,16 +857,16 @@ function LeaveTab() {
       accessorKey: 'requester',
       header: 'Requester',
       cell: ({ row }) => {
-        const r = row.original.requester;
+        const r = row.original.member;
         if (!r) return '—';
         return (
           <div className="flex items-center gap-2.5">
             <Avatar className="size-8">
               <AvatarFallback className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                {getInitials(r.firstName, r.lastName)}
+                {initialsOf(r.profiles?.fullName)}
               </AvatarFallback>
             </Avatar>
-            <span className="font-medium whitespace-nowrap">{r.firstName} {r.lastName}</span>
+            <span className="font-medium whitespace-nowrap">{r.profiles?.fullName || '—'}</span>
           </div>
         );
       },
@@ -863,8 +1010,8 @@ function LeaveTab() {
                 <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
                 <SelectContent className="max-h-48 overflow-y-auto">
                   {usersList.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.firstName} {u.lastName}
+                    <SelectItem key={u.memberId} value={u.memberId}>
+                      {u.fullName || u.email}
                     </SelectItem>
                   ))}
                 </SelectContent>
