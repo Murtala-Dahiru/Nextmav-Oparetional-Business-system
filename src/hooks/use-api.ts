@@ -173,16 +173,49 @@ export function useApi<T = any>(opts: UseApiOptions<T>): UseApiReturn<T> {
 
 // ─── Mutation helpers ─────────────────────────────────────────────────────
 
+/**
+ * Read one mutation response.
+ *
+ * The failure branch has to parse the body *before* deciding what to throw.
+ * These helpers used to short-circuit on `!res.ok` and throw the status alone,
+ * which discarded the one useful thing the server sent: routes return a
+ * written explanation ("An invoice needs at least one line item", "You cannot
+ * approve your own leave request") and the user saw "Create failed (422)".
+ * Every toast in the application was a status code, which is why so many of
+ * these failures read as silent.
+ *
+ * A non-JSON body means the request never reached a route handler — a bare 405
+ * from the framework, or an HTML error page — so the status is genuinely all
+ * there is to report, and the label says so rather than inventing a cause.
+ */
+async function readMutation(res: Response, verb: string) {
+  let json: any = null;
+  try {
+    json = await res.json();
+  } catch {
+    // Fall through: body is absent or not JSON.
+  }
+
+  if (json?.error) {
+    throw new Error(json.error.message || `${verb} failed`);
+  }
+  if (!res.ok) {
+    throw new Error(
+      res.status === 405
+        ? `${verb} failed: this action is not available on the server (405).`
+        : `${verb} failed (${res.status})`,
+    );
+  }
+  return json?.data;
+}
+
 export async function apiCreate(url: string, body: Record<string, unknown>) {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Create failed (${res.status})`);
-  const json = await res.json();
-  if (json.error) throw new Error(json.error.message || 'Create failed');
-  return json.data;
+  return readMutation(res, 'Create');
 }
 
 export async function apiUpdate(url: string, body: Record<string, unknown>) {
@@ -191,18 +224,12 @@ export async function apiUpdate(url: string, body: Record<string, unknown>) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Update failed (${res.status})`);
-  const json = await res.json();
-  if (json.error) throw new Error(json.error.message || 'Update failed');
-  return json.data;
+  return readMutation(res, 'Update');
 }
 
 export async function apiDelete(url: string) {
   const res = await fetch(url, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`Delete failed (${res.status})`);
-  const json = await res.json();
-  if (json.error) throw new Error(json.error.message || 'Delete failed');
-  return json.data;
+  return readMutation(res, 'Delete');
 }
 
 export function apiSuccess(message: string) {

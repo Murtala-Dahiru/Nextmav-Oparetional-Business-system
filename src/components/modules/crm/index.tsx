@@ -123,27 +123,27 @@ const SOURCE_OPTIONS = [
 
 async function fetchList<T>(url: string): Promise<{ data: T[]; meta: ApiMeta }> {
   const res = await fetch(url);
-  if (!res.ok) { const e = await res.json().catch(() => ({ message: 'Request failed' })); throw new Error((e as any).message || `Error ${res.status}`); }
+  if (!res.ok) { const e = await res.json().catch(() => ({ message: 'Request failed' })); throw new Error((e as any).error?.message ?? `Error ${res.status}`); }
   return res.json();
 }
 
 async function createRecord<T>(url: string, data: unknown): Promise<T> {
   const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-  if (!res.ok) { const e = await res.json().catch(() => ({ message: 'Create failed' })); throw new Error((e as any).message || 'Create failed'); }
+  if (!res.ok) { const e = await res.json().catch(() => ({ message: 'Create failed' })); throw new Error((e as any).error?.message ?? 'Create failed'); }
   const json = await res.json();
   return json.data;
 }
 
 async function updateRecord<T>(url: string, data: unknown): Promise<T> {
   const res = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-  if (!res.ok) { const e = await res.json().catch(() => ({ message: 'Update failed' })); throw new Error((e as any).message || 'Update failed'); }
+  if (!res.ok) { const e = await res.json().catch(() => ({ message: 'Update failed' })); throw new Error((e as any).error?.message ?? 'Update failed'); }
   const json = await res.json();
   return json.data;
 }
 
 async function deleteRecord(url: string): Promise<void> {
   const res = await fetch(url, { method: 'DELETE' });
-  if (!res.ok) { const e = await res.json().catch(() => ({ message: 'Delete failed' })); throw new Error((e as any).message || 'Delete failed'); }
+  if (!res.ok) { const e = await res.json().catch(() => ({ message: 'Delete failed' })); throw new Error((e as any).error?.message ?? 'Delete failed'); }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
