@@ -1,3 +1,4 @@
+import { isFilterValue } from '@/lib/filters';
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
@@ -26,9 +27,9 @@ export async function GET(req: Request) {
     .eq('organization_id', ctx.org.organizationId);
 
   const productId = searchParams.get('product_id') ?? searchParams.get('productId');
-  if (productId) query = query.eq('product_id', productId);
+  if (isFilterValue(productId)) query = query.eq('product_id', productId);
   const type = searchParams.get('type');
-  if (type) query = query.eq('type', type);
+  if (isFilterValue(type)) query = query.eq('type', type);
 
   const off = (page - 1) * pageSize;
   const { data, count, error: e } = await query

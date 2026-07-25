@@ -1,3 +1,4 @@
+import { isFilterValue } from '@/lib/filters';
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
@@ -19,9 +20,9 @@ export async function GET(req: Request) {
     .eq('organization_id', ctx.org.organizationId);
 
   const status = searchParams.get('status');
-  if (status) query = query.eq('status', status);
+  if (isFilterValue(status)) query = query.eq('status', status);
   const supplierId = searchParams.get('supplier_id');
-  if (supplierId) query = query.eq('supplier_id', supplierId);
+  if (isFilterValue(supplierId)) query = query.eq('supplier_id', supplierId);
 
   const search = searchParams.get('search')?.trim();
   if (search) {

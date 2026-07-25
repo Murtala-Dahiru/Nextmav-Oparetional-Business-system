@@ -1,3 +1,4 @@
+import { isFilterValue } from '@/lib/filters';
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
 import { supabaseAdmin } from '@/lib/supabase/server';
@@ -32,7 +33,7 @@ export async function GET(req: Request) {
   }
   for (const k of ['role','department_id','is_active']) {
     const v = searchParams.get(k);
-    if (v) q = q.eq(k, v === 'true' ? true : v === 'false' ? false : v);
+    if (isFilterValue(v)) q = q.eq(k, v === 'true' ? true : v === 'false' ? false : v);
   }
 
   const off = (page - 1) * pageSize;

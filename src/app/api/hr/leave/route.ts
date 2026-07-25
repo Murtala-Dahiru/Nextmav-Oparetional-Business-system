@@ -1,3 +1,4 @@
+import { isFilterValue } from '@/lib/filters';
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
@@ -26,11 +27,11 @@ export async function GET(req: Request) {
     .eq('organization_id', ctx.org.organizationId);
 
   const status = searchParams.get('status');
-  if (status) q = q.eq('status', status);
+  if (isFilterValue(status)) q = q.eq('status', status);
   const type = searchParams.get('type');
-  if (type) q = q.eq('type', type);
+  if (isFilterValue(type)) q = q.eq('type', type);
   const memberId = searchParams.get('memberId');
-  if (memberId) q = q.eq('member_id', memberId);
+  if (isFilterValue(memberId)) q = q.eq('member_id', memberId);
 
   const offset = (page - 1) * pageSize;
   const { data, count, error: e } = await q

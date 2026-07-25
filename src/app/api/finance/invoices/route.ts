@@ -1,3 +1,4 @@
+import { isFilterValue } from '@/lib/filters';
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
@@ -20,7 +21,7 @@ export async function GET(req: Request) {
     .is('deleted_at', null);
 
   const status = searchParams.get('status');
-  if (status) q = q.eq('status', status);
+  if (isFilterValue(status)) q = q.eq('status', status);
   const companyId = searchParams.get('company_id');
   if (companyId) q = q.eq('company_id', companyId);
 

@@ -1,3 +1,4 @@
+import { isFilterValue } from '@/lib/filters';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ModuleId } from '@/lib/constants';
 import { authorize, pgError, type RequestContext } from '@/lib/auth-context';
@@ -86,7 +87,7 @@ export function listHandler(opts: ListOptions) {
 
     for (const key of filterable) {
       const value = searchParams.get(key);
-      if (value !== null && value !== '') {
+      if (isFilterValue(value)) {
         q = q.eq(key, value === 'true' ? true : value === 'false' ? false : value);
       }
     }
