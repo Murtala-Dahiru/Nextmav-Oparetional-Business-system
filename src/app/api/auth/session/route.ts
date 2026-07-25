@@ -15,6 +15,20 @@ import { capabilitySummary } from '@/lib/permissions';
 export async function GET() {
   const ctx = await getContext();
 
+  /**
+   * Reported at the top level, not buried in `user`, because it changes where
+   * the client must send the person before anything else is worth loading.
+   * `getContext()` resolves it whether or not they belong to an organization,
+   * so a provisioned employee is caught on their very first request.
+   */
+  if (ctx?.user.mustChangePassword) {
+    return success({
+      user: { ...ctx.user, organizationId: ctx.org.organizationId, role: ctx.org.role },
+      needsOrganization: false,
+      mustChangePassword: true,
+    });
+  }
+
   if (ctx) {
     return success({
       user: {

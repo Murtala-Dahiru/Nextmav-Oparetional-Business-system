@@ -7,7 +7,7 @@ import { AppShell } from '@/components/layout/app-shell';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { isAuthenticated, needsOrganization, fetchUser } = useAppStore();
+  const { isAuthenticated, needsOrganization, mustChangePassword, fetchUser } = useAppStore();
   const [profileLoaded, setProfileLoaded] = useState(false);
   const fetchStarted = useRef(false);
 
@@ -25,13 +25,19 @@ export default function DashboardPage() {
     if (!profileLoaded) return;
     if (!isAuthenticated) {
       router.replace('/login');
+    } else if (mustChangePassword) {
+      // The server refuses every module while a temporary password is in
+      // place, so rendering the shell here would show a dashboard whose every
+      // panel reports 403. This redirect is a courtesy, not the enforcement —
+      // that lives in authorize().
+      router.replace('/change-password');
     } else if (needsOrganization) {
       // Valid session, no membership. Rendering the shell here would leave
       // every module failing authorization with a Try again that can never
       // succeed, so send them to the step that actually unblocks them.
       router.replace('/onboarding');
     }
-  }, [profileLoaded, isAuthenticated, needsOrganization, router]);
+  }, [profileLoaded, isAuthenticated, mustChangePassword, needsOrganization, router]);
 
   if (!profileLoaded) {
     return (
@@ -44,7 +50,7 @@ export default function DashboardPage() {
 
   // Stale cookie, or a session with no organization — in both cases the
   // redirect above is already in flight.
-  if (!isAuthenticated || needsOrganization) return null;
+  if (!isAuthenticated || mustChangePassword || needsOrganization) return null;
 
   return <AppShell />;
 }

@@ -17,8 +17,12 @@ import { NextRequest, NextResponse } from 'next/server';
  *
  * `/onboarding` belongs here: it is where an authenticated user with no
  * organization completes setup, so it must be unreachable while signed out.
+ *
+ * So do `/change-password` and `/settings`. Both act on the signed-in account,
+ * and both are reachable while the server is refusing every module because a
+ * temporary password is still in place — which is the whole point of them.
  */
-const PROTECTED_PAGES = ['/dashboard', '/onboarding'];
+const PROTECTED_PAGES = ['/dashboard', '/onboarding', '/change-password', '/settings'];
 
 /**
  * Auth pages that a signed-in user should never sit on.

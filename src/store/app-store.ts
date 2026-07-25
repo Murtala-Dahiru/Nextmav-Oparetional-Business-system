@@ -45,6 +45,16 @@ interface AppState {
    */
   needsOrganization: boolean;
 
+  /**
+   * Signed in, but still holding the password an administrator issued.
+   *
+   * Distinct from `!isAuthenticated` and from `needsOrganization`: the session
+   * is valid and the organization is known, but the server refuses every
+   * module until the password is replaced. The only useful destination is the
+   * change-password screen.
+   */
+  mustChangePassword: boolean;
+
   // Navigation
   activeModule: ModuleId;
   sidebarCollapsed: boolean;
@@ -87,6 +97,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isAuthenticated: false,
   isLoading: true,
   needsOrganization: false,
+  mustChangePassword: false,
 
   // RBAC — starts at the least-privileged role and is raised only by the
   // server's answer in fetchUser(). Defaulting to `owner` here would flash
@@ -142,7 +153,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // signed out of is worse than a redundant redirect.
       console.error('Logout request failed:', e);
     } finally {
-      set({ user: null, isAuthenticated: false });
+      set({ user: null, isAuthenticated: false, mustChangePassword: false });
       // Back to the public landing page, not the login form: signing out
       // returns you to the marketing site.
       window.location.href = '/';
@@ -162,6 +173,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           user: userData,
           isAuthenticated: true,
           needsOrganization: !!(json?.data?.needsOrganization ?? json?.needsOrganization),
+          mustChangePassword: !!(json?.data?.mustChangePassword ?? json?.mustChangePassword),
           isLoading: false,
           activeRole: role,
           // If the stored module is one this role cannot open (e.g. after
@@ -192,12 +204,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
         set({
           user: null, isAuthenticated: false, needsOrganization: false,
-          isLoading: false, activeRole: 'employee',
+          mustChangePassword: false, isLoading: false, activeRole: 'employee',
         });
       }
     } catch (e) {
       console.error('Fetch user failed:', e);
-      set({ user: null, isAuthenticated: false, needsOrganization: false, isLoading: false });
+      set({ user: null, isAuthenticated: false, needsOrganization: false, mustChangePassword: false, isLoading: false });
     }
   },
 }));

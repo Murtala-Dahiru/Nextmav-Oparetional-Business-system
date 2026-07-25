@@ -32,6 +32,8 @@ export interface ActingUser {
   fullName: string;
   avatarUrl: string | null;
   jobTitle: string | null;
+  /** True while the account still has the password an administrator issued. */
+  mustChangePassword: boolean;
 }
 
 export interface OrgContext {
@@ -69,7 +71,7 @@ export async function getContext(
   // provisioning failed rather than that the user is unauthenticated.
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, email, first_name, last_name, full_name, avatar_url, job_title')
+    .select('id, email, first_name, last_name, full_name, avatar_url, job_title, force_password_change')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -102,6 +104,7 @@ export async function getContext(
       fullName: profile?.full_name ?? '',
       avatarUrl: profile?.avatar_url ?? null,
       jobTitle: profile?.job_title ?? null,
+      mustChangePassword: profile?.force_password_change === true,
     },
     org: {
       organizationId: membership.organization_id,
@@ -132,6 +135,26 @@ export async function authorize(
 ): Promise<RequestContext | Response> {
   const ctx = await getContext(opts.organizationId);
   if (!ctx) return error('Authentication required', 401, 'UNAUTHENTICATED');
+
+  /**
+   * An account still holding the password an administrator typed for it can
+   * sign in and do nothing else.
+   *
+   * Enforced here rather than by redirecting in the browser, because a
+   * redirect is a suggestion: the session is perfectly valid, so every module
+   * endpoint would answer normally to anyone who skipped the screen or called
+   * the API directly. Putting it in `authorize()` means the rule holds for all
+   * of them at once, and cannot be forgotten by a route added later.
+   *
+   * `/api/auth/change-password` is unaffected — it authenticates directly
+   * rather than through `authorize()`, which is what leaves a way out.
+   */
+  if (ctx.user.mustChangePassword) {
+    return error(
+      'You must choose a new password before continuing.',
+      403, 'PASSWORD_CHANGE_REQUIRED',
+    );
+  }
 
   const { role } = ctx.org;
 
