@@ -146,7 +146,7 @@ const emailA = `appverify-${run}-a@example.com`;
 const emailB = `appverify-${run}-b@example.com`;
 const PW = 'Passw0rd!verify';
 
-let userA, userB, userC, userD, userE, userF;
+let userA, userB, userC, userD, userE, userF, provisionedUserId;
 const A = makeClient(), B = makeClient(), C = makeClient();
 
 try {
@@ -558,18 +558,25 @@ try {
   // This endpoint creates a real auth account, so the harness owns it and has
   // to remove it — otherwise every run leaves another one behind.
   userD = { id: direct.body?.data?.member?.userId };
-  check(direct.body?.data?.passwordSet === false,
-    'no password is set for them — reset is the only way in');
+  // Provisioning now issues a temporary password instead of leaving the
+  // account with none. Sections 20-22 cover that contract in full; this only
+  // checks the shape has not silently reverted.
+  check(typeof direct.body?.data?.temporaryPassword === 'string',
+    'a temporary password comes back with the new member');
   check(direct.body?.data?.member?.employmentType === 'full_time',
     'the employment_type default applies rather than a null');
 
+  // Names are supplied so this reaches the duplicate check rather than
+  // stopping at validation — the point of the case is the second membership.
   const dupDirect = await A.json('/api/admin/users', {
-    method: 'POST', body: JSON.stringify({ email: directEmail, role: 'employee' }),
+    method: 'POST',
+    body: JSON.stringify({ email: directEmail, firstName: 'Direct', lastName: 'Hire', role: 'employee' }),
   });
   check(dupDirect.status === 409, `adding the same person twice is refused (${dupDirect.status})`);
 
   const badRole = await A.json('/api/admin/users', {
-    method: 'POST', body: JSON.stringify({ email: `x-${Date.now()}@example.com`, role: 'superuser' }),
+    method: 'POST',
+    body: JSON.stringify({ email: `x-${Date.now()}@example.com`, firstName: 'X', lastName: 'Y', role: 'superuser' }),
   });
   check(badRole.status === 422, `an unknown role is refused (${badRole.status})`);
 
@@ -750,6 +757,156 @@ try {
       JSON.stringify(resendKnown.body) === JSON.stringify(resendUnknown.body),
     'resend answers identically for a registered and an unknown address',
   );
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('20. Provisioning an employee directly');
+  // The third way into an organization, alongside owner signup and invitation.
+  // All three must end at the same membership model.
+
+  const staffEmail = `verify-staff-${Date.now()}@example.com`;
+  const provisioned = await A.json('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: staffEmail, firstName: 'Provisioned', lastName: 'Staff',
+      phone: '+44 7700 900321', jobTitle: 'Payroll Officer',
+      employmentType: 'part_time', role: 'hr_staff', hiredOn: '2030-01-01',
+    }),
+  });
+  check(provisioned.status === 201, `an employee is provisioned (${provisioned.status})`,
+    provisioned.body?.error?.message);
+  provisionedUserId = provisioned.body?.data?.member?.userId;
+
+  const tempPassword = provisioned.body?.data?.temporaryPassword;
+  check(typeof tempPassword === 'string' && tempPassword.length >= 12,
+    `a temporary password is issued (${tempPassword?.length} characters)`);
+  check(!/^(changeme|password|123456)/i.test(tempPassword ?? ''),
+    'and is not one of the hardcoded values this replaced');
+  check(provisioned.body?.data?.mustChangePassword === true,
+    'the account is flagged to change it');
+
+  const staffRow = (await A.json('/api/admin/users?pageSize=100')).body?.data
+    ?.find(u => u.email === staffEmail);
+  check(staffRow?.jobTitle === 'Payroll Officer' && staffRow?.phone === '+44 7700 900321',
+    'the profile fields reached the profile');
+  check(staffRow?.role === 'hr_staff' && staffRow?.employmentType === 'part_time',
+    'the membership carries the role and employment type');
+
+  // The password must not be readable back from anywhere.
+  check(!('temporaryPassword' in (staffRow ?? {})) && !('password' in (staffRow ?? {})),
+    'the directory exposes no password field for an administrator to read');
+
+  section('21. The temporary password is genuinely temporary');
+
+  const S = makeClient();
+  const staffLogin = await S.json('/api/auth/login', {
+    method: 'POST', body: JSON.stringify({ email: staffEmail, password: tempPassword }),
+  });
+  check(staffLogin.ok, `the employee can sign in with it (${staffLogin.status})`);
+
+  const staffSession = await S.json('/api/auth/session');
+  check(staffSession.body?.data?.mustChangePassword === true,
+    'the session says the password must be changed');
+
+  // Enforcement has to be the server's, not a redirect the client could skip.
+  const blockedHr = await S.json('/api/hr/employees');
+  const blockedDash = await S.json('/api/dashboard');
+  check(blockedHr.body?.error?.code === 'PASSWORD_CHANGE_REQUIRED' &&
+        blockedDash.body?.error?.code === 'PASSWORD_CHANGE_REQUIRED',
+    `every module is refused until it is changed (${blockedHr.status})`);
+
+  const wrongCurrent = await S.json('/api/auth/change-password', {
+    method: 'POST', body: JSON.stringify({ currentPassword: 'not-it', newPassword: 'Chosen!2030aa' }),
+  });
+  check(wrongCurrent.status === 403,
+    `changing it without the current password is refused (${wrongCurrent.status})`);
+
+  const reused = await S.json('/api/auth/change-password', {
+    method: 'POST', body: JSON.stringify({ currentPassword: tempPassword, newPassword: tempPassword }),
+  });
+  check(reused.status === 422, `reusing the same password is refused (${reused.status})`);
+
+  const OWN_PW = 'Chosen!2030aa';
+  const chosen = await S.json('/api/auth/change-password', {
+    method: 'POST', body: JSON.stringify({ currentPassword: tempPassword, newPassword: OWN_PW }),
+  });
+  check(chosen.ok, `the employee sets their own password (${chosen.status})`, chosen.body?.error?.message);
+
+  const afterChange = await S.json('/api/hr/employees');
+  check(afterChange.ok, `and the modules open up (${afterChange.status})`);
+
+  const staleTemp = await makeClient().json('/api/auth/login', {
+    method: 'POST', body: JSON.stringify({ email: staffEmail, password: tempPassword }),
+  });
+  check(staleTemp.status === 401, `the temporary password stops working (${staleTemp.status})`);
+
+  section('22. Administrator controls, without seeing the password');
+
+  const reset = await A.json(`/api/admin/users/${staffRow.memberId}/reset-password`, { method: 'POST' });
+  check(reset.ok, `an administrator can issue a new temporary password (${reset.status})`);
+  check(reset.body?.data?.temporaryPassword !== tempPassword,
+    'and it is a different one, not the original re-shown');
+
+  const afterReset = await makeClient().json('/api/auth/login', {
+    method: 'POST', body: JSON.stringify({ email: staffEmail, password: OWN_PW }),
+  });
+  check(afterReset.status === 401, `the employee's own password is revoked by the reset (${afterReset.status})`);
+
+  const suspended = await A.json(`/api/admin/users/${staffRow.memberId}`, {
+    method: 'PATCH', body: JSON.stringify({ status: 'suspended' }),
+  });
+  check(suspended.body?.data?.status === 'suspended' && suspended.body?.data?.isActive === false,
+    'suspending also closes access, because the trigger keeps is_active in step');
+
+  const reactivated = await A.json(`/api/admin/users/${staffRow.memberId}`, {
+    method: 'PATCH', body: JSON.stringify({ status: 'active' }),
+  });
+  check(reactivated.body?.data?.isActive === true, 'reactivating restores it');
+
+  const terminated = await A.json(`/api/admin/users/${staffRow.memberId}`, {
+    method: 'PATCH', body: JSON.stringify({ status: 'terminated' }),
+  });
+  check(terminated.body?.data?.status === 'terminated' && !!terminated.body?.data?.terminatedOn,
+    'terminating records the date');
+
+  // The legacy endpoint writes is_active alone; the trigger must not read that
+  // as a demotion from terminated back to merely suspended.
+  await A.json(`/api/admin/users/${staffRow.memberId}`, { method: 'DELETE' });
+  const stillTerminated = await A.json(`/api/admin/users/${staffRow.memberId}`);
+  check(stillTerminated.body?.data?.status === 'terminated',
+    'a plain deactivate does not downgrade a termination');
+
+  section('23. Rejections that say what is wrong');
+
+  const cases = [
+    [{ email: `x-${Date.now()}@example.com` }, 'First and last name are required'],
+    [{ email: `x-${Date.now()}@example.com`, firstName: 'A', lastName: 'B', role: 'wizard' }, 'is not a role'],
+    [{ email: `x-${Date.now()}@example.com`, firstName: 'A', lastName: 'B', employmentType: 'freelance' }, 'is not an employment type'],
+    [{ email: `x-${Date.now()}@example.com`, firstName: 'A', lastName: 'B', departmentId: '00000000-0000-0000-0000-000000000000' }, 'department does not exist'],
+    [{ email: staffEmail, firstName: 'A', lastName: 'B' }, 'already a member'],
+  ];
+  for (const [body, expected] of cases) {
+    const r = await A.json('/api/admin/users', { method: 'POST', body: JSON.stringify(body) });
+    check(
+      r.status >= 400 && (r.body?.error?.message ?? '').includes(expected),
+      `refused with a written reason: "${expected}"`,
+      `${r.status} ${r.body?.error?.message}`,
+    );
+  }
+
+  section('24. The other two routes in still work');
+  // Provisioning must not have disturbed owner signup or invitation.
+
+  const ownerStillWorks = await A.json('/api/auth/session');
+  check(ownerStillWorks.body?.data?.user?.role === 'owner' &&
+        !ownerStillWorks.body?.data?.mustChangePassword,
+    'an owner who signed up normally is unaffected');
+
+  const inviteStillWorks = await A.json('/api/auth/invite', {
+    method: 'POST', body: JSON.stringify({ email: `verify-inv-${Date.now()}@example.com`, role: 'employee' }),
+  });
+  check(inviteStillWorks.status === 201, `invitations are still issued (${inviteStillWorks.status})`,
+    inviteStillWorks.body?.error?.message);
+  check(!!inviteStillWorks.body?.data?.inviteUrl, 'and still carry a redeemable link');
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);
@@ -760,6 +917,7 @@ try {
   if (userD?.id) await adminDeleteUser(userD.id);
   if (userE?.id) await adminDeleteUser(userE.id);
   if (userF?.id) await adminDeleteUser(userF.id);
+  if (provisionedUserId) await adminDeleteUser(provisionedUserId);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);
