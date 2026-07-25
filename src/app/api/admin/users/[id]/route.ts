@@ -4,6 +4,9 @@ import { acceptBody } from '@/lib/case';
 
 type Params = { params: Promise<{ id: string }> };
 
+/** Mirrors the `member_status` enum added in 0012. */
+const MEMBER_STATUSES = ['active', 'suspended', 'terminated'];
+
 export async function GET(_r: Request, { params }: Params) {
   const ctx = await authorize('admin', 'view');
   if (ctx instanceof Response) return ctx;
@@ -31,12 +34,47 @@ export async function PATCH(req: Request, { params }: Params) {
     const b = acceptBody(await req.json());
     const update: Record<string, any> = {};
 
+    /**
+     * `status` carries the three lifecycle actions — suspend, reactivate,
+     * terminate. It is validated here rather than left to the enum cast, which
+     * would surface as 22P02 and reach the screen as "one of the filter values
+     * is not valid for this field".
+     *
+     * `is_active` stays writable alongside it: a database trigger keeps the
+     * two consistent whichever one is sent, so existing callers that only know
+     * about `is_active` continue to work unchanged.
+     */
+    if (b.status !== undefined && !MEMBER_STATUSES.includes(b.status)) {
+      return error(
+        `"${b.status}" is not a member status. Expected one of: ${MEMBER_STATUSES.join(', ')}.`,
+        422, 'VALIDATION_ERROR',
+      );
+    }
+
+    // Scoped to this organization, so an id from another tenant is rejected
+    // rather than silently attaching someone to a department they cannot see.
+    if (b.department_id) {
+      const { data: dept } = await ctx.supabase
+        .from('departments').select('id')
+        .eq('organization_id', ctx.org.organizationId).eq('id', b.department_id).maybeSingle();
+      if (!dept) return error('That department does not exist in this organization.', 422, 'DEPARTMENT_NOT_FOUND');
+    }
+    if (b.manager_id) {
+      if (b.manager_id === id) {
+        return error('Someone cannot be their own manager.', 422, 'INVALID_MANAGER');
+      }
+      const { data: mgr } = await ctx.supabase
+        .from('organization_members').select('id')
+        .eq('organization_id', ctx.org.organizationId).eq('id', b.manager_id).maybeSingle();
+      if (!mgr) return error('That manager is not a member of this organization.', 422, 'MANAGER_NOT_FOUND');
+    }
+
     // An empty string from a cleared form field means "unset this", which for
     // a nullable column is null. `role` and `employment_type` are NOT NULL
     // with defaults, so the same treatment would abort the update instead —
     // for those, blank means "leave it alone".
-    const NOT_NULLABLE = new Set(['role', 'employment_type']);
-    for (const k of ['role','department_id','manager_id','employee_number','employment_type','hired_on','is_active']) {
+    const NOT_NULLABLE = new Set(['role', 'employment_type', 'status']);
+    for (const k of ['role','department_id','manager_id','employee_number','employment_type','hired_on','is_active','status']) {
       if (!(k in b)) continue;
       if (b[k] === '' || b[k] === null) {
         if (NOT_NULLABLE.has(k)) continue;

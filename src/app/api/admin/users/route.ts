@@ -3,6 +3,10 @@ import { success, error, paginated } from '@/lib/api-response';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { acceptBody } from '@/lib/case';
 import { ROLES } from '@/lib/constants';
+import { generateTemporaryPassword } from '@/lib/temp-password';
+
+/** Mirrors the `employment_type` enum; checked here to give a written reason. */
+const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern', 'temporary'];
 
 /**
  * Organization members, for the administration screen.
@@ -52,11 +56,16 @@ export async function GET(req: Request) {
  * user with no membership is someone stuck on the onboarding screen; either
  * half alone is a support ticket.
  *
- * No password is set to anything guessable. The account is created with a
- * random secret nobody records, so the only way in is the password-reset link
- * the administrator is told to trigger — which is also what proves the address
- * belongs to the new member. The previous screen sent `password: 'changeme'`
- * from the browser for every employee it created.
+ * The temporary password is generated here and returned exactly once, in this
+ * response. It is never stored by this application, never written to a log,
+ * and cannot be read back afterwards — `GET` returns the directory, which has
+ * no password column to expose. An administrator who loses it issues a new one
+ * through `POST /api/admin/users/[id]/reset-password`; there is deliberately
+ * no way to recover the original.
+ *
+ * The account is marked `force_password_change`, so it can sign in and do
+ * nothing else until the employee has replaced the password themselves. That
+ * check lives in `authorize()`, which every module route already calls.
  */
 export async function POST(req: Request) {
   const ctx = await authorize('admin', 'manage');
@@ -82,9 +91,22 @@ export async function POST(req: Request) {
       return error('A valid email address is required', 422, 'VALIDATION_ERROR');
     }
 
+    const firstName = String(b.first_name ?? '').trim();
+    const lastName = String(b.last_name ?? '').trim();
+    if (!firstName || !lastName) {
+      return error('First and last name are required', 422, 'VALIDATION_ERROR');
+    }
+
     const role = b.role ?? 'employee';
     if (!ROLES.some(r => r.id === role)) {
       return error(`"${role}" is not a role in this system.`, 422, 'VALIDATION_ERROR');
+    }
+
+    if (b.employment_type && !EMPLOYMENT_TYPES.includes(b.employment_type)) {
+      return error(
+        `"${b.employment_type}" is not an employment type. Expected one of: ${EMPLOYMENT_TYPES.join(', ')}.`,
+        422, 'VALIDATION_ERROR',
+      );
     }
 
     // Someone already in this organization must be edited, not re-created —
@@ -96,6 +118,26 @@ export async function POST(req: Request) {
       return error('That person is already a member of this organization.', 409, 'DUPLICATE');
     }
 
+    /**
+     * Department and manager are checked here rather than left to the foreign
+     * key, for two reasons: the key would report 23503 without saying which of
+     * the two was wrong, and neither is scoped to the organization by the
+     * constraint alone — a department id belonging to another tenant would
+     * otherwise be accepted and quietly attach this employee to it.
+     */
+    if (b.department_id) {
+      const { data: dept } = await ctx.supabase
+        .from('departments').select('id')
+        .eq('organization_id', ctx.org.organizationId).eq('id', b.department_id).maybeSingle();
+      if (!dept) return error('That department does not exist in this organization.', 422, 'DEPARTMENT_NOT_FOUND');
+    }
+    if (b.manager_id) {
+      const { data: mgr } = await ctx.supabase
+        .from('organization_members').select('id')
+        .eq('organization_id', ctx.org.organizationId).eq('id', b.manager_id).maybeSingle();
+      if (!mgr) return error('That manager is not a member of this organization.', 422, 'MANAGER_NOT_FOUND');
+    }
+
     // The address may already have an account from another organization —
     // this platform is multi-tenant, so that is normal and they simply gain a
     // second membership rather than a second account.
@@ -104,20 +146,60 @@ export async function POST(req: Request) {
 
     let userId = profile?.id ?? null;
 
+    /**
+     * Only a brand-new account gets a temporary password.
+     *
+     * When the address already has one — because they work for another tenant
+     * on this platform — resetting it would hand an administrator here the
+     * ability to take over an account in an organization they have nothing to
+     * do with. They gain a membership; their existing password is untouched
+     * and the response says so.
+     */
+    const isNewAccount = !userId;
+    const temporaryPassword = isNewAccount ? generateTemporaryPassword() : null;
+
     if (!userId) {
       const { data: authUser, error: authErr } = await admin.auth.admin.createUser({
         email,
+        // Confirmed on creation: an administrator vouching for a colleague is
+        // the proof here, and there is no inbox round trip to complete.
         email_confirm: true,
-        // Never returned, never logged, never reused: the reset link is the
-        // only route in.
-        password: crypto.randomUUID() + crypto.randomUUID(),
-        user_metadata: { first_name: b.first_name ?? '', last_name: b.last_name ?? '' },
+        password: temporaryPassword!,
+        user_metadata: { first_name: firstName, last_name: lastName },
       });
       if (authErr || !authUser?.user) {
-        return error(authErr?.message ?? 'Could not create the account', 400, 'AUTH_CREATE_FAILED');
+        const msg = /already been registered|already exists/i.test(authErr?.message ?? '')
+          ? 'That email address already belongs to an account on this platform.'
+          : authErr?.message ?? 'Could not create the account';
+        return error(msg, 400, 'AUTH_CREATE_FAILED');
       }
       userId = authUser.user.id;
       created = { id: userId };
+    }
+
+    /**
+     * The profile is created by the `on_auth_user_created` trigger, so this
+     * fills in the fields the trigger has no way to know — and sets the flag
+     * that makes the temporary password temporary.
+     *
+     * Written with the service-role client because the subject of this row is
+     * the new employee, not the administrator: the `profiles_update` policy
+     * quite correctly only lets someone edit their own.
+     */
+    const profileFields: Record<string, unknown> = {
+      first_name: firstName,
+      last_name: lastName,
+    };
+    if (b.phone) profileFields.phone = String(b.phone).trim();
+    if (b.job_title) profileFields.job_title = String(b.job_title).trim();
+    if (isNewAccount) profileFields.force_password_change = true;
+
+    const { error: profileErr } = await admin
+      .from('profiles').update(profileFields).eq('id', userId);
+
+    if (profileErr) {
+      if (created) await admin.auth.admin.deleteUser(created.id).catch(() => {});
+      return pgError(profileErr);
     }
 
     // Optional columns are omitted rather than sent as null. `employment_type`
@@ -148,10 +230,22 @@ export async function POST(req: Request) {
     return success(
       {
         member,
-        // The screen needs to tell the administrator what happens next, and
-        // "we emailed them" would be a lie: nothing is sent from here.
-        passwordSet: false,
-        nextStep: `${email} has no password yet. Ask them to use "Forgot password" on the sign-in page to set one.`,
+        /**
+         * The only time this value exists outside the password hash.
+         *
+         * It is not persisted, not logged, and not retrievable: there is no
+         * endpoint that can return it again, because there is nowhere to
+         * return it from. The screen shows it once and the administrator
+         * passes it on; if that is missed, the remedy is a new one.
+         */
+        temporaryPassword,
+        mustChangePassword: isNewAccount,
+        // Delivery is not wired up, so saying "we emailed them" would be a
+        // lie. This tells the screen what actually has to happen.
+        emailSent: false,
+        nextStep: isNewAccount
+          ? `Give ${email} this temporary password. They will be asked to choose their own the first time they sign in.`
+          : `${email} already had an account on this platform and keeps their existing password. They now also belong to this organization.`,
       },
       undefined,
       201,
