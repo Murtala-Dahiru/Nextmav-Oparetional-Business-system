@@ -3,6 +3,7 @@ import { supabaseServer } from '@/lib/supabase/server';
 import { error } from '@/lib/api-response';
 import type { ModuleId, RoleId } from '@/lib/constants';
 import { normalizeRole, can, canAccessModule, type Action } from '@/lib/permissions';
+import { currencyOf } from '@/lib/locale';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -44,6 +45,16 @@ export interface OrgContext {
   memberId: string;
   role: RoleId;
   departmentId: string | null;
+  /**
+   * The organization's presentation settings.
+   *
+   * Carried on every request context because money and dates are rendered in
+   * every module, and each one reading them separately is how a workspace ends
+   * up showing naira in Finance and dollars in CRM.
+   */
+  currency: string;
+  locale: string;
+  timezone: string;
 }
 
 export interface RequestContext {
@@ -78,7 +89,7 @@ export async function getContext(
   // Memberships this user can see. RLS already restricts this to their own.
   const { data: memberships } = await supabase
     .from('organization_members')
-    .select('id, organization_id, role, department_id, organizations(id, name, slug)')
+    .select('id, organization_id, role, department_id, organizations(id, name, slug, currency, timezone, settings)')
     .eq('user_id', user.id)
     .eq('is_active', true);
 
@@ -113,6 +124,12 @@ export async function getContext(
       memberId: membership.id,
       role: normalizeRole(membership.role),
       departmentId: membership.department_id ?? null,
+      // Falls back to the platform default rather than to whatever the column
+      // happens to hold, so an organization created before this existed still
+      // renders consistently instead of half-formatted.
+      currency: currencyOf(organization?.currency).code,
+      locale: organization?.settings?.locale ?? currencyOf(organization?.currency).locale,
+      timezone: organization?.timezone ?? 'UTC',
     },
   };
 }
@@ -203,15 +220,31 @@ export function pgError(e: { code?: string; message?: string; details?: string }
       // Business-rule triggers raise check_violation with a written message,
       // so pass it through — it is the explanation the user needs.
       return error(e.message ?? 'That change is not allowed.', 409, 'RULE_VIOLATION');
-    case '22P02':
-      // invalid_text_representation — usually a filter value that is not a
-      // member of the target enum. That is a bad request, not a server fault,
-      // and returning 500 makes a stale client look like a broken backend.
+    case '22P02': {
+      /**
+       * invalid_text_representation — a value that is not a member of the
+       * target enum. A bad request rather than a server fault, so 422.
+       *
+       * Postgres says exactly what was wrong: `invalid input value for enum
+       * lead_status: "wibble"`. The previous generic wording threw that away
+       * and left users with an error naming neither the field nor the value,
+       * so there was nothing to act on. The enum's name is close enough to the
+       * field's to be useful once the type suffix is dropped.
+       */
+      const m = /invalid input value for enum (\w+):\s*"([^"]*)"/i.exec(e.message ?? '');
+      if (m) {
+        const field = m[1].replace(/_(status|type|stage|level|role)$/, ' $1').replace(/_/g, ' ');
+        return error(
+          `"${m[2]}" is not a valid ${field}.`,
+          422, 'INVALID_FILTER_VALUE',
+        );
+      }
       return error(
-        'One of the filter values is not valid for this field.',
+        e.message ?? 'One of the values sent is not valid for this field.',
         422,
         'INVALID_FILTER_VALUE',
       );
+    }
     case 'P0002':
       // no_data_found, raised by RPCs when the target row is absent — which
       // includes the cross-tenant case, where the row exists but not for this

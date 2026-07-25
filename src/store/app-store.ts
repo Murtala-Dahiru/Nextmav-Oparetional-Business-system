@@ -4,6 +4,7 @@ import {
   normalizeRole, canAccessModule, defaultModuleFor, allowedModules,
   type CapabilitySummary, type Action,
 } from '@/lib/permissions';
+import { configureFormatting } from '@/lib/format';
 
 export interface CurrentUser {
   id: string;
@@ -55,6 +56,9 @@ interface AppState {
    */
   mustChangePassword: boolean;
 
+  /** This workspace's presentation settings, as the server resolved them. */
+  organization: { id: string; name: string; currency: string; locale: string; timezone: string } | null;
+
   // Navigation
   activeModule: ModuleId;
   sidebarCollapsed: boolean;
@@ -98,6 +102,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isLoading: true,
   needsOrganization: false,
   mustChangePassword: false,
+  organization: null,
 
   // RBAC — starts at the least-privileged role and is raised only by the
   // server's answer in fetchUser(). Defaulting to `owner` here would flash
@@ -169,11 +174,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (userData) {
         const role = normalizeRole(userData.capabilities?.role ?? userData.role);
         const { activeModule } = get();
+
+        /**
+         * Point the formatters at this organization before anything renders.
+         *
+         * Every module calls `formatCurrency`/`formatDate` without passing a
+         * currency or locale, so this one assignment is what makes all of them
+         * agree. Done here rather than in each screen because it has to happen
+         * once, early, and cannot be forgotten by a component added later.
+         */
+        const org = json?.data?.organization;
+        if (org) configureFormatting({ currency: org.currency, locale: org.locale });
         set({
           user: userData,
           isAuthenticated: true,
           needsOrganization: !!(json?.data?.needsOrganization ?? json?.needsOrganization),
           mustChangePassword: !!(json?.data?.mustChangePassword ?? json?.mustChangePassword),
+          organization: org ?? null,
           isLoading: false,
           activeRole: role,
           // If the stored module is one this role cannot open (e.g. after

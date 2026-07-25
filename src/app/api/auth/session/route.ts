@@ -42,6 +42,21 @@ export async function GET() {
         isActive: true,
         capabilities: capabilitySummary(ctx.org.role),
       },
+      /**
+       * How this workspace renders money and dates.
+       *
+       * Sent alongside the user rather than fetched by whichever screen needs
+       * it, so there is one answer per session. Every module formats figures,
+       * and letting each resolve this independently is precisely how a
+       * workspace ends up showing two currencies at once.
+       */
+      organization: {
+        id: ctx.org.organizationId,
+        name: ctx.org.organizationName,
+        currency: ctx.org.currency,
+        locale: ctx.org.locale,
+        timezone: ctx.org.timezone,
+      },
       needsOrganization: false,
     });
   }
