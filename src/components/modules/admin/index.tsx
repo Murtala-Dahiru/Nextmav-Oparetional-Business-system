@@ -14,6 +14,8 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { formatDateTime, formatRelativeTime, initialsOf } from '@/lib/format';
 import { normalizeRole, roleLabel } from '@/lib/permissions';
+import { CURRENCIES, COUNTRIES, NIGERIAN_STATES, DEFAULT_COUNTRY, DEFAULT_CURRENCY } from '@/lib/locale';
+import { useAppStore } from '@/store/app-store';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -116,7 +118,8 @@ const MODULE_COLORS: Record<string, string> = {
 const PERMISSION_MODULES = ['crm', 'projects', 'hr', 'finance', 'inventory', 'calendar', 'admin', 'support'];
 const PERMISSION_ACTIONS = ['view', 'create', 'edit', 'delete'];
 
-const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY', 'INR'];
+// Currencies come from lib/locale, which is also what validates them on the
+// server and maps each to a locale. A second list here would drift from it.
 
 // ═══════════════════════════════════════════════════════════════
 //  Helper: API wrapper
@@ -377,9 +380,10 @@ export default function AdminModule() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [generalForm, setGeneralForm] = useState({
     companyName: '', industry: '', website: '', email: '', phone: '', address: '',
+    city: '', state: '', country: DEFAULT_COUNTRY, timezone: 'Africa/Lagos',
   });
   const [financeForm, setFinanceForm] = useState({
-    currency: 'USD', taxRate: '0', invoicePrefix: 'INV-', fiscalYearStart: '01',
+    currency: DEFAULT_CURRENCY, taxRate: '0', invoicePrefix: 'INV-', fiscalYearStart: '01',
   });
 
   // ── Dialogs ──
@@ -443,21 +447,50 @@ export default function AdminModule() {
   // ════════════════════════════════════════════════════════════
   //  Fetch: Settings
   // ════════════════════════════════════════════════════════════
+  /**
+   * Load the company settings.
+   *
+   * The response is `{ organization, settings, departments }` — it always has
+   * been. This treated it as a flat array of settings rows and called
+   * `.forEach` on the object, which throws, and the resulting TypeError was
+   * caught by the module error boundary. That is what "Loading Admin
+   * enterprise environment…" was: not a slow load, a crash.
+   *
+   * The organization columns are the source of truth for anything with a
+   * column of its own — name, currency, country, timezone. Only the extras
+   * that have no column live in the key/value settings.
+   */
   const fetchSettings = useCallback(async () => {
     setSettingsLoading(true);
     try {
-      const res = await apiFetch<{ data: SettingRecord[] }>('/api/admin/settings');
-      setSettings(res.data);
-      const map: Record<string, string> = {};
-      res.data.forEach((s) => { map[s.key] = s.value; });
+      const res = await apiFetch<{
+        data: { organization: any; settings: Record<string, any>; departments: any[] };
+      }>('/api/admin/settings');
+
+      const org = res.data?.organization ?? {};
+      const kv = res.data?.settings ?? {};
+
       setGeneralForm({
-        companyName: map['companyName'] || '', industry: map['industry'] || '',
-        website: map['website'] || '', email: map['email'] || '',
-        phone: map['phone'] || '', address: map['address'] || '',
+        companyName: org.name ?? '',
+        industry: org.industry ?? '',
+        website: org.website ?? '',
+        email: String(kv.email ?? ''),
+        phone: org.phone ?? '',
+        address: org.addressLine ?? org.address_line ?? '',
+        city: org.city ?? '',
+        state: org.state ?? '',
+        country: org.country ?? DEFAULT_COUNTRY,
+        timezone: org.timezone ?? 'Africa/Lagos',
       });
       setFinanceForm({
-        currency: map['currency'] || 'USD', taxRate: map['taxRate'] || '0',
-        invoicePrefix: map['invoicePrefix'] || 'INV-', fiscalYearStart: map['fiscalYearStart'] || '01',
+        // From the organization column, not the key/value store. The currency
+        // was previously written as a setting key, so the column it is read
+        // from everywhere else never changed and the choice had no effect on
+        // anything the user could see.
+        currency: org.currency ?? DEFAULT_CURRENCY,
+        taxRate: String(kv.taxRate ?? '0'),
+        invoicePrefix: String(kv.invoicePrefix ?? 'INV-'),
+        fiscalYearStart: String(kv.fiscalYearStart ?? '01'),
       });
     } catch (e: any) { toast.error(e.message); } finally { setSettingsLoading(false); }
   }, []);
@@ -547,23 +580,49 @@ export default function AdminModule() {
   // ════════════════════════════════════════════════════════════
   //  Save Settings
   // ════════════════════════════════════════════════════════════
+  /**
+   * Save the company settings.
+   *
+   * Two destinations, deliberately. Anything with a column of its own goes to
+   * the organization row, because that is what the rest of the application
+   * reads — the currency especially, which every module formats money with.
+   * Only the extras that have no column go to the key/value store.
+   *
+   * This previously sent everything as one array under `settings`. The handler
+   * reads that with `Object.entries`, so an array arrived as keys "0", "1",
+   * "2"… and the organization row was never touched at all. The form reported
+   * success every time and changed nothing.
+   */
   const handleSaveSettings = async () => {
     setSettingsSaving(true);
     try {
-      const items = [
-        { key: 'companyName', value: generalForm.companyName, type: 'string', group: 'general' },
-        { key: 'industry', value: generalForm.industry, type: 'string', group: 'general' },
-        { key: 'website', value: generalForm.website, type: 'string', group: 'general' },
-        { key: 'email', value: generalForm.email, type: 'string', group: 'general' },
-        { key: 'phone', value: generalForm.phone, type: 'string', group: 'general' },
-        { key: 'address', value: generalForm.address, type: 'string', group: 'general' },
-        { key: 'currency', value: financeForm.currency, type: 'string', group: 'finance' },
-        { key: 'taxRate', value: financeForm.taxRate, type: 'number', group: 'finance' },
-        { key: 'invoicePrefix', value: financeForm.invoicePrefix, type: 'string', group: 'finance' },
-        { key: 'fiscalYearStart', value: financeForm.fiscalYearStart, type: 'string', group: 'finance' },
-      ];
-      await apiFetch('/api/admin/settings', { method: 'PUT', body: JSON.stringify({ settings: items }) });
+      await apiFetch('/api/admin/settings', {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: generalForm.companyName,
+          industry: generalForm.industry,
+          website: generalForm.website,
+          phone: generalForm.phone,
+          addressLine: generalForm.address,
+          city: generalForm.city,
+          state: generalForm.state,
+          country: generalForm.country,
+          timezone: generalForm.timezone,
+          currency: financeForm.currency,
+          settings: {
+            email: generalForm.email,
+            taxRate: financeForm.taxRate,
+            invoicePrefix: financeForm.invoicePrefix,
+            fiscalYearStart: financeForm.fiscalYearStart,
+          },
+        }),
+      });
       toast.success('Settings saved');
+      // Re-read the session so the new currency reaches the formatters — every
+      // figure on every screen is rendered with it, and without this the
+      // change only appears after a reload.
+      await useAppStore.getState().fetchUser();
+      fetchSettings();
     } catch (e: any) { toast.error(e.message); } finally { setSettingsSaving(false); }
   };
 
@@ -846,9 +905,45 @@ export default function AdminModule() {
               <div className="grid gap-2"><Label htmlFor="s-email">Email</Label>
                 <Input id="s-email" type="email" value={generalForm.email} onChange={(e) => setGeneralForm((f) => ({ ...f, email: e.target.value }))} /></div>
               <div className="grid gap-2"><Label htmlFor="s-phone">Phone</Label>
-                <Input id="s-phone" value={generalForm.phone} onChange={(e) => setGeneralForm((f) => ({ ...f, phone: e.target.value }))} /></div>
+                <Input id="s-phone" value={generalForm.phone}
+                  placeholder={generalForm.country === 'NG' ? '+234 801 234 5678' : ''}
+                  onChange={(e) => setGeneralForm((f) => ({ ...f, phone: e.target.value }))} /></div>
               <div className="grid gap-2"><Label htmlFor="s-address">Address</Label>
                 <Input id="s-address" value={generalForm.address} onChange={(e) => setGeneralForm((f) => ({ ...f, address: e.target.value }))} /></div>
+              <div className="grid gap-2"><Label htmlFor="s-city">City</Label>
+                <Input id="s-city" value={generalForm.city} onChange={(e) => setGeneralForm((f) => ({ ...f, city: e.target.value }))} /></div>
+
+              {/*
+                A select for Nigeria, free text elsewhere. Nigeria has a fixed
+                list of 36 states plus the FCT, and leaving it open produces
+                "Lagos", "lagos state" and "LAG" in the same column.
+              */}
+              <div className="grid gap-2">
+                <Label htmlFor="s-state">{generalForm.country === 'NG' ? 'State' : 'State / Region'}</Label>
+                {generalForm.country === 'NG' ? (
+                  <Select value={generalForm.state || undefined}
+                    onValueChange={(v) => setGeneralForm((f) => ({ ...f, state: v }))}>
+                    <SelectTrigger id="s-state"><SelectValue placeholder="Select state" /></SelectTrigger>
+                    <SelectContent className="max-h-64">
+                      {NIGERIAN_STATES.map((st) => <SelectItem key={st} value={st}>{st}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input id="s-state" value={generalForm.state}
+                    onChange={(e) => setGeneralForm((f) => ({ ...f, state: e.target.value }))} />
+                )}
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="s-country">Country</Label>
+                <Select value={generalForm.country}
+                  onValueChange={(v) => setGeneralForm((f) => ({ ...f, country: v, state: '' }))}>
+                  <SelectTrigger id="s-country"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {COUNTRIES.map((c) => <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </SectionCard>
 
@@ -858,7 +953,7 @@ export default function AdminModule() {
                 <Label htmlFor="s-currency">Default Currency</Label>
                 <Select value={financeForm.currency} onValueChange={(v) => setFinanceForm((f) => ({ ...f, currency: v }))}>
                   <SelectTrigger id="s-currency"><SelectValue /></SelectTrigger>
-                  <SelectContent>{CURRENCIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                  <SelectContent>{CURRENCIES.map((c) => <SelectItem key={c.code} value={c.code}>{c.symbol} {c.code} — {c.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
               <div className="grid gap-2"><Label htmlFor="s-tax">Tax Rate (%)</Label>

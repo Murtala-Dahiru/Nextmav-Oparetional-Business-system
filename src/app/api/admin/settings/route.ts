@@ -1,6 +1,7 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
+import { isSupportedCurrency, CURRENCY_CODES } from '@/lib/locale';
 
 /**
  * Organization settings.
@@ -51,13 +52,33 @@ export async function PATCH(req: Request) {
   try {
     const b = acceptBody(await req.json());
 
+    /**
+     * Currency is checked before it is stored.
+     *
+     * The column is char(3), so it will take any three characters — "XYZ" is
+     * saved happily and then reaches `Intl.NumberFormat`, which throws inside
+     * render and takes the whole module down through the error boundary. It is
+     * also the one setting that changes what every other module displays, so a
+     * bad value is felt everywhere at once.
+     */
+    if ('currency' in b && !isSupportedCurrency(b.currency)) {
+      return error(
+        `"${b.currency}" is not a supported currency. Expected one of: ${CURRENCY_CODES.join(', ')}.`,
+        422, 'UNSUPPORTED_CURRENCY',
+      );
+    }
+
     const orgUpdate: Record<string, any> = {};
     for (const k of [
       'name', 'logo_url', 'website', 'industry', 'timezone',
       'work_start', 'work_end', 'work_days', 'grace_minutes', 'break_minutes', 'currency',
+      // Added in 0013. The form has always collected these; until the columns
+      // existed the handler simply dropped them.
+      'phone', 'country', 'address_line', 'state', 'city',
     ]) {
       if (k in b) orgUpdate[k] = b[k];
     }
+    if (orgUpdate.currency) orgUpdate.currency = String(orgUpdate.currency).toUpperCase().trim();
 
     if (Object.keys(orgUpdate).length) {
       const { error: e } = await ctx.supabase
