@@ -30,8 +30,20 @@ export async function PATCH(req: Request, { params }: Params) {
   try {
     const b = acceptBody(await req.json());
     const update: Record<string, any> = {};
+
+    // An empty string from a cleared form field means "unset this", which for
+    // a nullable column is null. `role` and `employment_type` are NOT NULL
+    // with defaults, so the same treatment would abort the update instead —
+    // for those, blank means "leave it alone".
+    const NOT_NULLABLE = new Set(['role', 'employment_type']);
     for (const k of ['role','department_id','manager_id','employee_number','employment_type','hired_on','is_active']) {
-      if (k in b) update[k] = b[k] === '' ? null : b[k];
+      if (!(k in b)) continue;
+      if (b[k] === '' || b[k] === null) {
+        if (NOT_NULLABLE.has(k)) continue;
+        update[k] = null;
+      } else {
+        update[k] = b[k];
+      }
     }
     if (!Object.keys(update).length) return error('Nothing to update', 422, 'VALIDATION_ERROR');
 
@@ -42,6 +54,11 @@ export async function PATCH(req: Request, { params }: Params) {
     return success(data);
   } catch (e: any) { return error(e.message || 'Update failed', 500); }
 }
+
+// The administration screen sends PUT for a partial update. Aliasing here
+// rather than changing the caller keeps this route consistent with
+// hr/leave/[id] and inventory/purchase-orders/[id], which already do the same.
+export { PATCH as PUT };
 
 /** Deactivate rather than delete: the audit trail must keep pointing at a real row. */
 export async function DELETE(_r: Request, { params }: Params) {
