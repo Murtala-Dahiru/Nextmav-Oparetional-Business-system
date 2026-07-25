@@ -65,6 +65,11 @@ export async function PATCH() {
   );
 }
 
+// The administration screen's save button sends PUT. Without this alias the
+// framework answers with a bare 405 and no body, so the reason above — the one
+// thing that tells an administrator what to do instead — never reaches them.
+export { PATCH as PUT };
+
 export async function DELETE() {
   return error(
     'System roles cannot be deleted.',

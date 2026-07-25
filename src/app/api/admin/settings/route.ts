@@ -87,3 +87,6 @@ export async function PATCH(req: Request) {
     return error(e.message || 'Update failed', 500);
   }
 }
+
+// The settings screen sends PUT for a partial update of the settings list.
+export { PATCH as PUT };

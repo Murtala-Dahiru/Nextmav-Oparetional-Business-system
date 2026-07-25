@@ -72,3 +72,6 @@ export async function DELETE(_req: Request, { params }: Params) {
   if (!data) return error('Not found', 404, 'NOT_FOUND');
   return success({ deleted: true });
 }
+
+// The message composer sends PUT when saving an edit.
+export { PATCH as PUT };
