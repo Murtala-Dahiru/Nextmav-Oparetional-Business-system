@@ -47,6 +47,21 @@ export function getInitials(firstName: string, lastName: string): string {
   return `${(firstName?.[0] ?? '').toUpperCase()}${(lastName?.[0] ?? '').toUpperCase()}`;
 }
 
+/**
+ * Initials from a single display name.
+ *
+ * The directory view resolves one `full_name` rather than the two columns
+ * `getInitials` expects, and splitting it at the call site to feed that
+ * function produced "" for anyone recorded under a single name.
+ */
+export function initialsOf(fullName: string | null | undefined): string {
+  const parts = (fullName ?? '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  const first = parts[0][0];
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
+  return `${first}${last}`.toUpperCase();
+}
+
 export function truncate(str: string, length: number): string {
   if (!str) return '';
   return str.length > length ? str.slice(0, length) + '...' : str;

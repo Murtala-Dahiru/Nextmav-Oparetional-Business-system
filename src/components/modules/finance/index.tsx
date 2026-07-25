@@ -45,19 +45,48 @@ import { Separator } from '@/components/ui/separator';
 
 interface ApiMeta { total: number; page: number; pageSize: number; totalPages: number }
 
+/**
+ * These mirror what `/api/finance/*` actually returns.
+ *
+ * They previously described the pre-migration ORM's shape — `items` as a JSON
+ * string, a flat `tax`, free-text `contactName`/`companyName`, `date` on an
+ * expense. None of those exist on the Supabase schema, so the amounts rendered
+ * as "$NaN" and the customer column was permanently blank. The invoice totals
+ * are derived by the server from the line items, so they are read-only here.
+ */
 interface InvoiceRecord {
-  id: string; invoiceNumber: string; contactName: string; companyName: string;
-  status: string; items: string; subtotal: number; tax: number; total: number;
-  dueDate: string; paidAt: string | null; notes: string; ownerId: string;
+  id: string; invoiceNumber: string; status: string;
+  companyId: string | null; contactId: string | null;
+  subtotal: number; taxRate: number; taxAmount: number; discount: number;
+  total: number; amountPaid: number; currency: string;
+  issueDate: string; dueDate: string; paidAt: string | null; notes: string;
   createdAt: string; updatedAt: string;
-  owner?: { id: string; firstName: string; lastName: string; email: string };
+  company?: { id: string; name: string } | null;
+  contact?: { id: string; firstName: string; lastName: string } | null;
+  lineItems?: { id: string; description: string; quantity: number; unitPrice: number; lineTotal: number }[];
 }
 
 interface ExpenseRecord {
   id: string; title: string; amount: number; category: string; vendor: string;
-  date: string; status: string; receipt: string; notes: string; ownerId: string;
-  createdAt: string; updatedAt: string;
-  owner?: { id: string; firstName: string; lastName: string; email: string };
+  expenseDate: string; status: string; receiptPath: string | null; notes: string;
+  currency: string; createdAt: string; updatedAt: string;
+  submittedBy?: string;
+}
+
+interface CustomerOption { id: string; name: string }
+interface ContactOption { id: string; firstName: string; lastName: string; email: string | null }
+
+/**
+ * Radix Select treats "" as "no value" and renders the placeholder, so an
+ * explicit "None" item needs a non-empty sentinel of its own.
+ */
+const NO_CUSTOMER = '__none__';
+
+/** "Acme Inc." / "Jane Doe" / "—", from whichever relation the invoice carries. */
+function invoiceCustomer(inv: InvoiceRecord): string {
+  if (inv.company?.name) return inv.company.name;
+  if (inv.contact) return `${inv.contact.firstName} ${inv.contact.lastName}`.trim();
+  return '—';
 }
 
 interface LineItem {
@@ -135,7 +164,7 @@ async function fetchList<T>(url: string): Promise<{ data: T[]; meta: ApiMeta }> 
   const res = await fetch(url);
   if (!res.ok) {
     const e = await res.json().catch(() => ({ message: 'Request failed' }));
-    throw new Error((e as any).message || `Error ${res.status}`);
+    throw new Error((e as any).error?.message ?? `Error ${res.status}`);
   }
   return res.json();
 }
@@ -148,7 +177,7 @@ async function createRecord<T>(url: string, data: unknown): Promise<T> {
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({ message: 'Create failed' }));
-    throw new Error((e as any).message || 'Create failed');
+    throw new Error((e as any).error?.message ?? 'Create failed');
   }
   const json = await res.json();
   return json.data;
@@ -162,7 +191,7 @@ async function updateRecord<T>(url: string, data: unknown): Promise<T> {
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({ message: 'Update failed' }));
-    throw new Error((e as any).message || 'Update failed');
+    throw new Error((e as any).error?.message ?? 'Update failed');
   }
   const json = await res.json();
   return json.data;
@@ -172,7 +201,7 @@ async function deleteRecord(url: string): Promise<void> {
   const res = await fetch(url, { method: 'DELETE' });
   if (!res.ok) {
     const e = await res.json().catch(() => ({ message: 'Delete failed' }));
-    throw new Error((e as any).message || 'Delete failed');
+    throw new Error((e as any).error?.message ?? 'Delete failed');
   }
 }
 
@@ -198,10 +227,10 @@ function StatusBadge({ status, colorMap }: { status: string; colorMap: Record<st
   );
 }
 
-function generateInvoiceNumber(): string {
-  const ts = Date.now().toString().slice(-6);
-  return `INV-${ts}`;
-}
+// Invoice numbers are issued by the database from a per-organization sequence
+// (INV-000001, INV-000002, …). A timestamp-derived number generated here used
+// to be sent with every create and silently discarded; worse, two invoices
+// raised in the same second would have carried the same one.
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Overview Tab
@@ -383,8 +412,7 @@ function OverviewTab({ onSwitchTab }: { onSwitchTab: (tab: string) => void }) {
                 <thead>
                   <tr className="border-b bg-muted/50">
                     <th className="text-left font-medium px-4 py-2.5">Invoice #</th>
-                    <th className="text-left font-medium px-4 py-2.5 hidden sm:table-cell">Contact</th>
-                    <th className="text-left font-medium px-4 py-2.5 hidden md:table-cell">Company</th>
+                    <th className="text-left font-medium px-4 py-2.5 hidden sm:table-cell">Customer</th>
                     <th className="text-right font-medium px-4 py-2.5">Amount</th>
                     <th className="text-left font-medium px-4 py-2.5">Status</th>
                     <th className="text-left font-medium px-4 py-2.5 hidden lg:table-cell">Date</th>
@@ -394,8 +422,7 @@ function OverviewTab({ onSwitchTab }: { onSwitchTab: (tab: string) => void }) {
                   {recentInvoices.map((inv) => (
                     <tr key={inv.id} className="border-b last:border-0">
                       <td className="px-4 py-2.5 font-medium">{inv.invoiceNumber}</td>
-                      <td className="px-4 py-2.5 hidden sm:table-cell">{inv.contactName || '—'}</td>
-                      <td className="px-4 py-2.5 hidden md:table-cell">{inv.companyName || '—'}</td>
+                      <td className="px-4 py-2.5 hidden sm:table-cell">{invoiceCustomer(inv)}</td>
                       <td className="px-4 py-2.5 text-right font-medium">{formatCurrency(inv.total)}</td>
                       <td className="px-4 py-2.5"><StatusBadge status={inv.status} colorMap={INVOICE_STATUS_COLORS} /></td>
                       <td className="px-4 py-2.5 text-muted-foreground hidden lg:table-cell">{formatDate(inv.createdAt)}</td>
@@ -448,8 +475,9 @@ function OverviewTab({ onSwitchTab }: { onSwitchTab: (tab: string) => void }) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface InvoiceFormData {
-  contactName: string;
-  companyName: string;
+  /** A real CRM company or contact — the schema stores a foreign key, not a name. */
+  companyId: string;
+  contactId: string;
   status: string;
   items: LineItem[];
   taxRate: number;
@@ -460,7 +488,7 @@ interface InvoiceFormData {
 const EMPTY_LINE_ITEM: LineItem = { description: '', quantity: 1, unitPrice: 0 };
 
 const INVOICE_FORM_DEFAULTS: InvoiceFormData = {
-  contactName: '', companyName: '', status: 'draft',
+  companyId: '', contactId: '', status: 'draft',
   items: [{ ...EMPTY_LINE_ITEM }], taxRate: 10, dueDate: '', notes: '',
 };
 
@@ -486,6 +514,11 @@ function InvoicesTab() {
   // Edit form (simpler: status + notes)
   const [editStatus, setEditStatus] = useState('');
   const [editNotes, setEditNotes] = useState('');
+
+  // Customers to bill, from CRM.
+  const [companies, setCompanies] = useState<CustomerOption[]>([]);
+  const [contacts, setContacts] = useState<ContactOption[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(false);
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
@@ -513,6 +546,34 @@ function InvoicesTab() {
 
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
 
+  /**
+   * Loaded once the dialog opens rather than on mount: most visits to this tab
+   * only read the register, and the list is only needed to fill the pickers.
+   * A failure here is not fatal — the invoice can still be raised without a
+   * customer — so it warns instead of blocking the form.
+   */
+  useEffect(() => {
+    if (!createOpen || companies.length || contacts.length) return;
+    let cancelled = false;
+    setCustomersLoading(true);
+    (async () => {
+      try {
+        const [co, ct] = await Promise.all([
+          fetchList<CustomerOption>('/api/crm/companies?pageSize=100'),
+          fetchList<ContactOption>('/api/crm/contacts?pageSize=100'),
+        ]);
+        if (cancelled) return;
+        setCompanies(co.data);
+        setContacts(ct.data);
+      } catch (e: any) {
+        if (!cancelled) toast.error(e.message || 'Could not load customers');
+      } finally {
+        if (!cancelled) setCustomersLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [createOpen, companies.length, contacts.length]);
+
   // Computed values from form items
   const computedSubtotal = useMemo(() => form.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0), [form.items]);
   const computedTax = useMemo(() => computedSubtotal * form.taxRate / 100, [computedSubtotal, form.taxRate]);
@@ -538,9 +599,9 @@ function InvoicesTab() {
       cell: ({ row }) => <span className="text-right block">{formatCurrency(row.original.subtotal)}</span>,
     },
     {
-      accessorKey: 'tax',
+      accessorKey: 'taxAmount',
       header: 'Tax',
-      cell: ({ row }) => <span className="text-right block">{formatCurrency(row.original.tax)}</span>,
+      cell: ({ row }) => <span className="text-right block">{formatCurrency(row.original.taxAmount)}</span>,
     },
     {
       accessorKey: 'total',
@@ -607,8 +668,8 @@ function InvoicesTab() {
 
   // Create handler
   const handleCreate = async () => {
-    if (!form.contactName) {
-      toast.error('Contact name is required');
+    if (!form.companyId && !form.contactId) {
+      toast.error('Choose the customer this invoice is for');
       return;
     }
     if (!form.dueDate) {
@@ -622,15 +683,21 @@ function InvoicesTab() {
     }
     setFormLoading(true);
     try {
+      /**
+       * The invoice number, subtotal, tax and total are deliberately absent.
+       *
+       * All four are assigned by the server — the number from a per-tenant
+       * sequence, the money from the line items it stores — so sending the
+       * values computed above would be a second, unauthoritative copy that
+       * silently disagrees the moment a rounding rule changes. The figures on
+       * screen are a preview of what the server will calculate, not an input.
+       */
       const payload = {
-        invoiceNumber: generateInvoiceNumber(),
-        contactName: form.contactName,
-        companyName: form.companyName,
+        companyId: form.companyId || null,
+        contactId: form.contactId || null,
         status: form.status,
-        items: JSON.stringify(validItems),
-        subtotal: computedSubtotal,
-        tax: computedTax,
-        total: computedTotal,
+        lineItems: validItems,
+        taxRate: form.taxRate,
         dueDate: form.dueDate,
         notes: form.notes,
       };
@@ -713,11 +780,44 @@ function InvoicesTab() {
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Contact Name *">
-                <Input value={form.contactName} onChange={(e) => setForm((p) => ({ ...p, contactName: e.target.value }))} placeholder="John Doe" />
+              {/*
+                Pickers rather than free text: an invoice is stored against a
+                CRM company or contact by id. Typed-in names had nowhere to go
+                and were dropped on save.
+              */}
+              <Field label="Company">
+                <Select
+                  value={form.companyId || NO_CUSTOMER}
+                  onValueChange={(v) => setForm((p) => ({ ...p, companyId: v === NO_CUSTOMER ? '' : v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={customersLoading ? 'Loading…' : 'Select a company'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_CUSTOMER}>None</SelectItem>
+                    {companies.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
-              <Field label="Company Name">
-                <Input value={form.companyName} onChange={(e) => setForm((p) => ({ ...p, companyName: e.target.value }))} placeholder="Acme Corp" />
+              <Field label="Contact">
+                <Select
+                  value={form.contactId || NO_CUSTOMER}
+                  onValueChange={(v) => setForm((p) => ({ ...p, contactId: v === NO_CUSTOMER ? '' : v }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={customersLoading ? 'Loading…' : 'Select a contact'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_CUSTOMER}>None</SelectItem>
+                    {contacts.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {`${c.firstName} ${c.lastName}`.trim() || c.email || 'Unnamed contact'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -969,9 +1069,9 @@ function ExpensesTab() {
     },
     { accessorKey: 'vendor', header: 'Vendor' },
     {
-      accessorKey: 'date',
+      accessorKey: 'expenseDate',
       header: 'Date',
-      cell: ({ row }) => <span className="whitespace-nowrap">{formatDate(row.original.date)}</span>,
+      cell: ({ row }) => <span className="whitespace-nowrap">{formatDate(row.original.expenseDate)}</span>,
     },
     {
       accessorKey: 'status',
@@ -998,7 +1098,7 @@ function ExpensesTab() {
                 amount: exp.amount,
                 category: exp.category,
                 vendor: exp.vendor,
-                date: exp.date.split('T')[0],
+                date: exp.expenseDate.split('T')[0],
                 notes: exp.notes,
               });
               setEditOpen(true);

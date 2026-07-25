@@ -26,11 +26,18 @@ import {
 //  Types
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * Mirrors `/api/calendar/events`. The names are the database's, camelised:
+ * `startsAt`/`endsAt`, and `colour` with the British spelling used by the
+ * column. They were previously `startDate`/`endDate`/`color`, which exist
+ * nowhere in the response — every event therefore rendered as "Invalid Date"
+ * and had no colour bar.
+ */
 interface CalendarEvent {
-  id: string; title: string; description: string; startDate: string; endDate: string;
-  allDay: boolean; location: string; color: string; creatorId: string;
+  id: string; title: string; description: string; startsAt: string; endsAt: string;
+  allDay: boolean; location: string; colour: string; createdBy: string;
   createdAt: string; updatedAt: string;
-  creator?: { id: string; firstName: string; lastName: string; avatar: string };
+  creator?: { id: string; profiles?: { fullName: string; avatarUrl: string | null } };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -111,9 +118,9 @@ function EventFormDialog({
 }) {
   const getInitialForm = (): EventFormState => editing ? {
     title: editing.title, description: editing.description, allDay: editing.allDay,
-    startDate: toLocalDateTimeStr(new Date(editing.startDate)),
-    endDate: toLocalDateTimeStr(new Date(editing.endDate)),
-    location: editing.location, color: editing.color,
+    startDate: toLocalDateTimeStr(new Date(editing.startsAt)),
+    endDate: toLocalDateTimeStr(new Date(editing.endsAt)),
+    location: editing.location, color: editing.colour,
   } : { ...defaultEventForm, startDate: toLocalDateTimeStr(new Date()), endDate: toLocalDateTimeStr(new Date()) };
 
   const [form, setForm] = useState<EventFormState>(getInitialForm);
@@ -246,7 +253,7 @@ export default function CalendarModule() {
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
     events.forEach((e) => {
-      const d = new Date(e.startDate);
+      const d = new Date(e.startsAt);
       const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(e);
@@ -256,9 +263,9 @@ export default function CalendarModule() {
 
   // ── Side panel events (upcoming) ──
   const upcomingEvents = useMemo(() => {
-    const sorted = [...events].sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+    const sorted = [...events].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
     if (selectedDate) {
-      return sorted.filter((e) => isSameDay(new Date(e.startDate), selectedDate));
+      return sorted.filter((e) => isSameDay(new Date(e.startsAt), selectedDate));
     }
     return sorted;
   }, [events, selectedDate]);
@@ -267,11 +274,14 @@ export default function CalendarModule() {
   const handleEventSubmit = async (form: EventFormState) => {
     setEventSubmitting(true);
     try {
+      // Field names must match the API, not the form's own state: the route
+      // reads starts_at/ends_at/colour and rejected every event as "Start and
+      // end times are required" when sent startDate/endDate/color.
       const payload = {
         title: form.title, description: form.description, allDay: form.allDay,
-        startDate: new Date(form.startDate).toISOString(),
-        endDate: new Date(form.endDate).toISOString(),
-        location: form.location, color: form.color,
+        startsAt: new Date(form.startDate).toISOString(),
+        endsAt: new Date(form.endDate).toISOString(),
+        location: form.location, colour: form.color,
       };
       if (editingEvent) {
         await apiFetch(`/api/calendar/events/${editingEvent.id}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -389,7 +399,7 @@ export default function CalendarModule() {
                             key={ev.id}
                             onClick={(e) => { e.stopPropagation(); setEditingEvent(ev); setEventDialogOpen(true); }}
                             className="text-[11px] leading-tight px-1.5 py-0.5 rounded truncate text-white cursor-pointer hover:opacity-80 transition-opacity"
-                            style={{ backgroundColor: ev.color }}
+                            style={{ backgroundColor: ev.colour }}
                           >
                             {ev.title}
                           </div>
@@ -437,13 +447,13 @@ export default function CalendarModule() {
                   onClick={() => { setEditingEvent(ev); setEventDialogOpen(true); }}
                   className="group flex gap-2.5 rounded-lg border p-3 cursor-pointer hover:shadow-sm transition-shadow"
                 >
-                  <div className="w-1 shrink-0 rounded-full" style={{ backgroundColor: ev.color }} />
+                  <div className="w-1 shrink-0 rounded-full" style={{ backgroundColor: ev.colour }} />
                   <div className="min-w-0 flex-1">
                     <h4 className="text-sm font-medium truncate">{ev.title}</h4>
                     <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                       <Clock className="size-3 shrink-0" />
                       <span>
-                        {ev.allDay ? 'All Day' : `${formatTime(ev.startDate)} – ${formatTime(ev.endDate)}`}
+                        {ev.allDay ? 'All Day' : `${formatTime(ev.startsAt)} – ${formatTime(ev.endsAt)}`}
                       </span>
                     </div>
                     {ev.location && (
@@ -452,10 +462,10 @@ export default function CalendarModule() {
                         <span className="truncate">{ev.location}</span>
                       </div>
                     )}
-                    {ev.creator && (
+                    {ev.creator?.profiles?.fullName && (
                       <div className="flex items-center gap-1.5 mt-0.5 text-xs text-muted-foreground">
                         <User className="size-3 shrink-0" />
-                        <span>{ev.creator.firstName} {ev.creator.lastName}</span>
+                        <span>{ev.creator.profiles.fullName}</span>
                       </div>
                     )}
                   </div>
