@@ -907,6 +907,99 @@ try {
   check(inviteStillWorks.status === 201, `invitations are still issued (${inviteStillWorks.status})`,
     inviteStillWorks.body?.error?.message);
   check(!!inviteStillWorks.body?.data?.inviteUrl, 'and still carry a redeemable link');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('25. Company settings actually take effect');
+  // organizations.currency has always been stored and never read: every
+  // formatCurrency() call used the function's USD default, so a workspace
+  // could set naira, see it saved, and watch every module carry on in dollars.
+
+  const settingsSaved = await A.json('/api/admin/settings', {
+    method: 'PUT',
+    body: JSON.stringify({
+      name: `Alpha ${run} Ltd`,
+      currency: 'NGN',
+      phone: '+234 801 234 5678',
+      country: 'NG', state: 'Lagos', city: 'Lagos',
+      addressLine: '12 Adeola Odeku Street',
+      timezone: 'Africa/Lagos',
+      settings: { taxRate: '7.5', invoicePrefix: 'AL-' },
+    }),
+  });
+  check(settingsSaved.ok, `settings save (${settingsSaved.status})`, settingsSaved.body?.error?.message);
+
+  const reread = await A.json('/api/admin/settings');
+  const savedOrg = reread.body?.data?.organization ?? {};
+  check(savedOrg.currency === 'NGN', `the currency reaches the organization row (${savedOrg.currency})`);
+  check(savedOrg.phone === '+234 801 234 5678' && savedOrg.country === 'NG',
+    'phone and country persist — they had no columns to persist into before');
+  check(savedOrg.state === 'Lagos' && savedOrg.city === 'Lagos' && !!savedOrg.addressLine,
+    'the Nigerian address fields persist');
+  check(reread.body?.data?.settings?.taxRate === '7.5',
+    'extras still go to the key/value store, not into numeric keys');
+
+  // What the client formats money with comes from here.
+  const sessionOrg = (await A.json('/api/auth/session')).body?.data?.organization;
+  check(sessionOrg?.currency === 'NGN' && sessionOrg?.locale === 'en-NG',
+    `the session carries currency and locale to the formatters (${sessionOrg?.currency}/${sessionOrg?.locale})`);
+
+  const badCurrency = await A.json('/api/admin/settings', {
+    method: 'PUT', body: JSON.stringify({ currency: 'XYZ' }),
+  });
+  check(badCurrency.status === 422,
+    `an unsupported currency is refused before it can break every screen (${badCurrency.status})`);
+  check((badCurrency.body?.error?.message ?? '').includes('NGN'),
+    'and the refusal lists what is supported');
+
+  section('26. "All" in a filter means all, not a value to look up');
+  // Every dropdown has a show-everything option, and the modules spell it
+  // differently — `all`, `_all`, empty. Any of them reaching an enum column
+  // produced 22P02, surfaced as "One of the filter values is not valid for
+  // this field" with no clue which field or what to do about it.
+
+  const sentinelChecks = [
+    ['/api/crm/leads?status=all', 'CRM leads'],
+    ['/api/crm/deals?stage=_all', 'CRM deals'],
+    ['/api/hr/leave?status=all&type=all', 'HR leave'],
+    ['/api/hr/attendance?status=all', 'HR attendance'],
+    ['/api/projects/projects?status=all', 'projects'],
+    ['/api/projects/tasks?status=all&priority=all', 'tasks'],
+    ['/api/finance/invoices?status=all', 'invoices'],
+    ['/api/inventory/purchase-orders?status=all', 'purchase orders'],
+    ['/api/inventory/movements?type=all', 'stock movements'],
+    ['/api/support/tickets?status=all', 'tickets'],
+    ['/api/admin/users?role=all', 'the directory'],
+  ];
+  for (const [url, label] of sentinelChecks) {
+    const r = await A.json(url);
+    check(r.ok, `${label} accept it as no filter (${r.status})`, r.body?.error?.message);
+  }
+
+  // A genuinely wrong value must still be refused — and now say what it was.
+  const reallyInvalid = await A.json('/api/crm/leads?status=wibble');
+  check(reallyInvalid.status === 422, `a real typo is still refused (${reallyInvalid.status})`);
+  check((reallyInvalid.body?.error?.message ?? '').includes('wibble'),
+    'and the message names the offending value instead of describing it');
+
+  section('27. The attendance register can render what it is sent');
+  // The tab typed rows as `date`/`checkInAt`/`user`; the endpoint returns
+  // `workDate`/`checkedInAt`/`member`. Grouping did `r.date.slice(0, 10)`, so
+  // the first record to exist threw during render and the error boundary
+  // replaced the whole module — which looked like check-in breaking the page.
+
+  await A.json('/api/hr/attendance/clock', { method: 'POST', body: JSON.stringify({ action: 'in' }) });
+  const register = await A.json('/api/hr/attendance?pageSize=10');
+  const row = (register.body?.data ?? [])[0];
+
+  check(!!row?.workDate, 'a row carries workDate, which the register groups on');
+  check('checkedInAt' in (row ?? {}), 'and checkedInAt, which the clock card reads');
+  check(row?.member !== undefined, 'the person is under `member`, with the name on the profile');
+
+  const meta = register.body?.meta ?? {};
+  check(typeof meta.attendanceRate === 'number' && typeof meta.punctualityRate === 'number',
+    'the summary reaches meta — it was computed and then discarded');
+  check(typeof meta.expectedDays === 'number' && meta.expectedDays > 0,
+    `expected working days are reported (${meta.expectedDays})`);
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);
