@@ -21,7 +21,15 @@
 -- ───────────────────────────────────────────────────────────────────────────
 
 /** Members with their profile, department and reporting line resolved. */
-CREATE OR REPLACE VIEW public.v_org_directory
+-- Dropped first rather than replaced. `db:apply` re-runs every migration, and
+-- 0012 extends this view with four more columns — so on the second run this
+-- statement would be replacing a 22-column view with an 18-column one, which
+-- Postgres refuses with "cannot drop columns from view". Recreating from
+-- scratch keeps the chain re-runnable; 0012 then re-adds its columns as it did
+-- the first time. Nothing depends on this view, so the drop is contained.
+DROP VIEW IF EXISTS public.v_org_directory;
+
+CREATE VIEW public.v_org_directory
 WITH (security_invoker = true) AS
 SELECT
   om.id                AS member_id,
