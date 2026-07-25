@@ -129,8 +129,8 @@ const emailA = `appverify-${run}-a@example.com`;
 const emailB = `appverify-${run}-b@example.com`;
 const PW = 'Passw0rd!verify';
 
-let userA, userB;
-const A = makeClient(), B = makeClient();
+let userA, userB, userC, userD;
+const A = makeClient(), B = makeClient(), C = makeClient();
 
 try {
   section('1. Authentication');
@@ -475,12 +475,174 @@ try {
   const bAudit = await B.json('/api/admin/audit-log');
   check(!(bAudit.body?.data ?? []).some((r) => r.organizationId === orgA.body?.data?.id),
     "B CANNOT read A's audit trail");
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('13. Joining an organization');
+  // Invitation was unusable in three separate ways at once: the RPC could not
+  // resolve gen_random_bytes, /accept-invite had no page behind it, and the
+  // admin screen never called either endpoint. Each is checked here so none
+  // can regress quietly.
+
+  const emailC = `verify-c-${Date.now()}@example.com`;
+  userC = await adminCreateUser(emailC, PW);
+
+  const invite = await A.json('/api/auth/invite', {
+    method: 'POST',
+    body: JSON.stringify({ email: emailC, role: 'hr_staff' }),
+  });
+  check(invite.status === 201, `an invitation is issued (${invite.status})`,
+    invite.body?.error?.message);
+
+  const inviteToken = invite.body?.data?.invitation?.token;
+  check(typeof inviteToken === 'string' && inviteToken.length === 64,
+    'the invitation carries a 64-character token');
+
+  const invitePage = await fetch(`${BASE}/accept-invite?token=${inviteToken ?? 'x'}`);
+  check(invitePage.status === 200, `/accept-invite renders (${invitePage.status})`);
+
+  const anonAccept = await C.json('/api/auth/accept-invite', {
+    method: 'POST', body: JSON.stringify({ token: inviteToken }),
+  });
+  check(anonAccept.status === 401, `accepting while signed out is refused (${anonAccept.status})`);
+
+  await C.json('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: emailC, password: PW }) });
+  const beforeJoin = await C.json('/api/auth/session');
+  check(beforeJoin.body?.data?.needsOrganization === true, 'invitee starts with no organization');
+
+  const accepted = await C.json('/api/auth/accept-invite', {
+    method: 'POST', body: JSON.stringify({ token: inviteToken }),
+  });
+  check(accepted.ok, `the invitation is accepted (${accepted.status})`, accepted.body?.error?.message);
+
+  const afterJoin = await C.json('/api/auth/session');
+  check(afterJoin.body?.data?.user?.capabilities?.role === 'hr_staff',
+    'the invited role is the one granted');
+
+  const reuse = await C.json('/api/auth/accept-invite', {
+    method: 'POST', body: JSON.stringify({ token: inviteToken }),
+  });
+  check(reuse.status === 400, `a spent token cannot be reused (${reuse.status})`);
+
+  // The role must bind on the server, not just in the navigation.
+  const cFinance = await C.json('/api/finance/invoices');
+  check(cFinance.status === 403, `hr_staff is refused Finance by the server (${cFinance.status})`);
+  const cHr = await C.json('/api/hr/employees');
+  check(cHr.ok, `hr_staff is admitted to HR (${cHr.status})`);
+
+  section('14. Adding a member directly');
+
+  const directEmail = `verify-d-${Date.now()}@example.com`;
+  const direct = await A.json('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({ email: directEmail, firstName: 'Direct', lastName: 'Hire', role: 'sales_staff' }),
+  });
+  check(direct.status === 201, `a member can be provisioned directly (${direct.status})`,
+    direct.body?.error?.message);
+  // This endpoint creates a real auth account, so the harness owns it and has
+  // to remove it — otherwise every run leaves another one behind.
+  userD = { id: direct.body?.data?.member?.userId };
+  check(direct.body?.data?.passwordSet === false,
+    'no password is set for them — reset is the only way in');
+  check(direct.body?.data?.member?.employmentType === 'full_time',
+    'the employment_type default applies rather than a null');
+
+  const dupDirect = await A.json('/api/admin/users', {
+    method: 'POST', body: JSON.stringify({ email: directEmail, role: 'employee' }),
+  });
+  check(dupDirect.status === 409, `adding the same person twice is refused (${dupDirect.status})`);
+
+  const badRole = await A.json('/api/admin/users', {
+    method: 'POST', body: JSON.stringify({ email: `x-${Date.now()}@example.com`, role: 'superuser' }),
+  });
+  check(badRole.status === 422, `an unknown role is refused (${badRole.status})`);
+
+  const directory = await A.json('/api/admin/users?pageSize=100');
+  const directRow = (directory.body?.data ?? []).find(u => u.email === directEmail);
+  check(!!directRow?.memberId && !!directRow?.fullName !== undefined,
+    'the directory row carries memberId, the key the screens act on');
+
+  section('15. Verbs the screens actually send');
+  // Each of these answered 405 until the routes gained a PUT alias, which the
+  // UI reported to users as an unexplained failure.
+
+  if (directRow?.memberId) {
+    const put = await A.json(`/api/admin/users/${directRow.memberId}`, {
+      method: 'PUT', body: JSON.stringify({ role: 'support_staff', employmentType: '', departmentId: '' }),
+    });
+    check(put.ok, `PUT edits a member (${put.status})`, put.body?.error?.message);
+    check(put.body?.data?.role === 'support_staff', 'the role change is applied');
+    check(put.body?.data?.employmentType === 'full_time',
+      'a blank NOT NULL column is left alone rather than nulled');
+
+    const deact = await A.json(`/api/admin/users/${directRow.memberId}`, { method: 'DELETE' });
+    check(deact.ok, `a member can be deactivated (${deact.status})`);
+  }
+
+  const putSettings = await A.json('/api/admin/settings', {
+    method: 'PUT', body: JSON.stringify({ settings: [] }),
+  });
+  check(putSettings.ok, `PUT saves settings (${putSettings.status})`);
+
+  section('16. Contracts the forms depend on');
+
+  // Finance sent `items` as a JSON string; the route reads `line_items` as an
+  // array, so every invoice was rejected as having no lines.
+  const invCompany = await A.json('/api/crm/companies', {
+    method: 'POST', body: JSON.stringify({ name: `Billed ${Date.now()}` }),
+  });
+  const invoice = await A.json('/api/finance/invoices', {
+    method: 'POST',
+    body: JSON.stringify({
+      companyId: invCompany.body?.data?.id,
+      status: 'draft',
+      lineItems: [{ description: 'Consulting', quantity: 3, unitPrice: 100 }],
+      taxRate: 10,
+      dueDate: '2030-01-01',
+    }),
+  });
+  check(invoice.status === 201, `an invoice is created from the form's payload (${invoice.status})`,
+    invoice.body?.error?.message);
+  check(invoice.body?.data?.taxAmount === 30 && invoice.body?.data?.total === 330,
+    `tax and total are derived server-side (${invoice.body?.data?.taxAmount}, ${invoice.body?.data?.total})`);
+  check((invoice.body?.data?.lineItems ?? []).length === 1, 'the line item is stored');
+
+  // Calendar sent startDate/endDate/color; the column names are
+  // starts_at/ends_at/colour, so every event was rejected.
+  const event = await A.json('/api/calendar/events', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: 'Standup',
+      startsAt: '2030-01-01T09:00:00Z',
+      endsAt: '2030-01-01T09:30:00Z',
+      colour: '#8b5cf6',
+    }),
+  });
+  check(event.status === 201, `an event is created from the form's payload (${event.status})`,
+    event.body?.error?.message);
+  check(!!event.body?.data?.startsAt && event.body?.data?.colour === '#8b5cf6',
+    'the event reads back under the names the calendar renders');
+
+  // A trigger set NEW.updated_at on a table whose column is edited_at, so
+  // every message update aborted.
+  const editChan = await A.json('/api/communication/channels', {
+    method: 'POST', body: JSON.stringify({ name: `verify-edit-${Date.now()}` }),
+  });
+  const posted = await A.json('/api/communication/messages', {
+    method: 'POST', body: JSON.stringify({ channelId: editChan.body?.data?.id, body: 'first' }),
+  });
+  const editedMsg = await A.json(`/api/communication/messages/${posted.body?.data?.id}`, {
+    method: 'PUT', body: JSON.stringify({ body: 'edited' }),
+  });
+  check(editedMsg.ok, `a message can be edited (${editedMsg.status})`, editedMsg.body?.error?.message);
+  check(editedMsg.body?.data?.body === 'edited', 'the edit is persisted');
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);
 } finally {
   if (userA?.id) await adminDeleteUser(userA.id);
   if (userB?.id) await adminDeleteUser(userB.id);
+  if (userC?.id) await adminDeleteUser(userC.id);
+  if (userD?.id) await adminDeleteUser(userD.id);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);
