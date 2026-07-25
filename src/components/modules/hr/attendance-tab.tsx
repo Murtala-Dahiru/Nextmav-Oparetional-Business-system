@@ -37,13 +37,30 @@ interface AttendanceUser {
   department: string; jobTitle: string; avatar: string;
 }
 
+/**
+ * A row of `/api/hr/attendance`.
+ *
+ * These are the column names the endpoint actually returns. The previous shape
+ * — `date`, `checkInAt`, `checkOutAt`, a flat `user` — matched none of them,
+ * and the register groups rows with `r.workDate.slice(0, 10)`. With `date`
+ * undefined that threw during render, the module error boundary caught it, and
+ * the whole tab was replaced by the "Loading HR enterprise environment…"
+ * placeholder.
+ *
+ * It presented as a check-in bug because checking in is what triggered the
+ * refetch: on an empty register there were no rows to group and nothing threw,
+ * so the crash only appeared once the first record existed.
+ */
 interface AttendanceRecord {
-  id: string; userId: string; date: string;
-  checkInAt: string | null; checkOutAt: string | null;
+  id: string; memberId: string; workDate: string;
+  checkedInAt: string | null; checkedOutAt: string | null;
   status: AttendanceStatus; workedMinutes: number; lateMinutes: number;
   note: string; adjustedAt: string | null;
-  user?: AttendanceUser;
-  adjustedBy?: { id: string; firstName: string; lastName: string } | null;
+  member?: {
+    id: string;
+    departmentId: string | null;
+    profiles?: { fullName: string; avatarUrl: string | null };
+  };
 }
 
 interface Summary {
@@ -148,8 +165,8 @@ function MyDay({ onChanged }: { onChanged: () => void }) {
   if (!state) return null;
 
   const rec = state.record;
-  const elapsed = rec?.checkInAt && !rec.checkOutAt
-    ? Math.max(0, Math.round((now.getTime() - new Date(rec.checkInAt).getTime()) / 60_000))
+  const elapsed = rec?.checkedInAt && !rec.checkedOutAt
+    ? Math.max(0, Math.round((now.getTime() - new Date(rec.checkedInAt).getTime()) / 60_000))
     : rec?.workedMinutes ?? 0;
 
   return (
@@ -158,8 +175,8 @@ function MyDay({ onChanged }: { onChanged: () => void }) {
         <div className="flex items-center gap-4">
           <div className={`flex size-12 shrink-0 items-center justify-center rounded-xl ${
             state.onLeave ? 'bg-sky-500/10 text-sky-600'
-              : rec?.checkOutAt ? 'bg-gray-500/10 text-gray-500'
-                : rec?.checkInAt ? 'bg-emerald-500/10 text-emerald-600'
+              : rec?.checkedOutAt ? 'bg-gray-500/10 text-gray-500'
+                : rec?.checkedInAt ? 'bg-emerald-500/10 text-emerald-600'
                   : 'bg-amber-500/10 text-amber-600'
           }`}>
             {state.onLeave ? <CalendarOff className="size-5" /> : <Clock className="size-5" />}
@@ -168,14 +185,14 @@ function MyDay({ onChanged }: { onChanged: () => void }) {
             <p className="text-sm font-semibold">
               {state.onLeave
                 ? `On approved ${state.onLeave.type} leave`
-                : rec?.checkOutAt ? 'Day complete'
-                  : rec?.checkInAt ? 'Currently checked in'
+                : rec?.checkedOutAt ? 'Day complete'
+                  : rec?.checkedInAt ? 'Currently checked in'
                     : 'Not checked in yet'}
             </p>
             <p className="text-muted-foreground text-xs">
               {formatDate(state.date, { weekday: 'long', day: 'numeric', month: 'long' })}
-              {rec?.checkInAt && ` · in ${timeOf(rec.checkInAt)}`}
-              {rec?.checkOutAt && ` · out ${timeOf(rec.checkOutAt)}`}
+              {rec?.checkedInAt && ` · in ${timeOf(rec.checkedInAt)}`}
+              {rec?.checkedOutAt && ` · out ${timeOf(rec.checkedOutAt)}`}
             </p>
             {rec && rec.lateMinutes > 0 && (
               <p className="mt-0.5 text-xs font-medium text-amber-600">
@@ -186,10 +203,10 @@ function MyDay({ onChanged }: { onChanged: () => void }) {
         </div>
 
         <div className="flex items-center gap-4">
-          {(rec?.checkInAt || rec?.workedMinutes) && (
+          {(rec?.checkedInAt || rec?.workedMinutes) && (
             <div className="text-right">
               <p className="text-muted-foreground text-xs">
-                {rec?.checkOutAt ? 'Worked' : 'Elapsed'}
+                {rec?.checkedOutAt ? 'Worked' : 'Elapsed'}
               </p>
               <p className="text-xl font-semibold tabular-nums">{formatDuration(elapsed)}</p>
             </div>
@@ -265,8 +282,8 @@ export default function AttendanceTab() {
     setEditing(r);
     setForm({
       status: r.status,
-      checkIn: r.checkInAt ? new Date(r.checkInAt).toISOString().slice(0, 16) : '',
-      checkOut: r.checkOutAt ? new Date(r.checkOutAt).toISOString().slice(0, 16) : '',
+      checkIn: r.checkedInAt ? new Date(r.checkedInAt).toISOString().slice(0, 16) : '',
+      checkOut: r.checkedOutAt ? new Date(r.checkedOutAt).toISOString().slice(0, 16) : '',
       note: r.note ?? '',
     });
     setAdjustOpen(true);
@@ -279,8 +296,8 @@ export default function AttendanceTab() {
       await api('/api/hr/attendance', {
         method: 'POST',
         body: JSON.stringify({
-          userId: editing.userId,
-          date: editing.date,
+          memberId: editing.memberId,
+          workDate: editing.workDate,
           status: form.status,
           checkInAt: form.checkIn ? new Date(form.checkIn).toISOString() : null,
           checkOutAt: form.checkOut ? new Date(form.checkOut).toISOString() : null,
@@ -301,7 +318,12 @@ export default function AttendanceTab() {
   const byDay = useMemo(() => {
     const map = new Map<string, AttendanceRecord[]>();
     for (const r of records) {
-      const key = r.date.slice(0, 10);
+      // Guarded rather than assumed. This line is what took the module down
+      // when the field was named differently to the response, and a row with
+      // no date is a row to leave out of the register — not a reason for the
+      // whole tab to be replaced by an error placeholder.
+      if (!r.workDate) continue;
+      const key = String(r.workDate).slice(0, 10);
       (map.get(key) ?? map.set(key, []).get(key)!).push(r);
     }
     return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
@@ -380,14 +402,14 @@ export default function AttendanceTab() {
                     {rows.map(r => (
                       <tr key={r.id} className="hover:bg-accent/30 border-b last:border-0">
                         <td className="p-3 font-medium">
-                          {r.user ? `${r.user.firstName} ${r.user.lastName}` : '—'}
+                          {r.member?.profiles?.fullName || '—'}
                           {r.adjustedAt && (
                             <span className="text-muted-foreground ml-1.5 text-[10px]">(adjusted)</span>
                           )}
                         </td>
-                        <td className="text-muted-foreground p-3">{r.user?.department || '—'}</td>
-                        <td className="p-3 tabular-nums">{timeOf(r.checkInAt)}</td>
-                        <td className="p-3 tabular-nums">{timeOf(r.checkOutAt)}</td>
+                        <td className="text-muted-foreground p-3">{r.member?.departmentId ? 'Assigned' : '—'}</td>
+                        <td className="p-3 tabular-nums">{timeOf(r.checkedInAt)}</td>
+                        <td className="p-3 tabular-nums">{timeOf(r.checkedOutAt)}</td>
                         <td className="p-3 tabular-nums">{formatDuration(r.workedMinutes)}</td>
                         <td className="p-3">
                           <Badge className={STATUS_STYLES[r.status] ?? STATUS_STYLES.holiday}>
@@ -427,8 +449,8 @@ export default function AttendanceTab() {
           <DialogHeader>
             <DialogTitle>Correct attendance</DialogTitle>
             <DialogDescription>
-              {editing?.user ? `${editing.user.firstName} ${editing.user.lastName} · ` : ''}
-              {editing ? formatDate(editing.date, { day: 'numeric', month: 'long', year: 'numeric' }) : ''}
+              {editing?.member?.profiles?.fullName ? `${editing.member.profiles.fullName} · ` : ''}
+              {editing ? formatDate(editing.workDate, { day: 'numeric', month: 'long', year: 'numeric' }) : ''}
               {' '}— the correction is recorded against your name.
             </DialogDescription>
           </DialogHeader>

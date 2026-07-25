@@ -1,6 +1,8 @@
+import { isFilterValue } from '@/lib/filters';
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
+import { workingDaysBetween } from '@/lib/attendance';
 
 const SELECT =
   '*, member:organization_members!attendance_records_member_id_fkey(id, department_id, profiles!organization_members_user_id_fkey(full_name, avatar_url))';
@@ -42,9 +44,9 @@ export async function GET(req: Request) {
 
   let rows = base();
   const status = searchParams.get('status');
-  if (status) rows = rows.eq('status', status);
+  if (isFilterValue(status)) rows = rows.eq('status', status);
   const memberId = searchParams.get('memberId');
-  if (memberId) rows = rows.eq('member_id', memberId);
+  if (isFilterValue(memberId)) rows = rows.eq('member_id', memberId);
 
   const offset = (page - 1) * pageSize;
   const { data, count, error: e } = await rows
@@ -71,7 +73,37 @@ export async function GET(req: Request) {
   const pct = (part: number, whole: number) =>
     whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 
-  return paginated(data ?? [], count ?? 0, page, pageSize);
+  /**
+   * The summary was being computed and then dropped.
+   *
+   * Everything above this line was already here; `paginated()` was called
+   * without it, so the figures were calculated on every request and thrown
+   * away. The register's four headline cards — attendance rate, punctuality,
+   * hours logged, late arrivals — read them from `meta` and therefore showed
+   * zero no matter what the register contained.
+   */
+  const expectedDays = workingDaysBetween(new Date(from), new Date(to));
+  const perPerson = people > 0 ? expectedDays * people : expectedDays;
+
+  return paginated(data ?? [], count ?? 0, page, pageSize, {
+    from,
+    to,
+    people,
+    expectedDays,
+    daysRecorded: rowsAll.length,
+    present: countBy('present'),
+    late: countBy('late'),
+    absent: countBy('absent'),
+    onLeave: countBy('on_leave'),
+    remote: countBy('remote'),
+    totalMinutes,
+    averageMinutes: attended > 0 ? Math.round(totalMinutes / attended) : 0,
+    totalLateMinutes: rowsAll.reduce((sum, r) => sum + (r.late_minutes ?? 0), 0),
+    attendanceRate: pct(attended, perPerson),
+    // Measured against days actually attended, not days expected — otherwise
+    // approved leave would count as unpunctual.
+    punctualityRate: pct(countBy('present') + countBy('remote'), attended),
+  });
 }
 
 /**
