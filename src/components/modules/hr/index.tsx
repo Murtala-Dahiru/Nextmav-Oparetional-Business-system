@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
 import {
   UserCog, UserPlus, Users, Clock, Building2, CheckCircle, XCircle,
-  Pencil, Trash2, Plus, Loader2, MoreHorizontal, CalendarDays, ShieldCheck, ShieldX,
+  Pencil, Trash2, Plus, Loader2, MoreHorizontal, CalendarDays, ShieldCheck, ShieldX, KeyRound,
 } from 'lucide-react';
 
 import AttendanceTab from './attendance-tab';
@@ -62,6 +62,11 @@ interface UserRecord {
   managerId: string | null; managerName: string | null;
   employeeNumber: string | null; employmentType: string | null;
   hiredOn: string | null; isActive: boolean; lastSeenAt: string | null;
+  /** Added in 0012 alongside is_active, which remains the access gate. */
+  status: 'active' | 'suspended' | 'terminated';
+  terminatedOn: string | null;
+  forcePasswordChange: boolean;
+  passwordChangedAt: string | null;
 }
 
 interface RoleRecord {
@@ -247,18 +252,41 @@ interface EmployeeFormData {
   firstName: string;
   lastName: string;
   email: string;
+  phone: string;
+  jobTitle: string;
+  employmentType: string;
   role: string;
   departmentId: string;
+  managerId: string;
+  hiredOn: string;
 }
 
 const EMPLOYEE_DEFAULTS: EmployeeFormData = {
-  firstName: '', lastName: '', email: '', role: 'employee', departmentId: '',
+  firstName: '', lastName: '', email: '', phone: '', jobTitle: '',
+  employmentType: 'full_time', role: 'employee', departmentId: '',
+  managerId: '', hiredOn: '',
 };
+
+const EMPLOYMENT_TYPES = [
+  { value: 'full_time', label: 'Full time' },
+  { value: 'part_time', label: 'Part time' },
+  { value: 'contract', label: 'Contract' },
+  { value: 'intern', label: 'Intern' },
+  { value: 'temporary', label: 'Temporary' },
+];
+
+/** What an administrator is handed after provisioning, shown exactly once. */
+interface IssuedCredential {
+  email: string;
+  temporaryPassword: string;
+  loginUrl: string;
+}
 
 interface DepartmentOption { id: string; name: string }
 
 /** Radix Select reads "" as "no value", so "unassigned" needs its own token. */
 const NO_DEPARTMENT = '__none__';
+const NO_MANAGER = '__no_manager__';
 
 function EmployeesTab() {
   // Table state
@@ -268,6 +296,8 @@ function EmployeesTab() {
   const [mode, setMode] = useState<'invite' | 'direct'>('invite');
   /** The generated link, shown until dismissed — nothing emails it for us. */
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  /** The temporary password, held only for as long as the dialog is open. */
+  const [issued, setIssued] = useState<IssuedCredential | null>(null);
 
   /**
    * Departments, derived from the directory rather than fetched — no endpoint
@@ -433,12 +463,26 @@ function EmployeesTab() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => { setSelected(row.original); setForm({ firstName: '', lastName: '', email: row.original.email, role: row.original.role, departmentId: row.original.departmentId ?? '' }); setEditOpen(true); }}>
+            <DropdownMenuItem onClick={() => { setSelected(row.original); setForm({ ...EMPLOYEE_DEFAULTS, email: row.original.email, role: row.original.role, departmentId: row.original.departmentId ?? '' }); setEditOpen(true); }}>
               <Pencil className="size-4 mr-2" />Edit
             </DropdownMenuItem>
-            <DropdownMenuItem className="text-red-600" onClick={() => { setSelected(row.original); setDeleteOpen(true); }}>
-              <Trash2 className="size-4 mr-2" />Delete
+            <DropdownMenuItem onClick={() => resetPassword(row.original)}>
+              <KeyRound className="size-4 mr-2" />Reset password
             </DropdownMenuItem>
+            {row.original.status === 'active' ? (
+              <DropdownMenuItem onClick={() => setStatus(row.original, 'suspended')}>
+                <ShieldX className="size-4 mr-2" />Suspend
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={() => setStatus(row.original, 'active')}>
+                <ShieldCheck className="size-4 mr-2" />Reactivate
+              </DropdownMenuItem>
+            )}
+            {row.original.status !== 'terminated' && (
+              <DropdownMenuItem className="text-red-600" onClick={() => setStatus(row.original, 'terminated')}>
+                <Trash2 className="size-4 mr-2" />Terminate employment
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -476,15 +520,37 @@ function EmployeesTab() {
         // to copy it.
         toast.success('Invitation created — copy the link to send it.');
       } else {
-        const res = await createRecord<{ nextStep: string }>('/api/admin/users', {
-          email: form.email,
-          firstName: form.firstName,
-          lastName: form.lastName,
-          role: form.role,
-          departmentId: form.departmentId || null,
-        });
-        toast.success(res.nextStep ?? 'Employee added');
-        setCreateOpen(false);
+        const res = await createRecord<{ temporaryPassword: string | null; nextStep: string }>(
+          '/api/admin/users',
+          {
+            email: form.email,
+            firstName: form.firstName,
+            lastName: form.lastName,
+            phone: form.phone || null,
+            jobTitle: form.jobTitle || null,
+            employmentType: form.employmentType,
+            role: form.role,
+            departmentId: form.departmentId || null,
+            managerId: form.managerId || null,
+            hiredOn: form.hiredOn || null,
+          },
+        );
+
+        if (res.temporaryPassword) {
+          // Held on screen rather than toasted, because this is the only time
+          // it exists anywhere. Nothing emails it and nothing can retrieve it
+          // afterwards — closing this dialog without copying it means issuing
+          // a new one.
+          setIssued({
+            email: form.email,
+            temporaryPassword: res.temporaryPassword,
+            loginUrl: `${window.location.origin}/login`,
+          });
+        } else {
+          // An address that already had an account keeps its own password.
+          toast.success(res.nextStep ?? 'Employee added');
+          setCreateOpen(false);
+        }
       }
       setForm(EMPLOYEE_DEFAULTS);
       fetchUsers();
@@ -493,6 +559,46 @@ function EmployeesTab() {
       toast.error(e.message || 'Failed to create employee');
     } finally {
       setFormLoading(false);
+    }
+  };
+
+  /**
+   * Issue a fresh temporary password.
+   *
+   * Reuses the same one-time panel as provisioning, because it is the same
+   * situation: a password that exists only in this response and cannot be
+   * fetched again.
+   */
+  const resetPassword = async (u: UserRecord) => {
+    try {
+      const res = await createRecord<{ temporaryPassword: string }>(
+        `/api/admin/users/${u.memberId}/reset-password`, {},
+      );
+      setIssued({
+        email: u.email,
+        temporaryPassword: res.temporaryPassword,
+        loginUrl: `${window.location.origin}/login`,
+      });
+      setCreateOpen(true);
+      fetchUsers();
+    } catch (e: any) {
+      toast.error(e.message || 'Could not reset the password');
+    }
+  };
+
+  /** Suspend, reactivate or terminate. The server keeps is_active in step. */
+  const setStatus = async (u: UserRecord, status: 'active' | 'suspended' | 'terminated') => {
+    try {
+      await updateRecord(`/api/admin/users/${u.memberId}`, { status });
+      toast.success(
+        status === 'active' ? `${u.fullName || u.email} reactivated`
+          : status === 'suspended' ? `${u.fullName || u.email} suspended`
+            : `${u.fullName || u.email} marked as terminated`,
+      );
+      fetchUsers();
+      fetchStats();
+    } catch (e: any) {
+      toast.error(e.message || 'Could not change the status');
     }
   };
 
@@ -576,7 +682,59 @@ function EmployeesTab() {
             </DialogDescription>
           </DialogHeader>
 
-          {inviteUrl ? (
+          {issued ? (
+            /*
+              The one and only sight of this password. It is not stored by the
+              application, is not in the directory, and no endpoint can return
+              it — losing it means issuing a new one from the row menu.
+            */
+            <div className="flex flex-col gap-3 py-2">
+              <p className="text-sm">
+                <span className="font-medium">{issued.email}</span> can now sign in.
+                Give them this password — they will be asked to choose their own
+                straight away.
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  readOnly
+                  value={issued.temporaryPassword}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="font-mono text-base tracking-wide"
+                />
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(issued.temporaryPassword);
+                      toast.success('Password copied');
+                    } catch {
+                      toast.error('Could not copy — select the text and copy it manually.');
+                    }
+                  }}
+                >
+                  Copy password
+                </Button>
+              </div>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(issued.loginUrl);
+                    toast.success('Login link copied');
+                  } catch {
+                    toast.error('Could not copy the link.');
+                  }
+                }}
+              >
+                Copy login link
+              </Button>
+              <p className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+                This password is shown once and cannot be looked up again — not
+                by you, and not by anyone else. Copy it before closing.
+              </p>
+            </div>
+          ) : inviteUrl ? (
             /*
               Shown instead of the form once an invitation exists. Delivery is
               not wired up, so this link is the whole deliverable — dismissing
@@ -637,6 +795,54 @@ function EmployeesTab() {
                 <Input type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} placeholder="john@example.com" />
               </Field>
             </div>
+            {/*
+              Only offered for direct provisioning. An invitation records the
+              role and department on the invitation itself and lets the person
+              fill in their own details when they accept, so asking for their
+              phone number and start date here would be asking the wrong
+              person.
+            */}
+            {mode === 'direct' && (
+              <>
+                <Field label="Phone">
+                  <Input value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} placeholder="+44 7700 900000" />
+                </Field>
+                <Field label="Job Title">
+                  <Input value={form.jobTitle} onChange={(e) => setForm((p) => ({ ...p, jobTitle: e.target.value }))} placeholder="Payroll Officer" />
+                </Field>
+                <Field label="Employment Type">
+                  <Select value={form.employmentType} onValueChange={(v) => setForm((p) => ({ ...p, employmentType: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {EMPLOYMENT_TYPES.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label="Start Date">
+                  <Input type="date" value={form.hiredOn} onChange={(e) => setForm((p) => ({ ...p, hiredOn: e.target.value }))} />
+                </Field>
+                <div className="sm:col-span-2">
+                  <Field label="Manager">
+                    <Select
+                      value={form.managerId || NO_MANAGER}
+                      onValueChange={(v) => setForm((p) => ({ ...p, managerId: v === NO_MANAGER ? '' : v }))}
+                    >
+                      <SelectTrigger><SelectValue placeholder="No manager" /></SelectTrigger>
+                      <SelectContent className="max-h-48">
+                        <SelectItem value={NO_MANAGER}>No manager</SelectItem>
+                        {users.filter((u) => u.isActive).map((u) => (
+                          <SelectItem key={u.memberId} value={u.memberId}>
+                            {u.fullName || u.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                </div>
+              </>
+            )}
             <Field label="Department">
               <Select
                 value={form.departmentId || NO_DEPARTMENT}
@@ -660,7 +866,19 @@ function EmployeesTab() {
           </div>
           )}
           <DialogFooter>
-            {inviteUrl ? (
+            {issued ? (
+              <>
+                <Button variant="outline" onClick={() => setIssued(null)}>
+                  Add another
+                </Button>
+                <Button
+                  onClick={() => { setIssued(null); setCreateOpen(false); }}
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                >
+                  I have copied it
+                </Button>
+              </>
+            ) : inviteUrl ? (
               <>
                 <Button variant="outline" onClick={() => { setInviteUrl(null); }}>
                   Invite someone else

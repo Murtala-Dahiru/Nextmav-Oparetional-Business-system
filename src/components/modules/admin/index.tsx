@@ -59,6 +59,11 @@ interface UserRecord {
   managerId: string | null; managerName: string | null;
   employeeNumber: string | null; employmentType: string | null;
   hiredOn: string | null; isActive: boolean; lastSeenAt: string | null;
+  /** Added in 0012 alongside is_active, which remains the access gate. */
+  status: 'active' | 'suspended' | 'terminated';
+  terminatedOn: string | null;
+  forcePasswordChange: boolean;
+  passwordChangedAt: string | null;
 }
 
 interface RoleRecord {
@@ -325,6 +330,8 @@ function RoleFormDialog({
 export default function AdminModule() {
   // ── Users State ──
   const [users, setUsers] = useState<UserRecord[]>([]);
+  /** Held only while the reveal dialog is open; never persisted anywhere. */
+  const [issued, setIssued] = useState<{ email: string; temporaryPassword: string } | null>(null);
 
   /**
    * Departments, derived from the directory rather than fetched.
@@ -483,8 +490,16 @@ export default function AdminModule() {
         await apiFetch(`/api/admin/users/${editingUser.memberId}`, { method: 'PUT', body: JSON.stringify(payload) });
         toast.success('User updated');
       } else {
-        await apiFetch('/api/admin/users', { method: 'POST', body: JSON.stringify(payload) });
-        toast.success('User created');
+        const res = await apiFetch<{ data: { temporaryPassword: string | null; nextStep: string } }>(
+          '/api/admin/users', { method: 'POST', body: JSON.stringify(payload) },
+        );
+        if (res.data?.temporaryPassword) {
+          // Must survive the dialog closing: this is the only time the value
+          // exists, and no endpoint can return it again.
+          setIssued({ email: form.email, temporaryPassword: res.data.temporaryPassword });
+        } else {
+          toast.success(res.data?.nextStep ?? 'User created');
+        }
       }
       setUserDialogOpen(false); setEditingUser(null); fetchUsers(); fetchRoles();
     } catch (e: any) { toast.error(e.message); } finally { setUserSubmitting(false); }
@@ -891,6 +906,42 @@ export default function AdminModule() {
       </Tabs>
 
       {/* ═══════════ DIALOGS ═══════════ */}
+      {/*
+        The temporary password, shown once. Kept in its own dialog rather than
+        inside the form so that closing the form does not take it with it —
+        there is no way to retrieve it afterwards.
+      */}
+      <Dialog open={!!issued} onOpenChange={(v) => !v && setIssued(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Temporary password</DialogTitle>
+            <DialogDescription>
+              <span className="font-medium">{issued?.email}</span> can sign in with this.
+              They will be asked to choose their own password immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2">
+            <Input readOnly value={issued?.temporaryPassword ?? ''}
+              onFocus={(e) => e.currentTarget.select()} className="font-mono text-base tracking-wide" />
+            <Button variant="outline" onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(issued?.temporaryPassword ?? '');
+                toast.success('Password copied');
+              } catch { toast.error('Could not copy — select the text and copy it manually.'); }
+            }}>Copy</Button>
+          </div>
+          <p className="rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+            Shown once and never recoverable — not by you, and not by anyone else.
+            If it is lost, reset the password to issue a new one.
+          </p>
+          <DialogFooter>
+            <Button onClick={() => setIssued(null)} className="bg-emerald-600 text-white hover:bg-emerald-700">
+              I have copied it
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <UserFormDialog key={editingUser?.memberId ?? 'new-user'}
         open={userDialogOpen} onOpenChange={setUserDialogOpen}
         editing={editingUser} onSubmit={handleUserSubmit} isLoading={userSubmitting}
