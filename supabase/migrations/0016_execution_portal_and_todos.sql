@@ -86,21 +86,35 @@ RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
-  SELECT
-    EXTRACT(DOW FROM d)::int = ANY (
-      SELECT work_days FROM organizations WHERE id = org
-    )
-    AND NOT EXISTS (
-      SELECT 1 FROM holidays h
-      WHERE h.organization_id = org
-        AND h.is_half_day = false
-        AND (
-          h.holiday_date = d
-          OR (h.is_recurring
-              AND EXTRACT(MONTH FROM h.holiday_date) = EXTRACT(MONTH FROM d)
-              AND EXTRACT(DAY   FROM h.holiday_date) = EXTRACT(DAY   FROM d))
-        )
-    );
+  /**
+   * The weekly pattern is tested inside an EXISTS, against the row.
+   *
+   * `x = ANY (SELECT work_days FROM organizations …)` reads naturally and is
+   * wrong: that form treats the subquery as a *set of scalars* to compare
+   * against, but `work_days` is one `int[]` value, so Postgres is asked for
+   * `integer = integer[]` and refuses. Membership in an array needs
+   * `= ANY (array_expression)`, which means having the row in scope — hence
+   * the join rather than a scalar subquery.
+   *
+   * An organization that does not exist yields false: not a working day is the
+   * conservative answer, and the foreign keys make it unreachable in practice.
+   */
+  SELECT EXISTS (
+    SELECT 1 FROM organizations o
+    WHERE o.id = org
+      AND EXTRACT(DOW FROM d)::int = ANY (o.work_days)
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM holidays h
+    WHERE h.organization_id = org
+      AND h.is_half_day = false
+      AND (
+        h.holiday_date = d
+        OR (h.is_recurring
+            AND EXTRACT(MONTH FROM h.holiday_date) = EXTRACT(MONTH FROM d)
+            AND EXTRACT(DAY   FROM h.holiday_date) = EXTRACT(DAY   FROM d))
+      )
+  );
 $$;
 
 /** Working days in a closed interval, holidays excluded. */
@@ -272,7 +286,9 @@ CREATE TRIGGER trg_sync_milestone_stage
  * Every column the previous version had is still here with the same meaning,
  * so the projects endpoint and the reports keep working untouched.
  */
-DROP VIEW IF EXISTS public.v_project_health;
+-- CASCADE: see the note in 0007. v_client_portal_projects (0016) depends on
+-- this view, and is recreated by 0016 after this runs.
+DROP VIEW IF EXISTS public.v_project_health CASCADE;
 
 CREATE OR REPLACE VIEW public.v_project_health
 WITH (security_invoker = true) AS
@@ -431,9 +447,11 @@ CREATE POLICY comments_select ON comments FOR SELECT TO authenticated
     )
   );
 
+-- INSERT policies take WITH CHECK only; a USING clause on one is a syntax
+-- error ("only WITH CHECK expression allowed for INSERT"), since there is no
+-- existing row to test.
 DROP POLICY IF EXISTS comments_insert ON comments;
 CREATE POLICY comments_insert ON comments FOR INSERT TO authenticated
-  USING (true)
   WITH CHECK (
     organization_id = ANY (public.auth_org_ids())
     -- You may only post as yourself. Without this, any member could author a
@@ -1176,17 +1194,26 @@ DECLARE
 BEGIN
   IF NEW.status <> 'pending' THEN RETURN NEW; END IF;
 
+  /**
+   * The claimant is `submitted_by`, not `member_id`.
+   *
+   * `expenses` has no `member_id` column — the earlier draft of this trigger
+   * assumed one by analogy with `leave_requests`, and because a trigger
+   * function's body is not resolved until it fires, that mistake compiled
+   * cleanly and then made *every* expense insert fail at runtime with a 500.
+   * Nothing short of actually creating an expense would have caught it.
+   */
   SELECT p.full_name INTO claimant
   FROM organization_members om JOIN profiles p ON p.id = om.user_id
-  WHERE om.id = NEW.member_id;
+  WHERE om.id = NEW.submitted_by;
 
   PERFORM public.notify_members(
     NEW.organization_id,
     public.members_with_roles(NEW.organization_id,
       ARRAY['owner','administrator','finance_staff']::org_role[]),
     'expense_submitted',
-    COALESCE(claimant, 'An employee') || ' submitted an expense',
-    NEW.category::text || ': ' || to_char(NEW.amount, 'FM999,999,999.00'),
+    COALESCE(NULLIF(btrim(claimant), ''), 'An employee') || ' submitted an expense',
+    NEW.category || ': ' || to_char(NEW.amount, 'FM999,999,999.00'),
     'expense', NEW.id, '/dashboard?module=finance&tab=expenses'
   );
 
@@ -1469,7 +1496,23 @@ SELECT
   om.department_id,
   d.name           AS department_name,
   p.id             AS user_id,
-  p.full_name,
+  /**
+   * A name that is never blank.
+   *
+   * `profiles.full_name` is `GENERATED ALWAYS AS (btrim(first_name || ' ' ||
+   * last_name))`, so an account provisioned without a name — which is every
+   * account created straight through the admin API, and any invitation
+   * accepted without filling the fields in — yields an empty string, or NULL
+   * if either half is null.
+   *
+   * A picker rendering that shows a selectable row with no label: visually
+   * identical to the "undefined undefined" bug this view was added to fix, and
+   * just as impossible to choose deliberately. The local part of the email is
+   * a poor name but an unambiguous one, and it is always present because the
+   * column is NOT NULL.
+   */
+  COALESCE(NULLIF(btrim(p.full_name), ''), split_part(p.email::text, '@', 1))
+                   AS full_name,
   p.email,
   p.avatar_url,
   p.job_title

@@ -181,7 +181,12 @@ GROUP BY d.organization_id, d.owner_id, p.full_name;
 -- wider view with a narrower one, which Postgres refuses with "cannot drop
 -- columns from view". Recreating from scratch keeps the chain re-runnable;
 -- 0015 then re-applies its own definition afterwards.
-DROP VIEW IF EXISTS public.v_project_health;
+-- CASCADE because a later migration (0016) builds v_client_portal_projects
+-- on top of this view. Without it, re-running the migration chain from the
+-- start fails here with "cannot drop view ... because other objects depend on
+-- it", which breaks the re-runnability the whole apply script relies on. The
+-- dependent view is recreated by 0016 later in the same run.
+DROP VIEW IF EXISTS public.v_project_health CASCADE;
 
 CREATE VIEW public.v_project_health
 WITH (security_invoker = true) AS

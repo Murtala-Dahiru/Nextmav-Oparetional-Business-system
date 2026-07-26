@@ -67,11 +67,29 @@ function makeClient() {
   };
 }
 
+/**
+ * Create a confirmed account.
+ *
+ * `user_metadata` carries a name because `handle_new_user()` reads
+ * `raw_user_meta_data ->> 'first_name'` to populate the profile, and
+ * `profiles.full_name` is generated from those two columns. Creating accounts
+ * without it left every test user with `full_name = ''`, so assertions about
+ * a *named* assignee or author were testing an account shape that the
+ * application itself never produces — `/api/auth/signup` and the invitation
+ * and provisioning routes all require a first and last name.
+ *
+ * The name is derived from the address so failures still identify the account.
+ */
 async function adminCreateUser(email, password, opts = {}) {
+  const local = String(email).split('@')[0].replace(/[^a-zA-Z]+/g, ' ').trim() || 'Test';
   const r = await fetch(`${SUPABASE}/auth/v1/admin/users`, {
     method: 'POST',
     headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, email_confirm: true, ...opts }),
+    body: JSON.stringify({
+      email, password, email_confirm: true,
+      user_metadata: { first_name: local.split(' ')[0] || 'Test', last_name: 'Account' },
+      ...opts,
+    }),
   });
   if (!r.ok) throw new Error(`admin create: ${r.status} ${await r.text()}`);
   return r.json();

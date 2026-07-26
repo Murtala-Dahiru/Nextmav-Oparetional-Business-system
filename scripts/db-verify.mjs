@@ -12,7 +12,7 @@
  * end, including on failure.
  */
 import { readFileSync } from 'node:fs';
-import pg from 'pg';
+import { connect } from './db-connect.mjs';
 
 // ── config ─────────────────────────────────────────────────────────────────
 
@@ -92,11 +92,33 @@ async function deleteUser(id) {
 // ── run ────────────────────────────────────────────────────────────────────
 
 const runId = Date.now().toString(36);
-const db = new pg.Client({ connectionString: DIRECT_URL, ssl: { rejectUnauthorized: false } });
+
+/**
+ * Connected before the harness starts, through the shared connector.
+ *
+ * Previously this built its own `pg.Client` and the `EAI_AGAIN` from a broken
+ * local resolver surfaced as a bare "HARNESS ERROR", indistinguishable from a
+ * failing assertion — so a network fault looked like a broken database.
+ */
+let db;
+try {
+  const conn = await connect(DIRECT_URL);
+  db = conn.client;
+  if (conn.note) console.log(`\n  note: ${conn.note}`);
+} catch (e) {
+  console.error(`\n  Could not reach the database: ${e.message}`);
+  if (['EAI_AGAIN', 'ENOTFOUND', 'ESERVFAIL', 'ETIMEOUT'].includes(e.code)) {
+    console.error(
+      '  This is name resolution, not the database. Nothing was verified.\n' +
+      '  See the note in scripts/db-connect.mjs.',
+    );
+  }
+  process.exit(1);
+}
+
 let userA, userB, orgA, orgB;
 
 try {
-  await db.connect();
 
   // ─────────────────────────────────────────────────────────────────────────
   section('1. Schema');

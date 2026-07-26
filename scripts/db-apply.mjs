@@ -10,7 +10,7 @@
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import pg from 'pg';
+import { connect } from './db-connect.mjs';
 
 const DIR = 'supabase/migrations';
 
@@ -48,20 +48,40 @@ if (!files.length) {
   process.exit(1);
 }
 
-const client = new pg.Client({
-  connectionString: url,
-  ssl: { rejectUnauthorized: false },
-  // A large migration can exceed the default statement timeout.
-  statement_timeout: 300_000,
-});
-
 console.log(`\n  Applying ${files.length} migration(s)\n`);
 
+let client;
 try {
-  await client.connect();
+  // A large migration can exceed the default statement timeout.
+  const conn = await connect(url, { statement_timeout: 300_000 });
+  client = conn.client;
+  if (conn.note) console.log(`  note: ${conn.note}\n`);
 } catch (e) {
   console.error(`  Could not connect: ${e.message}`);
-  console.error('  Check the password in DIRECT_URL, and that the project is not paused.');
+  /**
+   * The advice is chosen from the error, not printed unconditionally.
+   *
+   * This used to say "check the password, and that the project is not paused"
+   * for every failure including `EAI_AGAIN` — a name-resolution error, where
+   * neither the password nor the project has been reached yet, so both
+   * suggestions send the reader to the wrong place. That is how a DNS problem
+   * on one machine turns into an afternoon spent rotating credentials.
+   */
+  if (['EAI_AGAIN', 'ENOTFOUND', 'ESERVFAIL', 'ETIMEOUT'].includes(e.code)) {
+    console.error(`
+  This is a DNS failure, not an authentication failure — the database was
+  never contacted, so the password and the project's state are not implicated.
+
+  Check, in order:
+    · that this machine can resolve the host at all:
+        node -e "require('dns').lookup('${new URL(url).hostname}',console.log)"
+    · whether a public resolver can:
+        nslookup ${new URL(url).hostname} 8.8.8.8
+      If that answers and your own resolver does not, the fault is your
+      resolver or network, not Supabase and not this repository.`);
+  } else {
+    console.error('  Check the password in DIRECT_URL, and that the project is not paused.');
+  }
   process.exit(1);
 }
 
