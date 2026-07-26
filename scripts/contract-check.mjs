@@ -143,6 +143,10 @@ const NOT_ON_THE_WIRE = {
   ChannelWithLastMessage: ['lastMessage', 'lastMessageSender', 'unreadCount'],
 };
 
+/** Which file declares each nested relation interface. */
+const NESTED_FILES = { Sender: COMMS };
+function nestedFileFor(iface) { return NESTED_FILES[iface] ?? COMMS; }
+
 /** Each entry: create a record, then compare the component's declared shape. */
 const CONTRACTS = [
   { label: 'CRM · Lead',       file: CRM, iface: 'Lead',
@@ -182,7 +186,48 @@ const LIST_CONTRACTS = [
   { label: 'Inventory · PO',    file: SUPPLY,  iface: 'PurchaseOrder', path: '/api/inventory/purchase-orders' },
   { label: 'Inventory · Movement', file: SUPPLY, iface: 'StockMovement', path: '/api/inventory/movements' },
   { label: 'Comms · Channel',   file: COMMS, iface: 'Channel', path: '/api/communication/channels' },
+  { label: 'Comms · Message',   file: COMMS, iface: 'Message',
+    path: (s) => '/api/communication/messages?channelId=' + s.channelId,
+    nested: [{ field: 'sender', iface: 'Sender' }] },
 ];
+
+/**
+ * Check a relation's own shape.
+ *
+ * The top-level comparison only proves a key is present. `Message.sender`
+ * existed in the response and passed, while the `Sender` interface behind it
+ * declared `firstName`/`lastName` against a payload carrying
+ * `profiles.fullName` — so every chat line rendered "undefined undefined" and
+ * this script reported no drift. A relation that is present but shaped
+ * differently is the same defect one level down.
+ */
+function compareNested(label, nested, received) {
+  for (const { field, iface } of nested ?? []) {
+    const value = received?.[field];
+    if (value === undefined || value === null) {
+      console.log(`  SKIP  ${label} · ${field} — absent on this record`);
+      continue;
+    }
+    const sample = Array.isArray(value) ? value[0] : value;
+    if (!sample || typeof sample !== 'object') continue;
+
+    const declared = interfaceFields(nestedFileFor(iface), iface);
+    if (!declared) {
+      console.log(`  SKIP  ${label} · ${field} — interface ${iface} not found`);
+      continue;
+    }
+    const keys = new Set(Object.keys(sample));
+    const missing = declared.filter(x => !keys.has(x));
+    if (missing.length === 0) {
+      console.log(`  OK    ${label} · ${field}`);
+      continue;
+    }
+    drift += missing.length;
+    findings.push({ label: `${label} · ${field}`, iface, missing });
+    console.log(`  DRIFT ${label} · ${field} — the relation is shaped differently:`);
+    for (const x of missing) console.log(`          · ${x}`);
+  }
+}
 
 function compare(label, iface, declared, received) {
   if (!declared) {
@@ -237,6 +282,7 @@ try {
       continue;
     }
     compare(c.label, c.iface, interfaceFields(c.file, c.iface), res.body?.data);
+    compareNested(c.label, c.nested, res.body?.data);
   }
 
   /**
@@ -257,6 +303,13 @@ try {
       dueDate: '2030-01-01',
     }),
   });
+  const seedChannel = await A.json('/api/communication/channels', {
+    method: 'POST', body: JSON.stringify({ name: `seed-${run}` }),
+  });
+  await A.json('/api/communication/messages', {
+    method: 'POST', body: JSON.stringify({ channelId: seedChannel.body?.data?.id, body: 'seed' }),
+  });
+  const seeded = { channelId: seedChannel.body?.data?.id };
   await A.json('/api/hr/attendance/clock', { method: 'POST', body: JSON.stringify({ action: 'in' }) });
   await A.json('/api/hr/leave', {
     method: 'POST',
@@ -287,13 +340,16 @@ try {
 
   console.log('\n  List reads\n  ──────────');
   for (const c of LIST_CONTRACTS) {
-    const res = await A.json(c.path);
+    // A scoped list (messages need a channel) resolves its path after seeding.
+    const path = typeof c.path === 'function' ? c.path(seeded) : c.path;
+    const res = await A.json(path);
     const row = res.body?.data?.[0];
     if (!res.ok) {
       console.log(`  SKIP  ${c.label} — list returned ${res.status}`);
       continue;
     }
     compare(c.label, c.iface, interfaceFields(c.file, c.iface), row);
+    compareNested(c.label, c.nested, row);
   }
 } catch (e) {
   console.error(`\n  HARNESS ERROR: ${e.message}`);

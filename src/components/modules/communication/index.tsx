@@ -18,7 +18,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { EmptyState } from '@/components/shared/empty-state';
-import { formatRelativeTime, getInitials, truncate } from '@/lib/format';
+import { formatRelativeTime, initialsOf, truncate } from '@/lib/format';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAppStore } from '@/store/app-store';
 import { cn } from '@/lib/utils';
@@ -35,11 +35,17 @@ interface Channel {
   updatedAt: string;
 }
 
+/**
+ * The message author, as the endpoint returns them.
+ *
+ * This declared a flat `firstName`/`lastName`/`avatar`, which the response
+ * has never carried — the sender is a membership with the name on its joined
+ * profile. Every message in every channel therefore rendered its author as
+ * "undefined undefined", with blank initials in the avatar.
+ */
 interface Sender {
   id: string;
-  firstName: string;
-  lastName: string;
-  avatar: string;
+  profiles?: { fullName: string; avatarUrl: string | null };
 }
 
 interface Message {
@@ -144,7 +150,7 @@ export default function CommunicationModule() {
               ...ch,
               lastMessage: msgs[0]?.body,
               lastMessageSender: msgs[0]?.sender
-                ? `${msgs[0].sender.firstName} ${msgs[0].sender.lastName}`
+                ? (msgs[0].sender.profiles?.fullName || 'Unknown member')
                 : undefined,
               unreadCount: 0,
             };
@@ -630,8 +636,10 @@ function MessageBubble({
 }) {
   const [hovered, setHovered] = useState(false);
   const avatarColor = getAvatarColor(message.senderId);
-  const senderName = `${message.sender.firstName} ${message.sender.lastName}`;
-  const initials = getInitials(message.sender.firstName, message.sender.lastName);
+  // Falls back rather than rendering 'undefined': a profile can legitimately
+  // have no name yet, and a chat line is still readable without one.
+  const senderName = message.sender?.profiles?.fullName || 'Unknown member';
+  const initials = initialsOf(message.sender?.profiles?.fullName);
 
   return (
     <div
