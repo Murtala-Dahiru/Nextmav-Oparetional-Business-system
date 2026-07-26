@@ -246,9 +246,35 @@ export function DataTable<TData, TValue>({
       columnFilters,
       columnVisibility,
       rowSelection,
-      pagination: page !== undefined && pageSize !== undefined
-        ? { pageIndex: page, pageSize }
-        : undefined,
+      /**
+       * ── Why this is a conditional spread and not `pagination: … : undefined`
+       *
+       * It used to read:
+       *
+       *     pagination: page !== undefined && pageSize !== undefined
+       *       ? { pageIndex: page, pageSize }
+       *       : undefined
+       *
+       * TanStack Table treats a key that is *present* in `state` as
+       * controlled, whatever its value. Setting it to `undefined` therefore
+       * did not fall back to `initialState` — it pinned pagination state to
+       * undefined, and the next read of `table.getState().pagination.pageIndex`
+       * threw:
+       *
+       *     Cannot read properties of undefined (reading 'pageIndex')
+       *
+       * Which took down every table rendered without server-side pagination
+       * props, via the module error boundary. HR → Leave Management was the
+       * visible casualty; the fault was in this file, not in HR, and any table
+       * added later without those props would have hit it too.
+       *
+       * Omitting the key entirely is what actually leaves pagination
+       * uncontrolled, so `initialState` applies and the client-side row model
+       * pages normally.
+       */
+      ...(page !== undefined && pageSize !== undefined
+        ? { pagination: { pageIndex: page, pageSize } }
+        : {}),
     },
     initialState: {
       pagination: { pageSize: pageSize ?? 10 },
@@ -261,8 +287,16 @@ export function DataTable<TData, TValue>({
   const visibleColumnsCount = table.getAllColumns().filter((c) => c.getIsVisible()).length;
 
   // Pagination helpers (works for both modes) -------------------------------
-  const currentPageIndex = isServerSide ? (page ?? 0) : table.getState().pagination.pageIndex;
-  const currentPageSize = isServerSide ? (pageSize ?? 10) : table.getState().pagination.pageSize;
+  /**
+   * Read pagination defensively.
+   *
+   * The state above now guarantees this object exists, so these fallbacks are
+   * belt-and-braces — but a table is the last place a null dereference should
+   * be able to blank a whole module, and the cost of the `?.` is nothing.
+   */
+  const tablePagination = table.getState().pagination;
+  const currentPageIndex = isServerSide ? (page ?? 0) : (tablePagination?.pageIndex ?? 0);
+  const currentPageSize = isServerSide ? (pageSize ?? 10) : (tablePagination?.pageSize ?? 10);
   const totalPages = isServerSide
     ? (total && pageSize ? Math.ceil(total / pageSize) : 0)
     : table.getPageCount();

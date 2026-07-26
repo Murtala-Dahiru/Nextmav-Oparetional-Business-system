@@ -746,6 +746,27 @@ CREATE POLICY projects_client_select ON projects FOR SELECT TO authenticated
   );
 
 /**
+ * A client may read the company record that *is* them.
+ *
+ * Easy to miss, and it broke the whole portal. The generated `companies_select`
+ * policy requires `can_access_module(organization_id, 'crm')`, and a client has
+ * no CRM access — correctly, since the CRM is the company's sales pipeline. But
+ * that also denied them the one row describing themselves, so the portal
+ * endpoint resolved their company id, failed to read the row, and returned
+ * "That client does not exist in this organization" — a 404 that looked like
+ * the link had not been made, when it had.
+ *
+ * Exactly one row: the company this login is attached to. Not the customer
+ * list, not sibling companies.
+ */
+DROP POLICY IF EXISTS companies_client_select ON companies;
+CREATE POLICY companies_client_select ON companies FOR SELECT TO authenticated
+  USING (
+    deleted_at IS NULL
+    AND id = public.auth_client_company_id(organization_id)
+  );
+
+/**
  * The roadmap is the client-facing artefact.
  *
  * Milestones are what a customer was promised, so the whole plan is visible —
@@ -1521,6 +1542,53 @@ JOIN profiles p         ON p.id = om.user_id
 LEFT JOIN departments d ON d.id = om.department_id
 WHERE om.is_active = true
   AND om.role <> 'client';
+
+/**
+ * The administration directory gains the client link.
+ *
+ * `v_org_directory` is what `/api/admin/users` returns and what the user
+ * management screen edits. Without `client_company_id` on it, the new client
+ * picker in that form had nothing to initialise from: a client already linked
+ * to a customer still rendered "Not linked yet", and saving the form would
+ * quietly unlink them. The contract harness caught exactly this — the screen
+ * declared a field the endpoint never sent.
+ *
+ * Appended rather than inserted, and via CREATE OR REPLACE rather than a drop:
+ * Postgres permits adding columns to the end of a view definition but not
+ * reordering or removing them, and a DROP would fail against dependents.
+ */
+CREATE OR REPLACE VIEW public.v_org_directory
+WITH (security_invoker = true) AS
+SELECT
+  om.id                AS member_id,
+  om.organization_id,
+  om.role,
+  om.employee_number,
+  om.employment_type,
+  om.hired_on,
+  om.is_active,
+  p.id                 AS user_id,
+  p.email,
+  p.full_name,
+  p.avatar_url,
+  p.job_title,
+  p.phone,
+  p.last_seen_at,
+  d.id                 AS department_id,
+  d.name               AS department_name,
+  mgr_p.full_name      AS manager_name,
+  om.manager_id,
+  om.status,
+  om.terminated_on,
+  p.force_password_change,
+  p.password_changed_at,
+  -- Added in 0016. Null for every employee; set only on client logins.
+  om.client_company_id
+FROM organization_members om
+JOIN profiles p              ON p.id = om.user_id
+LEFT JOIN departments d      ON d.id = om.department_id
+LEFT JOIN organization_members mgr ON mgr.id = om.manager_id
+LEFT JOIN profiles mgr_p     ON mgr_p.id = mgr.user_id;
 
 COMMENT ON VIEW public.v_assignable_members IS
   'Colleagues who can be assigned work or added to a project. The shape every '

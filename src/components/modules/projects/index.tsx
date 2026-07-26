@@ -77,9 +77,12 @@ interface Project {
   endDate: string | null;
   budget: number;
   ownerId: string;
+  /** The CRM company this project is for, and the whole basis of portal access. */
+  clientCompanyId: string | null;
   createdAt: string;
   updatedAt: string;
   owner?: { id: string; profiles?: { fullName: string; avatarUrl: string | null } };
+  client?: { id: string; name: string } | null;
   /**
    * Health metrics, merged in by the endpoint from `v_project_health`.
    *
@@ -743,6 +746,14 @@ function ProjectsTab() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<DirectoryMember[]>([]);
+  /**
+   * CRM companies, for the client picker.
+   *
+   * Read from the CRM rather than a separate client list: a client *is* a
+   * company in the CRM, and keeping a second directory of customers is how the
+   * two drift apart.
+   */
+  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
 
   /**
    * Which project's workspace is open, if any.
@@ -784,8 +795,22 @@ function ProjectsTab() {
   // Fetch users
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await apiFetch<DirectoryMember[]>('/api/directory');
-      setUsers(res.data || []);
+      const [dir, cos] = await Promise.all([
+        apiFetch<DirectoryMember[]>('/api/directory'),
+        /**
+         * Companies are best-effort.
+         *
+         * A role that can create projects but has no CRM access — `manager`
+         * holds projects at department scope and CRM only at `WRITE`, but a
+         * future role need not — should still get the project form. It simply
+         * cannot attach a client, and the picker says so rather than the whole
+         * dialog failing to populate.
+         */
+        apiFetch<{ id: string; name: string }[]>('/api/crm/companies?pageSize=100')
+          .catch(() => ({ data: [] as { id: string; name: string }[] })),
+      ]);
+      setUsers(dir.data || []);
+      setCompanies(cos.data || []);
     } catch {
       // silent
     }
@@ -800,6 +825,7 @@ function ProjectsTab() {
     defaultValues: {
       name: '', description: '', status: 'planning', priority: 'medium',
       startDate: null as any, endDate: null as any, budget: 0, ownerId: undefined,
+      clientCompanyId: null as any,
     },
   });
 
@@ -809,6 +835,7 @@ function ProjectsTab() {
     reset({
       name: '', description: '', status: 'planning', priority: 'medium',
       startDate: null as any, endDate: null as any, budget: 0, ownerId: undefined,
+      clientCompanyId: null as any,
     });
     setProjectDialogOpen(true);
   }, [reset]);
@@ -825,6 +852,9 @@ function ProjectsTab() {
       endDate: project.endDate ? project.endDate.slice(0, 10) : null as any,
       budget: project.budget,
       ownerId: project.ownerId,
+      // Carried into the edit form so opening a linked project and saving it
+      // does not silently unlink the client.
+      clientCompanyId: (project.clientCompanyId ?? null) as any,
     });
     setProjectDialogOpen(true);
   }, [reset]);
@@ -1168,6 +1198,53 @@ function ProjectsTab() {
                   )}
                 />
               </div>
+            </div>
+
+            {/*
+              ── The client, and what selecting one actually does ────────────
+
+              This is the link between the CRM and the client portal, and it
+              was the missing piece that made the portal look broken.
+              `projects.client_company_id` has existed since the first business
+              migration and every portal read resolves through it — but no form
+              ever set it, so it was null on every project and a client who
+              signed in correctly saw an empty portal.
+
+              Choosing a company here grants that customer's portal accounts
+              visibility of this project immediately: the RLS policy
+              `projects_client_select` matches on this column against
+              `auth_client_company_id()`. There is no separate permission to
+              grant and no second progress figure — the portal reads the same
+              `v_project_health` row the board does, so the two can never
+              disagree.
+            */}
+            <div className="space-y-2">
+              <Label>Client</Label>
+              <Controller
+                control={control}
+                name="clientCompanyId"
+                render={({ field }) => (
+                  <Select
+                    value={field.value || '_internal'}
+                    onValueChange={(v) => field.onChange(v === '_internal' ? null : v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Internal project — no client" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_internal">Internal — no client</SelectItem>
+                      {companies.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              <p className="text-xs text-muted-foreground">
+                {companies.length === 0
+                  ? 'No companies in the CRM yet — add one there to link a client.'
+                  : 'The client’s portal accounts see this project’s roadmap, progress and shared files as soon as it is linked.'}
+              </p>
             </div>
 
             {/* Delete button for editing */}

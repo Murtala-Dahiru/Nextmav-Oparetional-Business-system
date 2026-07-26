@@ -164,6 +164,7 @@ const emailA = `appverify-${run}-a@example.com`;
 const emailB = `appverify-${run}-b@example.com`;
 const PW = 'Passw0rd!verify';
 
+let chainClientUser;
 let userA, userB, userC, userD, userE, userF, provisionedUserId, teammateUserId;
 const A = makeClient(), B = makeClient(), C = makeClient();
 
@@ -1512,6 +1513,102 @@ try {
   check(Array.isArray(overview.body?.data?.risks),
     'risks are derived from the work, not a register somebody maintains by hand');
 
+  section('45. Client → CRM → Project → Portal, end to end');
+
+  /**
+   * The chain the product is built around, asserted as one path rather than as
+   * four separate features.
+   *
+   * Two links had to exist for any of it to work, and neither did:
+   * `createProjectSchema` omitted `clientCompanyId`, so the field was stripped
+   * before the request left the browser; and no endpoint accepted
+   * `client_company_id` on a membership, so a client login could never be
+   * attached to a customer. A client could sign in perfectly and see nothing.
+   *
+   * The last two assertions are the point of the whole design: the portal
+   * reads the same `v_project_health` row the internal board does, so progress
+   * and health cannot disagree between what the team sees and what the
+   * customer is told.
+   */
+  const chainCo = await A.json('/api/crm/companies', {
+    method: 'POST', body: JSON.stringify({ name: `Chain Client ${run}` }),
+  });
+  const chainCompanyId = chainCo.body?.data?.id;
+  check(!!chainCompanyId, 'a customer exists in the CRM');
+
+  const chainProject = await A.json('/api/projects/projects', {
+    method: 'POST',
+    body: JSON.stringify({ name: `Chain Project ${run}`, clientCompanyId: chainCompanyId, status: 'active' }),
+  });
+  check(chainProject.status === 201, `a project can be created against that client (${chainProject.status})`);
+  check(chainProject.body?.data?.clientCompanyId === chainCompanyId,
+    'and the link is persisted rather than silently dropped by the schema');
+  const chainProjectId = chainProject.body?.data?.id;
+
+  // Two phases, one complete, so progress is a real number rather than 0.
+  await A.json('/api/projects/milestones', {
+    method: 'POST', body: JSON.stringify({ projectId: chainProjectId, name: 'Phase one', stage: 'planning' }),
+  });
+  const chainPhase2 = await A.json('/api/projects/milestones', {
+    method: 'POST', body: JSON.stringify({ projectId: chainProjectId, name: 'Phase two', stage: 'development' }),
+  });
+  await A.json(`/api/projects/milestones/${chainPhase2.body?.data?.id}`, {
+    method: 'PATCH', body: JSON.stringify({ completed: true }),
+  });
+
+  const clientEmail = `chain-client-${run}@nexustest.dev`;
+  chainClientUser = await adminCreateUser(clientEmail, PW);
+  await A.json('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({ email: clientEmail, firstName: 'Cleo', lastName: 'Client', role: 'client' }),
+  });
+  const chainDir = await A.json('/api/admin/users?pageSize=100');
+  const chainMember = (chainDir.body?.data ?? []).find(u => u.email === clientEmail);
+  check(!!chainMember, 'the client account appears in the directory');
+
+  const chainLink = await A.json(`/api/admin/users/${chainMember?.memberId}`, {
+    method: 'PUT', body: JSON.stringify({ role: 'client', clientCompanyId: chainCompanyId }),
+  });
+  check(chainLink.ok, `the client login can be linked to the customer (${chainLink.status})`);
+
+  // The guard: this column means "the customer this login *is*", not "the
+  // customer this employee handles".
+  const chainBadLink = await A.json(`/api/admin/users/${teamMateId}`, {
+    method: 'PUT', body: JSON.stringify({ clientCompanyId: chainCompanyId }),
+  });
+  check(chainBadLink.status === 422,
+    `an employee cannot be linked to a customer (${chainBadLink.status})`);
+
+  const P = makeClient();
+  await P.json('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: clientEmail, password: PW }) });
+
+  const chainPortal = await P.json('/api/portal');
+  check(chainPortal.ok, `the client's portal resolves with no parameters (${chainPortal.status})`);
+  check(chainPortal.body?.data?.company?.id === chainCompanyId,
+    'and resolves to their own company — a client may read the one company row that is them');
+
+  const portalProject = (chainPortal.body?.data?.projects ?? [])
+    .find(p => p.projectId === chainProjectId);
+  check(!!portalProject, 'the linked project appears in their portal automatically');
+
+  const boardRows = await A.json('/api/projects/projects?pageSize=100');
+  const boardProject = (boardRows.body?.data ?? []).find(p => p.id === chainProjectId);
+  check(Number(boardProject?.progressPct) === Number(portalProject?.progressPct),
+    `internal and portal progress are the same number (${boardProject?.progressPct} vs ${portalProject?.progressPct})`);
+  check(boardProject?.health === portalProject?.health,
+    `and so is the health verdict (${boardProject?.health} vs ${portalProject?.health})`);
+
+  const portalDetail = await P.json(`/api/portal/projects/${chainProjectId}`);
+  check(portalDetail.ok, `the portal project detail loads (${portalDetail.status})`);
+  check((portalDetail.body?.data?.milestones ?? []).length === 2,
+    'the whole roadmap is shown, including the phase that is not done');
+
+  // Externals stay external.
+  const clientDirPeek = await P.json('/api/directory');
+  check(clientDirPeek.status === 403, `a client cannot enumerate staff (${clientDirPeek.status})`);
+  const clientTodoPeek = await P.json('/api/todos');
+  check(clientTodoPeek.status === 403, `nor reach the personal to-do module (${clientTodoPeek.status})`);
+
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);
@@ -1524,6 +1621,7 @@ try {
   if (userF?.id) await adminDeleteUser(userF.id);
   if (teammateUserId) await adminDeleteUser(teammateUserId);
   if (provisionedUserId) await adminDeleteUser(provisionedUserId);
+  if (chainClientUser?.id) await adminDeleteUser(chainClientUser.id);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);
