@@ -14,7 +14,9 @@
     "db:apply": "node scripts/db-apply.mjs",
     "db:verify": "node scripts/db-verify.mjs",
     "db:setup": "npm run db:check && npm run db:apply && npm run db:verify",
-    "app:verify": "node scripts/app-verify.mjs"
+    "app:verify": "node scripts/app-verify.mjs",
+    "contract:check": "node scripts/contract-check.mjs",
+    "verify:all": "npm run db:verify && npm run app:verify && npm run contract:check"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
