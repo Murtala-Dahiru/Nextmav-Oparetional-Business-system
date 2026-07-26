@@ -146,7 +146,7 @@ const emailA = `appverify-${run}-a@example.com`;
 const emailB = `appverify-${run}-b@example.com`;
 const PW = 'Passw0rd!verify';
 
-let userA, userB, userC, userD, userE, userF, provisionedUserId;
+let userA, userB, userC, userD, userE, userF, provisionedUserId, teammateUserId;
 const A = makeClient(), B = makeClient(), C = makeClient();
 
 try {
@@ -1135,6 +1135,187 @@ try {
   check(!!meMember && newShape.body?.data?.senderId === meMember,
     'and the sender is the caller, so ownership styling can be resolved');
 
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('33. A project has a team');
+  // `project_members` and its RLS policy shipped in the first migrations and
+  // no endpoint ever touched them, so a project had exactly one person — its
+  // owner — and no way to record that several people were working on it.
+
+  const teamProject = await A.json('/api/projects/projects', {
+    method: 'POST',
+    body: JSON.stringify({ name: `Team project ${run}`, startDate: '2026-07-01', endDate: '2030-12-31' }),
+  });
+  const teamProjectId = teamProject.body?.data?.id;
+
+  const teamMate = await A.json('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: `teammate-${run}@example.com`, firstName: 'Bola', lastName: 'Dev', role: 'employee',
+    }),
+  });
+  teammateUserId = teamMate.body?.data?.member?.userId;
+  const teamMateId = teamMate.body?.data?.member?.id;
+
+  const added = await A.json('/api/projects/members', {
+    method: 'POST',
+    body: JSON.stringify({ projectId: teamProjectId, memberId: teamMateId, role: 'lead', allocationPct: 60 }),
+  });
+  check(added.status === 201, `someone can be added to a project (${added.status})`,
+    added.body?.error?.message);
+  check(added.body?.data?.role === 'lead' && added.body?.data?.allocationPct === 60,
+    'with a project role and an allocation');
+  check(!!added.body?.data?.member?.profiles,
+    'and resolves to a real person rather than an id');
+
+  const addedTwice = await A.json('/api/projects/members', {
+    method: 'POST',
+    body: JSON.stringify({ projectId: teamProjectId, memberId: teamMateId, role: 'contributor' }),
+  });
+  check(addedTwice.status === 409, `the same person cannot be added twice (${addedTwice.status})`);
+
+  const badProjectRole = await A.json('/api/projects/members', {
+    method: 'POST',
+    body: JSON.stringify({ projectId: teamProjectId, memberId: teamMateId, role: 'wizard' }),
+  });
+  check(badProjectRole.status === 422, `an invented project role is refused (${badProjectRole.status})`);
+
+  section('34. A project has a roadmap');
+  // `milestones` was in the same state, with tasks.milestone_id pointing at a
+  // table nothing could write to.
+
+  const phases = ['Design complete', 'Build complete', 'Launch'];
+  const phaseIds = [];
+  for (let i = 0; i < phases.length; i++) {
+    const m = await A.json('/api/projects/milestones', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: teamProjectId, name: phases[i],
+        dueDate: `2030-0${i + 1}-01`, sortOrder: i, ownerId: teamMateId,
+      }),
+    });
+    phaseIds.push(m.body?.data?.id);
+    if (i === 0) {
+      check(m.status === 201, `a milestone can be created (${m.status})`, m.body?.error?.message);
+      check(!!m.body?.data?.owner?.profiles, 'with an owner who is accountable for it');
+    }
+  }
+
+  const roadmap = await A.json(`/api/projects/milestones?projectId=${teamProjectId}`);
+  const order = (roadmap.body?.data ?? []).map(m => m.name);
+  check(order[0] === 'Design complete' && order[2] === 'Launch',
+    `the roadmap reads first phase first (${order.join(' -> ')})`);
+
+  section('35. Finishing a phase moves the project and tells the team');
+
+  const beforePhase = ((await A.json('/api/projects/projects?pageSize=100')).body?.data ?? [])
+    .find(p => p.id === teamProjectId);
+  check(beforePhase?.totalMilestones === 3,
+    `the board is told how many phases there are (${beforePhase?.totalMilestones})`);
+  check(beforePhase?.progressPct === 0, `and that none are done yet (${beforePhase?.progressPct}%)`);
+
+  const completed = await A.json(`/api/projects/milestones/${phaseIds[0]}`, {
+    method: 'PATCH', body: JSON.stringify({ completed: true }),
+  });
+  check(completed.ok, `a phase can be marked complete (${completed.status})`);
+  check(!!completed.body?.data?.completedAt, 'and the server stamps when, not the client');
+
+  const afterPhase = ((await A.json('/api/projects/projects?pageSize=100')).body?.data ?? [])
+    .find(p => p.id === teamProjectId);
+  check(afterPhase?.progressPct === 33.3,
+    `progress follows the plan, not the task list (${afterPhase?.progressPct}%)`);
+  check(afterPhase?.completedMilestones === 1, 'and reports which phases are done');
+
+  // Reopening clears the stamp, so a mis-click does not leave a false date.
+  const reopened = await A.json(`/api/projects/milestones/${phaseIds[0]}`, {
+    method: 'PATCH', body: JSON.stringify({ completed: false }),
+  });
+  check(reopened.body?.data?.completedAt === null, 'reopening a phase clears its completion date');
+  await A.json(`/api/projects/milestones/${phaseIds[0]}`, {
+    method: 'PATCH', body: JSON.stringify({ completed: true }),
+  });
+
+  section('36. Personal tasks, for people with no project');
+  // tasks.project_id has always been nullable so this could exist, but the
+  // endpoint demanded `create` on projects — which the `employee` role does
+  // not hold. Ordinary staff could not create a task at all.
+
+  const mateTempPassword = teamMate.body?.data?.temporaryPassword;
+  const M = makeClient();
+  await M.json('/api/auth/login', {
+    method: 'POST', body: JSON.stringify({ email: `teammate-${run}@example.com`, password: mateTempPassword }),
+  });
+  await M.json('/api/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword: mateTempPassword, newPassword: 'Passw0rd!teammate' }),
+  });
+  const M2 = makeClient();
+  await M2.json('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: `teammate-${run}@example.com`, password: 'Passw0rd!teammate' }),
+  });
+
+  const personal = await M2.json('/api/projects/tasks', {
+    method: 'POST', body: JSON.stringify({ title: 'Prepare monthly report', priority: 'medium' }),
+  });
+  check(personal.status === 201,
+    `an employee can keep their own task list (${personal.status})`, personal.body?.error?.message);
+  check(personal.body?.data?.projectId === null, 'the task belongs to no project');
+  check(!!personal.body?.data?.assigneeId, 'and is assigned to them automatically');
+
+  const hijack = await M2.json('/api/projects/tasks', {
+    method: 'POST',
+    body: JSON.stringify({ title: 'Your problem now', assigneeId: teamMateId === undefined ? null : '00000000-0000-0000-0000-000000000001' }),
+  });
+  check(hijack.status === 403 || hijack.status === 422,
+    `a personal task cannot be pushed onto someone else (${hijack.status})`);
+
+  // The teammate should have heard about both the project and the phase.
+  const mateNotes = await M2.json('/api/admin/notifications');
+  const noteTypes = (mateNotes.body?.data ?? []).map(n => n.type);
+  check(noteTypes.includes('project_assigned'),
+    `being added to a project notifies them (${noteTypes.join(', ') || 'none'})`);
+  check(noteTypes.includes('milestone_completed'),
+    'and so does a phase completing');
+
+  section('37. The roadmap keeps the work when a phase is dropped');
+
+  const phaseTask = await A.json('/api/projects/tasks', {
+    method: 'POST',
+    body: JSON.stringify({ title: 'Wireframes', projectId: teamProjectId, milestoneId: phaseIds[1] }),
+  });
+  check(phaseTask.status === 201, `a task can be filed under a phase (${phaseTask.status})`,
+    phaseTask.body?.error?.message);
+
+  const crossProject = await A.json('/api/projects/tasks', {
+    method: 'POST',
+    body: JSON.stringify({ title: 'Wrong phase', projectId: madeProject.body?.data?.id, milestoneId: phaseIds[2] }),
+  });
+  check(crossProject.status === 422,
+    `a task cannot be filed under another project's phase (${crossProject.status})`);
+
+  const droppedPhase = await A.json(`/api/projects/milestones/${phaseIds[1]}`, { method: 'DELETE' });
+  check(droppedPhase.ok, `a phase can be removed from the plan (${droppedPhase.status})`);
+
+  const orphan = ((await A.json('/api/projects/tasks?pageSize=100')).body?.data ?? [])
+    .find(t => t.id === phaseTask.body?.data?.id);
+  check(!!orphan, 'its tasks survive — dropping a phase is not deleting the work');
+  check(orphan?.milestoneId === null, 'and are detached rather than left pointing at nothing');
+
+  section('38. The new routes are tenant-scoped');
+
+  const outsiderTeam = await B.json(`/api/projects/members?projectId=${teamProjectId}`);
+  check(outsiderTeam.status === 404, `B cannot read A's project team (${outsiderTeam.status})`);
+
+  const outsiderPhase = await B.json(`/api/projects/milestones/${phaseIds[2]}`);
+  check(outsiderPhase.status === 404, `B cannot read A's roadmap (${outsiderPhase.status})`);
+
+  const outsiderJoin = await B.json('/api/projects/members', {
+    method: 'POST',
+    body: JSON.stringify({ projectId: teamProjectId, memberId: teamMateId, role: 'manager' }),
+  });
+  check(outsiderJoin.status === 404, `B cannot put anyone on A's project (${outsiderJoin.status})`);
+
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);
@@ -1145,6 +1326,7 @@ try {
   if (userD?.id) await adminDeleteUser(userD.id);
   if (userE?.id) await adminDeleteUser(userE.id);
   if (userF?.id) await adminDeleteUser(userF.id);
+  if (teammateUserId) await adminDeleteUser(teammateUserId);
   if (provisionedUserId) await adminDeleteUser(provisionedUserId);
 }
 

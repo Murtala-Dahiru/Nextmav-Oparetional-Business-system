@@ -137,6 +137,7 @@ const CALENDAR = 'src/components/modules/calendar/index.tsx';
 const NOT_ON_THE_WIRE = {
   // Merged by the projects endpoint from v_project_health.
   Project: ['totalTasks', 'completedTasks', 'blockedTasks', 'overdueTasks',
+            'totalMilestones', 'completedMilestones', 'overdueMilestones',
             'progressPct', 'daysRemaining', 'isAtRisk'],
   // Derived in the channel list from the most recent message.
   ChannelWithLastMessage: ['lastMessage', 'lastMessageSender', 'unreadCount'],
