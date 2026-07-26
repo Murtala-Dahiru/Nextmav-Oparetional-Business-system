@@ -175,7 +175,15 @@ GROUP BY d.organization_id, d.owner_id, p.full_name;
  * deadline is close and the work is not proportionally done. Computing it here
  * means every surface flags the same projects.
  */
-CREATE OR REPLACE VIEW public.v_project_health
+-- Dropped first rather than replaced, for the same reason as v_org_directory
+-- above: `db:apply` re-runs every migration, and 0015 extends this view with
+-- milestone columns. On the second run this statement would be replacing a
+-- wider view with a narrower one, which Postgres refuses with "cannot drop
+-- columns from view". Recreating from scratch keeps the chain re-runnable;
+-- 0015 then re-applies its own definition afterwards.
+DROP VIEW IF EXISTS public.v_project_health;
+
+CREATE VIEW public.v_project_health
 WITH (security_invoker = true) AS
 SELECT
   pr.organization_id,

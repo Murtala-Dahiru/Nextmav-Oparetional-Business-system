@@ -72,7 +72,7 @@ export async function GET(req: Request) {
 
   const { data: health } = await ctx.supabase
     .from('v_project_health')
-    .select('project_id, total_tasks, completed_tasks, blocked_tasks, overdue_tasks, progress_pct, days_remaining, logged_hours, is_at_risk')
+    .select('project_id, total_tasks, completed_tasks, blocked_tasks, overdue_tasks, total_milestones, completed_milestones, overdue_milestones, progress_pct, days_remaining, logged_hours, is_at_risk')
     .in('project_id', rows.map(r => r.id));
 
   const byId = new Map((health ?? []).map((h: any) => [h.project_id, h]));
@@ -90,6 +90,11 @@ export async function GET(req: Request) {
           completedTasks: h?.completed_tasks ?? 0,
           blockedTasks: h?.blocked_tasks ?? 0,
           overdueTasks: h?.overdue_tasks ?? 0,
+          // Added in 0015. A project run to a plan reports progress from its
+          // phases; one without milestones still reports it from tasks.
+          totalMilestones: h?.total_milestones ?? 0,
+          completedMilestones: h?.completed_milestones ?? 0,
+          overdueMilestones: h?.overdue_milestones ?? 0,
           progressPct: h?.progress_pct ?? 0,
           daysRemaining: h?.days_remaining ?? null,
           loggedHours: h?.logged_hours ?? 0,

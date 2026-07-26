@@ -89,6 +89,9 @@ interface Project {
   completedTasks?: number;
   blockedTasks?: number;
   overdueTasks?: number;
+  totalMilestones?: number;
+  completedMilestones?: number;
+  overdueMilestones?: number;
   progressPct?: number;
   daysRemaining?: number | null;
   isAtRisk?: boolean;
