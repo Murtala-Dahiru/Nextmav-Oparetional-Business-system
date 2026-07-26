@@ -11,6 +11,19 @@ export const { GET } = collectionHandlers(
     searchColumns: ['title', 'description'],
     sortable: ['created_at', 'updated_at', 'title', 'status', 'priority', 'due_date', 'sort_order'],
     filterable: ['status', 'priority', 'project_id', 'assignee_id', 'milestone_id'],
+    /**
+     * `?assignedToMe=true` — the caller's own work.
+     *
+     * Expressed here rather than left to the client passing its own
+     * `assigneeId`, because the client would have to know its membership id.
+     * That is available in the session, but every screen resolving it
+     * independently is how "my tasks" ends up meaning slightly different
+     * things on the dashboard, in My Work and in the projects board.
+     */
+    scope: (q, ctx, url) =>
+      url.searchParams.get('assignedToMe') === 'true'
+        ? q.eq('assignee_id', ctx.org.memberId)
+        : q,
   },
   { table: 'tasks', module: 'projects', select: SELECT },
 );

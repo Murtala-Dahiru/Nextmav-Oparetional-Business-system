@@ -1,6 +1,7 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
+import { ROADMAP_STAGES } from '@/lib/constants';
 
 const SELECT =
   '*, project:projects(id, name, status), ' +
@@ -46,16 +47,49 @@ export async function PATCH(req: Request, { params }: Params) {
     const b = acceptBody(await req.json());
     const update: Record<string, any> = {};
 
-    for (const k of ['name', 'description', 'due_date', 'owner_id', 'sort_order', 'project_id'] as const) {
+    for (const k of [
+      'name', 'description', 'due_date', 'owner_id', 'sort_order', 'project_id',
+      // Added with the roadmap in 0016.
+      'start_date', 'stage', 'progress_pct',
+    ] as const) {
       if (!(k in b)) continue;
       if (k === 'name') {
         if (!String(b.name ?? '').trim()) return error('Milestone name cannot be empty', 422, 'VALIDATION_ERROR');
         update.name = String(b.name).trim();
       } else if (k === 'sort_order') {
         update.sort_order = Number(b.sort_order) || 0;
+      } else if (k === 'progress_pct') {
+        update.progress_pct = Math.min(100, Math.max(0, Number(b.progress_pct) || 0));
+      } else if (k === 'stage') {
+        /**
+         * Moving a phase along the roadmap.
+         *
+         * Rejected with the valid list rather than left to the CHECK
+         * constraint, whose message names the constraint and not the mistake.
+         *
+         * Dragging a milestone into 'completed' is accepted and treated as
+         * completing it — the trigger in 0016 keeps `stage` and `completed_at`
+         * consistent in both directions, but it only fires on `completed_at`,
+         * so the translation has to happen here for the drag to mean anything.
+         */
+        const stage = String(b.stage ?? '');
+        if (!(ROADMAP_STAGES as readonly string[]).includes(stage)) {
+          return error(
+            `"${stage}" is not a roadmap phase. Expected one of: ${ROADMAP_STAGES.join(', ')}.`,
+            422, 'INVALID_STAGE',
+          );
+        }
+        update.stage = stage;
+        if (stage === 'completed' && !('completed' in b)) {
+          update.completed_at = new Date().toISOString();
+        }
       } else {
         update[k] = b[k] || null;
       }
+    }
+
+    if (update.start_date && update.due_date && update.due_date < update.start_date) {
+      return error('A phase cannot be due before it starts', 422, 'VALIDATION_ERROR');
     }
 
     if ('completed' in b) {

@@ -1,5 +1,14 @@
 export const MODULES = [
   { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
+  /**
+   * A person's own to-do list.
+   *
+   * Sits immediately after the dashboard because it is the screen most people
+   * open first and return to all day. Deliberately separate from `projects`:
+   * that module is where the organization plans and assigns work, this is
+   * where an individual organises their own.
+   */
+  { id: 'mywork', label: 'My Work', icon: 'CheckSquare' },
   { id: 'crm', label: 'CRM', icon: 'Users' },
   { id: 'projects', label: 'Projects', icon: 'FolderKanban' },
   { id: 'workspace', label: 'Workspace', icon: 'BookOpen' },
@@ -9,6 +18,11 @@ export const MODULES = [
   { id: 'finance', label: 'Finance', icon: 'DollarSign' },
   { id: 'inventory', label: 'Inventory', icon: 'Package' },
   { id: 'calendar', label: 'Calendar', icon: 'Calendar' },
+  /**
+   * The client portal. For a client this is the entire product; for staff it
+   * is a preview of what a given customer sees.
+   */
+  { id: 'portal', label: 'Client Portal', icon: 'Building2' },
   { id: 'admin', label: 'Admin', icon: 'Settings' },
 ] as const;
 
@@ -28,16 +42,24 @@ export const ROLES = [
 
 export type RoleId = (typeof ROLES)[number]['id'];
 
+/**
+ * Legacy module map, kept for anything still importing it.
+ *
+ * `lib/permissions.ts` is the source of truth for access; this duplicates a
+ * subset of it and is not consulted by `authorize()`. Left in place so an
+ * older import does not break, and kept in step so the two never disagree
+ * visibly.
+ */
 export const ROLE_PERMISSIONS: Record<RoleId, ModuleId[]> = {
-  owner: ['dashboard', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar', 'admin'],
-  administrator: ['dashboard', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar', 'admin'],
-  manager: ['dashboard', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar'],
-  employee: ['dashboard', 'projects', 'workspace', 'communication', 'hr', 'calendar'],
-  hr_staff: ['dashboard', 'hr', 'workspace', 'communication', 'calendar'],
-  finance_staff: ['dashboard', 'finance', 'workspace', 'communication', 'calendar'],
-  sales_staff: ['dashboard', 'crm', 'workspace', 'communication', 'calendar'],
-  support_staff: ['dashboard', 'support', 'workspace', 'communication', 'calendar'],
-  client: ['dashboard', 'support', 'projects'],
+  owner: ['dashboard', 'mywork', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar', 'portal', 'admin'],
+  administrator: ['dashboard', 'mywork', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar', 'portal', 'admin'],
+  manager: ['dashboard', 'mywork', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar', 'portal'],
+  employee: ['dashboard', 'mywork', 'projects', 'workspace', 'communication', 'hr', 'calendar'],
+  hr_staff: ['dashboard', 'mywork', 'hr', 'workspace', 'communication', 'calendar'],
+  finance_staff: ['dashboard', 'mywork', 'finance', 'workspace', 'communication', 'calendar'],
+  sales_staff: ['dashboard', 'mywork', 'crm', 'workspace', 'communication', 'calendar', 'portal'],
+  support_staff: ['dashboard', 'mywork', 'support', 'workspace', 'communication', 'calendar'],
+  client: ['portal', 'support'],
 };
 
 /**
@@ -58,6 +80,25 @@ export const TICKET_PRIORITIES = ['low', 'medium', 'high', 'critical'] as const;
 export const TICKET_STATUSES = ['open', 'in_progress', 'pending', 'resolved', 'closed'] as const;
 export const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'partially_paid', 'overdue', 'cancelled', 'refunded'] as const;
 export const EXPENSE_CATEGORIES = ['general', 'travel', 'office', 'software', 'marketing', 'equipment', 'training'] as const;
+
+/**
+ * Delivery phases, in the order work moves through them.
+ *
+ * Must match the `milestones_stage_valid` CHECK constraint in
+ * supabase/migrations/0016. The database is what guarantees the set; this is
+ * so the roadmap columns and the endpoint's validation cannot disagree with
+ * each other about the order or the spelling.
+ */
+export const ROADMAP_STAGES = [
+  'planning', 'development', 'testing', 'review', 'deployment', 'completed',
+] as const;
+
+export type RoadmapStage = (typeof ROADMAP_STAGES)[number];
+
+/** Roles a person holds *on a project*, distinct from their organisation role. */
+export const PROJECT_ROLES = ['manager', 'lead', 'contributor', 'reviewer', 'observer'] as const;
+
+export type ProjectRole = (typeof PROJECT_ROLES)[number];
 
 /**
  * Display labels for enum values.

@@ -32,13 +32,25 @@ export interface CurrentUser {
   capabilities?: CapabilitySummary;
 }
 
-interface Notification {
+/**
+ * A notification as the API returns it.
+ *
+ * `body` rather than `message`: the column is `notifications.body`, and the
+ * store previously declared `message`, which is one reason nothing ever
+ * rendered even once rows existed — the header read a field the endpoint does
+ * not send. `entityType`/`entityId` are what make a notification clickable;
+ * `link` is the pre-built destination where a trigger knew one.
+ */
+export interface Notification {
   id: string;
   type: string;
   title: string;
-  message: string;
-  link: string;
+  body: string;
+  link: string | null;
+  entityType: string | null;
+  entityId: string | null;
   isRead: boolean;
+  readAt: string | null;
   createdAt: string;
 }
 
@@ -74,11 +86,25 @@ interface AppState {
   sidebarOpen: boolean;
   searchOpen: boolean;
   
-  // Notifications
+  /**
+   * Notifications.
+   *
+   * The array, the badge count and the actions that change them. Previously
+   * only `notifications` and `setNotifications` existed and nothing ever
+   * called the setter, so the bell rendered "No notifications yet" for every
+   * user for the life of the application — while the table filled up and the
+   * endpoint worked perfectly.
+   */
   notifications: Notification[];
+  /** Unread across the whole tray, not just the page that was fetched. */
+  unreadTotal: number;
+  notificationsLoading: boolean;
   setNotifications: (n: Notification[]) => void;
   unreadCount: () => number;
-  
+  fetchNotifications: () => Promise<void>;
+  markNotificationsRead: (ids?: string[]) => Promise<void>;
+  dismissNotification: (id: string) => Promise<void>;
+
   /**
    * The signed-in user's role, resolved by the server from the session.
    *
@@ -139,9 +165,89 @@ export const useAppStore = create<AppState>((set, get) => ({
   
   // Notifications
   notifications: [],
+  unreadTotal: 0,
+  notificationsLoading: false,
   setNotifications: (n) => set({ notifications: n }),
-  unreadCount: () => get().notifications.filter(n => !n.isRead).length,
-  
+  unreadCount: () => get().unreadTotal,
+
+  fetchNotifications: async () => {
+    // Nothing to fetch before the session resolves, and calling it then just
+    // produces a 401 in the console on every page load.
+    if (!get().isAuthenticated) return;
+
+    set({ notificationsLoading: true });
+    try {
+      const res = await fetch('/api/notifications?pageSize=20');
+      const json = await res.json();
+      if (json?.error) throw new Error(json.error.message);
+
+      set({
+        notifications: json?.data ?? [],
+        // The server counts unread across the whole tray. Deriving it from the
+        // fetched page would cap the badge at the page size and quietly
+        // under-report once someone has more than twenty unread.
+        unreadTotal: Number(json?.meta?.unread ?? 0),
+        notificationsLoading: false,
+      });
+    } catch (e) {
+      // Deliberately quiet. A failed poll is not worth a toast every thirty
+      // seconds; the tray simply keeps showing what it last had.
+      console.error('Fetch notifications failed:', e);
+      set({ notificationsLoading: false });
+    }
+  },
+
+  markNotificationsRead: async (ids) => {
+    const before = get().notifications;
+    const beforeTotal = get().unreadTotal;
+
+    // Applied locally first: a bell badge that waits for a round trip before
+    // clearing feels broken, and the request almost never fails.
+    set({
+      notifications: before.map(n =>
+        !ids || ids.includes(n.id) ? { ...n, isRead: true } : n,
+      ),
+      unreadTotal: ids
+        ? Math.max(0, beforeTotal - before.filter(n => ids.includes(n.id) && !n.isRead).length)
+        : 0,
+    });
+
+    try {
+      const res = await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: ids ?? [] }),
+      });
+      const json = await res.json();
+      if (json?.error) throw new Error(json.error.message);
+    } catch (e) {
+      // Put it back. Showing them as read when the server still has them
+      // unread means they vanish from the tray and are never seen again.
+      console.error('Mark read failed:', e);
+      set({ notifications: before, unreadTotal: beforeTotal });
+    }
+  },
+
+  dismissNotification: async (id) => {
+    const before = get().notifications;
+    const beforeTotal = get().unreadTotal;
+    const target = before.find(n => n.id === id);
+
+    set({
+      notifications: before.filter(n => n.id !== id),
+      unreadTotal: target && !target.isRead ? Math.max(0, beforeTotal - 1) : beforeTotal,
+    });
+
+    try {
+      const res = await fetch(`/api/notifications?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const json = await res.json();
+      if (json?.error) throw new Error(json.error.message);
+    } catch (e) {
+      console.error('Dismiss failed:', e);
+      set({ notifications: before, unreadTotal: beforeTotal });
+    }
+  },
+
   // Navigation actions
   setActiveModule: (m) => {
     // Guard the transition itself: a stale link, command-palette entry or

@@ -135,6 +135,38 @@ export async function getContext(
 }
 
 /**
+ * Guard a route handler that needs a signed-in user but no particular module.
+ *
+ *     const ctx = await authenticate();
+ *     if (ctx instanceof Response) return ctx;
+ *
+ * For endpoints whose subject is the *person* rather than a module: their own
+ * notification tray, their own profile, their own to-do list. Those are not
+ * module permissions and forcing them through one produces the wrong answer
+ * in both directions — either a role is denied its own notifications because
+ * it happens to lack `dashboard`, or a module grant is widened to let it read
+ * something unrelated.
+ *
+ * Carries the same password-change gate as `authorize()`, so an account still
+ * holding an administrator-issued password cannot use these either.
+ */
+export async function authenticate(
+  opts: { organizationId?: string } = {},
+): Promise<RequestContext | Response> {
+  const ctx = await getContext(opts.organizationId);
+  if (!ctx) return error('Authentication required', 401, 'UNAUTHENTICATED');
+
+  if (ctx.user.mustChangePassword) {
+    return error(
+      'You must choose a new password before continuing.',
+      403, 'PASSWORD_CHANGE_REQUIRED',
+    );
+  }
+
+  return ctx;
+}
+
+/**
  * Guard a route handler.
  *
  *     const ctx = await authorize('finance', 'create');

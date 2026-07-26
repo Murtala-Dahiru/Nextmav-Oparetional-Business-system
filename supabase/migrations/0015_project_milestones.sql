@@ -43,7 +43,9 @@ CREATE INDEX IF NOT EXISTS idx_milestones_owner
 -- thing and the projects endpoint still reads it — and gains the milestone
 -- counts alongside. Existing readers are unaffected.
 
-DROP VIEW IF EXISTS public.v_project_health;
+-- CASCADE: see the note in 0007. v_client_portal_projects (0016) depends on
+-- this view, and is recreated by 0016 after this runs.
+DROP VIEW IF EXISTS public.v_project_health CASCADE;
 
 CREATE VIEW public.v_project_health
 WITH (security_invoker = true) AS

@@ -61,6 +61,15 @@ const READ: readonly Action[] = ['view'];
 function baseWorkplaceGrants(): RoleGrants {
   return {
     dashboard: { actions: READ, scope: 'own' },
+    /**
+     * Your own to-do list.
+     *
+     * Full rights at `own` scope for every internal role, because there is
+     * nothing here to restrict: the records are private by construction and
+     * the RLS policy admits only their owner. A role that could not create
+     * its own to-dos would simply have a broken screen.
+     */
+    mywork: { actions: FULL, scope: 'own' },
     // Own tasks and the projects they are assigned to.
     projects: { actions: ['view', 'edit'], scope: 'own' },
     workspace: { actions: WRITE, scope: 'organization' },
@@ -97,6 +106,9 @@ export const ROLE_GRANTS: Record<RoleId, RoleGrants> = {
     support: { actions: WRITE, scope: 'department' },
     inventory: { actions: READ, scope: 'organization' },
     calendar: { actions: WRITE, scope: 'department' },
+    // Preview only: what does this customer actually see? Read-only, because
+    // the portal is a rendering of other modules' data, not a place to edit.
+    portal: { actions: READ, scope: 'department' },
   },
 
   employee: baseWorkplaceGrants(),
@@ -125,6 +137,9 @@ export const ROLE_GRANTS: Record<RoleId, RoleGrants> = {
     crm: { actions: WRITE, scope: 'own' },
     // Product catalogue and availability, to quote accurately.
     inventory: { actions: READ, scope: 'organization' },
+    // An account manager is usually the person a client asks "what can you
+    // see?", so they need to be able to look.
+    portal: { actions: READ, scope: 'own' },
   },
 
   support_staff: {
@@ -139,8 +154,27 @@ export const ROLE_GRANTS: Record<RoleId, RoleGrants> = {
    * directory, no visibility of anyone else's records.
    */
   client: {
-    dashboard: { actions: READ, scope: 'own' },
+    /**
+     * The portal is the client's entire product.
+     *
+     * `create` alongside `view` covers exactly one write: replying on their
+     * own project's thread. The RLS policy `comments_client_insert` is what
+     * confines it to that — this grant only decides whether the endpoint is
+     * reachable at all.
+     */
+    portal: { actions: ['view', 'create'], scope: 'own' },
     support: { actions: ['view', 'create'], scope: 'own' },
+    /**
+     * Read-only, and only their own.
+     *
+     * Kept because the portal endpoints are guarded on `projects.view`; the
+     * database is what restricts the rows to projects belonging to their
+     * company, via `auth_client_company_id()`.
+     *
+     * Note there is no `dashboard`: a client has no internal dashboard to
+     * land on, and granting one produced an empty screen as their home page.
+     * `defaultModuleFor()` sends them to the portal instead.
+     */
     projects: { actions: READ, scope: 'own' },
   },
 };
@@ -212,8 +246,16 @@ export function allowedModules(role: RoleId): ModuleId[] {
   return MODULES.map(m => m.id).filter(id => canAccessModule(role, id));
 }
 
-/** Where a role should land after signing in. */
+/**
+ * Where a role should land after signing in.
+ *
+ * External roles go to the portal, which is the whole of their product —
+ * falling through to `allowedModules(role)[0]` would send a client to the
+ * projects module, whose UI is built for staff and which they can only read a
+ * sliver of.
+ */
 export function defaultModuleFor(role: RoleId): ModuleId {
+  if (isExternalRole(role) && canAccessModule(role, 'portal')) return 'portal';
   return canAccessModule(role, 'dashboard') ? 'dashboard' : (allowedModules(role)[0] ?? 'dashboard');
 }
 
