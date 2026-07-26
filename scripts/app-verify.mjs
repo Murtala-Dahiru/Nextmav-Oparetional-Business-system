@@ -1000,6 +1000,141 @@ try {
     'the summary reaches meta — it was computed and then discarded');
   check(typeof meta.expectedDays === 'number' && meta.expectedDays > 0,
     `expected working days are reported (${meta.expectedDays})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('28. No placeholder identifiers reach the database');
+  // Ownership fields defaulted to the literal string 'u1', left over from
+  // before authentication existed. Every uuid column rejected it, and because
+  // the placeholder is truthy it also overrode the server-side default the
+  // routes already apply.
+
+  const withPlaceholder = await A.json('/api/crm/leads', {
+    method: 'POST',
+    body: JSON.stringify({ firstName: 'Placeholder', lastName: 'Probe', ownerId: 'u1' }),
+  });
+  check(withPlaceholder.status === 422,
+    `a non-uuid owner is refused rather than reaching Postgres (${withPlaceholder.status})`);
+
+  const withoutOwner = await A.json('/api/crm/leads', {
+    method: 'POST',
+    body: JSON.stringify({ firstName: 'Server', lastName: 'Assigned' }),
+  });
+  check(withoutOwner.status === 201, `an omitted owner is accepted (${withoutOwner.status})`);
+  check(!!withoutOwner.body?.data?.ownerId,
+    'and the server assigns the caller, which is what the forms now rely on');
+
+  section('29. CRM saves what the form collects');
+  // The lead form sent company/title/value; the columns are
+  // company_name/job_title/estimated_value. All three were dropped on every
+  // save and the API still answered 201, so the loss was invisible.
+
+  const lead29 = await A.json('/api/crm/leads', {
+    method: 'POST',
+    body: JSON.stringify({
+      firstName: 'Chidi', lastName: 'Okeke',
+      companyName: 'Zenith Ltd', jobTitle: 'CTO', estimatedValue: 750000,
+      status: 'qualified', score: 80,
+    }),
+  });
+  const L29 = lead29.body?.data ?? {};
+  check(L29.companyName === 'Zenith Ltd', `the lead's company is stored (${L29.companyName})`);
+  check(L29.jobTitle === 'CTO', `the lead's job title is stored (${L29.jobTitle})`);
+  check(L29.estimatedValue === 750000, `the lead's value is stored (${L29.estimatedValue})`);
+
+  const dealCo = await A.json('/api/crm/companies', {
+    method: 'POST', body: JSON.stringify({ name: `Dangote ${run}` }),
+  });
+  const dealCt = await A.json('/api/crm/contacts', {
+    method: 'POST',
+    body: JSON.stringify({ firstName: 'Ngozi', lastName: 'Eze', companyId: dealCo.body?.data?.id }),
+  });
+  check(dealCt.body?.data?.companyId === dealCo.body?.data?.id,
+    'a contact links to its company by id');
+
+  const deal29 = await A.json('/api/crm/deals', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'Supply contract', value: 5000000, stage: 'proposal', probability: 60,
+      expectedClose: '2030-12-31',
+      companyId: dealCo.body?.data?.id, contactId: dealCt.body?.data?.id,
+    }),
+  });
+  const D29 = deal29.body?.data ?? {};
+  check(!!D29.expectedClose, `the deal's close date is stored (${D29.expectedClose})`);
+  check(D29.company?.name === `Dangote ${run}`, 'and it reads back with its company');
+  check(D29.contact?.firstName === 'Ngozi', 'and with its contact');
+
+  section('30. Money is recorded in the organization currency');
+  // Invoices and expenses hardcoded 'USD', so a naira workspace stored every
+  // record in dollars while the screen showed naira.
+
+  const ngnInvoice = await A.json('/api/finance/invoices', {
+    method: 'POST',
+    body: JSON.stringify({
+      companyId: dealCo.body?.data?.id,
+      lineItems: [{ description: 'Consulting', quantity: 1, unitPrice: 100000 }],
+      dueDate: '2030-01-01',
+    }),
+  });
+  check(ngnInvoice.body?.data?.currency === 'NGN',
+    `an invoice is stored in the organization currency (${ngnInvoice.body?.data?.currency})`);
+
+  const ngnExpense = await A.json('/api/finance/expenses', {
+    method: 'POST',
+    body: JSON.stringify({ title: 'Fuel', amount: 25000, category: 'travel', expenseDate: '2026-07-01' }),
+  });
+  check(ngnExpense.body?.data?.currency === 'NGN',
+    `an expense is too (${ngnExpense.body?.data?.currency})`);
+
+  section('31. The project board is given real progress');
+  // v_project_health has computed these since 0007 and nothing read it; the
+  // board derived progress from fields the endpoint never returned, so every
+  // project showed 0 tasks and 0%.
+
+  const board = await A.json('/api/projects/projects', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: `Rollout ${run}`, budget: 12000000, status: 'active',
+      startDate: '2026-07-01', endDate: '2030-12-31',
+    }),
+  });
+  const boardId = board.body?.data?.id;
+  for (const [title, status] of [['Design', 'done'], ['Build', 'in_progress'], ['Test', 'todo']]) {
+    await A.json('/api/projects/tasks', {
+      method: 'POST', body: JSON.stringify({ title, projectId: boardId, status }),
+    });
+  }
+  const boardRow = ((await A.json('/api/projects/projects?pageSize=100')).body?.data ?? [])
+    .find(p => p.id === boardId);
+  check(boardRow?.totalTasks === 3, `the card is told the task count (${boardRow?.totalTasks})`);
+  check(boardRow?.completedTasks === 1, `and how many are done (${boardRow?.completedTasks})`);
+  check(typeof boardRow?.progressPct === 'number' && boardRow.progressPct > 0,
+    `and the progress percentage (${boardRow?.progressPct}%)`);
+  check(boardRow?.owner?.profiles !== undefined,
+    'the owner resolves far enough to render a name');
+
+  section('32. Chat sends what the endpoint reads');
+  // The composer posted the pre-migration field name, which the endpoint does
+  // not read, so every send was refused as an empty message.
+
+  const chatChannel = await A.json('/api/communication/channels', {
+    method: 'POST', body: JSON.stringify({ name: `chat-${run}` }),
+  });
+  const oldShape = await A.json('/api/communication/messages', {
+    method: 'POST',
+    body: JSON.stringify({ content: 'hello', channelId: chatChannel.body?.data?.id }),
+  });
+  check(oldShape.status === 422, `the pre-migration field name is still refused (${oldShape.status})`);
+
+  const newShape = await A.json('/api/communication/messages', {
+    method: 'POST',
+    body: JSON.stringify({ body: 'hello', channelId: chatChannel.body?.data?.id }),
+  });
+  check(newShape.status === 201, `what the composer now sends is accepted (${newShape.status})`);
+  const meMember = (await A.json('/api/auth/session')).body?.data?.user?.memberId;
+  check(!!meMember && newShape.body?.data?.senderId === meMember,
+    'and the sender is the caller, so ownership styling can be resolved');
+
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);
