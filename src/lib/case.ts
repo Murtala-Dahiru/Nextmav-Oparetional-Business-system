@@ -60,5 +60,30 @@ export function toSnake<T = unknown>(value: unknown): T {
  */
 export function acceptBody<T extends Record<string, any>>(body: T): Record<string, any> {
   if (!isPlainObject(body)) return body as Record<string, any>;
-  return { ...(toSnake(body) as Record<string, any>), ...body };
+
+  const converted = toSnake(body) as Record<string, any>;
+  const out: Record<string, any> = { ...converted };
+
+  /**
+   * The original is layered back on so an explicitly snake_cased key beats the
+   * converted one — but only for scalars.
+   *
+   * Spreading the whole original was silently discarding nested conversion.
+   * Snake-casing does not rename a key that is already lowercase, so for a
+   * field like `items` the original and the converted value share a name, and
+   * the original won — putting back the array whose *inner* keys were still
+   * camelCase. A purchase order sent `items: [{ productId, unitCost }]`, the
+   * handler filtered on `product_id`, every line was discarded, and the create
+   * failed with "Add at least one line item" no matter what was on the form.
+   *
+   * Objects and arrays therefore keep their converted form. A caller wanting
+   * to be explicit about nested keys can already send them snake_cased, which
+   * `toSnake` leaves untouched.
+   */
+  for (const [k, v] of Object.entries(body)) {
+    if (isPlainObject(v) || Array.isArray(v)) continue;
+    out[k] = v;
+  }
+
+  return out;
 }
