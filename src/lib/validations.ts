@@ -156,6 +156,24 @@ export const createProjectSchema = z.object({
   endDate: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
   budget: z.number().min(0).optional().default(0),
   ownerId: memberRef(),
+  /**
+   * The customer this project is for.
+   *
+   * `projects.client_company_id` has existed since 0003 and the endpoint has
+   * always read it, but this schema never listed it — so `zodResolver` stripped
+   * the field before the request was built, and a project could not be attached
+   * to a client through the UI at all.
+   *
+   * That single missing line is what made the client portal look broken. Every
+   * portal read resolves through `client_company_id`, so with nothing ever set,
+   * a client who signed in correctly saw an empty portal.
+   *
+   * `optionalFk()` rather than a plain string: clearing the selection has to
+   * reach the database as NULL, and a bare `.default('')` writes an empty
+   * string that becomes a dangling foreign key.
+   */
+  clientCompanyId: optionalFk(),
+  departmentId: optionalFk(),
 });
 
 export const updateProjectSchema = toUpdateSchema(createProjectSchema);

@@ -59,6 +59,8 @@ interface UserRecord {
   email: string; fullName: string; avatarUrl: string | null;
   jobTitle: string | null; phone: string | null;
   role: string; departmentId: string | null; departmentName: string | null;
+  /** Set only for the client role: the customer this login represents. */
+  clientCompanyId: string | null;
   managerId: string | null; managerName: string | null;
   employeeNumber: string | null; employmentType: string | null;
   hiredOn: string | null; isActive: boolean; lastSeenAt: string | null;
@@ -170,23 +172,35 @@ function SectionCard({ title, children, icon: Icon }: { title: string; children:
 interface UserFormState {
   firstName: string; lastName: string; email: string;
   role: string; departmentId: string;
+  /**
+   * For a Client Portal User: which customer this login represents.
+   *
+   * The other half of the portal link. `projects.client_company_id` says which
+   * customer a project is for; this says which customer the account speaks
+   * for, and the portal shows a project only when the two match. With this
+   * unset, a client signs in successfully and sees nothing.
+   */
+  clientCompanyId: string;
 }
 
 const defaultUserForm: UserFormState = {
   firstName: '', lastName: '', email: '', role: 'employee', departmentId: '',
+  clientCompanyId: '',
 };
 
 interface DepartmentOption { id: string; name: string }
+interface CompanyOption { id: string; name: string }
 
 /** Radix Select reads "" as "no value", so "unassigned" needs its own token. */
 const NO_DEPARTMENT = '__none__';
 
 function UserFormDialog({
-  open, onOpenChange, editing, onSubmit, isLoading, roles, departments,
+  open, onOpenChange, editing, onSubmit, isLoading, roles, departments, companies,
 }: {
   open: boolean; onOpenChange: (v: boolean) => void;
   editing: UserRecord | null; onSubmit: (data: UserFormState) => void;
   isLoading: boolean; roles: RoleRecord[]; departments: DepartmentOption[];
+  companies: CompanyOption[];
 }) {
   // The directory carries one `fullName`; the form edits the two halves the
   // profile stores, so split on the first space rather than inventing a field.
@@ -198,6 +212,7 @@ function UserFormDialog({
     email: editing.email,
     role: editing.role,
     departmentId: editing.departmentId ?? '',
+    clientCompanyId: editing.clientCompanyId ?? '',
   } : { ...defaultUserForm, role: roles[0]?.id || 'employee' };
 
   const [form, setForm] = useState<UserFormState>(getInitialForm);
@@ -256,6 +271,34 @@ function UserFormDialog({
               </Select>
             </div>
           </div>
+
+          {/*
+            Shown only for the client role, because it means nothing for an
+            employee — and the endpoint refuses it for one, so offering it
+            everywhere would be a control that always errors.
+          */}
+          {form.role === 'client' && (
+            <div className="grid gap-2 rounded-md border border-blue-500/30 bg-blue-500/5 p-3">
+              <Label htmlFor="u-client-co">Client company *</Label>
+              <Select
+                value={form.clientCompanyId || NO_DEPARTMENT}
+                onValueChange={(v) => update('clientCompanyId', v === NO_DEPARTMENT ? '' : v)}
+              >
+                <SelectTrigger id="u-client-co">
+                  <SelectValue placeholder="Choose the customer they represent" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_DEPARTMENT}>Not linked yet</SelectItem>
+                  {companies.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {companies.length === 0
+                  ? 'No companies in the CRM yet — add the customer there first.'
+                  : 'They will see every project linked to this company: its roadmap, progress, shared files and invoices. Without a company set, their portal is empty.'}
+              </p>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
@@ -355,6 +398,22 @@ export default function AdminModule() {
     }
     return [...seen].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
   }, [users]);
+
+  /**
+   * CRM companies, for linking a client login to the customer it represents.
+   *
+   * Fetched rather than derived from the member list, because the point is to
+   * pick a company that has *no* portal user yet — deriving from existing
+   * members could only ever offer companies already linked.
+   */
+  const [companies, setCompanies] = useState<CompanyOption[]>([]);
+  useEffect(() => {
+    apiFetch<{ data: CompanyOption[] }>('/api/crm/companies?pageSize=100')
+      .then((r) => setCompanies(r.data ?? []))
+      // An administrator without CRM access still manages users; they simply
+      // cannot link a client, and the picker says so rather than hanging.
+      .catch(() => setCompanies([]));
+  }, []);
   const [userMeta, setUserMeta] = useState<ApiMeta>({ total: 0, page: 1, pageSize: 20, totalPages: 0 });
   const [userLoading, setUserLoading] = useState(true);
   const [userPage, setUserPage] = useState(0);
@@ -520,6 +579,21 @@ export default function AdminModule() {
             role: form.role,
             departmentId: form.departmentId,
           };
+
+      /**
+       * The client link, sent only when the role is `client`.
+       *
+       * The endpoint rejects it for any other role, so sending it
+       * unconditionally would make every ordinary edit fail. Sent as `null`
+       * when cleared, which unlinks the account — that is a real action an
+       * administrator needs when a contact leaves the customer.
+       *
+       * Only on edit: provisioning creates the membership and the company link
+       * is a second decision, made once the account exists.
+       */
+      if (editingUser && form.role === 'client') {
+        payload.clientCompanyId = form.clientCompanyId || null;
+      }
 
       if (editingUser) {
         await apiFetch(`/api/admin/users/${editingUser.memberId}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -1062,7 +1136,7 @@ export default function AdminModule() {
       <UserFormDialog key={editingUser?.memberId ?? 'new-user'}
         open={userDialogOpen} onOpenChange={setUserDialogOpen}
         editing={editingUser} onSubmit={handleUserSubmit} isLoading={userSubmitting}
-        roles={roles} departments={departments} />
+        roles={roles} departments={departments} companies={companies} />
 
       <RoleFormDialog key={editingRole?.id ?? 'new-role'}
         open={roleDialogOpen} onOpenChange={setRoleDialogOpen}

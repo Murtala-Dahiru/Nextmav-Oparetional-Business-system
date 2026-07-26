@@ -73,8 +73,50 @@ export async function PATCH(req: Request, { params }: Params) {
     // a nullable column is null. `role` and `employment_type` are NOT NULL
     // with defaults, so the same treatment would abort the update instead —
     // for those, blank means "leave it alone".
+    /**
+     * The other half of the client portal link.
+     *
+     * `projects.client_company_id` says which customer a project is for;
+     * this says which customer a *login* speaks for. The portal resolves
+     * everything by matching the two, so with this unset a client account
+     * signs in successfully and can see nothing — and there was previously no
+     * endpoint that could set it at all, which made the portal unreachable in
+     * practice however correctly a project was linked.
+     *
+     * Validated against this organization's companies for the same reason as
+     * `department_id`: the foreign key would accept another tenant's company
+     * and quietly point a portal at it.
+     */
+    if (b.client_company_id) {
+      const { data: company } = await ctx.supabase
+        .from('companies').select('id')
+        .eq('organization_id', ctx.org.organizationId).eq('id', b.client_company_id)
+        .is('deleted_at', null).maybeSingle();
+      if (!company) {
+        return error('That company does not exist in this organization.', 422, 'COMPANY_NOT_FOUND');
+      }
+
+      /**
+       * Only a client account represents a customer.
+       *
+       * Setting this on an employee would be meaningless at best; at worst it
+       * is a misreading of the field as "which client this person handles",
+       * which is an account-management relationship and not this column.
+       */
+      const targetRole = b.role
+        ?? (await ctx.supabase.from('organization_members').select('role')
+              .eq('organization_id', ctx.org.organizationId).eq('id', id).maybeSingle()).data?.role;
+
+      if (targetRole !== 'client') {
+        return error(
+          'Only a Client Portal User can be linked to a company. Change the role to Client first.',
+          422, 'NOT_A_CLIENT_ROLE',
+        );
+      }
+    }
+
     const NOT_NULLABLE = new Set(['role', 'employment_type', 'status']);
-    for (const k of ['role','department_id','manager_id','employee_number','employment_type','hired_on','is_active','status']) {
+    for (const k of ['role','department_id','manager_id','employee_number','employment_type','hired_on','is_active','status','client_company_id']) {
       if (!(k in b)) continue;
       if (b[k] === '' || b[k] === null) {
         if (NOT_NULLABLE.has(k)) continue;
