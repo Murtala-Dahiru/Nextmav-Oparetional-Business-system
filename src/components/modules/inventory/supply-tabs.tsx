@@ -50,7 +50,8 @@ export interface StockMovement {
   id: string; productId: string; type: string; quantity: number; balanceAfter: number;
   reason: string; reference: string; createdAt: string;
   product?: { id: string; name: string; sku: string; unit: string };
-  user?: { id: string; firstName: string; lastName: string };
+  /** Who recorded it. The endpoint joins the membership, not a flat user. */
+  member?: { id: string; profiles?: { fullName: string } };
   fromWarehouse?: { id: string; name: string } | null;
   toWarehouse?: { id: string; name: string } | null;
 }
@@ -63,10 +64,12 @@ export interface PurchaseOrderItem {
 export interface PurchaseOrder {
   id: string; orderNumber: string; supplierId: string; warehouseId: string | null;
   status: string; orderDate: string; expectedDate: string | null; receivedAt: string | null;
-  subtotal: number; tax: number; total: number; notes: string;
+  // The column is tax_amount, like the invoice total. As `tax` the purchase
+  // order detail showed a blank where the tax line should be.
+  subtotal: number; taxRate: number; taxAmount: number; total: number; notes: string;
   supplier?: { id: string; name: string; leadTimeDays: number };
   warehouse?: { id: string; name: string } | null;
-  createdBy?: { id: string; firstName: string; lastName: string };
+  createdBy?: string | null;
   items: PurchaseOrderItem[];
 }
 
@@ -556,8 +559,8 @@ export function MovementsTab({
     },
     {
       id: 'user', header: 'By',
-      cell: ({ row }) => row.original.user
-        ? <span className="text-sm">{row.original.user.firstName} {row.original.user.lastName}</span>
+      cell: ({ row }) => row.original.member?.profiles?.fullName
+        ? <span className="text-sm">{row.original.member.profiles.fullName}</span>
         : <span className="text-muted-foreground">—</span>,
     },
   ], []);
@@ -1071,7 +1074,7 @@ export function PurchaseOrdersTab({
 
                 <div className="bg-muted/50 flex flex-col gap-1 rounded-lg border p-3 text-sm">
                   <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="tabular-nums">{formatCurrency(detail.subtotal)}</span></div>
-                  <div className="flex justify-between"><span className="text-muted-foreground">Tax</span><span className="tabular-nums">{formatCurrency(detail.tax)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">Tax</span><span className="tabular-nums">{formatCurrency(detail.taxAmount)}</span></div>
                   <div className="flex justify-between border-t pt-1 font-medium"><span>Total</span><span className="tabular-nums">{formatCurrency(detail.total)}</span></div>
                 </div>
 

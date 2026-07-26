@@ -183,7 +183,7 @@ export const createPageSchema = z.object({
   title: z.string().min(1, 'Page title is required'),
   content: z.string().optional().default(''),
   icon: z.string().optional().default('file-text'),
-  color: z.string().optional().default('#10b981'),
+  colour: z.string().optional().default('#10b981'),
   parentId: z.string().optional().default(''),
   isFolder: z.boolean().optional().default(false),
   isStarred: z.boolean().optional().default(false),
@@ -228,10 +228,13 @@ export const createTicketSchema = z.object({
   priority: z.string().optional().default('medium'),
   status: z.string().optional().default('open'),
   category: z.string().optional().default('general'),
-  contactName: z.string().optional().default(''),
+  // A ticket links to a CRM contact by id; there is no name column, so a
+  // typed name was discarded on save and the Contact column stayed blank.
+  contactId: optionalFk(),
   contactEmail: z.string().email('Invalid email').optional().default(''),
   assigneeId: z.string().nullable().optional(),
-  dueDate: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
+  // due_at is the SLA deadline, assigned by trigger from the priority.
+  // Accepting it here implied the client could set it; nothing ever did.
   resolution: z.string().optional().default(''),
 });
 
@@ -274,7 +277,9 @@ export const updateLeaveSchema = toUpdateSchema(createLeaveSchema);
 
 export const createInvoiceSchema = z.object({
   invoiceNumber: z.string().min(1, 'Invoice number is required'),
-  contactName: z.string().optional().default(''),
+  // A ticket links to a CRM contact by id; there is no name column, so a
+  // typed name was discarded on save and the Contact column stayed blank.
+  contactId: optionalFk(),
   companyName: z.string().optional().default(''),
   status: z.string().optional().default('draft'),
   items: z.string().optional().default('[]'),
@@ -336,7 +341,9 @@ export const updateWarehouseSchema = toUpdateSchema(createWarehouseSchema);
 
 export const createSupplierSchema = z.object({
   name: z.string().min(1, 'Supplier name is required'),
-  contactName: z.string().optional().default(''),
+  // A ticket links to a CRM contact by id; there is no name column, so a
+  // typed name was discarded on save and the Contact column stayed blank.
+  contactId: optionalFk(),
   email: z.string().email('Invalid email').or(z.literal('')).optional().default(''),
   phone: z.string().optional().default(''),
   address: z.string().optional().default(''),

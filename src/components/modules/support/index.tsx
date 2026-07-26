@@ -57,10 +57,20 @@ interface Ticket {
   priority: string;
   status: string;
   category: string;
-  contactName: string;
+  /**
+   * A ticket records the requester's address and, optionally, a link to a
+   * CRM contact. There is no `contactName` column — the name comes off the
+   * relation — so the Contact column rendered blank on every row.
+   */
+  contactId: string | null;
   contactEmail: string;
+  contact?: { id: string; firstName: string; lastName: string } | null;
   assigneeId: string | null;
-  dueDate: string | null;
+  /**
+   * The SLA deadline, assigned by trigger from the priority. Named `dueAt`;
+   * as `dueDate` it never displayed, and sending it on create was ignored.
+   */
+  dueAt: string | null;
   resolution: string;
   createdAt: string;
   updatedAt: string;
@@ -418,10 +428,10 @@ export default function SupportModule() {
       priority: 'medium',
       status: 'open',
       category: 'general',
-      contactName: '',
+      contactId: null as string | null,
       contactEmail: '',
       assigneeId: null as string | null,
-      dueDate: null as string | null,
+
       resolution: '',
     },
   });
@@ -461,10 +471,10 @@ export default function SupportModule() {
         priority: editTicket.priority,
         status: editTicket.status,
         category: editTicket.category,
-        contactName: editTicket.contactName,
+        contactId: editTicket.contactId,
         contactEmail: editTicket.contactEmail,
         assigneeId: editTicket.assigneeId,
-        dueDate: editTicket.dueDate ? editTicket.dueDate.slice(0, 10) : null,
+
         resolution: editTicket.resolution,
       });
     }
@@ -475,9 +485,8 @@ export default function SupportModule() {
     setUpdating(true);
     try {
       const data: Record<string, unknown> = { ...values };
-      if (data.dueDate && typeof data.dueDate === 'string') {
-        data.dueDate = new Date(data.dueDate).toISOString();
-      }
+      // due_at is assigned by trigger from the priority, so the client does
+      // not send it — anything sent was discarded anyway.
       const res = await fetch(`/api/support/tickets/${editTicket.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -623,12 +632,16 @@ export default function SupportModule() {
         },
       },
       {
-        accessorKey: 'contactName',
+        accessorKey: 'contactEmail',
         header: 'Contact',
         size: 150,
         cell: ({ row }) => (
           <div className="text-sm">
-            <p className="font-medium">{row.original.contactName}</p>
+            <p className="font-medium">
+              {row.original.contact
+                ? `${row.original.contact.firstName} ${row.original.contact.lastName}`.trim()
+                : row.original.contactEmail || '—'}
+            </p>
             <p className="text-xs text-muted-foreground">{row.original.contactEmail}</p>
           </div>
         ),
@@ -652,7 +665,7 @@ export default function SupportModule() {
         size: 110,
         cell: ({ row }) => (
           <span className="text-sm text-muted-foreground">
-            {row.original.dueDate ? formatDate(row.original.dueDate) : '—'}
+            {row.original.dueAt ? formatDate(row.original.dueAt) : '—'}
           </span>
         ),
       },
@@ -894,8 +907,8 @@ export default function SupportModule() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Contact Name</Label>
-                <Input {...createForm.register('contactName')} placeholder="Contact name" />
+                <Label>Contact email</Label>
+                <Input {...createForm.register('contactEmail')} type="email" placeholder="requester@company.com" />
               </div>
               <div className="space-y-2">
                 <Label>Contact Email</Label>
@@ -930,10 +943,11 @@ export default function SupportModule() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label>Due Date</Label>
-              <Input {...createForm.register('dueDate')} type="date" />
-            </div>
+            {/*
+              No due-date input: due_at is the SLA deadline and is set by
+              trigger from the priority. The field accepted a date and threw it
+              away, which read as the system ignoring the agent.
+            */}
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
@@ -1061,10 +1075,7 @@ export default function SupportModule() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Due Date</Label>
-                <Input {...editForm.register('dueDate')} type="date" />
-              </div>
+              {/* Set by trigger from the priority — see the create form. */}
 
               <div className="space-y-2">
                 <Label>Resolution</Label>

@@ -1,6 +1,10 @@
 import { collectionHandlers } from '@/lib/supabase/crud';
 
-const SELECT = '*, company:companies(id, name), contact:contacts(id, first_name, last_name)';
+// The owner is resolved here as it is for leads. Without it the deal's
+// owner column had nothing to render.
+const SELECT =
+  '*, company:companies(id, name), contact:contacts(id, first_name, last_name), ' +
+  'owner:organization_members!deals_owner_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url))';
 
 export const { GET, POST } = collectionHandlers(
   {
@@ -13,7 +17,16 @@ export const { GET, POST } = collectionHandlers(
     table: 'deals', module: 'crm', select: SELECT,
     prepare: (b, ctx) => {
       if (!b.name?.trim()) throw new Error('Deal name is required');
-      const probability = Math.min(100, Math.max(0, Number(b.probability) ?? 20));
+      /**
+       * `??` cannot supply this default.
+       *
+       * `Number(undefined)` is `NaN`, and `NaN` is neither null nor undefined,
+       * so `Number(b.probability) ?? 20` evaluates to `NaN` — which survives
+       * the clamp, is sent as null, and fails the NOT NULL constraint. Any
+       * deal created without an explicit probability answered 500.
+       */
+      const parsed = Number(b.probability);
+      const probability = Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : 20;
       return {
         name: b.name.trim(),
         company_id: b.company_id || null, contact_id: b.contact_id || null,
