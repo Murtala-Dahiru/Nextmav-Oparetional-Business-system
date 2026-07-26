@@ -49,7 +49,8 @@ interface WorkspacePage {
   title: string;
   content: string;
   icon: string;
-  color: string;
+  /** Spelled `colour` on the wire, to match the schema. */
+  colour: string;
   parentId: string;
   isFolder: boolean;
   isStarred: boolean;
@@ -285,7 +286,7 @@ export default function WorkspaceModule() {
      
     resolver: zodResolver(createPageSchema) as any,
     defaultValues: {
-      title: '', content: '', icon: 'file-text', color: '#10b981',
+      title: '', content: '', icon: 'file-text', colour: '#10b981',
       parentId: '', isFolder: false, isStarred: false, lastEditedBy: '',
     },
   });
@@ -295,7 +296,7 @@ export default function WorkspaceModule() {
   // Open create dialog
   const openCreate = useCallback(() => {
     reset({
-      title: '', content: '# New Page\n\nStart writing here...', icon: 'file-text', color: '#10b981',
+      title: '', content: '# New Page\n\nStart writing here...', icon: 'file-text', colour: '#10b981',
       parentId: '', isFolder: false, isStarred: false, lastEditedBy: '',
     });
     setCreateDialogOpen(true);
@@ -343,7 +344,7 @@ export default function WorkspaceModule() {
       }`}
       style={{ paddingLeft: `${12 + indent * 20}px` }}
     >
-      <PageIcon icon={page.icon} color={page.color} className="size-4 shrink-0" />
+      <PageIcon icon={page.icon} color={page.colour} className="size-4 shrink-0" />
       <span className="truncate flex-1">{page.title}</span>
       {page.isStarred && <Star className="size-3 text-amber-500 fill-amber-500 shrink-0" />}
       <span className="text-xs text-muted-foreground shrink-0 hidden sm:inline">
@@ -368,7 +369,7 @@ export default function WorkspaceModule() {
           ) : (
             <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
           )}
-          <PageIcon icon={folder.icon} color={folder.color} className="size-4 shrink-0" />
+          <PageIcon icon={folder.icon} color={folder.colour} className="size-4 shrink-0" />
           <span className="truncate flex-1 font-medium">{folder.title}</span>
           {folder.isStarred && <Star className="size-3 text-amber-500 fill-amber-500 shrink-0" />}
           <span className="text-xs text-muted-foreground shrink-0">{children.length}</span>
@@ -475,7 +476,7 @@ export default function WorkspaceModule() {
             <div className="flex-1 flex flex-col overflow-hidden">
               {/* Page Header */}
               <div className="flex items-center gap-3 px-6 py-4 border-b shrink-0">
-                <PageIcon icon={fullPage.icon} color={fullPage.color} className="size-5 shrink-0" />
+                <PageIcon icon={fullPage.icon} color={fullPage.colour} className="size-5 shrink-0" />
 
                 {isEditingTitle ? (
                   <Input
@@ -736,7 +737,7 @@ export default function WorkspaceModule() {
                 <Label>Color</Label>
                 <Controller
                   control={control}
-                  name="color"
+                  name="colour"
                   render={({ field }) => (
                     <div className="flex flex-wrap gap-1.5 mt-1">
                       {COLOR_SWATCHES.map((c) => (

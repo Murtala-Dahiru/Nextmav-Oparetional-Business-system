@@ -8,7 +8,7 @@ export const { GET, POST } = collectionHandlers(
     table: 'workspace_pages', module: 'workspace', select: SELECT, softDelete: true,
     searchColumns: ['title', 'content'],
     sortable: ['created_at', 'updated_at', 'title', 'sort_order'],
-    filterable: ['space_id', 'parent_id', 'is_folder', 'is_template'],
+    filterable: ['space_id', 'parent_id', 'is_folder', 'is_template', 'is_starred'],
   },
   {
     table: 'workspace_pages', module: 'workspace', select: SELECT,
@@ -22,6 +22,12 @@ export const { GET, POST } = collectionHandlers(
       parent_id: b.parent_id || null,
       is_folder: b.is_folder ?? false,
       is_template: b.is_template ?? false,
+      // The editor has always offered these two and had nowhere to store them,
+      // so the colour reverted on every read and starring a page did nothing.
+      // 'color' is accepted as well as 'colour' because the client spells it
+      // the American way and the schema does not.
+      colour: b.colour || b.color || '#10b981',
+      is_starred: b.is_starred ?? false,
       sort_order: Number(b.sort_order) || 0,
       created_by: ctx.org.memberId,
       last_edited_by: ctx.org.memberId,
