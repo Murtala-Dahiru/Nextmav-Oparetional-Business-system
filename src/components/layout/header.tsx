@@ -18,6 +18,7 @@ import { useAppStore } from '@/store/app-store';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -153,6 +154,9 @@ export function Header() {
         </TooltipTrigger>
         <TooltipContent>Search (Ctrl+K)</TooltipContent>
       </Tooltip>
+
+      {/* Theme */}
+      <ThemeToggle />
 
       {/* Notifications */}
       <DropdownMenu>
