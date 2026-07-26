@@ -34,6 +34,15 @@ export interface ListOptions {
   sortable?: string[];
   /** Default ordering. */
   defaultSort?: string;
+  /**
+   * Direction used when the caller does not ask for one.
+   *
+   * Descending suits a feed of recent records, which is why it was the only
+   * behaviour — but it is wrong for anything with a deliberate sequence. A
+   * roadmap ordered by `sort_order` came back last-phase-first, so 'Launch'
+   * appeared above 'Design complete'.
+   */
+  defaultSortDir?: 'asc' | 'desc';
   /** `?key=value` filters passed straight through as equality matches. */
   filterable?: string[];
   /** Exclude soft-deleted rows. */
@@ -50,7 +59,8 @@ const MAX_PAGE_SIZE = 100;
 export function listHandler(opts: ListOptions) {
   const {
     table, module, select = '*', searchColumns = [], sortable = [],
-    defaultSort = 'created_at', filterable = [], softDelete = false, scope,
+    defaultSort = 'created_at', defaultSortDir = 'desc',
+    filterable = [], softDelete = false, scope,
   } = opts;
 
   return async function GET(req: Request) {
@@ -65,7 +75,8 @@ export function listHandler(opts: ListOptions) {
     // information leak (ordering by a column you cannot read). Allow-list only.
     const requestedSort = searchParams.get('sort') ?? defaultSort;
     const sort = sortable.includes(requestedSort) ? requestedSort : defaultSort;
-    const ascending = searchParams.get('sortDir') === 'asc';
+    const sortDir = searchParams.get('sortDir') ?? defaultSortDir;
+    const ascending = sortDir === 'asc';
 
     let q = ctx.supabase
       .from(table)
