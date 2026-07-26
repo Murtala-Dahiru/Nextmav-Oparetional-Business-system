@@ -29,7 +29,10 @@ export const { GET, POST } = collectionHandlers(
       return {
         title: b.title.trim(),
         amount,
-        currency: b.currency ?? 'USD',
+        // The organization's currency, not a hardcoded one. A workspace
+        // trading in naira was storing every invoice and expense as USD, so
+        // the stored record disagreed with the figure on screen.
+        currency: b.currency || ctx.org.currency,
         category: b.category ?? 'general',
         vendor: b.vendor ?? null,
         expense_date: b.expense_date ?? new Date().toISOString().slice(0, 10),

@@ -85,7 +85,10 @@ export async function POST(req: Request) {
           b.due_date ?? new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
         tax_rate: Math.min(100, Math.max(0, Number(b.tax_rate) || 0)),
         discount: Math.max(0, Number(b.discount) || 0),
-        currency: b.currency ?? 'USD',
+        // The organization's currency, not a hardcoded one. A workspace
+        // trading in naira was storing every invoice and expense as USD, so
+        // the stored record disagreed with the figure on screen.
+        currency: b.currency || ctx.org.currency,
         notes: b.notes ?? '',
         owner_id: ctx.org.memberId,
       })
