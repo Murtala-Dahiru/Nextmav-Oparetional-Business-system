@@ -12,6 +12,8 @@ import {
   Settings,
   ChevronDown,
   ShieldCheck,
+  CheckCheck,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
@@ -35,6 +37,7 @@ import {
 } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MODULES, ROLES } from '@/lib/constants';
+import { formatRelativeTime } from '@/lib/format';
 
 export function Header() {
   const isMobile = useIsMobile();
@@ -47,12 +50,75 @@ export function Header() {
     setSearchOpen,
     logout,
     notifications,
+    unreadTotal,
+    isAuthenticated,
+    fetchNotifications,
+    markNotificationsRead,
+    dismissNotification,
     setActiveModule,
     activeRole,
   } = useAppStore();
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const unreadCount = unreadTotal;
   const currentModule = MODULES.find((m) => m.id === activeModule);
+
+  /**
+   * Poll for new notifications.
+   *
+   * Thirty seconds is a deliberate compromise. Supabase Realtime is already
+   * configured for this table in migration 0006, and a subscription would be
+   * the better answer — but it needs a browser client holding the session, a
+   * reconnect strategy and a fallback for when the socket is blocked by a
+   * corporate proxy, which is common in exactly the enterprises this product
+   * targets. Polling is what makes the tray correct today; the socket is a
+   * refinement on top of a feature that works, not a prerequisite for it.
+   *
+   * The interval is cleared on unmount and skipped entirely while signed out,
+   * so a login screen left open overnight is not issuing requests.
+   */
+  React.useEffect(() => {
+    if (!isAuthenticated) return;
+
+    fetchNotifications();
+    const timer = setInterval(fetchNotifications, 30_000);
+
+    // Coming back to the tab is the moment someone most wants an accurate
+    // badge, and it is free compared with shortening the interval.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') fetchNotifications();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [isAuthenticated, fetchNotifications]);
+
+  /**
+   * Open whatever a notification is about.
+   *
+   * Triggers write a `link` shaped `/dashboard?module=projects&project=<id>`.
+   * Rather than navigating — which would remount the whole shell — the module
+   * is switched in place and the deep-link parameters are pushed into the URL
+   * so the target module can pick them up and the page stays shareable.
+   */
+  const openNotification = React.useCallback((n: typeof notifications[number]) => {
+    if (!n.isRead) markNotificationsRead([n.id]);
+    if (!n.link) return;
+
+    try {
+      const url = new URL(n.link, window.location.origin);
+      const target = url.searchParams.get('module');
+      if (target && MODULES.some(m => m.id === target)) {
+        setActiveModule(target as (typeof MODULES)[number]['id']);
+        window.history.replaceState(null, '', url.pathname + url.search);
+      }
+    } catch {
+      // A malformed link is not worth failing the click over; the notification
+      // is still marked read, which is the part the user asked for.
+    }
+  }, [markNotificationsRead, setActiveModule]);
 
   const userInitials = user
     ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || 'U'
@@ -175,37 +241,91 @@ export function Header() {
           </TooltipTrigger>
           <TooltipContent>Notifications</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="end" className="w-80">
-          <DropdownMenuLabel className="flex items-center justify-between">
-            <span>Notifications</span>
+        <DropdownMenuContent align="end" className="w-96 p-0">
+          <DropdownMenuLabel className="flex items-center justify-between px-3 py-2.5">
+            <span className="flex items-center gap-2">
+              Notifications
+              {unreadCount > 0 && (
+                <Badge variant="secondary" className="text-[10px]">
+                  {unreadCount} new
+                </Badge>
+              )}
+            </span>
             {unreadCount > 0 && (
-              <Badge variant="secondary" className="text-[10px]">
-                {unreadCount} new
-              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[11px] font-normal text-muted-foreground hover:text-foreground"
+                onClick={(e) => {
+                  // The menu would otherwise close on the first click, which
+                  // makes "mark all read" feel like it dismissed the tray.
+                  e.preventDefault();
+                  markNotificationsRead();
+                }}
+              >
+                <CheckCheck className="mr-1 size-3" /> Mark all read
+              </Button>
             )}
           </DropdownMenuLabel>
-          <DropdownMenuSeparator />
+          <DropdownMenuSeparator className="my-0" />
+
           {notifications.length === 0 ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">
-              No notifications yet
+            <div className="px-3 py-8 text-center">
+              <Bell className="mx-auto mb-2 size-5 text-muted-foreground/40" />
+              <p className="text-sm text-muted-foreground">You are all caught up</p>
+              <p className="mt-0.5 text-xs text-muted-foreground/70">
+                Assignments, approvals and mentions appear here.
+              </p>
             </div>
           ) : (
-            notifications.slice(0, 5).map((notification) => (
-              <DropdownMenuItem
-                key={notification.id}
-                className={cn(
-                  'flex flex-col items-start gap-1 p-3 cursor-pointer',
-                  !notification.isRead && 'bg-accent/50'
-                )}
-              >
-                <span className="text-sm font-medium text-foreground">
-                  {notification.title}
-                </span>
-                <span className="text-xs text-muted-foreground line-clamp-2">
-                  {notification.message}
-                </span>
-              </DropdownMenuItem>
-            ))
+            <div className="max-h-[26rem] overflow-y-auto">
+              {notifications.map((notification) => (
+                <DropdownMenuItem
+                  key={notification.id}
+                  onSelect={() => openNotification(notification)}
+                  className={cn(
+                    'group flex flex-col items-start gap-1 border-b px-3 py-2.5 last:border-b-0 cursor-pointer',
+                    !notification.isRead && 'bg-emerald-500/5',
+                  )}
+                >
+                  <div className="flex w-full items-start gap-2">
+                    {/* An unread marker that survives greyscale and does not
+                        rely on the row tint alone. */}
+                    <span
+                      className={cn(
+                        'mt-1.5 size-1.5 shrink-0 rounded-full',
+                        notification.isRead ? 'bg-transparent' : 'bg-emerald-500',
+                      )}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium leading-snug text-foreground">
+                        {notification.title}
+                      </p>
+                      {notification.body && (
+                        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                          {notification.body}
+                        </p>
+                      )}
+                      <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                        {formatRelativeTime(notification.createdAt)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label="Dismiss"
+                      className="shrink-0 rounded p-1 text-muted-foreground/50 opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dismissNotification(notification.id);
+                      }}
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                </DropdownMenuItem>
+              ))}
+            </div>
           )}
         </DropdownMenuContent>
       </DropdownMenu>

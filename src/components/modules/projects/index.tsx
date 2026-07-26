@@ -7,7 +7,7 @@ import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/reac
 import { toast } from 'sonner';
 import {
   ListTodo, FolderKanban, Plus, MoreHorizontal, Pencil, Trash2,
-  CheckCircle2, Clock, Loader2, CalendarDays,
+  CheckCircle2, Clock, Loader2, CalendarDays, AlertTriangle, ArrowLeft,
 } from 'lucide-react';
 
 import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
@@ -40,6 +40,8 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
+import { ProjectWorkspace } from '@/components/modules/projects/project-workspace';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -90,6 +92,8 @@ interface Project {
   blockedTasks?: number;
   overdueTasks?: number;
   totalMilestones?: number;
+  health?: string;
+  memberCount?: number;
   completedMilestones?: number;
   overdueMilestones?: number;
   progressPct?: number;
@@ -97,11 +101,36 @@ interface Project {
   isAtRisk?: boolean;
 }
 
-interface User {
-  id: string;
-  firstName: string;
-  lastName: string;
+/**
+ * A colleague, as `/api/directory` returns them.
+ *
+ * ── What was wrong before ─────────────────────────────────────────────────
+ *
+ * This was `{ id, firstName, lastName, email }` and the data came from
+ * `/api/admin/users`. Two separate faults compounded:
+ *
+ *   1. That endpoint requires the admin module. Managers, HR, support staff
+ *      and employees all got a 403, so the dropdown was empty for everyone
+ *      except owners and administrators — which reads as "this company has no
+ *      staff" rather than as a permission error.
+ *
+ *   2. It returns rows from `v_org_directory`, which has `memberId` and
+ *      `fullName` — not `id`, `firstName` or `lastName`. So even for an owner,
+ *      every option rendered "undefined undefined" against a `SelectItem` with
+ *      `value={undefined}`, which React drops silently.
+ *
+ * `memberId` is the correct identifier here: `tasks.assignee_id` and
+ * `projects.owner_id` both reference `organization_members`, not the account.
+ */
+interface DirectoryMember {
+  memberId: string;
+  userId: string;
+  fullName: string;
   email: string;
+  avatarUrl: string | null;
+  jobTitle: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
 }
 
 type TaskFormValues = z.infer<typeof createTaskSchema>;
@@ -211,7 +240,7 @@ function TasksTab() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<DirectoryMember[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
 
   // Table state
@@ -275,7 +304,7 @@ function TasksTab() {
       setStats((prev) => ({ ...prev, total: res.meta?.total || 0 }));
 
       // In progress count
-      const res2 = await apiFetch<Task[]>('/api/projects/tasks?status=in-progress&page=1&pageSize=1');
+      const res2 = await apiFetch<Task[]>('/api/projects/tasks?status=in_progress&page=1&pageSize=1');
       setStats((prev) => ({ ...prev, inProgress: res2.meta?.total || 0 }));
 
       // Completed count
@@ -290,7 +319,7 @@ function TasksTab() {
   const fetchDropdowns = useCallback(async () => {
     try {
       const [usersRes, projectsRes] = await Promise.all([
-        apiFetch<User[]>('/api/admin/users?pageSize=100'),
+        apiFetch<DirectoryMember[]>('/api/directory'),
         apiFetch<Project[]>('/api/projects/projects?page=1&pageSize=100'),
       ]);
       setUsers(usersRes.data || []);
@@ -607,18 +636,43 @@ function TasksTab() {
                   control={control}
                   name="assigneeId"
                   render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger><SelectValue placeholder="Select assignee" /></SelectTrigger>
+                    <Select
+                      value={field.value || '_unassigned'}
+                      onValueChange={(v) => field.onChange(v === '_unassigned' ? undefined : v)}
+                    >
+                      <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
                       <SelectContent>
+                        {/*
+                          Explicitly unassigned, rather than leaving the field
+                          blank. Radix Select treats "" as "no value" and shows
+                          the placeholder, so there was no way to *clear* an
+                          assignee once one had been chosen.
+                        */}
+                        <SelectItem value="_unassigned">Unassigned</SelectItem>
                         {users.map((u) => (
-                          <SelectItem key={u.id} value={u.id}>
-                            {u.firstName} {u.lastName}
+                          <SelectItem key={u.memberId} value={u.memberId}>
+                            {u.fullName}
+                            {u.jobTitle && (
+                              <span className="ml-1.5 text-xs text-muted-foreground">
+                                {u.jobTitle}
+                              </span>
+                            )}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   )}
                 />
+                {/*
+                  An empty directory is a real state — a one-person workspace —
+                  and silence looks identical to the permission failure this
+                  picker used to have. Say which it is.
+                */}
+                {users.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No colleagues found in this workspace yet.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -688,7 +742,22 @@ function ProjectsTab() {
   // Data state
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<DirectoryMember[]>([]);
+
+  /**
+   * Which project's workspace is open, if any.
+   *
+   * Held here rather than routed, to match how the rest of the shell works:
+   * modules are swapped inside one page and there are no per-module routes to
+   * hang a project id off. The notification deep-link parameter is picked up
+   * below so a "new message on X" click still lands on the right project.
+   */
+  const [openProjectId, setOpenProjectId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fromLink = new URLSearchParams(window.location.search).get('project');
+    if (fromLink) setOpenProjectId(fromLink);
+  }, []);
 
   // Dialog state
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
@@ -715,7 +784,7 @@ function ProjectsTab() {
   // Fetch users
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await apiFetch<User[]>('/api/admin/users?pageSize=100');
+      const res = await apiFetch<DirectoryMember[]>('/api/directory');
       setUsers(res.data || []);
     } catch {
       // silent
@@ -800,6 +869,28 @@ function ProjectsTab() {
       .finally(() => setDeleting(false));
   }, [deletingProject, fetchProjects]);
 
+  /**
+   * The workspace replaces the board rather than opening beside it.
+   *
+   * A project has six panels of its own — overview, roadmap, team, timeline,
+   * files, discussion — and none of them fit in a dialog. Taking over the
+   * whole tab is what lets the roadmap be readable.
+   */
+  if (openProjectId) {
+    return (
+      <ProjectWorkspace
+        projectId={openProjectId}
+        directory={users}
+        onBack={() => {
+          setOpenProjectId(null);
+          // Refreshed on the way out: milestones completed or members added
+          // inside the workspace change the numbers on the card behind it.
+          fetchProjects();
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
@@ -845,7 +936,14 @@ function ProjectsTab() {
               <Card
                 key={project.id}
                 className="group cursor-pointer transition-shadow hover:shadow-md"
-                onClick={() => openEdit(project)}
+                /*
+                  Opens the project's workspace, not the edit form.
+                  Clicking a project card and getting a settings dialog was
+                  backwards: the common intent is "show me this project", and
+                  editing its name and budget is the rare administrative act.
+                  Editing moved to the menu in the corner.
+                */
+                onClick={() => setOpenProjectId(project.id)}
               >
                 <CardContent className="p-5 flex flex-col gap-3">
                   {/* Header row */}
@@ -853,10 +951,55 @@ function ProjectsTab() {
                     <h3 className="font-semibold text-foreground leading-tight line-clamp-1">
                       {project.name}
                     </h3>
-                    <Badge variant="secondary" className={PROJECT_STATUS_COLORS[project.status] || ''}>
-                      {PROJECT_STATUS_LABELS[project.status] || project.status}
-                    </Badge>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Badge variant="secondary" className={PROJECT_STATUS_COLORS[project.status] || ''}>
+                        {PROJECT_STATUS_LABELS[project.status] || project.status}
+                      </Badge>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 opacity-0 transition group-hover:opacity-100"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreHorizontal className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenuItem onClick={() => openEdit(project)}>
+                            <Pencil className="mr-2 size-4" /> Edit details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => { setDeletingProject(project); setDeleteDialogOpen(true); }}
+                          >
+                            <Trash2 className="mr-2 size-4" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
+
+                  {/*
+                    The health verdict from v_project_health. `isAtRisk` was a
+                    boolean the card never showed at all, so a project a month
+                    past its deadline looked identical to one running to plan.
+                  */}
+                  {project.health && project.health !== 'on_track' && (
+                    <Badge
+                      variant="secondary"
+                      className={cn(
+                        'w-fit gap-1',
+                        project.health === 'off_track'
+                          ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+                      )}
+                    >
+                      <AlertTriangle className="size-3" />
+                      {project.health === 'off_track' ? 'Off track' : 'At risk'}
+                    </Badge>
+                  )}
 
                   {/* Description */}
                   <p className="text-sm text-muted-foreground line-clamp-2">
@@ -982,16 +1125,49 @@ function ProjectsTab() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="proj-budget">Budget</Label>
-              <Input
-                id="proj-budget"
-                type="number"
-                step="0.01"
-                min="0"
-                {...register('budget', { valueAsNumber: true })}
-                placeholder="0"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="proj-budget">Budget</Label>
+                <Input
+                  id="proj-budget"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  {...register('budget', { valueAsNumber: true })}
+                  placeholder="0"
+                />
+              </div>
+
+              {/*
+                The owner picker. The directory was already being fetched here
+                and nothing rendered it, so a project's owner could only ever
+                be whoever created it — the endpoint defaults `owner_id` to the
+                caller. Accountability for a project is rarely the person who
+                happened to type it in.
+              */}
+              <div className="space-y-2">
+                <Label>Owner</Label>
+                <Controller
+                  control={control}
+                  name="ownerId"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value || '_me'}
+                      onValueChange={(v) => field.onChange(v === '_me' ? undefined : v)}
+                    >
+                      <SelectTrigger><SelectValue placeholder="You" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_me">Me</SelectItem>
+                        {users.map((u) => (
+                          <SelectItem key={u.memberId} value={u.memberId}>
+                            {u.fullName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
             </div>
 
             {/* Delete button for editing */}

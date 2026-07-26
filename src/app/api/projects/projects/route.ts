@@ -72,7 +72,14 @@ export async function GET(req: Request) {
 
   const { data: health } = await ctx.supabase
     .from('v_project_health')
-    .select('project_id, total_tasks, completed_tasks, blocked_tasks, overdue_tasks, total_milestones, completed_milestones, overdue_milestones, progress_pct, days_remaining, logged_hours, is_at_risk')
+    .select(
+      'project_id, total_tasks, completed_tasks, blocked_tasks, overdue_tasks, ' +
+      'total_milestones, completed_milestones, overdue_milestones, progress_pct, ' +
+      // Added in 0016. `health` grades what `is_at_risk` could only flag, and
+      // the board shows the grade — a project a month past its deadline should
+      // not look identical to one carrying a single late task.
+      'days_remaining, logged_hours, is_at_risk, health, member_count',
+    )
     .in('project_id', rows.map(r => r.id));
 
   const byId = new Map((health ?? []).map((h: any) => [h.project_id, h]));
@@ -99,6 +106,15 @@ export async function GET(req: Request) {
           daysRemaining: h?.days_remaining ?? null,
           loggedHours: h?.logged_hours ?? 0,
           isAtRisk: h?.is_at_risk ?? false,
+          /**
+           * The three-grade verdict, and the team size.
+           *
+           * `'on_track'` rather than null when the view has no row: a project
+           * created a moment ago has nothing wrong with it, and a card that
+           * renders an empty health badge reads as a loading failure.
+           */
+          health: h?.health ?? 'on_track',
+          memberCount: h?.member_count ?? 0,
         };
       }),
     },

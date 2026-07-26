@@ -5,7 +5,7 @@ import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/reac
 import { toast } from 'sonner';
 import {
   Users, Plus, Pencil, Trash2, MoreHorizontal, Settings, Shield,
-  ClipboardList, Loader2, Save, ShieldCheck, Briefcase, DollarSign,
+  ClipboardList, Loader2, Save, ShieldCheck, Briefcase, DollarSign, CalendarOff, Megaphone,
 } from 'lucide-react';
 
 import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
@@ -16,6 +16,7 @@ import { formatDateTime, formatRelativeTime, initialsOf } from '@/lib/format';
 import { normalizeRole, roleLabel } from '@/lib/permissions';
 import { CURRENCIES, COUNTRIES, NIGERIAN_STATES, DEFAULT_COUNTRY, DEFAULT_CURRENCY } from '@/lib/locale';
 import { useAppStore } from '@/store/app-store';
+import { HolidaysTab, AnnouncementsTab } from '@/components/modules/admin/workplace-tabs';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -803,8 +804,24 @@ export default function AdminModule() {
           <TabsTrigger value="users" className="gap-2"><Users className="size-4" /> Users</TabsTrigger>
           <TabsTrigger value="roles" className="gap-2"><Shield className="size-4" /> Roles</TabsTrigger>
           <TabsTrigger value="settings" className="gap-2"><Settings className="size-4" /> Settings</TabsTrigger>
+          {/*
+            Holidays and announcements are business rules rather than system
+            configuration, so they sit alongside Settings rather than inside
+            it: both change how the product behaves for everyone the moment
+            they are saved.
+          */}
+          <TabsTrigger value="holidays" className="gap-2"><CalendarOff className="size-4" /> Holidays</TabsTrigger>
+          <TabsTrigger value="announcements" className="gap-2"><Megaphone className="size-4" /> Announcements</TabsTrigger>
           <TabsTrigger value="audit" className="gap-2"><ClipboardList className="size-4" /> Audit Log</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="holidays" className="space-y-6">
+          <HolidaysTab />
+        </TabsContent>
+
+        <TabsContent value="announcements" className="space-y-6">
+          <AnnouncementsTab />
+        </TabsContent>
 
         {/* ════════════════════════════════════════════════════════
             USERS TAB

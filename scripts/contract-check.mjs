@@ -135,10 +135,18 @@ const CALENDAR = 'src/components/modules/calendar/index.tsx';
  * so each entry says which.
  */
 const NOT_ON_THE_WIRE = {
-  // Merged by the projects endpoint from v_project_health.
+  /**
+   * Merged by the projects endpoint from v_project_health.
+   *
+   * Present on the list read, absent from the create response — a project
+   * that does not exist yet has no health row to merge — which is why they
+   * are listed here rather than treated as drift. `health` and `memberCount`
+   * were added to the view in 0016 and follow the same rule.
+   */
   Project: ['totalTasks', 'completedTasks', 'blockedTasks', 'overdueTasks',
             'totalMilestones', 'completedMilestones', 'overdueMilestones',
-            'progressPct', 'daysRemaining', 'isAtRisk'],
+            'progressPct', 'daysRemaining', 'isAtRisk',
+            'health', 'memberCount'],
   // Derived in the channel list from the most recent message.
   ChannelWithLastMessage: ['lastMessage', 'lastMessageSender', 'unreadCount'],
 };

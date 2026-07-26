@@ -1378,6 +1378,74 @@ COMMENT ON COLUMN public.organization_members.notification_prefs IS
 
 
 -- ───────────────────────────────────────────────────────────────────────────
+--  7b. Storage: clients read published deliverables, nothing else
+-- ───────────────────────────────────────────────────────────────────────────
+--
+--  A gap opened by the portal, and worth stating plainly.
+--
+--  The 0006 read policy admits any object whose leading path segment is an
+--  organization the caller belongs to. A client login *is* an
+--  `organization_members` row, so `auth_org_ids()` returns the company's id
+--  for them — which means that as soon as a client account exists, it can read
+--  every document, attachment and receipt in the workspace, given a path.
+--  That was harmless while no client could sign in. It is not harmless now.
+--
+--  Replaces the policy with the same rule for staff, plus a narrow one for
+--  clients: an object is readable only if a `files` row points at it, marks it
+--  client-visible and not confidential, and hangs it off one of their own
+--  projects. The signed-URL endpoint applies the same test against the
+--  metadata; this is the layer that holds if that endpoint is ever wrong.
+
+DROP POLICY IF EXISTS "org members read own files" ON storage.objects;
+
+CREATE POLICY "org members read own files" ON storage.objects
+  FOR SELECT TO authenticated
+  USING (
+    bucket_id IN ('documents','attachments','receipts','hr-documents')
+    AND public.storage_org_id(name) = ANY (public.auth_org_ids())
+    AND (
+      CASE
+        WHEN public.auth_role_in(public.storage_org_id(name)) = 'client' THEN
+          bucket_id IN ('documents','attachments')
+          AND EXISTS (
+            SELECT 1 FROM files f
+            WHERE f.bucket = storage.objects.bucket_id
+              AND f.path   = storage.objects.name
+              AND f.deleted_at IS NULL
+              AND f.is_client_visible
+              AND NOT f.is_confidential
+              AND f.project_id IS NOT NULL
+              AND public.is_client_project(f.project_id)
+          )
+        ELSE
+          -- Unchanged for staff: HR documents stay restricted to HR and the
+          -- subject, whose membership id is the second path segment.
+          bucket_id <> 'hr-documents'
+          OR public.has_org_role(public.storage_org_id(name),
+                                 ARRAY['owner','administrator','hr_staff']::org_role[])
+          OR split_part(name, '/', 2) = public.auth_member_id(public.storage_org_id(name))::text
+      END
+    )
+  );
+
+-- Clients upload nothing. The 0006 insert policy allows any member of the
+-- organization, which now includes them.
+DROP POLICY IF EXISTS "org members upload own files" ON storage.objects;
+
+CREATE POLICY "org members upload own files" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    public.storage_org_id(name) = ANY (public.auth_org_ids())
+    AND public.auth_role_in(public.storage_org_id(name)) <> 'client'
+    AND (
+      bucket_id <> 'hr-documents'
+      OR public.has_org_role(public.storage_org_id(name),
+                             ARRAY['owner','administrator','hr_staff']::org_role[])
+    )
+  );
+
+
+-- ───────────────────────────────────────────────────────────────────────────
 --  8. Directory view for people pickers
 -- ───────────────────────────────────────────────────────────────────────────
 --

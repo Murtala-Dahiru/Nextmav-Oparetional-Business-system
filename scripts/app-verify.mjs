@@ -1316,6 +1316,184 @@ try {
   });
   check(outsiderJoin.status === 404, `B cannot put anyone on A's project (${outsiderJoin.status})`);
 
+  section('39. The directory every people picker reads');
+
+  /**
+   * The bug this covers: every assignee dropdown called `/api/admin/users`,
+   * which needs the admin module. Managers, HR, support and employees all got
+   * a 403 and an empty picker — and the rows it returns are shaped for the
+   * administration table (`memberId`, `fullName`), not the `{ id, firstName }`
+   * the components declared, so even an owner saw "undefined undefined".
+   *
+   * Asserted on the *field names* rather than just the status, because a 200
+   * carrying the wrong shape is exactly how this went unnoticed.
+   */
+  const peoplePicker = await A.json('/api/directory');
+  check(peoplePicker.ok, `the directory is readable without admin rights (${peoplePicker.status})`);
+
+  const colleague = (peoplePicker.body?.data ?? [])[0];
+  check(!!colleague, 'and returns real colleagues');
+  check(typeof colleague?.memberId === 'string' && colleague.memberId.length > 0,
+    'each row carries a memberId, which is what assignee_id references');
+  check(typeof colleague?.fullName === 'string' && colleague.fullName.trim() !== '',
+    'and a full name — never "undefined undefined"');
+  check(!(peoplePicker.body?.data ?? []).some(m => !m.memberId || !m.fullName),
+    'no row is missing either, so no picker option can be blank');
+
+  const directoryTask = await A.json('/api/projects/tasks', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: 'Assigned from the directory',
+      projectId: teamProjectId,
+      assigneeId: colleague?.memberId,
+    }),
+  });
+  check(directoryTask.status === 201,
+    `an id from the directory is accepted as an assignee (${directoryTask.status})`);
+  check(!!directoryTask.body?.data?.assignee?.profiles?.fullName,
+    'and the task comes back with a named assignee');
+
+  section('40. Personal to-dos are private and separate from tasks');
+
+  /**
+   * The guarantee that makes this feature usable: nothing here is visible to
+   * anybody else, including administrators, and nothing here touches project
+   * reporting.
+   */
+  const list = await A.json('/api/todos/lists', {
+    method: 'POST', body: JSON.stringify({ name: `Today ${Date.now()}`, color: 'emerald' }),
+  });
+  check(list.status === 201, `a personal list can be created (${list.status})`);
+
+  const todo = await A.json('/api/todos', {
+    method: 'POST',
+    body: JSON.stringify({ title: 'Call the client back', listId: list.body?.data?.id }),
+  });
+  check(todo.status === 201, `a to-do can be added (${todo.status})`);
+  check(todo.body?.data?.isDone === false, 'and starts open');
+
+  const todoId = todo.body?.data?.id;
+  const ticked = await A.json(`/api/todos/${todoId}`, {
+    method: 'PATCH', body: JSON.stringify({ isDone: true }),
+  });
+  check(ticked.body?.data?.isDone === true, 'ticking it off works');
+  check(!!ticked.body?.data?.completedAt,
+    'and the server stamps when — a client cannot backdate its own list');
+
+  // The whole point of the separate table: this must not appear on any board.
+  const boardAfterTodo = await A.json('/api/projects/tasks?pageSize=100');
+  check(!(boardAfterTodo.body?.data ?? []).some(t => t.title === 'Call the client back'),
+    'a to-do never appears in the project task list');
+
+  const outsiderTodos = (await B.json('/api/todos?view=all')).body?.data ?? [];
+  check(!outsiderTodos.some(t => t.id === todoId),
+    "another user cannot see anyone else's to-dos");
+
+  const stealTodo = await B.json(`/api/todos/${todoId}`, {
+    method: 'PATCH', body: JSON.stringify({ title: 'hijacked' }),
+  });
+  check(stealTodo.status === 404, `nor edit them (${stealTodo.status})`);
+
+  section('41. The notification tray');
+
+  const tray = await A.json('/api/notifications');
+  check(tray.ok, `notifications are readable by any signed-in user (${tray.status})`);
+  check(typeof tray.body?.meta?.unread === 'number',
+    'the unread total is counted across the tray, not just the page');
+  check((tray.body?.data ?? []).every(n => 'title' in n && 'body' in n),
+    'each carries a title and a body — the store previously read "message", which is not a column');
+
+  const marked = await A.json('/api/notifications', {
+    method: 'PATCH', body: JSON.stringify({ ids: [] }),
+  });
+  check(marked.ok, `everything can be marked read (${marked.status})`);
+  check(((await A.json('/api/notifications')).body?.meta?.unread ?? -1) === 0,
+    'and the unread count really goes to zero');
+
+  section('42. Holidays change what leave costs');
+
+  /**
+   * The point of the holiday calendar: it is not a display setting. A date
+   * added here stops consuming entitlement, because `is_working_day()` is what
+   * the leave trigger reads.
+   */
+  const holiday = await A.json('/api/admin/holidays', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Verification Day', holidayDate: '2031-06-04' }),
+  });
+  check(holiday.status === 201, `an admin can add a company holiday (${holiday.status})`);
+
+  const holidayList = await A.json('/api/admin/holidays?year=2031');
+  check((holidayList.body?.data ?? []).some(h => h.name === 'Verification Day'),
+    'and it appears on the calendar for that year');
+
+  const dupHoliday = await A.json('/api/admin/holidays', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Duplicate', holidayDate: '2031-06-04' }),
+  });
+  check(dupHoliday.status === 409, `two holidays cannot share a date (${dupHoliday.status})`);
+
+  section('43. The client portal shows only what a client should see');
+
+  const portalPreview = await A.json('/api/portal');
+  check(portalPreview.status === 422,
+    `staff must name a client to preview (${portalPreview.status})`);
+
+  const portalCompany = await A.json('/api/crm/companies', {
+    method: 'POST', body: JSON.stringify({ name: `Portal Co ${Date.now()}` }),
+  });
+  const portalCompanyId = portalCompany.body?.data?.id;
+
+  const portal = await A.json(`/api/portal?companyId=${portalCompanyId}`);
+  check(portal.ok, `and can then preview it (${portal.status})`);
+  check(portal.body?.data?.readOnly === true,
+    'the portal declares itself read-only rather than leaving the UI to infer it');
+  check(Array.isArray(portal.body?.data?.projects),
+    'it carries the client’s projects');
+  check(!JSON.stringify(portal.body?.data?.projects ?? []).includes('"budget"'),
+    'and never the budget — a status report, not a window into margins');
+
+  const outsiderPortal = await B.json(`/api/portal?companyId=${portalCompanyId}`);
+  check(outsiderPortal.status === 404,
+    `another tenant cannot preview it (${outsiderPortal.status})`);
+
+  section('44. Project discussion and deliverables');
+
+  const comment = await A.json('/api/projects/comments', {
+    method: 'POST',
+    body: JSON.stringify({ projectId: teamProjectId, body: 'Kicking this off.' }),
+  });
+  check(comment.status === 201, `a comment can be posted (${comment.status})`);
+  check(comment.body?.data?.isClientVisible === false,
+    'and is internal unless somebody says otherwise');
+  check(!!comment.body?.data?.author?.profiles?.fullName,
+    'with a named author, not a bare id');
+
+  const badMention = await A.json('/api/projects/comments', {
+    method: 'POST',
+    body: JSON.stringify({
+      projectId: teamProjectId, body: 'Hello',
+      mentions: ['00000000-0000-0000-0000-000000000000'],
+    }),
+  });
+  check(badMention.status === 422,
+    `mentioning someone who is not a member is refused (${badMention.status})`);
+
+  const outsiderComment = await B.json('/api/projects/comments', {
+    method: 'POST',
+    body: JSON.stringify({ projectId: teamProjectId, body: 'let me in' }),
+  });
+  check(outsiderComment.status === 404,
+    `another tenant cannot post on the project (${outsiderComment.status})`);
+
+  const overview = await A.json(`/api/projects/projects/${teamProjectId}/overview`);
+  check(overview.ok, `the workspace loads in one request (${overview.status})`);
+  for (const key of ['project', 'members', 'milestones', 'tasks', 'files', 'comments', 'timeline', 'risks', 'blockers']) {
+    check(key in (overview.body?.data ?? {}), `the overview carries "${key}"`);
+  }
+  check(Array.isArray(overview.body?.data?.risks),
+    'risks are derived from the work, not a register somebody maintains by hand');
+
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);

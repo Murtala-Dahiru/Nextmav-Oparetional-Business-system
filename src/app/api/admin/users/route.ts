@@ -4,6 +4,7 @@ import { success, error, paginated } from '@/lib/api-response';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { acceptBody } from '@/lib/case';
 import { ROLES } from '@/lib/constants';
+import { hasScopeAtLeast } from '@/lib/permissions';
 import { generateTemporaryPassword } from '@/lib/temp-password';
 
 /** Mirrors the `employment_type` enum; checked here to give a written reason. */
@@ -16,8 +17,27 @@ const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern', 'tempo
  * resolved.
  */
 export async function GET(req: Request) {
-  const ctx = await authorize('admin', 'view');
-  if (ctx instanceof Response) return ctx;
+  /**
+   * Admins, or HR.
+   *
+   * The employee directory *is* the HR module's subject matter — profiles,
+   * departments, employment type, reporting line. Guarding it on `admin`
+   * alone meant `hr_staff`, whose entire job this is, received a 403 from the
+   * screen built for them and saw an empty employee list.
+   *
+   * The fallback asks the capability model rather than testing the role
+   * directly, so a future role granted organization-wide HR access inherits
+   * this without anyone remembering to come back here. Writes below are
+   * unchanged and remain admin-only: reading the directory and provisioning
+   * accounts are different responsibilities.
+   */
+  let ctx = await authorize('admin', 'view');
+  if (ctx instanceof Response) {
+    const hrCtx = await authorize('hr', 'view');
+    if (hrCtx instanceof Response) return ctx;
+    if (!hasScopeAtLeast(hrCtx.org.role, 'hr', 'organization')) return ctx;
+    ctx = hrCtx;
+  }
 
   const { searchParams } = new URL(req.url);
   const page = Math.max(1, Number(searchParams.get('page')) || 1);

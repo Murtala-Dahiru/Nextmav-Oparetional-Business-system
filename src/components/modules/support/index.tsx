@@ -42,11 +42,22 @@ import { Separator } from '@/components/ui/separator';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
+/**
+ * Someone a ticket can be assigned to, as `/api/directory` returns them.
+ *
+ * Was `{ id, firstName, lastName }` read from `/api/admin/users`, which is
+ * both admin-only — so a support agent got a 403 and an empty picker — and
+ * shaped differently: that endpoint returns `memberId` and `fullName`, so
+ * every option rendered "undefined undefined" with no value even for an owner.
+ *
+ * `memberId` is the right identifier: `support_tickets.assignee_id` references
+ * `organization_members`, not the user account.
+ */
 interface Assignee {
-  id: string;
-  firstName: string;
-  lastName: string;
+  memberId: string;
+  fullName: string;
   email: string;
+  jobTitle: string | null;
 }
 
 interface Ticket {
@@ -74,7 +85,22 @@ interface Ticket {
   resolution: string;
   createdAt: string;
   updatedAt: string;
-  assignee: Assignee | null;
+  /**
+   * The embedded relation, which is *not* the same shape as `Assignee`.
+   *
+   * The tickets endpoint selects
+   * `assignee:organization_members(id, profiles(full_name, avatar_url))`, so
+   * the name arrives nested under `profiles`. This field was typed as
+   * `Assignee` and the table rendered `${a.firstName} ${a.lastName}` — neither
+   * of which exists on it — so the Assignee column showed "undefined
+   * undefined" on every row that had one.
+   */
+  assignee: TicketAssignee | null;
+}
+
+interface TicketAssignee {
+  id: string;
+  profiles?: { fullName: string; avatarUrl: string | null };
 }
 
 interface TicketStats {
@@ -368,7 +394,10 @@ export default function SupportModule() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/admin/users?pageSize=100');
+        // The company directory, not the admin user table: a support agent has no
+        // admin rights, so the old endpoint returned 403 and left the assignee
+        // picker permanently empty.
+        const res = await fetch('/api/directory');
         const json = await res.json();
         if (json.data) setUsers(json.data);
       } catch { /* silent */ }
@@ -654,7 +683,7 @@ export default function SupportModule() {
           const a = row.original.assignee;
           return (
             <span className="text-sm text-muted-foreground">
-              {a ? `${a.firstName} ${a.lastName}` : '—'}
+              {a?.profiles?.fullName || '—'}
             </span>
           );
         },
@@ -933,8 +962,8 @@ export default function SupportModule() {
                     <SelectContent>
                       <SelectItem value="_none">Unassigned</SelectItem>
                       {users.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.firstName} {u.lastName}
+                        <SelectItem key={u.memberId} value={u.memberId}>
+                          {u.fullName}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1064,8 +1093,8 @@ export default function SupportModule() {
                         <SelectContent>
                           <SelectItem value="_none">Unassigned</SelectItem>
                           {users.map((u) => (
-                            <SelectItem key={u.id} value={u.id}>
-                              {u.firstName} {u.lastName}
+                            <SelectItem key={u.memberId} value={u.memberId}>
+                              {u.fullName}
                             </SelectItem>
                           ))}
                         </SelectContent>

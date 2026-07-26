@@ -47,8 +47,15 @@ export interface ListOptions {
   filterable?: string[];
   /** Exclude soft-deleted rows. */
   softDelete?: boolean;
-  /** Extra constraints applied to every query, e.g. per-role scoping. */
-  scope?: (q: any, ctx: RequestContext) => any;
+  /**
+   * Extra constraints applied to every query, e.g. per-role scoping.
+   *
+   * Receives the request URL as well so a resource can offer a filter that
+   * depends on who is asking — `?assignedToMe=true` resolving to the caller's
+   * own membership id, say — without the client needing to know its own
+   * identifiers, and without hand-writing a whole list handler for it.
+   */
+  scope?: (q: any, ctx: RequestContext, url: URL) => any;
 }
 
 const MAX_PAGE_SIZE = 100;
@@ -67,7 +74,8 @@ export function listHandler(opts: ListOptions) {
     const ctx = await authorize(module, 'view');
     if (ctx instanceof Response) return ctx;
 
-    const { searchParams } = new URL(req.url);
+    const url = new URL(req.url);
+    const { searchParams } = url;
     const page = Math.max(1, Number(searchParams.get('page')) || 1);
     const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, Number(searchParams.get('pageSize')) || 20));
 
@@ -84,7 +92,7 @@ export function listHandler(opts: ListOptions) {
       .eq('organization_id', ctx.org.organizationId);
 
     if (softDelete) q = q.is('deleted_at', null);
-    if (scope) q = scope(q, ctx);
+    if (scope) q = scope(q, ctx, url);
 
     const search = searchParams.get('search')?.trim();
     if (search && searchColumns.length) {
