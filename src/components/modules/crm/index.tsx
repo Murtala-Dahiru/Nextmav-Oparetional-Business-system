@@ -16,7 +16,10 @@ import { DataTable, type DataTableFilter } from '@/components/shared/data-table'
 import { PageHeader } from '@/components/shared/page-header';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { StatCard } from '@/components/shared/stat-card';
-import { formatCurrency, formatDate, formatRelativeTime, getInitials, formatNumber } from '@/lib/format';
+import {
+  formatCurrency, formatDate, formatRelativeTime, getInitials, formatNumber,
+  activeCurrencyCode,
+} from '@/lib/format';
 import { LEAD_STATUSES, DEAL_STAGES } from '@/lib/constants';
 import {
   createLeadSchema, createContactSchema, createCompanySchema, createDealSchema,
@@ -47,17 +50,25 @@ import {
 
 interface ApiMeta { total: number; page: number; pageSize: number; totalPages: number }
 
+/**
+ * A row of `/api/crm/leads`. These are the column names the endpoint returns;
+ * `company`, `title` and `value` matched nothing, so those three columns
+ * rendered blank in the table and were discarded on every save.
+ */
 interface Lead {
   id: string; firstName: string; lastName: string; email: string; phone: string;
-  company: string; title: string; source: string; status: string; score: number;
-  value: number; notes: string; ownerId: string; createdAt: string; updatedAt: string;
-  owner?: { id: string; firstName: string; lastName: string; email: string };
+  companyName: string; jobTitle: string; source: string; status: string; score: number;
+  estimatedValue: number; notes: string; ownerId: string;
+  convertedContactId: string | null; convertedAt: string | null;
+  createdAt: string; updatedAt: string;
+  owner?: { id: string; profiles?: { fullName: string; avatarUrl: string | null } };
 }
 
 interface Contact {
   id: string; firstName: string; lastName: string; email: string; phone: string;
-  jobTitle: string; company: string; source: string; isActive: boolean; notes: string;
-  createdAt: string; updatedAt: string;
+  jobTitle: string; companyId: string | null; source: string; isActive: boolean;
+  notes: string; createdAt: string; updatedAt: string;
+  company?: { id: string; name: string } | null;
 }
 
 interface Company {
@@ -68,9 +79,11 @@ interface Company {
 
 interface Deal {
   id: string; name: string; value: number; stage: string; probability: number;
-  closeDate: string; contactName: string; companyName: string; notes: string;
-  ownerId: string; createdAt: string; updatedAt: string;
-  owner?: { id: string; firstName: string; lastName: string; email: string };
+  expectedClose: string | null; companyId: string | null; contactId: string | null;
+  notes: string; ownerId: string; createdAt: string; updatedAt: string;
+  company?: { id: string; name: string } | null;
+  contact?: { id: string; firstName: string; lastName: string } | null;
+  owner?: { id: string; profiles?: { fullName: string; avatarUrl: string | null } };
 }
 
 type LeadFormValues = z.infer<typeof createLeadSchema>;
@@ -150,6 +163,50 @@ async function deleteRecord(url: string): Promise<void> {
 //  Shared UI helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Radix Select treats "" as "no value", so an explicit "not linked" option
+ * needs a token of its own.
+ */
+const NO_LINK = '__none__';
+
+/**
+ * The organization's companies and contacts, for the link pickers.
+ *
+ * Deals and contacts reference these by id. The forms previously took a typed
+ * name, which matched no column and was discarded on save, so a deal could
+ * never actually be attached to the company it belonged to.
+ *
+ * Loaded once per form rather than per keystroke; a failure leaves the picker
+ * empty rather than blocking the form, since the link is optional.
+ */
+function useCrmLinks(enabled: boolean) {
+  const [companyOptions, setCompanyOptions] = useState<{ id: string; name: string }[]>([]);
+  const [contactOptions, setContactOptions] = useState<
+    { id: string; firstName: string; lastName: string }[]
+  >([]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [co, ct] = await Promise.all([
+          fetch('/api/crm/companies?pageSize=100').then(r => r.json()),
+          fetch('/api/crm/contacts?pageSize=100').then(r => r.json()),
+        ]);
+        if (cancelled) return;
+        setCompanyOptions(co?.data ?? []);
+        setContactOptions(ct?.data ?? []);
+      } catch {
+        // Optional links; an empty picker is better than a blocked form.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [enabled]);
+
+  return { companyOptions, contactOptions };
+}
+
 function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
   return (
     <div className="space-y-1.5">
@@ -169,14 +226,14 @@ function StatusBadge({ status, colorMap }: { status: string; colorMap: Record<st
 }
 
 const LEAD_DEFAULTS: LeadFormValues = {
-  firstName: '', lastName: '', email: '', phone: '', company: '',
-  title: '', source: 'manual', status: 'new', score: 0, value: 0,
-  notes: '', ownerId: 'u1',
+  firstName: '', lastName: '', email: '', phone: '', companyName: '',
+  jobTitle: '', source: 'manual', status: 'new', score: 0, estimatedValue: 0,
+  notes: '', ownerId: undefined,
 };
 
 const CONTACT_DEFAULTS: ContactFormValues = {
   firstName: '', lastName: '', email: '', phone: '', jobTitle: '',
-  company: '', source: 'manual', isActive: true, notes: '',
+  companyId: null, source: 'manual', isActive: true, notes: '',
 };
 
 const COMPANY_DEFAULTS: CompanyFormValues = {
@@ -186,8 +243,8 @@ const COMPANY_DEFAULTS: CompanyFormValues = {
 
 const DEAL_DEFAULTS: DealFormValues = {
   name: '', value: 0, stage: 'prospecting', probability: 20,
-  closeDate: new Date().toISOString().split('T')[0] || new Date().toISOString(),
-  contactName: '', companyName: '', notes: '', ownerId: 'u1',
+  expectedClose: new Date().toISOString().split('T')[0] || '',
+  companyId: null, contactId: null, notes: '', ownerId: undefined,
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -280,13 +337,13 @@ function LeadsTab() {
         </div>
       );
     }},
-    { accessorKey: 'value', header: 'Value', cell: ({ row }) => <span className="font-medium">{formatCurrency(row.original.value)}</span> },
+    { accessorKey: 'estimatedValue', header: 'Value', cell: ({ row }) => <span className="font-medium">{formatCurrency(row.original.estimatedValue)}</span> },
     { accessorKey: 'createdAt', header: 'Created', cell: ({ row }) => <span className="text-muted-foreground text-sm">{formatRelativeTime(row.original.createdAt)}</span> },
     { id: 'actions', size: 50, cell: ({ row }) => (
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="Actions"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => { setEditing(row.original); form.reset({ firstName: row.original.firstName, lastName: row.original.lastName, email: row.original.email, phone: row.original.phone, company: row.original.company, title: row.original.title, source: row.original.source, status: row.original.status, score: row.original.score, value: row.original.value, notes: row.original.notes, ownerId: row.original.ownerId }); setOpen(true); }}>
+          <DropdownMenuItem onClick={() => { setEditing(row.original); form.reset({ firstName: row.original.firstName, lastName: row.original.lastName, email: row.original.email, phone: row.original.phone, companyName: row.original.companyName, jobTitle: row.original.jobTitle, source: row.original.source, status: row.original.status, score: row.original.score, estimatedValue: row.original.estimatedValue, notes: row.original.notes, ownerId: row.original.ownerId }); setOpen(true); }}>
             <Pencil className="size-4 mr-2" /> Edit
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => { setDeletingItem(row.original); setDeleteOpen(true); }} className="text-red-600 focus:text-red-600">
@@ -365,11 +422,11 @@ function LeadsTab() {
               </Field>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Company" error={form.formState.errors.company?.message}>
-                <Input {...form.register('company')} placeholder="Acme Inc" />
+              <Field label="Company" error={form.formState.errors.companyName?.message}>
+                <Input {...form.register('companyName')} placeholder="Acme Inc" />
               </Field>
-              <Field label="Job Title" error={form.formState.errors.title?.message}>
-                <Input {...form.register('title')} placeholder="CEO" />
+              <Field label="Job Title" error={form.formState.errors.jobTitle?.message}>
+                <Input {...form.register('jobTitle')} placeholder="CEO" />
               </Field>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -384,8 +441,9 @@ function LeadsTab() {
               <Field label="Score (0-100)" error={form.formState.errors.score?.message}>
                 <Input type="number" min={0} max={100} {...form.register('score', { valueAsNumber: true })} />
               </Field>
-              <Field label="Value ($)" error={form.formState.errors.value?.message}>
-                <Input type="number" min={0} {...form.register('value', { valueAsNumber: true })} />
+              {/* Labelled with the organization's currency, not a dollar sign. */}
+              <Field label={`Estimated value (${activeCurrencyCode()})`} error={form.formState.errors.estimatedValue?.message}>
+                <Input type="number" min={0} {...form.register('estimatedValue', { valueAsNumber: true })} />
               </Field>
             </div>
             <Field label="Notes" error={form.formState.errors.notes?.message}>
@@ -424,6 +482,7 @@ function ContactsTab() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const [open, setOpen] = useState(false);
+  const { companyOptions, contactOptions } = useCrmLinks(open);
   const [editing, setEditing] = useState<Contact | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -472,7 +531,7 @@ function ContactsTab() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="Actions"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => { const c = row.original; setEditing(c); form.reset({ firstName: c.firstName, lastName: c.lastName, email: c.email, phone: c.phone, jobTitle: c.jobTitle, company: c.company, source: c.source, isActive: c.isActive, notes: c.notes }); setOpen(true); }}>
+          <DropdownMenuItem onClick={() => { const c = row.original; setEditing(c); form.reset({ firstName: c.firstName, lastName: c.lastName, email: c.email, phone: c.phone, jobTitle: c.jobTitle, companyId: c.companyId, source: c.source, isActive: c.isActive, notes: c.notes }); setOpen(true); }}>
             <Pencil className="size-4 mr-2" /> Edit
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => { setDeletingItem(row.original); setDeleteOpen(true); }} className="text-red-600 focus:text-red-600">
@@ -546,8 +605,25 @@ function ContactsTab() {
               <Field label="Job Title" error={form.formState.errors.jobTitle?.message}>
                 <Input {...form.register('jobTitle')} placeholder="CEO" />
               </Field>
-              <Field label="Company" error={form.formState.errors.company?.message}>
-                <Input {...form.register('company')} placeholder="Acme Inc" />
+              {/*
+                A picker, not free text. Contacts link to a company by id, so a
+                typed name had nowhere to be stored and was dropped on save.
+              */}
+              <Field label="Company" error={form.formState.errors.companyId?.message}>
+                <Controller control={form.control} name="companyId" render={({ field }) => (
+                  <Select
+                    value={field.value ?? NO_LINK}
+                    onValueChange={(v) => field.onChange(v === NO_LINK ? null : v)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="No company" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_LINK}>No company</SelectItem>
+                      {companyOptions.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )} />
               </Field>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -775,6 +851,7 @@ function DealsTab() {
   const [chartLoading, setChartLoading] = useState(true);
 
   const [open, setOpen] = useState(false);
+  const { companyOptions, contactOptions } = useCrmLinks(open);
   const [editing, setEditing] = useState<Deal | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -832,14 +909,17 @@ function DealsTab() {
         <span className="text-xs text-muted-foreground w-8 text-right">{row.original.probability}%</span>
       </div>
     )},
-    { accessorKey: 'closeDate', header: 'Close Date', cell: ({ row }) => <span className="text-sm">{formatDate(row.original.closeDate)}</span> },
-    { accessorKey: 'contactName', header: 'Contact', cell: ({ row }) => row.original.contactName || <span className="text-muted-foreground">—</span> },
-    { accessorKey: 'companyName', header: 'Company', cell: ({ row }) => row.original.companyName || <span className="text-muted-foreground">—</span> },
+    { accessorKey: 'expectedClose', header: 'Close Date', cell: ({ row }) => <span className="text-sm">{row.original.expectedClose ? formatDate(row.original.expectedClose) : '—'}</span> },
+    { id: 'contact', header: 'Contact', cell: ({ row }) => {
+      const c = row.original.contact;
+      return c ? `${c.firstName} ${c.lastName}`.trim() : <span className="text-muted-foreground">—</span>;
+    } },
+    { id: 'company', header: 'Company', cell: ({ row }) => row.original.company?.name || <span className="text-muted-foreground">—</span> },
     { id: 'actions', size: 50, cell: ({ row }) => (
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="Actions"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => { const d = row.original; setEditing(d); form.reset({ name: d.name, value: d.value, stage: d.stage, probability: d.probability, closeDate: d.closeDate?.split('T')[0] || '', contactName: d.contactName, companyName: d.companyName, notes: d.notes, ownerId: d.ownerId }); setOpen(true); }}>
+          <DropdownMenuItem onClick={() => { const d = row.original; setEditing(d); form.reset({ name: d.name, value: d.value, stage: d.stage, probability: d.probability, expectedClose: d.expectedClose?.split('T')[0] || '', companyId: d.companyId, contactId: d.contactId, notes: d.notes, ownerId: d.ownerId }); setOpen(true); }}>
             <Pencil className="size-4 mr-2" /> Edit
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => { setDeletingItem(row.original); setDeleteOpen(true); }} className="text-red-600 focus:text-red-600">
@@ -917,7 +997,8 @@ function DealsTab() {
               <Input {...form.register('name')} placeholder="Enterprise Deal" />
             </Field>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Value ($)" error={form.formState.errors.value?.message}>
+              {/* Labelled with the organization's currency, not a dollar sign. */}
+              <Field label={`Deal value (${activeCurrencyCode()})`} error={form.formState.errors.value?.message}>
                 <Input type="number" min={0} {...form.register('value', { valueAsNumber: true })} />
               </Field>
               <Field label="Stage" error={form.formState.errors.stage?.message}>
@@ -933,16 +1014,49 @@ function DealsTab() {
               <Field label="Probability (%)" error={form.formState.errors.probability?.message}>
                 <Input type="number" min={0} max={100} {...form.register('probability', { valueAsNumber: true })} />
               </Field>
-              <Field label="Close Date" error={form.formState.errors.closeDate?.message}>
-                <Input type="date" {...form.register('closeDate')} />
+              <Field label="Close Date" error={form.formState.errors.expectedClose?.message}>
+                <Input type="date" {...form.register('expectedClose')} />
               </Field>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Contact Name" error={form.formState.errors.contactName?.message}>
-                <Input {...form.register('contactName')} placeholder="John Doe" />
+              {/*
+                Pickers rather than typed names: a deal references a company and
+                a contact by id, so the text fields that used to be here had
+                nowhere to be stored and were dropped on every save.
+              */}
+              <Field label="Contact" error={form.formState.errors.contactId?.message}>
+                <Controller control={form.control} name="contactId" render={({ field }) => (
+                  <Select
+                    value={field.value ?? NO_LINK}
+                    onValueChange={(v) => field.onChange(v === NO_LINK ? null : v)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="No contact" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_LINK}>No contact</SelectItem>
+                      {contactOptions.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {`${c.firstName} ${c.lastName}`.trim() || 'Unnamed contact'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )} />
               </Field>
-              <Field label="Company Name" error={form.formState.errors.companyName?.message}>
-                <Input {...form.register('companyName')} placeholder="Acme Inc" />
+              <Field label="Company" error={form.formState.errors.companyId?.message}>
+                <Controller control={form.control} name="companyId" render={({ field }) => (
+                  <Select
+                    value={field.value ?? NO_LINK}
+                    onValueChange={(v) => field.onChange(v === NO_LINK ? null : v)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="No company" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_LINK}>No company</SelectItem>
+                      {companyOptions.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )} />
               </Field>
             </div>
             <Field label="Notes" error={form.formState.errors.notes?.message}>
@@ -975,6 +1089,7 @@ function PipelineTab() {
   const [loading, setLoading] = useState(true);
 
   const [open, setOpen] = useState(false);
+  const { companyOptions, contactOptions } = useCrmLinks(open);
   const [editing, setEditing] = useState<Deal | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -1006,8 +1121,8 @@ function PipelineTab() {
     setEditing(deal);
     form.reset({
       name: deal.name, value: deal.value, stage: deal.stage, probability: deal.probability,
-      closeDate: deal.closeDate?.split('T')[0] || '', contactName: deal.contactName,
-      companyName: deal.companyName, notes: deal.notes, ownerId: deal.ownerId,
+      expectedClose: deal.expectedClose?.split('T')[0] || '', contactId: deal.contactId,
+      companyId: deal.companyId, notes: deal.notes, ownerId: deal.ownerId,
     });
     setOpen(true);
   };
@@ -1057,14 +1172,14 @@ function PipelineTab() {
                     >
                       <p className="font-medium text-sm text-foreground">{deal.name}</p>
                       <p className="text-emerald-600 font-semibold text-sm mt-1">{formatCurrency(deal.value)}</p>
-                      {deal.contactName && (
+                      {deal.contact && (
                         <p className="text-muted-foreground text-xs mt-1 flex items-center gap-1">
-                          <Users className="size-3" /> {deal.contactName}
+                          <Users className="size-3" /> {`${deal.contact.firstName} ${deal.contact.lastName}`.trim()}
                         </p>
                       )}
-                      {deal.companyName && (
+                      {deal.company?.name && (
                         <p className="text-muted-foreground text-xs flex items-center gap-1">
-                          <Building2 className="size-3" /> {deal.companyName}
+                          <Building2 className="size-3" /> {deal.company.name}
                         </p>
                       )}
                       <div className="flex items-center gap-2 mt-2">
@@ -1094,7 +1209,8 @@ function PipelineTab() {
               <Input {...form.register('name')} />
             </Field>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Value ($)" error={form.formState.errors.value?.message}>
+              {/* Labelled with the organization's currency, not a dollar sign. */}
+              <Field label={`Deal value (${activeCurrencyCode()})`} error={form.formState.errors.value?.message}>
                 <Input type="number" min={0} {...form.register('value', { valueAsNumber: true })} />
               </Field>
               <Field label="Stage" error={form.formState.errors.stage?.message}>
@@ -1110,16 +1226,44 @@ function PipelineTab() {
               <Field label="Probability (%)" error={form.formState.errors.probability?.message}>
                 <Input type="number" min={0} max={100} {...form.register('probability', { valueAsNumber: true })} />
               </Field>
-              <Field label="Close Date" error={form.formState.errors.closeDate?.message}>
-                <Input type="date" {...form.register('closeDate')} />
+              <Field label="Close Date" error={form.formState.errors.expectedClose?.message}>
+                <Input type="date" {...form.register('expectedClose')} />
               </Field>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Contact Name" error={form.formState.errors.contactName?.message}>
-                <Input {...form.register('contactName')} />
+              <Field label="Contact" error={form.formState.errors.contactId?.message}>
+                <Controller control={form.control} name="contactId" render={({ field }) => (
+                  <Select
+                    value={field.value ?? NO_LINK}
+                    onValueChange={(v) => field.onChange(v === NO_LINK ? null : v)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="No contact" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_LINK}>No contact</SelectItem>
+                      {contactOptions.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {`${c.firstName} ${c.lastName}`.trim() || 'Unnamed contact'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )} />
               </Field>
-              <Field label="Company Name" error={form.formState.errors.companyName?.message}>
-                <Input {...form.register('companyName')} />
+              <Field label="Company" error={form.formState.errors.companyId?.message}>
+                <Controller control={form.control} name="companyId" render={({ field }) => (
+                  <Select
+                    value={field.value ?? NO_LINK}
+                    onValueChange={(v) => field.onChange(v === NO_LINK ? null : v)}
+                  >
+                    <SelectTrigger><SelectValue placeholder="No company" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_LINK}>No company</SelectItem>
+                      {companyOptions.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )} />
               </Field>
             </div>
             <Field label="Notes" error={form.formState.errors.notes?.message}>

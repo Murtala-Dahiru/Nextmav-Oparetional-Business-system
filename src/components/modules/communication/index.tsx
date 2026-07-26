@@ -20,6 +20,7 @@ import {
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatRelativeTime, getInitials, truncate } from '@/lib/format';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useAppStore } from '@/store/app-store';
 import { cn } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -42,7 +43,7 @@ interface Sender {
 
 interface Message {
   id: string;
-  content: string;
+  body: string;
   senderId: string;
   channelId: string;
   isPinned: boolean;
@@ -89,13 +90,18 @@ function ChannelTypeIcon({ type, className }: { type: string; className?: string
 }
 
 // ─── Current User ────────────────────────────────────────────────────
-
-const CURRENT_USER_ID = 'u1'; // TODO: connect to auth system
+//
+// Read from the session rather than assumed. This was the literal string 'u1',
+// which matched no member, so every message — including your own — rendered as
+// somebody else's: wrong side, wrong colour, no distinction in the thread.
 
 // ─── Component ───────────────────────────────────────────────────────
 
 export default function CommunicationModule() {
   const isMobile = useIsMobile();
+  // The membership id, not the account id: messages.sender_id references the
+  // membership, so that is what an "is this mine?" comparison has to use.
+  const currentMemberId = useAppStore((s) => s.user?.memberId ?? null);
   const [showSidebar, setShowSidebar] = useState(false);
 
   // ── Data state ──
@@ -135,7 +141,7 @@ export default function CommunicationModule() {
             const msgs: Message[] = msgJson.data ?? [];
             return {
               ...ch,
-              lastMessage: msgs[0]?.content,
+              lastMessage: msgs[0]?.body,
               lastMessageSender: msgs[0]?.sender
                 ? `${msgs[0].sender.firstName} ${msgs[0].sender.lastName}`
                 : undefined,
@@ -205,8 +211,12 @@ export default function CommunicationModule() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          content,
-          senderId: CURRENT_USER_ID,
+          // The endpoint reads `body`. `content` is the pre-migration name and
+          // matched nothing, so the server saw an empty message and refused
+          // every send with "A message needs text or an attachment".
+          body: content,
+          // sender_id is taken from the session server-side; sending one here
+          // was ignored at best and spoofable at worst.
           channelId: selectedChannelId,
         }),
       });
@@ -417,7 +427,7 @@ export default function CommunicationModule() {
                       <MessageBubble
                         key={msg.id}
                         message={msg}
-                        isOwn={msg.senderId === CURRENT_USER_ID}
+                        isOwn={!!currentMemberId && msg.senderId === currentMemberId}
                         isConsecutive={idx > 0 && messages[idx - 1]?.senderId === msg.senderId}
                         onTogglePin={() => handleTogglePin(msg)}
                       />
@@ -659,7 +669,7 @@ function MessageBubble({
           </div>
         )}
         <p className="text-sm text-foreground/90 break-words leading-relaxed">
-          {message.content}
+          {message.body}
         </p>
       </div>
 

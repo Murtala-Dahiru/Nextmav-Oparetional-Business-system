@@ -15,7 +15,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { StatCard } from '@/components/shared/stat-card';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { EmptyState } from '@/components/shared/empty-state';
-import { formatCurrency, formatDate, getInitials } from '@/lib/format';
+import { formatCurrency, formatDate, getInitials, initialsOf } from '@/lib/format';
 import { TASK_STATUSES, PROJECT_STATUSES } from '@/lib/constants';
 import { createTaskSchema, createProjectSchema } from '@/lib/validations';
 import { z } from 'zod';
@@ -61,7 +61,7 @@ interface Task {
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
-  assignee?: { id: string; firstName: string; lastName: string; email: string };
+  assignee?: { id: string; profiles?: { fullName: string; avatarUrl: string | null } };
   project?: { id: string; name: string };
 }
 
@@ -77,9 +77,21 @@ interface Project {
   ownerId: string;
   createdAt: string;
   updatedAt: string;
-  owner?: { id: string; firstName: string; lastName: string; email: string };
-  _count?: { tasks: number };
-  tasks?: Task[];
+  owner?: { id: string; profiles?: { fullName: string; avatarUrl: string | null } };
+  /**
+   * Health metrics, merged in by the endpoint from `v_project_health`.
+   *
+   * The card used to derive progress in the browser from `_count.tasks` and
+   * a `tasks[]` array, neither of which the API returned — so every project
+   * displayed 0 tasks and 0%. These share their definition with the reports.
+   */
+  totalTasks?: number;
+  completedTasks?: number;
+  blockedTasks?: number;
+  overdueTasks?: number;
+  progressPct?: number;
+  daysRemaining?: number | null;
+  isAtRisk?: boolean;
 }
 
 interface User {
@@ -294,7 +306,7 @@ function TasksTab() {
     resolver: zodResolver(createTaskSchema) as any,
     defaultValues: {
       title: '', description: '', status: 'todo', priority: 'medium',
-      assigneeId: 'u1', projectId: '', dueDate: null as any, estimatedHours: 0, loggedHours: 0,
+      assigneeId: undefined, projectId: '', dueDate: null as any, estimatedHours: 0, loggedHours: 0,
     },
   });
 
@@ -303,7 +315,7 @@ function TasksTab() {
     setEditingTask(null);
     reset({
       title: '', description: '', status: 'todo', priority: 'medium',
-      assigneeId: 'u1', projectId: projects[0]?.id || '', dueDate: null as any,
+      assigneeId: undefined, projectId: projects[0]?.id || '', dueDate: null as any,
       estimatedHours: 0, loggedHours: 0,
     });
     setTaskDialogOpen(true);
@@ -396,10 +408,10 @@ function TasksTab() {
           <div className="flex items-center gap-2">
             <Avatar className="size-6">
               <AvatarFallback className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                {getInitials(a.firstName, a.lastName)}
+                {initialsOf(a.profiles?.fullName)}
               </AvatarFallback>
             </Avatar>
-            <span className="text-sm">{a.firstName} {a.lastName}</span>
+            <span className="text-sm">{a.profiles?.fullName || 'Unassigned'}</span>
           </div>
         ) : <span className="text-muted-foreground text-sm">—</span>;
       },
@@ -715,7 +727,7 @@ function ProjectsTab() {
     resolver: zodResolver(createProjectSchema) as any,
     defaultValues: {
       name: '', description: '', status: 'planning', priority: 'medium',
-      startDate: null as any, endDate: null as any, budget: 0, ownerId: 'u1',
+      startDate: null as any, endDate: null as any, budget: 0, ownerId: undefined,
     },
   });
 
@@ -724,7 +736,7 @@ function ProjectsTab() {
     setEditingProject(null);
     reset({
       name: '', description: '', status: 'planning', priority: 'medium',
-      startDate: null as any, endDate: null as any, budget: 0, ownerId: 'u1',
+      startDate: null as any, endDate: null as any, budget: 0, ownerId: undefined,
     });
     setProjectDialogOpen(true);
   }, [reset]);
@@ -822,9 +834,9 @@ function ProjectsTab() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {projects.map((project) => {
-            const taskCount = project._count?.tasks ?? 0;
-            const doneCount = project.tasks?.filter((t) => t.status === 'done').length ?? 0;
-            const pct = taskCount > 0 ? Math.round((doneCount / taskCount) * 100) : 0;
+            const taskCount = project.totalTasks ?? 0;
+            const doneCount = project.completedTasks ?? 0;
+            const pct = project.progressPct ?? 0;
 
             return (
               <Card
@@ -881,10 +893,10 @@ function ProjectsTab() {
                       <div className="flex items-center gap-1.5">
                         <Avatar className="size-5">
                           <AvatarFallback className="text-[8px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                            {getInitials(project.owner.firstName, project.owner.lastName)}
+                            {initialsOf(project.owner.profiles?.fullName)}
                           </AvatarFallback>
                         </Avatar>
-                        <span>{project.owner.firstName} {project.owner.lastName}</span>
+                        <span>{project.owner.profiles?.fullName || 'Unassigned'}</span>
                       </div>
                     )}
                   </div>

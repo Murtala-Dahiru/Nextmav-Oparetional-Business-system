@@ -1,7 +1,24 @@
 import { z } from 'zod';
 
-// Default user ID (until auth system is connected)
-export const DEFAULT_USER_ID = 'u1';
+/**
+ * Ownership fields carry no default.
+ *
+ * They used to default to the literal string 'u1', left over from before
+ * authentication existed. Every one of these columns is a uuid foreign key, so
+ * whenever a form submitted without an explicit owner the database answered
+ *
+ *     invalid input syntax for type uuid: "u1"
+ *
+ * and the create failed. Worse, the placeholder is truthy, so it overrode the
+ * server-side default the route already applies — the API resolves an absent
+ * owner to the caller's own membership, which is the correct answer and the
+ * only one that can be trusted anyway.
+ *
+ * Leaving these optional and unset lets that server default do its job. A
+ * supplied value must be a real uuid, so a stale client is refused by the form
+ * rather than by Postgres.
+ */
+const memberRef = () => z.string().uuid('Must be a valid member').optional();
 
 // ═══════════════════════════════════════════════════════════════
 //  Schema helpers
@@ -62,14 +79,18 @@ export const createLeadSchema = z.object({
   lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email('Invalid email').optional().default(''),
   phone: z.string().optional().default(''),
-  company: z.string().optional().default(''),
-  title: z.string().optional().default(''),
+  // These are the column names. As `company`, `title` and `value` they
+  // matched nothing on the leads table, so the API stored null, null and 0 —
+  // and still answered 201. Every lead saved lost its company, job title and
+  // estimated value, silently, behind a success message.
+  companyName: z.string().optional().default(''),
+  jobTitle: z.string().optional().default(''),
   source: z.string().optional().default('manual'),
   status: z.string().optional().default('new'),
   score: z.number().int().min(0).optional().default(0),
-  value: z.number().min(0).optional().default(0),
+  estimatedValue: z.number().min(0).optional().default(0),
   notes: z.string().optional().default(''),
-  ownerId: z.string().optional().default('u1'),
+  ownerId: memberRef(),
 });
 
 export const updateLeadSchema = toUpdateSchema(createLeadSchema);
@@ -80,7 +101,8 @@ export const createContactSchema = z.object({
   email: z.string().email('Invalid email').optional().default(''),
   phone: z.string().optional().default(''),
   jobTitle: z.string().optional().default(''),
-  company: z.string().optional().default(''),
+  // A contact belongs to a company by id. Free text had nowhere to be stored.
+  companyId: optionalFk(),
   source: z.string().optional().default('manual'),
   isActive: z.boolean().optional().default(true),
   notes: z.string().optional().default(''),
@@ -108,11 +130,15 @@ export const createDealSchema = z.object({
   value: z.number().min(0).optional().default(0),
   stage: z.string().optional().default('prospecting'),
   probability: z.number().int().min(0).max(100).optional().default(20),
-  closeDate: z.string().datetime({ offset: true }).or(z.string()).optional().default(new Date().toISOString()),
-  contactName: z.string().optional().default(''),
-  companyName: z.string().optional().default(''),
+  // The column is `expected_close`; `closeDate` matched nothing, so every
+  // deal was saved with no close date and the pipeline forecast had no dates
+  // to work from.
+  expectedClose: z.string().optional().default(''),
+  // Deals link to a company and contact by id, like invoices do.
+  companyId: optionalFk(),
+  contactId: optionalFk(),
   notes: z.string().optional().default(''),
-  ownerId: z.string().optional().default('u1'),
+  ownerId: memberRef(),
 });
 
 export const updateDealSchema = toUpdateSchema(createDealSchema);
@@ -129,7 +155,7 @@ export const createProjectSchema = z.object({
   startDate: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
   endDate: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
   budget: z.number().min(0).optional().default(0),
-  ownerId: z.string().optional().default('u1'),
+  ownerId: memberRef(),
 });
 
 export const updateProjectSchema = toUpdateSchema(createProjectSchema);
@@ -139,7 +165,7 @@ export const createTaskSchema = z.object({
   description: z.string().optional().default(''),
   status: z.string().optional().default('todo'),
   priority: z.string().optional().default('medium'),
-  assigneeId: z.string().optional().default('u1'),
+  assigneeId: memberRef(),
   projectId: z.string().min(1, 'Project ID is required'),
   dueDate: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
   estimatedHours: z.number().min(0).optional().default(0),
@@ -174,7 +200,7 @@ export const createChannelSchema = z.object({
   name: z.string().min(1, 'Channel name is required'),
   type: z.string().optional().default('public'),
   description: z.string().optional().default(''),
-  creatorId: z.string().optional().default('u1'),
+  creatorId: memberRef(),
   isArchived: z.boolean().optional().default(false),
 });
 
@@ -182,7 +208,7 @@ export const updateChannelSchema = toUpdateSchema(createChannelSchema);
 
 export const createMessageSchema = z.object({
   content: z.string().min(1, 'Message content is required'),
-  senderId: z.string().optional().default('u1'),
+  senderId: memberRef(),
   channelId: z.string().min(1, 'Channel ID is required'),
   isPinned: z.boolean().optional().default(false),
 });
@@ -258,7 +284,7 @@ export const createInvoiceSchema = z.object({
   dueDate: z.string().datetime({ offset: true }).or(z.string()),
   paidAt: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
   notes: z.string().optional().default(''),
-  ownerId: z.string().optional().default('u1'),
+  ownerId: memberRef(),
 });
 
 export const updateInvoiceSchema = toUpdateSchema(createInvoiceSchema);
@@ -272,7 +298,7 @@ export const createExpenseSchema = z.object({
   status: z.string().optional().default('pending'),
   receipt: z.string().optional().default(''),
   notes: z.string().optional().default(''),
-  ownerId: z.string().optional().default('u1'),
+  ownerId: memberRef(),
 });
 
 export const updateExpenseSchema = toUpdateSchema(createExpenseSchema);
@@ -339,7 +365,7 @@ export const createStockMovementSchema = z.object({
   reference: z.string().optional().default(''),
   fromWarehouseId: optionalFk(),
   toWarehouseId: optionalFk(),
-  userId: z.string().optional().default(DEFAULT_USER_ID),
+  userId: memberRef(),
 });
 
 export const PURCHASE_ORDER_STATUSES = ['draft', 'submitted', 'approved', 'received', 'cancelled'] as const;
@@ -357,7 +383,7 @@ export const createPurchaseOrderSchema = z.object({
   expectedDate: z.string().nullish(),
   taxRate: z.number().min(0).max(100).optional().default(0),
   notes: z.string().optional().default(''),
-  createdById: z.string().optional().default(DEFAULT_USER_ID),
+  createdById: memberRef(),
   items: z.array(purchaseOrderItemSchema).min(1, 'Add at least one line item'),
 });
 
@@ -380,7 +406,7 @@ export const createEventSchema = z.object({
   allDay: z.boolean().optional().default(false),
   location: z.string().optional().default(''),
   color: z.string().optional().default('#10b981'),
-  creatorId: z.string().optional().default('u1'),
+  creatorId: memberRef(),
 });
 
 export const updateEventSchema = toUpdateSchema(createEventSchema);

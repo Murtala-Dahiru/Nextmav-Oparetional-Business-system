@@ -17,6 +17,15 @@ export interface CurrentUser {
   organizationId: string;
   organizationName: string | null;
   organizationSlug: string | null;
+  /**
+   * The caller's membership row id.
+   *
+   * The session has always returned this and the type omitted it, so screens
+   * that needed to ask "is this record mine?" had nothing to compare against.
+   * Business tables reference the membership, not the account — one person can
+   * hold memberships in several organizations.
+   */
+  memberId?: string | null;
   role: string;
   isActive: boolean;
   /** Server-computed capability mirror, used for rendering decisions only. */

@@ -332,6 +332,7 @@ function RoleFormDialog({
 
 export default function AdminModule() {
   // ── Users State ──
+  const currentMemberId = useAppStore((st) => st.user?.memberId ?? null);
   const [users, setUsers] = useState<UserRecord[]>([]);
   /** Held only while the reveal dialog is open; never persisted anywhere. */
   const [issued, setIssued] = useState<{ email: string; temporaryPassword: string } | null>(null);
@@ -562,8 +563,12 @@ export default function AdminModule() {
   const handleDelete = async () => {
     if (deleteTarget?.isSystem) return;
     if (!deleteTarget) return;
-    if (deleteTarget.type === 'user' && deleteTarget.id === 'u1') {
-      toast.error('You cannot delete your own account');
+    // Compared against the real membership id. This was `=== 'u1'`, a
+    // placeholder that matches nothing, so the guard never fired and the
+    // attempt went to the server — which refuses it, but only after the
+    // confirm dialog had already promised it would happen.
+    if (deleteTarget.type === 'user' && deleteTarget.id === currentMemberId) {
+      toast.error('You cannot remove your own account from the organization.');
       setDeleteTarget(null); return;
     }
     setDeleting(true);
