@@ -30,7 +30,8 @@ interface Channel {
   name: string;
   type: 'public' | 'private' | 'direct';
   description: string;
-  _count: { messages: number };
+  /** PostgREST returns an embedded count as [{ count: n }]. */
+  messages?: { count: number }[];
   updatedAt: string;
 }
 
@@ -401,7 +402,7 @@ export default function CommunicationModule() {
             {/* Chat header */}
             <ChatHeader
               channel={selectedChannel}
-              memberCount={selectedChannel._count?.messages ?? 0}
+              memberCount={selectedChannel.messages?.[0]?.count ?? 0}
               onMobileToggle={() => setShowSidebar(true)}
               isMobile={isMobile}
             />

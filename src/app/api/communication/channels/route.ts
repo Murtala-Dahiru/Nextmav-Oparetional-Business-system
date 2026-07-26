@@ -3,6 +3,9 @@ import { collectionHandlers } from '@/lib/supabase/crud';
 export const { GET, POST } = collectionHandlers(
   {
     table: 'channels', module: 'communication',
+    // The chat header shows how many messages a channel holds. It read
+    // `_count.messages`, which nothing returned, so every channel said 0.
+    select: '*, messages(count)',
     searchColumns: ['name', 'description'],
     sortable: ['created_at', 'name', 'type'],
     filterable: ['type', 'department_id', 'is_archived'],
