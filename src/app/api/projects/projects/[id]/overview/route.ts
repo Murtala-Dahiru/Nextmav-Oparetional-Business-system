@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
+import { todayIn } from '@/lib/org-time';
 
 /**
  * Everything a project workspace opens with, in one request.
@@ -145,7 +146,9 @@ export async function GET(_req: Request, { params }: Params) {
    * task is a blocker because someone set it to blocked, and an overdue phase
    * is a risk because the date passed.
    */
-  const today = new Date().toISOString().slice(0, 10);
+  // Overdue is judged against the organisation's calendar day, not UTC's —
+  // otherwise a phase reads as late for several hours before it actually is.
+  const today = todayIn(ctx.org.timezone);
 
   const blockers = taskRows
     .filter((t: any) => t.status === 'blocked')

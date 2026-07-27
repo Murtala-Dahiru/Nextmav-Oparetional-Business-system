@@ -119,7 +119,10 @@ const PROJECTS = 'src/components/modules/projects/index.tsx';
 const INVENTORY = 'src/components/modules/inventory/index.tsx';
 const SUPPLY = 'src/components/modules/inventory/supply-tabs.tsx';
 const SUPPORT = 'src/components/modules/support/index.tsx';
-const WORKSPACE = 'src/components/modules/workspace/index.tsx';
+// The workspace's shapes moved into their own module when the tree, the sheet
+// grid, the file browser and the share dialog all came to read them — four
+// copies of one response shape is precisely the drift this tool exists to find.
+const WORKSPACE = 'src/components/modules/workspace/types.ts';
 const FINANCE = 'src/components/modules/finance/index.tsx';
 const HR = 'src/components/modules/hr/index.tsx';
 const ATTENDANCE = 'src/components/modules/hr/attendance-tab.tsx';
@@ -173,7 +176,7 @@ const CONTRACTS = [
     path: '/api/inventory/products', body: () => ({ name: 'W', sku: `S${Date.now()}`, price: 1, cost: 1 }) },
   { label: 'Support · Ticket', file: SUPPORT, iface: 'Ticket',
     path: '/api/support/tickets', body: () => ({ subject: 'S', description: 'D' }) },
-  { label: 'Workspace · Page', file: WORKSPACE, iface: 'WorkspacePage',
+  { label: 'Workspace · Page', file: WORKSPACE, iface: 'WorkspaceNode',
     path: '/api/workspace/pages', body: () => ({ title: 'P' }) },
   { label: 'Finance · Expense', file: FINANCE, iface: 'ExpenseRecord',
     path: '/api/finance/expenses',
@@ -193,7 +196,9 @@ const LIST_CONTRACTS = [
   { label: 'Finance · Invoice', file: FINANCE, iface: 'InvoiceRecord', path: '/api/finance/invoices' },
   { label: 'Inventory · PO',    file: SUPPLY,  iface: 'PurchaseOrder', path: '/api/inventory/purchase-orders' },
   { label: 'Inventory · Movement', file: SUPPLY, iface: 'StockMovement', path: '/api/inventory/movements' },
-  { label: 'Comms · Channel',   file: COMMS, iface: 'Channel', path: '/api/communication/channels' },
+  //  is a row of , which is what the sidebar
+  // now reads — the old  described the bare table row.
+  { label: 'Comms · Channel',   file: COMMS, iface: 'ChannelRow', path: '/api/communication/channels' },
   { label: 'Comms · Message',   file: COMMS, iface: 'Message',
     path: (s) => '/api/communication/messages?channelId=' + s.channelId,
     nested: [{ field: 'sender', iface: 'Sender' }] },

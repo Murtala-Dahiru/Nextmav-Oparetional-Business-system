@@ -1,6 +1,7 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
+import { todayIn } from '@/lib/org-time';
 
 /**
  * The personal clock.
@@ -16,7 +17,16 @@ export async function GET() {
   const ctx = await authorize('hr', 'view');
   if (ctx instanceof Response) return ctx;
 
-  const today = new Date().toISOString().slice(0, 10);
+  /**
+   * The organisation's today, not UTC's.
+   *
+   * `clock_in()` stamps `work_date` as `now() AT TIME ZONE
+   * organizations.timezone`. Asking here in UTC meant that, for part of every
+   * day in any workspace east of UTC, this read the *previous* day's row —
+   * so the card offered "Check in" to somebody who already had, and the
+   * database then refused it as a double check-in.
+   */
+  const today = todayIn(ctx.org.timezone);
 
   const [{ data: record }, { data: leave }] = await Promise.all([
     ctx.supabase

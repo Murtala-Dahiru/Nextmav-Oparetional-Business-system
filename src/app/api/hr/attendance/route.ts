@@ -3,6 +3,7 @@ import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 import { workingDaysBetween } from '@/lib/attendance';
+import { todayIn, startOfMonthIn } from '@/lib/org-time';
 
 const SELECT =
   '*, member:organization_members!attendance_records_member_id_fkey(id, department_id, profiles!organization_members_user_id_fkey(full_name, avatar_url))';
@@ -26,11 +27,18 @@ export async function GET(req: Request) {
   const page = Math.max(1, Number(searchParams.get('page')) || 1);
   const pageSize = Math.min(200, Math.max(1, Number(searchParams.get('pageSize')) || 31));
 
-  const today = new Date();
-  const from =
-    searchParams.get('from') ??
-    new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
-  const to = searchParams.get('to') ?? today.toISOString().slice(0, 10);
+  /**
+   * The default window is this month, in the *organisation's* timezone.
+   *
+   * It was built from `new Date().toISOString()`, which is UTC. `work_date` is
+   * written by `clock_in()` as `now() AT TIME ZONE organizations.timezone`, so
+   * for any workspace east of UTC the two disagreed for part of every day: a
+   * check-in at 00:20 in Lagos was stored against the 27th while `to` still
+   * said the 26th, and today's attendance simply did not appear on the
+   * register. The rows were there; the query did not reach them.
+   */
+  const from = searchParams.get('from') ?? startOfMonthIn(ctx.org.timezone);
+  const to = searchParams.get('to') ?? todayIn(ctx.org.timezone);
 
   if (from > to) return error('`from` must be on or before `to`', 422, 'VALIDATION_ERROR');
 
@@ -82,7 +90,27 @@ export async function GET(req: Request) {
    * hours logged, late arrivals — read them from `meta` and therefore showed
    * zero no matter what the register contained.
    */
-  const expectedDays = workingDaysBetween(new Date(from), new Date(to));
+  /**
+   * Expected working days, from the organisation's own calendar.
+   *
+   * `working_days_between()` reads `organizations.work_days` and the `holidays`
+   * table, so changing the working week or adding a public holiday in the
+   * administration screen changes this figure immediately — which is the whole
+   * point of the setting. The TypeScript helper is the fallback and is
+   * deliberately second: it carries a hard-coded Monday-to-Friday policy and
+   * knows nothing about holidays, so using it as the primary source meant the
+   * attendance rate was computed against a working week the organisation might
+   * not have.
+   */
+  const { data: expected } = await ctx.supabase.rpc('working_days_between', {
+    org: ctx.org.organizationId,
+    from_date: from,
+    to_date: to,
+  });
+
+  const expectedDays = typeof expected === 'number'
+    ? expected
+    : workingDaysBetween(new Date(from), new Date(to));
   const perPerson = people > 0 ? expectedDays * people : expectedDays;
 
   return paginated(data ?? [], count ?? 0, page, pageSize, {

@@ -30,6 +30,38 @@ export async function GET() {
   }
 
   if (ctx) {
+    /**
+     * The policy documents every module reads but only an administrator edits.
+     *
+     * `/api/admin/settings` is guarded on the admin module, which owners and
+     * administrators alone hold — so an employee opening the leave form could
+     * not discover which leave types their company offers, and the form fell
+     * back to a hard-coded list. Riding along with the session rather than
+     * getting an endpoint of its own keeps it to one request per session, the
+     * same argument that already put currency and timezone here.
+     *
+     * Only the non-sensitive half is sent: which leave types are offered and
+     * what the working week is are things every employee can already see by
+     * using the product. Nothing here discloses anything a colleague could not
+     * infer from the request form itself.
+     */
+    const { data: policyRows } = await ctx.supabase
+      .from('org_settings')
+      .select('key, value')
+      .eq('organization_id', ctx.org.organizationId)
+      .in('key', ['leave_policy', 'project_defaults', 'attendance_policy', 'branding']);
+
+    const policies = (policyRows ?? []).reduce<Record<string, unknown>>((acc, row: any) => {
+      acc[row.key] = row.value;
+      return acc;
+    }, {});
+
+    const { data: orgRow } = await ctx.supabase
+      .from('organizations')
+      .select('work_start, work_end, work_days, grace_minutes, break_minutes, logo_url')
+      .eq('id', ctx.org.organizationId)
+      .maybeSingle();
+
     return success({
       user: {
         ...ctx.user,
@@ -56,6 +88,16 @@ export async function GET() {
         currency: ctx.org.currency,
         locale: ctx.org.locale,
         timezone: ctx.org.timezone,
+        logoUrl: orgRow?.logo_url ?? null,
+        // The working week, which the leave form and the attendance summary
+        // both need in order to agree with the database about what a working
+        // day is.
+        workStart: orgRow?.work_start ?? '09:00',
+        workEnd: orgRow?.work_end ?? '17:30',
+        workDays: orgRow?.work_days ?? [1, 2, 3, 4, 5],
+        graceMinutes: orgRow?.grace_minutes ?? 10,
+        breakMinutes: orgRow?.break_minutes ?? 30,
+        policies,
       },
       needsOrganization: false,
     });

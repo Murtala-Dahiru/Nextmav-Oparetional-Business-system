@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
+import { todayIn } from '@/lib/org-time';
 import { acceptBody } from '@/lib/case';
 
 /**
@@ -88,7 +89,9 @@ export async function GET(_req: Request, { params }: Params) {
   const milestoneRows = milestones.data ?? [];
   const eventRows = events.data ?? [];
 
-  const today = new Date().toISOString().slice(0, 10);
+  // The organisation's today, so a client and the delivery team looking at the
+  // same milestone never disagree about whether it has slipped.
+  const today = todayIn(ctx.org.timezone);
 
   /**
    * The timeline the client reads.

@@ -79,6 +79,19 @@ export const PROJECT_STATUSES = ['planning', 'active', 'on_hold', 'completed', '
 export const TICKET_PRIORITIES = ['low', 'medium', 'high', 'critical'] as const;
 export const TICKET_STATUSES = ['open', 'in_progress', 'pending', 'resolved', 'closed'] as const;
 export const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'partially_paid', 'overdue', 'cancelled', 'refunded'] as const;
+/**
+ * Every member of the `leave_type` enum.
+ *
+ * The HR request form carried its own list of five and omitted `bereavement`
+ * and `unpaid`, so two kinds of leave the database has always accepted could
+ * not be requested through the product. This is the full set; which of them an
+ * organisation actually offers is its `leave_policy` setting, and this is what
+ * that setting is validated against.
+ */
+export const LEAVE_TYPES = [
+  'vacation', 'sick', 'personal', 'maternity', 'paternity', 'bereavement', 'unpaid',
+] as const;
+export type LeaveType = (typeof LEAVE_TYPES)[number];
 export const EXPENSE_CATEGORIES = ['general', 'travel', 'office', 'software', 'marketing', 'equipment', 'training'] as const;
 
 /**

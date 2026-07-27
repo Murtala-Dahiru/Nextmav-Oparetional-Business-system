@@ -16,6 +16,8 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { StatCard } from '@/components/shared/stat-card';
 import { formatDate, formatRelativeTime, initialsOf } from '@/lib/format';
 import { normalizeRole, roleLabel } from '@/lib/permissions';
+import { LEAVE_TYPES as LEAVE_TYPE_VALUES, statusLabel } from '@/lib/constants';
+import { useAppStore } from '@/store/app-store';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -96,13 +98,17 @@ const DEPARTMENTS = [
   'Engineering', 'Sales', 'HR', 'Finance', 'Customer Success', 'Executive', 'Marketing', 'Operations',
 ];
 
-const LEAVE_TYPES = [
-  { value: 'vacation', label: 'Vacation' },
-  { value: 'sick', label: 'Sick Leave' },
-  { value: 'personal', label: 'Personal' },
-  { value: 'maternity', label: 'Maternity' },
-  { value: 'paternity', label: 'Paternity' },
-];
+/**
+ * Every leave type the database can store.
+ *
+ * This was a hard-coded list of five that omitted `bereavement` and `unpaid`,
+ * so two kinds of leave the `leave_type` enum has always accepted could not be
+ * requested through the product at all. It is now the *filter* vocabulary —
+ * you can still search for a type nobody may currently request — while the
+ * request form below offers only what the organisation's `leave_policy`
+ * setting says it offers.
+ */
+const LEAVE_TYPES = LEAVE_TYPE_VALUES.map(value => ({ value, label: statusLabel(value) }));
 
 const LEAVE_STATUS_COLORS: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
@@ -995,6 +1001,32 @@ const LEAVE_DEFAULTS: LeaveFormData = {
 };
 
 function LeaveTab() {
+  /**
+   * What this company actually offers.
+   *
+   * The request form used to render a fixed list of five types regardless of
+   * organisation. `leave_policy.types` is what an administrator chose on the
+   * Workplace tab, and it arrives with the session — so the form offers
+   * exactly what the endpoint will accept, and adding `bereavement` in
+   * settings makes it selectable here without a deployment.
+   *
+   * Falling back to the full enum rather than an empty list: an organisation
+   * whose policy row has not been written yet must still be able to request
+   * leave.
+   */
+  const policies = useAppStore(s => s.organization?.policies);
+  const offeredTypes = useMemo(() => {
+    const configured = (policies?.leavePolicy?.types ?? []) as string[];
+    const usable = configured.filter(t => (LEAVE_TYPE_VALUES as readonly string[]).includes(t));
+    return (usable.length ? usable : LEAVE_TYPE_VALUES).map(value => ({
+      value, label: statusLabel(value),
+    }));
+  }, [policies]);
+
+  const leavePolicy = (policies?.leavePolicy ?? {}) as {
+    allowHalfDay?: boolean; maxConsecutiveDays?: number; minNoticeDays?: number;
+  };
+
   // Data state
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [leavesLoading, setLeavesLoading] = useState(false);
@@ -1239,7 +1271,7 @@ function LeaveTab() {
               <Select value={form.type} onValueChange={(v) => setForm((p) => ({ ...p, type: v }))}>
                 <SelectTrigger><SelectValue placeholder="Select type" /></SelectTrigger>
                 <SelectContent>
-                  {LEAVE_TYPES.map((t) => (<SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}
+                  {offeredTypes.map((t) => (<SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>))}
                 </SelectContent>
               </Select>
             </Field>

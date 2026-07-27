@@ -165,7 +165,7 @@ const emailB = `appverify-${run}-b@example.com`;
 const PW = 'Passw0rd!verify';
 
 let chainClientUser;
-let userA, userB, userC, userD, userE, userF, provisionedUserId, teammateUserId;
+let userA, userB, userC, userD, userE, userF, provisionedUserId, teammateUserId, outsiderUser;
 const A = makeClient(), B = makeClient(), C = makeClient();
 
 try {
@@ -1609,6 +1609,621 @@ try {
   const clientTodoPeek = await P.json('/api/todos');
   check(clientTodoPeek.status === 403, `nor reach the personal to-do module (${clientTodoPeek.status})`);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Identities the sections below share. `C` joined organization A by
+  // invitation earlier in this run, so they are a genuine colleague rather
+  // than a second tenant — which is what the sharing and channel checks need.
+  const sessionA = await A.json('/api/auth/session');
+  const memberIdA = sessionA.body?.data?.user?.memberId;
+  const orgIdA = sessionA.body?.data?.user?.organizationId;
+  const sessionC = await C.json('/api/auth/session');
+  const memberIdC = sessionC.body?.data?.user?.memberId;
+
+  section('46. The workspace holds folders, documents and spreadsheets');
+  /**
+   * The module offered "Document / Spreadsheet / File Vault" and only the
+   * first had anywhere to write to. The spreadsheet rendered four fixed sample
+   * rows behind a badge reading "Auto-saved"; the vault made an object URL in
+   * the browser and reported success. Nothing survived a reload.
+   */
+
+  const wsFolder = await A.json('/api/workspace/pages', {
+    method: 'POST',
+    body: JSON.stringify({ title: `HR Documents ${run}`, isFolder: true }),
+  });
+  check(wsFolder.status === 201, `a folder can be created (${wsFolder.status})`, wsFolder.body?.error?.message);
+  const folderId = wsFolder.body?.data?.id;
+
+  const wsNested = await A.json('/api/workspace/pages', {
+    method: 'POST',
+    body: JSON.stringify({ title: 'Contracts', isFolder: true, parentId: folderId }),
+  });
+  check(wsNested.status === 201, `folders nest (${wsNested.status})`, wsNested.body?.error?.message);
+  const nestedId = wsNested.body?.data?.id;
+
+  // The cycle guard: a folder inside its own subfolder detaches the subtree
+  // from the root and makes every recursive read spin.
+  const wsCycle = await A.json(`/api/workspace/pages/${folderId}`, {
+    method: 'PATCH', body: JSON.stringify({ parentId: nestedId }),
+  });
+  check(!wsCycle.ok, `a folder cannot be moved inside its own subfolder (${wsCycle.status})`);
+
+  const wsSelfParent = await A.json(`/api/workspace/pages/${folderId}`, {
+    method: 'PATCH', body: JSON.stringify({ parentId: folderId }),
+  });
+  check(wsSelfParent.status === 422, `nor inside itself (${wsSelfParent.status})`);
+
+  const wsSheet = await A.json('/api/workspace/pages', {
+    method: 'POST',
+    body: JSON.stringify({ title: 'Expense tracker', kind: 'sheet', parentId: folderId }),
+  });
+  check(wsSheet.status === 201, `a spreadsheet can be created (${wsSheet.status})`, wsSheet.body?.error?.message);
+  const sheetId = wsSheet.body?.data?.id;
+
+  const sheetOpen = await A.json(`/api/workspace/pages/${sheetId}`);
+  check((sheetOpen.body?.data?.columns ?? []).length === 3,
+    `a new sheet starts with usable columns (${(sheetOpen.body?.data?.columns ?? []).length})`);
+
+  const newCol = await A.json(`/api/workspace/pages/${sheetId}/sheet`, {
+    method: 'POST', body: JSON.stringify({ target: 'column', name: 'Amount', type: 'currency' }),
+  });
+  check(newCol.status === 201, `a column can be added (${newCol.status})`, newCol.body?.error?.message);
+  const amountColId = newCol.body?.data?.id;
+
+  const newRow = await A.json(`/api/workspace/pages/${sheetId}/sheet`, {
+    method: 'POST', body: JSON.stringify({ target: 'row' }),
+  });
+  check(newRow.status === 201, `a row can be added (${newRow.status})`);
+  const rowId = newRow.body?.data?.id;
+
+  await A.json(`/api/workspace/pages/${sheetId}/sheet`, {
+    method: 'PATCH',
+    body: JSON.stringify({ target: 'row', rowId, cells: { [amountColId]: 4200 } }),
+  });
+
+  const sheetReread = await A.json(`/api/workspace/pages/${sheetId}/sheet`);
+  const storedCell = (sheetReread.body?.data?.rows ?? [])[0]?.cells?.[amountColId];
+  check(Number(storedCell) === 4200, `a cell survives the round trip (${storedCell})`);
+
+  // Renaming a column must not rewrite a single row: cells are keyed by column
+  // id precisely so that this is free and cannot orphan a value.
+  await A.json(`/api/workspace/pages/${sheetId}/sheet`, {
+    method: 'PATCH', body: JSON.stringify({ target: 'column', columnId: amountColId, name: 'Claim value' }),
+  });
+  const afterRename = await A.json(`/api/workspace/pages/${sheetId}/sheet`);
+  check(Number((afterRename.body?.data?.rows ?? [])[0]?.cells?.[amountColId]) === 4200,
+    'renaming a column keeps every value beneath it');
+
+  // Dropping a column drops its cells, rather than leaving invisible values
+  // that reappear if the id is ever reused.
+  await A.json(`/api/workspace/pages/${sheetId}/sheet?columnId=${amountColId}`, { method: 'DELETE' });
+  const afterDrop = await A.json(`/api/workspace/pages/${sheetId}/sheet`);
+  check((afterDrop.body?.data?.rows ?? [])[0]?.cells?.[amountColId] === undefined,
+    'dropping a column removes its cells');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('47. Document history exists, and a restore can be undone');
+
+  const doc = await A.json('/api/workspace/pages', {
+    method: 'POST', body: JSON.stringify({ title: 'Handbook', content: '# One' }),
+  });
+  const docId = doc.body?.data?.id;
+
+  await A.json(`/api/workspace/pages/${docId}`, { method: 'PATCH', body: JSON.stringify({ content: '# Two' }) });
+  await A.json(`/api/workspace/pages/${docId}`, { method: 'PATCH', body: JSON.stringify({ content: '# Three' }) });
+
+  const history = await A.json(`/api/workspace/pages/${docId}/versions`);
+  check((history.body?.data ?? []).length >= 2,
+    `every save is snapshotted (${(history.body?.data ?? []).length} versions)`);
+
+  const restored = await A.json(`/api/workspace/pages/${docId}/versions`, {
+    method: 'POST', body: JSON.stringify({ version: 1 }),
+  });
+  check(restored.ok && restored.body?.data?.content === '# One',
+    'an earlier version can be restored');
+
+  const historyAfter = await A.json(`/api/workspace/pages/${docId}/versions`);
+  check((historyAfter.body?.data ?? []).length > (history.body?.data ?? []).length,
+    'and the version that was current is kept, so the restore itself can be undone');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('48. A workspace folder can be made private');
+  /**
+   * Every page in the organisation used to be readable and writable by every
+   * employee, with no way to say otherwise — which is not a workspace anyone
+   * can put an HR folder in.
+   */
+
+  const privateFolder = await A.json('/api/workspace/pages', {
+    method: 'POST',
+    body: JSON.stringify({ title: `Board papers ${run}`, isFolder: true, visibility: 'private' }),
+  });
+  const privateId = privateFolder.body?.data?.id;
+  check(privateFolder.status === 201, `a private folder can be created (${privateFolder.status})`);
+
+  const insidePrivate = await A.json('/api/workspace/pages', {
+    method: 'POST', body: JSON.stringify({ title: 'Minutes', parentId: privateId }),
+  });
+  check(insidePrivate.status === 201, `a page can be created inside it (${insidePrivate.status})`);
+  const insideId = insidePrivate.body?.data?.id;
+
+  // C is a colleague in the same organisation, added earlier in this run.
+  const colleagueTree = await C.json('/api/workspace/pages?pageSize=500');
+  const colleagueSees = (colleagueTree.body?.data ?? []).some(p => p.id === privateId);
+  check(!colleagueSees, 'a colleague does not see it in the tree');
+
+  const colleagueOpen = await C.json(`/api/workspace/pages/${insideId}`);
+  check(colleagueOpen.status === 404,
+    `nor the page inside it, which inherits the rule (${colleagueOpen.status})`);
+
+  const share = await A.json(`/api/workspace/pages/${privateId}/shares`, {
+    method: 'POST', body: JSON.stringify({ memberId: memberIdC, permission: 'view' }),
+  });
+  check(share.status === 201, `it can be shared with a named colleague (${share.status})`, share.body?.error?.message);
+
+  const afterShare = await C.json(`/api/workspace/pages/${insideId}`);
+  check(afterShare.ok, `who can then open what is inside it (${afterShare.status})`);
+  check(afterShare.body?.data?.permission === 'view',
+    `and holds exactly the permission granted (${afterShare.body?.data?.permission})`);
+
+  const colleagueEdit = await C.json(`/api/workspace/pages/${insideId}`, {
+    method: 'PATCH', body: JSON.stringify({ content: 'edited by someone with view rights' }),
+  });
+  check(!colleagueEdit.ok, `view access is not edit access (${colleagueEdit.status})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('49. Channels, groups and direct messages');
+  /**
+   * The module could list channels and post to them and nothing else: no way
+   * to create one, add anybody, or start a conversation with a colleague.
+   */
+
+  const group = await A.json('/api/communication/channels', {
+    method: 'POST',
+    body: JSON.stringify({
+      displayName: `Q3 Launch Team ${run}`,
+      description: 'Coordination for the launch',
+      type: 'private',
+      memberIds: [memberIdC],
+    }),
+  });
+  check(group.status === 201, `a private group can be created (${group.status})`, group.body?.error?.message);
+  const groupId = group.body?.data?.id;
+
+  // The name people typed, kept alongside the slug. Slugging alone turned
+  // "Q3 Launch Team" into "q3-launch-team" and title-cased it on the way out.
+  check(group.body?.data?.displayName === `Q3 Launch Team ${run}`,
+    'the name people typed is preserved, not just its slug');
+
+  const groupMembers = await A.json(`/api/communication/channels/${groupId}/members`);
+  check((groupMembers.body?.data ?? []).length === 2,
+    `the creator and the invitee are both in it (${(groupMembers.body?.data ?? []).length})`);
+  check((groupMembers.body?.data ?? []).some(m => m.role === 'owner'),
+    'and somebody owns it, so it can still be administered');
+
+  const channelOverview = await A.json('/api/communication/channels');
+  const groupRow = (channelOverview.body?.data ?? []).find(c => c.channelId === groupId);
+  check(!!groupRow, 'the sidebar overview returns it');
+  check(typeof groupRow?.unreadCount === 'number',
+    'with a real unread count rather than a hard-coded zero');
+
+  const dm = await A.json('/api/communication/direct', {
+    method: 'POST', body: JSON.stringify({ memberId: memberIdC }),
+  });
+  check(dm.status === 201, `a direct conversation can be opened (${dm.status})`, dm.body?.error?.message);
+  const dmId = dm.body?.data?.id;
+
+  const dmAgain = await A.json('/api/communication/direct', {
+    method: 'POST', body: JSON.stringify({ memberId: memberIdC }),
+  });
+  check(dmAgain.body?.data?.id === dmId,
+    'and opening it again returns the same thread rather than a second empty one');
+
+  // The pair has to be unique in both directions, or each person ends up in a
+  // different half of the same conversation.
+  const dmFromOther = await C.json('/api/communication/direct', {
+    method: 'POST', body: JSON.stringify({ memberId: memberIdA }),
+  });
+  check(dmFromOther.body?.data?.id === dmId,
+    'including when the other person starts it');
+
+  const dmSelf = await A.json('/api/communication/direct', {
+    method: 'POST', body: JSON.stringify({ memberId: memberIdA }),
+  });
+  check(!dmSelf.ok, `nobody can message themselves (${dmSelf.status})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('50. A private conversation is private');
+  /**
+   * `channels_select` was generated by the same loop as `companies` and
+   * `products`, so it granted SELECT on every channel row in the organisation.
+   * Messages were protected; the channel's existence, name and topic were not,
+   * and a direct message between two colleagues was listed in everybody's
+   * sidebar.
+   */
+
+  const D = makeClient();
+  const outsiderEmail = `outsider-${run}@nexustest.dev`;
+  outsiderUser = await adminCreateUser(outsiderEmail, PW);
+  await A.json('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({ email: outsiderEmail, firstName: 'Olu', lastName: 'Outsider', role: 'employee' }),
+  });
+  await D.json('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: outsiderEmail, password: PW }) });
+
+  const outsiderList = await D.json('/api/communication/channels');
+  const outsiderRows = outsiderList.body?.data ?? [];
+  check(!outsiderRows.some(c => c.channelId === groupId),
+    'somebody outside a private group does not see it listed');
+  check(!outsiderRows.some(c => c.channelId === dmId),
+    'and does not see other people’s direct messages');
+
+  const outsiderOpen = await D.json(`/api/communication/channels/${groupId}`);
+  check(outsiderOpen.status === 404,
+    `nor can they fetch it by id (${outsiderOpen.status})`);
+
+  const outsiderPost = await D.json('/api/communication/messages', {
+    method: 'POST', body: JSON.stringify({ channelId: groupId, body: 'let me in' }),
+  });
+  check(!outsiderPost.ok,
+    `nor post into it, which the old policy allowed (${outsiderPost.status})`);
+
+  const outsiderSelfJoin = await D.json(`/api/communication/channels/${groupId}/members`, {
+    method: 'POST', body: JSON.stringify({}),
+  });
+  check(!outsiderSelfJoin.ok,
+    `nor add themselves to it (${outsiderSelfJoin.status})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('51. Channel administration');
+
+  const generalList = await A.json('/api/communication/channels');
+  const general = (generalList.body?.data ?? []).find(c => c.name === 'general');
+  check(!!general, 'the seeded company channel is there');
+
+  const announce = await A.json(`/api/communication/channels/${general?.channelId}`, {
+    method: 'PATCH', body: JSON.stringify({ postPolicy: 'admins' }),
+  });
+  check(announce.ok, `an administrator can restrict who may post (${announce.status})`);
+
+  const memberPost = await D.json('/api/communication/messages', {
+    method: 'POST', body: JSON.stringify({ channelId: general?.channelId, body: 'hello everyone' }),
+  });
+  check(!memberPost.ok,
+    `an employee then cannot post there (${memberPost.status})`);
+
+  const adminPost = await A.json('/api/communication/messages', {
+    method: 'POST', body: JSON.stringify({ channelId: general?.channelId, body: 'company notice' }),
+  });
+  check(adminPost.status === 201, `while an administrator still can (${adminPost.status})`);
+
+  // Restricting a channel is an organisation-level act, not something any
+  // member may do to a room the whole company is in.
+  const memberRestrict = await D.json(`/api/communication/channels/${general?.channelId}`, {
+    method: 'PATCH', body: JSON.stringify({ postPolicy: 'admins' }),
+  });
+  check(!memberRestrict.ok,
+    `an employee cannot impose that rule themselves (${memberRestrict.status})`);
+
+  await A.json(`/api/communication/channels/${general?.channelId}`, {
+    method: 'PATCH', body: JSON.stringify({ postPolicy: 'everyone' }),
+  });
+
+  const removeMate = await A.json(`/api/communication/channels/${groupId}/members?memberId=${memberIdC}`, {
+    method: 'DELETE',
+  });
+  check(removeMate.ok, `an administrator can remove somebody (${removeMate.status})`);
+
+  const removedRead = await C.json(`/api/communication/messages?channelId=${groupId}`);
+  check(!removedRead.ok || (removedRead.body?.data ?? []).length === 0,
+    'and they stop being able to read it');
+
+  const lastAdminLeaves = await A.json(`/api/communication/channels/${groupId}/members`, {
+    method: 'DELETE',
+  });
+  check(lastAdminLeaves.ok || lastAdminLeaves.status === 409,
+    `the last administrator cannot strand a channel (${lastAdminLeaves.status})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('52. A client never reaches internal conversation');
+
+  const clientChannels = await P.json('/api/communication/channels');
+  check(clientChannels.status === 403,
+    `the communication module is closed to clients (${clientChannels.status})`);
+
+  const clientWorkspace = await P.json('/api/workspace/pages');
+  check(clientWorkspace.status === 403,
+    `so is the workspace (${clientWorkspace.status})`);
+
+  const clientDm = await P.json('/api/communication/direct', {
+    method: 'POST', body: JSON.stringify({ memberId: memberIdA }),
+  });
+  check(!clientDm.ok, `and they cannot open a thread with staff (${clientDm.status})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('53. Settings that change how the system behaves');
+  /**
+   * The columns `work_start`, `work_end`, `work_days`, `grace_minutes` and
+   * `break_minutes` have driven attendance classification since 0004 and had
+   * no control anywhere in the product. This asserts the round trip *and* the
+   * effect, because a setting that saves and changes nothing is the failure
+   * mode worth testing for.
+   */
+
+  const hoursSaved = await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      workStart: '08:00', workEnd: '16:00', graceMinutes: 5, breakMinutes: 45,
+      workDays: [1, 2, 3],
+    }),
+  });
+  check(hoursSaved.ok, `working hours save (${hoursSaved.status})`, hoursSaved.body?.error?.message);
+
+  const hoursRead = await A.json('/api/admin/settings');
+  const savedOrgRow = hoursRead.body?.data?.organization ?? {};
+  check(String(savedOrgRow.workStart).startsWith('08:00'),
+    `the start of the day persists (${savedOrgRow.workStart})`);
+  check(Array.isArray(savedOrgRow.workDays) && savedOrgRow.workDays.length === 3,
+    `and a three-day working week (${JSON.stringify(savedOrgRow.workDays)})`);
+
+  /**
+   * The effect. `working_days_between()` reads `work_days`, and the register's
+   * expected-days figure is what the attendance rate is computed against — it
+   * was being derived from a hard-coded Monday-to-Friday constant in
+   * TypeScript, so this setting genuinely did nothing before.
+   */
+  const threeDayMonth = await A.json('/api/hr/attendance?from=2026-03-01&to=2026-03-31');
+  const threeDayExpected = threeDayMonth.body?.meta?.expectedDays;
+
+  await A.json('/api/admin/settings', {
+    method: 'PATCH', body: JSON.stringify({ workDays: [1, 2, 3, 4, 5] }),
+  });
+  const fiveDayMonth = await A.json('/api/hr/attendance?from=2026-03-01&to=2026-03-31');
+  const fiveDayExpected = fiveDayMonth.body?.meta?.expectedDays;
+
+  check(fiveDayExpected > threeDayExpected,
+    `changing the working week changes the expected days (${threeDayExpected} → ${fiveDayExpected})`);
+
+  const badHours = await A.json('/api/admin/settings', {
+    method: 'PATCH', body: JSON.stringify({ workStart: '17:00', workEnd: '09:00' }),
+  });
+  check(badHours.status === 422, `a day that ends before it starts is refused (${badHours.status})`);
+
+  const noDays = await A.json('/api/admin/settings', {
+    method: 'PATCH', body: JSON.stringify({ workDays: [] }),
+  });
+  check(noDays.status === 422, `and a week with no working days (${noDays.status})`);
+
+  const badZone = await A.json('/api/admin/settings', {
+    method: 'PATCH', body: JSON.stringify({ timezone: 'Mars/Olympus' }),
+  });
+  check(badZone.status === 422,
+    `an unrecognised time zone is refused before every date query silently falls back to UTC (${badZone.status})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('54. Today\'s attendance is visible on the day it happens');
+  /**
+   * The register's default window was built from `toISOString()`, which is
+   * UTC, while `work_date` is written as `now() AT TIME ZONE
+   * organizations.timezone`. For any workspace east of UTC the two disagreed
+   * for part of every day and today's rows simply fell outside the query.
+   */
+
+  const clockToday = await A.json('/api/hr/attendance/clock');
+  const clockDay = clockToday.body?.data?.date;
+  const registerNow = await A.json('/api/hr/attendance?pageSize=50');
+  const registerTo = registerNow.body?.meta?.to;
+
+  check(clockDay === registerTo,
+    `the clock and the register agree on what day it is (${clockDay} vs ${registerTo})`);
+
+  const todaysRow = (registerNow.body?.data ?? []).find(r => r.workDate === clockDay);
+  check(!!todaysRow, `today's own record is inside the default window (${clockDay})`);
+  check(!!todaysRow && 'checkedInAt' in todaysRow, 'and carries checkedInAt, which the clock card reads');
+  check(!!todaysRow?.member, 'the person is under `member`, with the name on the profile');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('55. Leave policy is enforced, not merely offered');
+
+  await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      settings: {
+        leave_policy: {
+          types: ['vacation', 'sick'],
+          requires_approval: true,
+          allow_half_day: false,
+          min_notice_days: 0,
+          max_consecutive_days: 3,
+          carry_over_days: 5,
+        },
+      },
+    }),
+  });
+
+  const notOffered = await A.json('/api/hr/leave', {
+    method: 'POST',
+    body: JSON.stringify({ type: 'paternity', startDate: '2026-09-01', endDate: '2026-09-02' }),
+  });
+  check(notOffered.status === 422,
+    `a type the company does not offer is refused (${notOffered.status})`);
+  check((notOffered.body?.error?.message ?? '').toLowerCase().includes('paternity'),
+    'and the refusal names it rather than describing it');
+
+  const tooLong = await A.json('/api/hr/leave', {
+    method: 'POST',
+    body: JSON.stringify({ type: 'vacation', startDate: '2026-09-01', endDate: '2026-09-30' }),
+  });
+  check(tooLong.status === 422, `so is a request past the maximum span (${tooLong.status})`);
+
+  const halfDayOff = await A.json('/api/hr/leave', {
+    method: 'POST',
+    body: JSON.stringify({ type: 'vacation', startDate: '2026-09-01', endDate: '2026-09-01', isHalfDay: true }),
+  });
+  check(halfDayOff.status === 422, `and a half day when half days are off (${halfDayOff.status})`);
+
+  const withinPolicy = await A.json('/api/hr/leave', {
+    method: 'POST',
+    body: JSON.stringify({ type: 'vacation', startDate: '2026-09-07', endDate: '2026-09-08' }),
+  });
+  check(withinPolicy.status === 201, `a request inside the policy is accepted (${withinPolicy.status})`);
+
+  // A leave type that is not a member of the enum must never reach the column,
+  // where it surfaces as 22P02 several screens from the setting that caused it.
+  const bogusPolicy = await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({ settings: { leave_policy: { types: ['sabbatical'] } } }),
+  });
+  check(bogusPolicy.status === 422,
+    `a leave type the database cannot store is refused at the setting (${bogusPolicy.status})`);
+
+  // Restore something usable for anything that runs after this.
+  await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      settings: {
+        leave_policy: {
+          types: ['vacation', 'sick', 'personal', 'maternity', 'paternity', 'bereavement', 'unpaid'],
+          requires_approval: true, allow_half_day: true,
+          min_notice_days: 0, max_consecutive_days: 30, carry_over_days: 5,
+        },
+      },
+    }),
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('56. Notification settings actually suppress notifications');
+  /**
+   * Enforced inside `notify_members()`, which reads the toggle before it
+   * writes anything. Filtering on the way out would still cost a row and an
+   * index entry per suppressed event, on every task update, forever.
+   */
+
+  const trayBefore = await C.json('/api/notifications?pageSize=100');
+  const countBefore = (trayBefore.body?.data ?? []).length;
+
+  await A.json('/api/admin/settings', {
+    method: 'PATCH', body: JSON.stringify({ settings: { notification_events: { task: false } } }),
+  });
+
+  await A.json('/api/projects/tasks', {
+    method: 'POST',
+    body: JSON.stringify({
+      projectId: chainProjectId, title: `Silent task ${run}`,
+      assigneeId: memberIdC, status: 'todo',
+    }),
+  });
+
+  const trayAfter = await C.json('/api/notifications?pageSize=100');
+  check((trayAfter.body?.data ?? []).length === countBefore,
+    `an assignment with task notifications off delivers nothing (${countBefore} → ${(trayAfter.body?.data ?? []).length})`);
+
+  await A.json('/api/admin/settings', {
+    method: 'PATCH', body: JSON.stringify({ settings: { notification_events: { task: true } } }),
+  });
+
+  await A.json('/api/projects/tasks', {
+    method: 'POST',
+    body: JSON.stringify({
+      projectId: chainProjectId, title: `Audible task ${run}`,
+      assigneeId: memberIdC, status: 'todo',
+    }),
+  });
+
+  const trayRestored = await C.json('/api/notifications?pageSize=100');
+  check((trayRestored.body?.data ?? []).length > countBefore,
+    `and switching it back on delivers again (${(trayRestored.body?.data ?? []).length})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('57. Departments can be created and managed');
+  /**
+   * `departments` has been in the schema since 0001 and nothing could create a
+   * second one. That pinned `auth_visible_member_ids()`, HR scoping, project
+   * scoping and department folder sharing to a single seeded group.
+   */
+
+  const dept = await A.json('/api/admin/departments', {
+    method: 'POST', body: JSON.stringify({ name: `Marketing ${run}`, description: 'Brand and demand' }),
+  });
+  check(dept.status === 201, `a department can be created (${dept.status})`, dept.body?.error?.message);
+  const deptId = dept.body?.data?.id;
+
+  const dupeDept = await A.json('/api/admin/departments', {
+    method: 'POST', body: JSON.stringify({ name: `Marketing ${run}` }),
+  });
+  check(dupeDept.status === 409, `names stay unique per organization (${dupeDept.status})`);
+
+  const assignHead = await A.json('/api/admin/departments', {
+    method: 'PATCH', body: JSON.stringify({ id: deptId, headId: memberIdC }),
+  });
+  check(assignHead.ok, `a manager can be assigned (${assignHead.status})`, assignHead.body?.error?.message);
+
+  const deptList = await A.json('/api/admin/departments');
+  const savedDept = (deptList.body?.data ?? []).find(d => d.id === deptId);
+  check(savedDept?.headId === memberIdC, 'and the assignment persists');
+  check(!!savedDept?.headName, `with a name the screen can render (${savedDept?.headName})`);
+
+  const clientAsHead = await A.json('/api/admin/departments', {
+    method: 'PATCH', body: JSON.stringify({ id: deptId, headId: chainMember?.memberId }),
+  });
+  check(clientAsHead.status === 422,
+    `a client account cannot manage a department (${clientAsHead.status})`);
+
+  const employeeMakesDept = await D.json('/api/admin/departments', {
+    method: 'POST', body: JSON.stringify({ name: 'Shadow IT' }),
+  });
+  check(employeeMakesDept.status === 403,
+    `and an employee cannot create one at all (${employeeMakesDept.status})`);
+
+  const removeUsed = await A.json(`/api/admin/departments?id=${deptId}`, { method: 'DELETE' });
+  check(removeUsed.ok, `an empty department can be removed (${removeUsed.status})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('58. Workspace files are recorded, not simulated');
+  /**
+   * The uploader made an object URL in the browser, animated a progress bar
+   * with setInterval and reported success. Nothing left the tab. Bytes now go
+   * to storage and this records what was stored — including refusing a path
+   * that belongs to another tenant, which is the check that stops a metadata
+   * row being pointed at somebody else's object.
+   */
+
+  const foreignPath = await A.json('/api/workspace/files', {
+    method: 'POST',
+    body: JSON.stringify({
+      pageId: folderId, bucket: 'documents',
+      path: `${crypto.randomUUID()}/workspace/stolen.pdf`,
+      filename: 'stolen.pdf', sizeBytes: 10,
+    }),
+  });
+  check(foreignPath.status === 422,
+    `a storage path outside this organization is refused (${foreignPath.status})`);
+
+  const badBucket = await A.json('/api/workspace/files', {
+    method: 'POST',
+    body: JSON.stringify({
+      pageId: folderId, bucket: 'hr-documents',
+      path: `${orgIdA}/workspace/payslip.pdf`, filename: 'payslip.pdf', sizeBytes: 10,
+    }),
+  });
+  check(badBucket.status === 422, `so is a bucket workspace files do not live in (${badBucket.status})`);
+
+  const filed = await A.json('/api/workspace/files', {
+    method: 'POST',
+    body: JSON.stringify({
+      pageId: folderId, bucket: 'documents',
+      path: `${orgIdA}/workspace/${folderId}/${run}-policy.pdf`,
+      filename: 'policy.pdf', mimeType: 'application/pdf', sizeBytes: 2048,
+    }),
+  });
+  check(filed.status === 201, `a real upload is recorded (${filed.status})`, filed.body?.error?.message);
+
+  const listed = await A.json(`/api/workspace/files?pageId=${folderId}`);
+  const listedFile = (listed.body?.data ?? []).find(f => f.id === filed.body?.data?.id);
+  check(!!listedFile, 'and appears in the folder');
+  check(!!listedFile?.uploadedByName,
+    `attributed to a real person rather than a hard-coded name (${listedFile?.uploadedByName})`);
+
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);
@@ -1622,6 +2237,7 @@ try {
   if (teammateUserId) await adminDeleteUser(teammateUserId);
   if (provisionedUserId) await adminDeleteUser(provisionedUserId);
   if (chainClientUser?.id) await adminDeleteUser(chainClientUser.id);
+  if (outsiderUser?.id) await adminDeleteUser(outsiderUser.id);
 }
 
 console.log(`\n  ${pass} passed, ${fail} failed`);

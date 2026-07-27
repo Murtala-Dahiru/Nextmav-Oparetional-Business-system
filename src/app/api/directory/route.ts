@@ -59,6 +59,23 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
 
+  /**
+   * Who is currently here.
+   *
+   * `online_members()` is the presence heartbeat — members whose profile was
+   * touched in the last five minutes. Served from this endpoint rather than a
+   * new one because it answers a question about the same list, and because
+   * `last_seen_at` is deliberately absent from the directory rows below: it is
+   * the sensitive half of the directory, and disclosing when a named colleague
+   * was last active is different from saying how many people are online.
+   */
+  if (searchParams.get('online') === 'true') {
+    const { data, error: e } = await ctx.supabase
+      .rpc('online_members', { org: ctx.org.organizationId });
+    if (e) return pgError(e);
+    return success(data ?? []);
+  }
+
   let q = ctx.supabase
     .from('v_assignable_members')
     .select('member_id, user_id, full_name, email, avatar_url, job_title, role, department_id, department_name')

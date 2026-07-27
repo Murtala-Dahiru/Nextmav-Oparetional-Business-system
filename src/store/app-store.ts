@@ -54,6 +54,32 @@ export interface Notification {
   createdAt: string;
 }
 
+/**
+ * This workspace, as the session resolved it.
+ *
+ * Carries the presentation settings every module formats with *and* the policy
+ * documents they read — which leave types are offered, what the working week
+ * is, the project vocabulary. Those live on `/api/admin/settings` for editing,
+ * which only administrators may call; an employee's leave form needs them too,
+ * so the readable half rides along with the session instead. One request per
+ * session, and one answer, which is the same argument that put currency here.
+ */
+export interface OrganizationContext {
+  id: string;
+  name: string;
+  currency: string;
+  locale: string;
+  timezone: string;
+  logoUrl?: string | null;
+  workStart?: string;
+  workEnd?: string;
+  workDays?: number[];
+  graceMinutes?: number;
+  breakMinutes?: number;
+  /** Keyed as stored — `leavePolicy`, `projectDefaults`, … after camelising. */
+  policies?: Record<string, any>;
+}
+
 interface AppState {
   // Auth
   user: CurrentUser | null;
@@ -78,7 +104,7 @@ interface AppState {
   mustChangePassword: boolean;
 
   /** This workspace's presentation settings, as the server resolved them. */
-  organization: { id: string; name: string; currency: string; locale: string; timezone: string } | null;
+  organization: OrganizationContext | null;
 
   // Navigation
   activeModule: ModuleId;

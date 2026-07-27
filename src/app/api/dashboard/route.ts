@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success } from '@/lib/api-response';
+import { todayIn, startOfMonthIn, daysFromTodayIn } from '@/lib/org-time';
 import { can, scopeFor } from '@/lib/permissions';
 import type { ModuleId } from '@/lib/constants';
 
@@ -26,10 +27,18 @@ export async function GET() {
   const sees = (m: ModuleId) => can(role, m, 'view');
   const orgWide = (m: ModuleId) => scopeFor(role, m) === 'organization';
 
-  const today = new Date().toISOString().slice(0, 10);
-  const in7 = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
-  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
-    .toISOString().slice(0, 10);
+  /**
+   * Every bound here is the organisation's calendar day, not UTC's.
+   *
+   * `work_date`, `due_date` and `expense_date` are all written as local dates
+   * by the database. Comparing them against a UTC day meant that, in any
+   * workspace east of UTC, "today's attendance" and "due this week" were both
+   * off by a day for part of every day — and month-to-date revenue reset at the
+   * wrong hour on the first of the month.
+   */
+  const today = todayIn(ctx.org.timezone);
+  const in7 = daysFromTodayIn(ctx.org.timezone, 7);
+  const monthStart = startOfMonthIn(ctx.org.timezone);
 
   const none = Promise.resolve({ data: null, error: null } as any);
 

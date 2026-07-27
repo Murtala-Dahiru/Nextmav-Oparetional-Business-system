@@ -1,30 +1,30 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'sonner';
 import {
   Plus, Search, Star, StarOff, MoreHorizontal, Pencil, Trash2,
-  FileText, BookOpen, Map, Folder, Code, Lightbulb, Target,
-  ChevronRight, ChevronDown, Loader2, BookMarked, Table, UploadCloud, FileSpreadsheet,
+  // `Map` is aliased: the unaliased import shadows the global `Map`
+  // constructor, and `new Map(...)` a few hundred lines below then resolves to
+  // a React component.
+  FileText, BookOpen, Map as MapIcon, Folder, FolderOpen, Code, Lightbulb, Target,
+  ChevronRight, ChevronDown, Loader2, BookMarked, Table, UploadCloud,
+  FileSpreadsheet, Share2, History, FolderInput, Globe, Building2, Lock,
+  CornerDownRight, RotateCcw,
 } from 'lucide-react';
 
-import { FileUploader } from '@/components/shared/file-uploader';
-import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import { formatRelativeTime } from '@/lib/format';
-import { createPageSchema } from '@/lib/validations';
-import { z } from 'zod';
+import { formatRelativeTime, formatDateTime } from '@/lib/format';
+import { useAppStore } from '@/store/app-store';
+import { cn } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -40,40 +40,42 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  Types
-// ═══════════════════════════════════════════════════════════════════════════
+import { SheetGrid } from './sheet-grid';
+import { FileBrowser } from './file-browser';
+import { ShareDialog } from './share-dialog';
+import type {
+  WorkspaceNode, OpenPage, PageVersion, DirectoryMember, Department, WorkspaceFile,
+} from './types';
 
-interface WorkspacePage {
-  id: string;
-  title: string;
-  content: string;
-  icon: string;
-  /** Spelled `colour` on the wire, to match the schema. */
-  colour: string;
-  parentId: string;
-  isFolder: boolean;
-  isStarred: boolean;
-  lastEditedBy: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-type PageFormValues = z.infer<typeof createPageSchema>;
-
-// ═══════════════════════════════════════════════════════════════════════════
-//  Constants
-// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  The workspace.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  A tree of folders holding three kinds of thing: documents, spreadsheets and
+ *  files. Previously only the first existed — the header offered all three but
+ *  the spreadsheet was a fixed table of sample rows and the file vault stored
+ *  nothing outside the browser tab. Folders could be created but not renamed,
+ *  moved or nested beyond one level, and the share control raised a toast.
+ *
+ *  What is deliberately *not* here: a second copy of the permission rules. The
+ *  server resolves each node's effective permission by walking the folder
+ *  ancestry and returns it on the row, so this file asks `node.permission`
+ *  rather than reasoning about visibility and shares itself. A client-side
+ *  reimplementation would be both a duplication and, the moment it drifted, a
+ *  disclosure.
+ */
 
 const ICON_OPTIONS = [
-  { value: 'file-text', label: 'File Text', icon: FileText },
-  { value: 'book-open', label: 'Book Open', icon: BookOpen },
-  { value: 'map', label: 'Map', icon: Map },
-  { value: 'star', label: 'Star', icon: Star },
+  { value: 'file-text', label: 'Document', icon: FileText },
+  { value: 'book-open', label: 'Handbook', icon: BookOpen },
+  { value: 'table', label: 'Table', icon: Table },
+  { value: 'map', label: 'Plan', icon: MapIcon },
+  { value: 'star', label: 'Highlight', icon: Star },
   { value: 'folder', label: 'Folder', icon: Folder },
-  { value: 'code', label: 'Code', icon: Code },
-  { value: 'lightbulb', label: 'Lightbulb', icon: Lightbulb },
-  { value: 'target', label: 'Target', icon: Target },
+  { value: 'code', label: 'Technical', icon: Code },
+  { value: 'lightbulb', label: 'Idea', icon: Lightbulb },
+  { value: 'target', label: 'Goal', icon: Target },
 ];
 
 const COLOR_SWATCHES = [
@@ -82,303 +84,408 @@ const COLOR_SWATCHES = [
 ];
 
 const ICON_MAP: Record<string, React.ElementType> = {
-  'file-text': FileText,
-  'book-open': BookOpen,
-  map: Map,
-  star: Star,
-  folder: Folder,
-  code: Code,
-  lightbulb: Lightbulb,
-  target: Target,
+  'file-text': FileText, 'book-open': BookOpen, table: Table, map: MapIcon, star: Star,
+  folder: Folder, code: Code, lightbulb: Lightbulb, target: Target,
 };
 
-async function apiFetch<T>(url: string, init?: RequestInit): Promise<{ data: T; meta?: { total: number; page: number; pageSize: number; totalPages: number } }> {
+const VISIBILITY_ICON: Record<WorkspaceNode['visibility'], React.ElementType> = {
+  organization: Globe, department: Building2, private: Lock, inherit: CornerDownRight,
+};
+
+const DOCUMENT_TEMPLATES = [
+  {
+    label: 'Product requirements',
+    body: '# Product requirements\n\n## Summary\n\n## Problem\n\n## Proposed solution\n\n## Success measures\n\n## Out of scope\n',
+  },
+  {
+    label: 'Standard operating procedure',
+    body: '# Standard operating procedure\n\n## Purpose\n\n## Who this applies to\n\n## Steps\n1. \n2. \n3. \n\n## Escalation\n',
+  },
+  {
+    label: 'Meeting notes',
+    body: `# Meeting notes\n\n**Date:** ${new Date().toISOString().slice(0, 10)}\n**Attendees:** \n\n## Agenda\n\n## Decisions\n\n## Actions\n- [ ] \n`,
+  },
+];
+
+async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...init });
   const json = await res.json();
   if (json.error) throw new Error(json.error.message || 'Request failed');
-  return json;
+  return json.data as T;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  Module
-// ═══════════════════════════════════════════════════════════════════════════
 
 export default function WorkspaceModule() {
-  // Data state
-  const [pages, setPages] = useState<WorkspacePage[]>([]);
+  const organizationId = useAppStore(s => s.user?.organizationId ?? '');
+
+  // ── Tree ──
+  const [nodes, setNodes] = useState<WorkspaceNode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  // Selection state
-  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
-  const [sidebarSearch, setSidebarSearch] = useState('');
-  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
-
-  // Full page content
-  const [fullPage, setFullPage] = useState<WorkspacePage | null>(null);
+  // ── Open page ──
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [page, setPage] = useState<OpenPage | null>(null);
   const [pageLoading, setPageLoading] = useState(false);
+  const [view, setView] = useState<'doc' | 'sheet' | 'files'>('doc');
+
+  // ── Editing ──
   const [editing, setEditing] = useState(false);
-  const [editContent, setEditContent] = useState('');
-  const [savingContent, setSavingContent] = useState(false);
-  const [viewMode, setViewMode] = useState<'doc' | 'sheet' | 'vault'>('doc');
+  const [draft, setDraft] = useState('');
+  const [savingDoc, setSavingDoc] = useState(false);
+  const [renamingTitle, setRenamingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
 
-  // Inline title editing
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [editTitle, setEditTitle] = useState('');
+  // ── Dialogs ──
+  const [createIn, setCreateIn] = useState<{ parentId: string | null } | null>(null);
+  const [deleting, setDeleting] = useState<WorkspaceNode | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [moving, setMoving] = useState<WorkspaceNode | null>(null);
+  const [moveTarget, setMoveTarget] = useState<string>('_root');
+  const [sharing, setSharing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [versions, setVersions] = useState<PageVersion[]>([]);
 
-  // Dialog state
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deletingPage, setDeletingPage] = useState<WorkspacePage | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  // ── Reference data ──
+  const [members, setMembers] = useState<DirectoryMember[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
 
-  // Fetch all pages for sidebar (large page size)
-  const fetchPages = useCallback(async () => {
-    setLoading(true);
+  // ─── Loading ─────────────────────────────────────────────────────────────
+
+  const loadTree = useCallback(async () => {
     try {
-      const res = await apiFetch<WorkspacePage[]>('/api/workspace/pages?page=1&pageSize=200');
-      setPages(res.data || []);
+      const data = await api<WorkspaceNode[]>('/api/workspace/pages?pageSize=500');
+      setNodes(data ?? []);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load pages');
+      toast.error(err.message || 'Could not load the workspace');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchPages(); }, [fetchPages]);
+  useEffect(() => { loadTree(); }, [loadTree]);
 
-  // Fetch full page
-  const fetchFullPage = useCallback(async (id: string) => {
+  useEffect(() => {
+    /**
+     * The people and departments the share dialog and the person-typed sheet
+     * column need. Loaded once here rather than per dialog, because both are
+     * small, stable lists and three components asking separately is three
+     * requests for the same answer.
+     *
+     * Departments come from the admin settings endpoint, which only
+     * administrators may call — so this is allowed to fail quietly and the
+     * department controls simply offer nothing.
+     */
+    api<DirectoryMember[]>('/api/directory')
+      .then(setMembers)
+      .catch(() => setMembers([]));
+
+    fetch('/api/admin/settings')
+      .then(r => r.json())
+      .then(j => setDepartments(j?.data?.departments ?? []))
+      .catch(() => setDepartments([]));
+  }, []);
+
+  const openPage = useCallback(async (id: string) => {
+    setSelectedId(id);
     setPageLoading(true);
-    setSelectedPageId(id);
     setEditing(false);
     try {
-      const res = await apiFetch<WorkspacePage>(`/api/workspace/pages/${id}`);
-      setFullPage(res.data);
-      setEditContent(res.data.content);
-      setEditTitle(res.data.title);
+      const data = await api<OpenPage>(`/api/workspace/pages/${id}`);
+      setPage(data);
+      setDraft(data.content ?? '');
+      setTitleDraft(data.title);
+      setView(data.kind === 'sheet' ? 'sheet' : data.isFolder ? 'files' : 'doc');
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load page');
+      toast.error(err.message || 'Could not open that page');
+      setPage(null);
     } finally {
       setPageLoading(false);
     }
   }, []);
 
-  // Derived: filtered pages
-  const filteredPages = useMemo(() => {
-    if (!sidebarSearch) return pages;
-    const q = sidebarSearch.toLowerCase();
-    return pages.filter((p) => p.title.toLowerCase().includes(q));
-  }, [pages, sidebarSearch]);
+  // ─── Tree shape ──────────────────────────────────────────────────────────
 
-  // Derived: folders and non-folder pages
-  const rootPages = useMemo(() => {
-    const folders = filteredPages.filter((p) => p.isFolder && !p.parentId);
-    const items = filteredPages.filter((p) => !p.isFolder && !p.parentId);
-    return { folders, items };
-  }, [filteredPages]);
+  const filtered = useMemo(() => {
+    if (!search.trim()) return nodes;
+    const q = search.toLowerCase();
+    const matches = nodes.filter(n => n.title.toLowerCase().includes(q));
+    // A match deep in the tree is useless without the folders above it, so
+    // every ancestor of a match is kept even when its own name does not match.
+    const keep = new Set(matches.map(m => m.id));
+    const byId = new Map(nodes.map(n => [n.id, n]));
+    for (const match of matches) {
+      let parent = match.parentId ? byId.get(match.parentId) : undefined;
+      while (parent) {
+        keep.add(parent.id);
+        parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+      }
+    }
+    return nodes.filter(n => keep.has(n.id));
+  }, [nodes, search]);
 
-  // Get children of a folder
-  const getFolderChildren = useCallback((folderId: string) => {
-    return filteredPages.filter((p) => p.parentId === folderId && !p.isFolder);
-  }, [filteredPages]);
+  const childrenOf = useCallback(
+    (parentId: string | null) =>
+      filtered
+        .filter(n => n.parentId === parentId)
+        .sort((a, b) => {
+          if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
+          if (a.isStarred !== b.isStarred) return a.isStarred ? -1 : 1;
+          return a.title.localeCompare(b.title);
+        }),
+    [filtered],
+  );
 
-  // Toggle folder collapse
-  const toggleFolder = useCallback((folderId: string) => {
-    setCollapsedFolders((prev) => {
+  const starred = useMemo(() => nodes.filter(n => n.isStarred), [nodes]);
+
+  // Searching should reveal what it found rather than leave it behind a
+  // collapsed folder the user then has to hunt for.
+  useEffect(() => {
+    if (search.trim()) setExpanded(new Set(filtered.filter(n => n.isFolder).map(n => n.id)));
+  }, [search, filtered]);
+
+  const toggleFolder = useCallback((id: string) => {
+    setExpanded(prev => {
       const next = new Set(prev);
-      if (next.has(folderId)) next.delete(folderId);
-      else next.add(folderId);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   }, []);
 
-  // Save page content
-  const saveContent = useCallback(async () => {
-    if (!fullPage) return;
-    setSavingContent(true);
+  // ─── Mutations ───────────────────────────────────────────────────────────
+
+  const patchPage = useCallback(async (id: string, body: Record<string, unknown>) => {
+    const updated = await api<WorkspaceNode>(`/api/workspace/pages/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+    await loadTree();
+    return updated;
+  }, [loadTree]);
+
+  const toggleStar = useCallback(async (node: WorkspaceNode) => {
     try {
-      const res = await apiFetch<WorkspacePage>(`/api/workspace/pages/${fullPage.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ content: editContent }),
-      });
-      setFullPage(res.data);
+      await patchPage(node.id, { isStarred: !node.isStarred });
+      if (page?.id === node.id) setPage(p => p ? { ...p, isStarred: !p.isStarred } : p);
+    } catch (err: any) {
+      toast.error(err.message || 'Could not update');
+    }
+  }, [patchPage, page]);
+
+  const saveDocument = useCallback(async () => {
+    if (!page) return;
+    setSavingDoc(true);
+    try {
+      await patchPage(page.id, { content: draft });
+      // Re-read rather than merging locally: the version counter is maintained
+      // by a trigger, and the history panel would otherwise show a stale one.
+      const fresh = await api<OpenPage>(`/api/workspace/pages/${page.id}`);
+      setPage(fresh);
       setEditing(false);
-      fetchPages();
-      toast.success('Page saved');
+      toast.success('Saved');
     } catch (err: any) {
       toast.error(err.message || 'Save failed');
     } finally {
-      setSavingContent(false);
+      setSavingDoc(false);
     }
-  }, [fullPage, editContent, fetchPages]);
+  }, [page, draft, patchPage]);
 
-  // Save page title (inline)
   const saveTitle = useCallback(async () => {
-    if (!fullPage) return;
-    try {
-      const res = await apiFetch<WorkspacePage>(`/api/workspace/pages/${fullPage.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ title: editTitle }),
-      });
-      setFullPage(res.data);
-      setIsEditingTitle(false);
-      fetchPages();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to update title');
+    if (!page || !titleDraft.trim() || titleDraft === page.title) {
+      setRenamingTitle(false);
+      return;
     }
-  }, [fullPage, editTitle, fetchPages]);
-
-  // Toggle star
-  const toggleStar = useCallback(async (page: WorkspacePage) => {
     try {
-      await apiFetch(`/api/workspace/pages/${page.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ isStarred: !page.isStarred }),
-      });
-      fetchPages();
-      if (selectedPageId === page.id) {
-        setFullPage((prev) => prev ? { ...prev, isStarred: !prev.isStarred } : null);
-      }
+      await patchPage(page.id, { title: titleDraft.trim() });
+      setPage(p => p ? { ...p, title: titleDraft.trim() } : p);
+      setRenamingTitle(false);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to toggle star');
+      toast.error(err.message || 'Rename failed');
     }
-  }, [fetchPages, selectedPageId]);
+  }, [page, titleDraft, patchPage]);
 
-  // Delete
-  const confirmDelete = useCallback(() => {
-    if (!deletingPage) return;
-    setDeleting(true);
-    apiFetch(`/api/workspace/pages/${deletingPage.id}`, { method: 'DELETE' })
-      .then(() => {
-        toast.success('Page deleted');
-        setDeleteDialogOpen(false);
-        setDeletingPage(null);
-        if (selectedPageId === deletingPage.id) {
-          setSelectedPageId(null);
-          setFullPage(null);
-        }
-        fetchPages();
-      })
-      .catch((err: any) => toast.error(err.message || 'Delete failed'))
-      .finally(() => setDeleting(false));
-  }, [deletingPage, fetchPages, selectedPageId]);
-
-  // Sort: starred first, then by updatedAt desc
-  const sortedItems = useMemo(() => {
-    return [...rootPages.items].sort((a, b) => {
-      if (a.isStarred && !b.isStarred) return -1;
-      if (!a.isStarred && b.isStarred) return 1;
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-    });
-  }, [rootPages.items]);
-
-  const sortedFolders = useMemo(() => {
-    return [...rootPages.folders].sort((a, b) => {
-      if (a.isStarred && !b.isStarred) return -1;
-      if (!a.isStarred && b.isStarred) return 1;
-      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-    });
-  }, [rootPages.folders]);
-
-  // Form for create dialog
-  const { register, handleSubmit, control, reset, watch, formState: { errors } } = useForm<PageFormValues>({
-     
-    resolver: zodResolver(createPageSchema) as any,
-    defaultValues: {
-      title: '', content: '', icon: 'file-text', colour: '#10b981',
-      parentId: '', isFolder: false, isStarred: false, lastEditedBy: '',
-    },
-  });
-
-  const watchIsFolder = watch('isFolder');
-
-  // Open create dialog
-  const openCreate = useCallback(() => {
-    reset({
-      title: '', content: '# New Page\n\nStart writing here...', icon: 'file-text', colour: '#10b981',
-      parentId: '', isFolder: false, isStarred: false, lastEditedBy: '',
-    });
-    setCreateDialogOpen(true);
-  }, [reset]);
-
-  // Submit create
-  const onSubmit = useCallback(async (values: PageFormValues) => {
-    setSaving(true);
+  const createNode = useCallback(async (values: {
+    title: string; kind: 'document' | 'sheet'; isFolder: boolean;
+    icon: string; colour: string; parentId: string | null; content: string;
+  }) => {
     try {
-      const payload = {
-        ...values,
-        parentId: values.parentId || '',
-      };
-      const res = await apiFetch<WorkspacePage>('/api/workspace/pages', {
+      const created = await api<WorkspaceNode>('/api/workspace/pages', {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(values),
       });
-      toast.success(values.isFolder ? 'Folder created' : 'Page created');
-      setCreateDialogOpen(false);
-      fetchPages();
-      // Auto-select the new page
-      if (!values.isFolder) {
-        fetchFullPage(res.data.id);
-      }
+      setCreateIn(null);
+      await loadTree();
+      if (values.parentId) setExpanded(prev => new Set(prev).add(values.parentId!));
+      toast.success(values.isFolder ? 'Folder created' : 'Created');
+      if (!values.isFolder) openPage(created.id);
+      else openPage(created.id);
     } catch (err: any) {
-      toast.error(err.message || 'Create failed');
-    } finally {
-      setSaving(false);
+      toast.error(err.message || 'Could not create that');
     }
-  }, [fetchPages, fetchFullPage]);
+  }, [loadTree, openPage]);
 
-  // Page icon component
-  const PageIcon = ({ icon, color, className }: { icon: string; color: string; className?: string }) => {
-    const IconComp = ICON_MAP[icon] || FileText;
-    return <IconComp className={className} style={{ color }} />;
-  };
+  const confirmDelete = useCallback(async () => {
+    if (!deleting) return;
+    setIsDeleting(true);
+    try {
+      await api(`/api/workspace/pages/${deleting.id}`, { method: 'DELETE' });
+      if (selectedId === deleting.id) { setSelectedId(null); setPage(null); }
+      setDeleting(null);
+      await loadTree();
+      toast.success('Deleted');
+    } catch (err: any) {
+      toast.error(err.message || 'Delete failed');
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [deleting, selectedId, loadTree]);
 
-  // Render sidebar page item
-  const renderPageItem = (page: WorkspacePage, indent = 0) => (
-    <button
-      key={page.id}
-      onClick={() => fetchFullPage(page.id)}
-      className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors text-left hover:bg-accent ${
-        selectedPageId === page.id ? 'bg-accent text-accent-foreground' : 'text-foreground'
-      }`}
-      style={{ paddingLeft: `${12 + indent * 20}px` }}
-    >
-      <PageIcon icon={page.icon} color={page.colour} className="size-4 shrink-0" />
-      <span className="truncate flex-1">{page.title}</span>
-      {page.isStarred && <Star className="size-3 text-amber-500 fill-amber-500 shrink-0" />}
-      <span className="text-xs text-muted-foreground shrink-0 hidden sm:inline">
-        {formatRelativeTime(page.updatedAt)}
-      </span>
-    </button>
-  );
+  const confirmMove = useCallback(async () => {
+    if (!moving) return;
+    try {
+      await patchPage(moving.id, { parentId: moveTarget === '_root' ? null : moveTarget });
+      setMoving(null);
+      if (moveTarget !== '_root') setExpanded(prev => new Set(prev).add(moveTarget));
+      toast.success('Moved');
+    } catch (err: any) {
+      toast.error(err.message || 'Move failed');
+    }
+  }, [moving, moveTarget, patchPage]);
 
-  // Render folder group
-  const renderFolder = (folder: WorkspacePage) => {
-    const children = getFolderChildren(folder.id);
-    const isCollapsed = collapsedFolders.has(folder.id);
+  const loadVersions = useCallback(async () => {
+    if (!page) return;
+    try {
+      setVersions(await api<PageVersion[]>(`/api/workspace/pages/${page.id}/versions`));
+      setHistoryOpen(true);
+    } catch (err: any) {
+      toast.error(err.message || 'Could not load history');
+    }
+  }, [page]);
+
+  const restoreVersion = useCallback(async (version: number) => {
+    if (!page) return;
+    try {
+      await api(`/api/workspace/pages/${page.id}/versions`, {
+        method: 'POST',
+        body: JSON.stringify({ version }),
+      });
+      const fresh = await api<OpenPage>(`/api/workspace/pages/${page.id}`);
+      setPage(fresh);
+      setDraft(fresh.content ?? '');
+      setHistoryOpen(false);
+      await loadTree();
+      toast.success(`Restored version ${version}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Restore failed');
+    }
+  }, [page, loadTree]);
+
+  // ─── Rendering ───────────────────────────────────────────────────────────
+
+  const canEdit = page?.permission === 'edit' || page?.permission === 'manage';
+
+  /**
+   * A tree row. Recursive rather than flattened, so nesting is not capped —
+   * the previous sidebar rendered folders and then their direct children only,
+   * which meant a folder inside a folder simply did not appear.
+   */
+  const renderNode = (node: WorkspaceNode, depth: number): React.ReactNode => {
+    const Icon = ICON_MAP[node.icon ?? ''] ?? (node.isFolder ? Folder : node.kind === 'sheet' ? Table : FileText);
+    const OpenIcon = node.isFolder && expanded.has(node.id) ? FolderOpen : Icon;
+    const isOpen = expanded.has(node.id);
+    const kids = node.isFolder ? childrenOf(node.id) : [];
+    const VisIcon = VISIBILITY_ICON[node.visibility];
 
     return (
-      <div key={folder.id}>
-        <button
-          onClick={() => toggleFolder(folder.id)}
-          className="w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-md transition-colors text-left hover:bg-accent text-foreground"
-        >
-          {isCollapsed ? (
-            <ChevronRight className="size-3.5 text-muted-foreground shrink-0" />
-          ) : (
-            <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
+      <div key={node.id}>
+        <div
+          className={cn(
+            'group flex items-center gap-1 rounded-md pr-1 transition-colors hover:bg-accent',
+            selectedId === node.id && 'bg-accent text-accent-foreground',
           )}
-          <PageIcon icon={folder.icon} color={folder.colour} className="size-4 shrink-0" />
-          <span className="truncate flex-1 font-medium">{folder.title}</span>
-          {folder.isStarred && <Star className="size-3 text-amber-500 fill-amber-500 shrink-0" />}
-          <span className="text-xs text-muted-foreground shrink-0">{children.length}</span>
-        </button>
-        {!isCollapsed && (
-          <div className="mt-0.5 space-y-0.5">
-            {children.map((child) => renderPageItem(child, 1))}
-            {children.length === 0 && (
-              <p className="text-xs text-muted-foreground pl-12 py-1">Empty folder</p>
+          style={{ paddingLeft: `${4 + depth * 14}px` }}
+        >
+          {node.isFolder ? (
+            <button onClick={() => toggleFolder(node.id)} className="shrink-0 p-1" aria-label="Toggle folder">
+              {isOpen
+                ? <ChevronDown className="size-3.5 text-muted-foreground" />
+                : <ChevronRight className="size-3.5 text-muted-foreground" />}
+            </button>
+          ) : (
+            <span className="w-[22px] shrink-0" />
+          )}
+
+          <button
+            onClick={() => openPage(node.id)}
+            className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left text-sm"
+          >
+            <OpenIcon className="size-4 shrink-0" style={{ color: node.colour }} />
+            <span className="truncate">{node.title}</span>
+            {node.isStarred && <Star className="size-3 shrink-0 fill-amber-500 text-amber-500" />}
+            {node.visibility !== 'organization' && node.visibility !== 'inherit' && (
+              <VisIcon className="size-3 shrink-0 text-muted-foreground" />
+            )}
+          </button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon"
+                className="size-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100">
+                <MoreHorizontal className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {node.isFolder && node.permission !== 'view' && (
+                <>
+                  <DropdownMenuItem onClick={() => setCreateIn({ parentId: node.id })}>
+                    <Plus className="mr-2 size-4" /> New inside
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuItem onClick={() => toggleStar(node)}>
+                {node.isStarred
+                  ? <><StarOff className="mr-2 size-4" /> Remove star</>
+                  : <><Star className="mr-2 size-4" /> Star</>}
+              </DropdownMenuItem>
+              {node.permission !== 'view' && (
+                <DropdownMenuItem onClick={() => { openPage(node.id); setRenamingTitle(true); }}>
+                  <Pencil className="mr-2 size-4" /> Rename
+                </DropdownMenuItem>
+              )}
+              {node.permission !== 'view' && (
+                <DropdownMenuItem onClick={() => { setMoving(node); setMoveTarget(node.parentId ?? '_root'); }}>
+                  <FolderInput className="mr-2 size-4" /> Move to…
+                </DropdownMenuItem>
+              )}
+              {node.permission === 'manage' && (
+                <DropdownMenuItem onClick={() => { openPage(node.id); setSharing(true); }}>
+                  <Share2 className="mr-2 size-4" /> Share
+                </DropdownMenuItem>
+              )}
+              {node.permission === 'manage' && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="text-destructive focus:text-destructive"
+                    onClick={() => setDeleting(node)}>
+                    <Trash2 className="mr-2 size-4" /> Delete
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {node.isFolder && isOpen && (
+          <div>
+            {kids.map(child => renderNode(child, depth + 1))}
+            {kids.length === 0 && (
+              <p className="py-1 text-xs text-muted-foreground"
+                 style={{ paddingLeft: `${30 + depth * 14}px` }}>
+                Empty
+              </p>
             )}
           </div>
         )}
@@ -386,213 +493,198 @@ export default function WorkspaceModule() {
     );
   };
 
-  // Current selected page icon for header
-  const currentIcon = fullPage ? (ICON_MAP[fullPage.icon] || FileText) : FileText;
+  const roots = childrenOf(null);
 
   return (
     <TooltipProvider>
-      <div className="flex flex-1 overflow-hidden h-full">
-        {/* ─── Left Sidebar ─── */}
-        <aside className="w-64 border-r bg-card flex flex-col shrink-0 hidden sm:flex">
-          {/* New Page Button */}
+      <div className="flex h-full flex-1 overflow-hidden">
+        {/* ─── Sidebar ─── */}
+        <aside className="hidden w-72 shrink-0 flex-col border-r bg-card sm:flex">
           <div className="p-3">
-            <Button
-              onClick={openCreate}
-              variant="outline"
-              className="w-full justify-start gap-2 text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-800 dark:hover:bg-emerald-950/30"
-            >
-              <Plus className="size-4" /> New Page
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline"
+                  className="w-full justify-start gap-2 border-emerald-200 text-emerald-600 hover:bg-emerald-50 dark:border-emerald-800 dark:hover:bg-emerald-950/30">
+                  <Plus className="size-4" /> New
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuItem onClick={() => setCreateIn({ parentId: null })}>
+                  <FileText className="mr-2 size-4" /> Page or folder
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
-          {/* Search */}
           <div className="px-3 pb-2">
             <div className="relative">
-              <Search className="text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5" />
+              <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search pages..."
-                value={sidebarSearch}
-                onChange={(e) => setSidebarSearch(e.target.value)}
-                className="pl-8 h-8 text-sm"
+                placeholder="Search the workspace…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-8 pl-8 text-sm"
               />
             </div>
           </div>
 
           <Separator />
 
-          {/* Page List */}
           <ScrollArea className="flex-1 px-2 py-2">
             {loading ? (
               <div className="space-y-2 px-1">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <Skeleton key={i} className="h-8 w-full" />
-                ))}
+                {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
               </div>
-            ) : filteredPages.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-8">
-                {sidebarSearch ? 'No pages match your search.' : 'No pages yet.'}
+            ) : roots.length === 0 ? (
+              <p className="py-8 text-center text-xs text-muted-foreground">
+                {search ? 'Nothing matches that.' : 'Nothing here yet.'}
               </p>
             ) : (
-              <div className="space-y-0.5">
-                {/* Folders */}
-                {sortedFolders.length > 0 && (
-                  <div className="space-y-0.5 mb-2">
-                    {sortedFolders.map(renderFolder)}
+              <>
+                {starred.length > 0 && !search && (
+                  <div className="mb-2">
+                    <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      Starred
+                    </p>
+                    {starred.map(node => (
+                      <button
+                        key={`star-${node.id}`}
+                        onClick={() => openPage(node.id)}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
+                      >
+                        <Star className="size-3.5 shrink-0 fill-amber-500 text-amber-500" />
+                        <span className="truncate">{node.title}</span>
+                      </button>
+                    ))}
+                    <Separator className="my-2" />
                   </div>
                 )}
-
-                {/* Divider if both exist */}
-                {sortedFolders.length > 0 && sortedItems.length > 0 && (
-                  <Separator className="my-2" />
-                )}
-
-                {/* Root pages */}
-                {sortedItems.map((page) => renderPageItem(page))}
-              </div>
+                <div className="space-y-0.5">{roots.map(node => renderNode(node, 0))}</div>
+              </>
             )}
           </ScrollArea>
         </aside>
 
-        {/* ─── Right Content Area ─── */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {!selectedPageId ? (
+        {/* ─── Content ─── */}
+        <main className="flex flex-1 flex-col overflow-hidden">
+          {!selectedId ? (
             <EmptyState
               icon={BookMarked}
-              title="Select a page or create a new one"
-              description="Choose a page from the sidebar or create a new page to get started."
-              action={{ label: 'New Page', onClick: openCreate }}
+              title="Nothing open"
+              description="Choose something from the sidebar, or create a folder, document or spreadsheet."
+              action={{ label: 'New', onClick: () => setCreateIn({ parentId: null }) }}
             />
           ) : pageLoading ? (
-            <div className="flex-1 p-6 space-y-4">
+            <div className="flex-1 space-y-4 p-6">
               <Skeleton className="h-8 w-64" />
               <Skeleton className="h-4 w-96" />
-              <div className="space-y-2 mt-6">
-                {Array.from({ length: 12 }).map((_, i) => (
-                  <Skeleton key={i} className="h-4 w-full" />
-                ))}
+              <div className="mt-6 space-y-2">
+                {Array.from({ length: 10 }).map((_, i) => <Skeleton key={i} className="h-4 w-full" />)}
               </div>
             </div>
-          ) : fullPage ? (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Page Header */}
-              <div className="flex items-center gap-3 px-6 py-4 border-b shrink-0">
-                <PageIcon icon={fullPage.icon} color={fullPage.colour} className="size-5 shrink-0" />
+          ) : page ? (
+            <div className="flex flex-1 flex-col overflow-hidden">
+              {/* Header */}
+              <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-3 sm:px-6">
+                {(() => {
+                  const Icon = ICON_MAP[page.icon ?? ''] ?? (page.isFolder ? Folder : page.kind === 'sheet' ? Table : FileText);
+                  return <Icon className="size-5 shrink-0" style={{ color: page.colour }} />;
+                })()}
 
-                {isEditingTitle ? (
+                {renamingTitle ? (
                   <Input
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
+                    value={titleDraft}
+                    onChange={(e) => setTitleDraft(e.target.value)}
                     onBlur={saveTitle}
-                    onKeyDown={(e) => { if (e.key === 'Enter') saveTitle(); if (e.key === 'Escape') setIsEditingTitle(false); }}
-                    className="h-8 text-lg font-semibold max-w-md"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveTitle();
+                      if (e.key === 'Escape') { setTitleDraft(page.title); setRenamingTitle(false); }
+                    }}
+                    className="h-8 max-w-xs text-lg font-semibold"
                     autoFocus
                   />
                 ) : (
                   <h1
-                    className="text-lg font-semibold text-foreground cursor-pointer hover:text-emerald-600 transition-colors"
-                    onClick={() => { setEditTitle(fullPage.title); setIsEditingTitle(true); }}
+                    className={cn('truncate text-lg font-semibold', canEdit && 'cursor-pointer hover:text-emerald-600')}
+                    onClick={() => canEdit && (setTitleDraft(page.title), setRenamingTitle(true))}
                   >
-                    {fullPage.title}
+                    {page.title}
                   </h1>
                 )}
 
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8"
-                      onClick={() => toggleStar(fullPage)}
-                    >
-                      {fullPage.isStarred ? (
-                        <Star className="size-4 text-amber-500 fill-amber-500" />
-                      ) : (
-                        <StarOff className="size-4 text-muted-foreground" />
-                      )}
+                    <Button variant="ghost" size="icon" className="size-8"
+                      onClick={() => toggleStar(page)}>
+                      {page.isStarred
+                        ? <Star className="size-4 fill-amber-500 text-amber-500" />
+                        : <StarOff className="size-4 text-muted-foreground" />}
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>{fullPage.isStarred ? 'Unstar' : 'Star'}</TooltipContent>
+                  <TooltipContent>{page.isStarred ? 'Remove star' : 'Star'}</TooltipContent>
                 </Tooltip>
 
-                {/* View Mode Switcher */}
-                <div className="flex items-center gap-1 bg-muted p-1 rounded-md border text-xs font-medium">
-                  <button
-                    onClick={() => setViewMode('doc')}
-                    className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${viewMode === 'doc' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    <FileText className="size-3.5" /> Document
-                  </button>
-                  <button
-                    onClick={() => setViewMode('sheet')}
-                    className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${viewMode === 'sheet' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    <FileSpreadsheet className="size-3.5" /> Spreadsheet
-                  </button>
-                  <button
-                    onClick={() => setViewMode('vault')}
-                    className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${viewMode === 'vault' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    <UploadCloud className="size-3.5" /> File Vault
-                  </button>
+                {page.permission === 'view' && (
+                  <Badge variant="outline" className="gap-1 text-[10px]">
+                    <Lock className="size-3" /> Read only
+                  </Badge>
+                )}
+
+                {/* View switcher */}
+                <div className="flex items-center gap-1 rounded-md border bg-muted p-1 text-xs font-medium">
+                  {!page.isFolder && page.kind === 'document' && (
+                    <ViewTab active={view === 'doc'} onClick={() => setView('doc')} icon={FileText} label="Document" />
+                  )}
+                  {!page.isFolder && page.kind === 'sheet' && (
+                    <ViewTab active={view === 'sheet'} onClick={() => setView('sheet')} icon={FileSpreadsheet} label="Spreadsheet" />
+                  )}
+                  <ViewTab active={view === 'files'} onClick={() => setView('files')} icon={UploadCloud}
+                    label={`Files${page.files.length ? ` (${page.files.length})` : ''}`} />
                 </div>
 
-                {/* Share / Permissions / Edit / Save / More */}
-                <div className="flex items-center gap-1.5 ml-auto">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1 text-xs"
-                    onClick={() => toast.info('Permissions: Workspace Shared (Role-based Control Active)')}
-                  >
-                    Share
+                <div className="ml-auto flex items-center gap-1.5">
+                  {!page.isFolder && page.kind === 'document' && (
+                    <Button variant="outline" size="sm" className="gap-1.5" onClick={loadVersions}>
+                      <History className="size-3.5" />
+                      <span className="hidden sm:inline">History</span>
+                    </Button>
+                  )}
+
+                  <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setSharing(true)}>
+                    <Share2 className="size-3.5" />
+                    <span className="hidden sm:inline">Share</span>
+                    {page.shareCount > 0 && (
+                      <Badge variant="secondary" className="ml-0.5 h-4 px-1 text-[10px]">{page.shareCount}</Badge>
+                    )}
                   </Button>
 
-                  {viewMode === 'doc' && (
+                  {view === 'doc' && !page.isFolder && canEdit && (
                     !editing ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5"
-                        onClick={() => { setEditContent(fullPage.content); setEditing(true); }}
-                      >
+                      <Button variant="outline" size="sm" className="gap-1.5"
+                        onClick={() => { setDraft(page.content); setEditing(true); }}>
                         <Pencil className="size-3.5" /> Edit
                       </Button>
                     ) : (
                       <>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="sm" className="gap-1 text-xs">
-                              Insert Template
-                            </Button>
+                            <Button variant="outline" size="sm" className="text-xs">Template</Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => setEditContent('# Product Requirements Document (PRD)\n\n## 1. Executive Summary\nDescribe feature goals...\n\n## 2. Target Users\n- Enterprise Admins\n- End Users\n\n## 3. Success Metrics\n- Adoption rate > 80%')}>
-                              PRD Template
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setEditContent('# Standard Operating Procedure (SOP)\n\n## Purpose\nEstablish operational workflow standards.\n\n## Scope\nApplies to all department team members.\n\n## Steps\n1. Review ticket status\n2. Escalate to Lead if unresolved after 2 hours')}>
-                              SOP Template
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setEditContent('# Executive Meeting Notes\n\n**Date:** ' + new Date().toISOString().substring(0,10) + '\n**Attendees:** Alex Morgan, Sarah Jenkins, Jordan Lee\n\n## Agenda\n1. Q3 Roadmap Review\n2. Budget Allocation\n\n## Action Items\n- [ ] Finalize contract draft')}>
-                              Meeting Notes
-                            </DropdownMenuItem>
+                            {DOCUMENT_TEMPLATES.map(t => (
+                              <DropdownMenuItem key={t.label} onClick={() => setDraft(t.body)}>
+                                {t.label}
+                              </DropdownMenuItem>
+                            ))}
                           </DropdownMenuContent>
                         </DropdownMenu>
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => { setEditing(false); setEditContent(fullPage.content); }}
-                        >
+                        <Button variant="outline" size="sm"
+                          onClick={() => { setEditing(false); setDraft(page.content); }}>
                           Cancel
                         </Button>
-                        <Button
-                          size="sm"
-                          className="bg-emerald-600 text-white hover:bg-emerald-700 gap-1.5"
-                          onClick={saveContent}
-                          disabled={savingContent}
-                        >
-                          {savingContent && <Loader2 className="size-3.5 animate-spin" />}
-                          Save
+                        <Button size="sm" className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+                          onClick={saveDocument} disabled={savingDoc}>
+                          {savingDoc && <Loader2 className="size-3.5 animate-spin" />} Save
                         </Button>
                       </>
                     )
@@ -605,90 +697,97 @@ export default function WorkspaceModule() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => { setEditTitle(fullPage.title); setIsEditingTitle(true); }}>
-                        <Pencil className="size-4 mr-2" /> Rename
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() => { setDeletingPage(fullPage); setDeleteDialogOpen(true); }}
-                      >
-                        <Trash2 className="size-4 mr-2" /> Delete
-                      </DropdownMenuItem>
+                      {canEdit && (
+                        <DropdownMenuItem onClick={() => { setTitleDraft(page.title); setRenamingTitle(true); }}>
+                          <Pencil className="mr-2 size-4" /> Rename
+                        </DropdownMenuItem>
+                      )}
+                      {canEdit && (
+                        <DropdownMenuItem
+                          onClick={() => {
+                            const node = nodes.find(n => n.id === page.id);
+                            if (node) { setMoving(node); setMoveTarget(node.parentId ?? '_root'); }
+                          }}>
+                          <FolderInput className="mr-2 size-4" /> Move to…
+                        </DropdownMenuItem>
+                      )}
+                      {page.permission === 'manage' && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => {
+                              const node = nodes.find(n => n.id === page.id);
+                              if (node) setDeleting(node);
+                            }}>
+                            <Trash2 className="mr-2 size-4" /> Delete
+                          </DropdownMenuItem>
+                        </>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
               </div>
 
-              {/* Page Content Renderer */}
+              {/* Body */}
               <ScrollArea className="flex-1">
-                <div className="max-w-4xl mx-auto px-6 py-8">
-                  {viewMode === 'doc' && (
+                <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+                  {page.isFolder && view === 'files' && (
+                    <FolderContents
+                      nodes={childrenOf(page.id)}
+                      onOpen={openPage}
+                      onCreate={() => setCreateIn({ parentId: page.id })}
+                      canEdit={canEdit}
+                    />
+                  )}
+
+                  {view === 'doc' && !page.isFolder && (
                     editing ? (
                       <Textarea
-                        value={editContent}
-                        onChange={(e) => setEditContent(e.target.value)}
-                        className="min-h-[420px] font-mono text-sm"
-                        placeholder="Write markdown here..."
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        className="min-h-[460px] font-mono text-sm"
+                        placeholder="Write in Markdown…"
                       />
                     ) : (
-                      <div className="prose prose-sm dark:prose-invert max-w-none">
-                        {fullPage.content ? (
-                          <ReactMarkdown>{fullPage.content}</ReactMarkdown>
-                        ) : (
-                          <p className="text-muted-foreground italic">This page is empty. Click Edit to add content.</p>
-                        )}
+                      <div className="prose prose-sm max-w-none dark:prose-invert">
+                        {page.content
+                          ? <ReactMarkdown>{page.content}</ReactMarkdown>
+                          : <p className="italic text-muted-foreground">
+                              This page is empty.{canEdit ? ' Choose Edit to add something.' : ''}
+                            </p>}
                       </div>
                     )
                   )}
 
-                  {viewMode === 'sheet' && (
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-sm font-semibold text-foreground">Interactive Grid Sheet</h3>
-                        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600">Auto-saved</Badge>
-                      </div>
-                      <div className="border rounded-lg overflow-x-auto bg-card">
-                        <table className="w-full text-xs text-left border-collapse">
-                          <thead>
-                            <tr className="bg-muted border-b">
-                              <th className="p-2.5 border-r font-semibold w-12 text-center">#</th>
-                              <th className="p-2.5 border-r font-semibold">Column A (Key)</th>
-                              <th className="p-2.5 border-r font-semibold">Column B (Value)</th>
-                              <th className="p-2.5 border-r font-semibold">Column C (Category)</th>
-                              <th className="p-2.5 font-semibold">Column D (Status)</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {[
-                              { id: 1, a: 'Target Revenue', b: '$1,200,000', c: 'Finance', d: 'Approved' },
-                              { id: 2, a: 'Q3 Headcount', b: '45 FTEs', c: 'HR', d: 'In Progress' },
-                              { id: 3, a: 'Customer SLA Rate', b: '99.9%', c: 'Engineering', d: 'Verified' },
-                              { id: 4, a: 'Cloud Infrastructure', b: '$14,500/mo', c: 'DevOps', d: 'Active' },
-                            ].map((row) => (
-                              <tr key={row.id} className="border-b last:border-0 hover:bg-accent/40">
-                                <td className="p-2.5 border-r text-center text-muted-foreground font-mono">{row.id}</td>
-                                <td className="p-2.5 border-r font-medium">{row.a}</td>
-                                <td className="p-2.5 border-r">{row.b}</td>
-                                <td className="p-2.5 border-r text-muted-foreground">{row.c}</td>
-                                <td className="p-2.5"><Badge variant="outline" className="text-[10px]">{row.d}</Badge></td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                  {view === 'sheet' && page.kind === 'sheet' && (
+                    <SheetGrid
+                      pageId={page.id}
+                      columns={page.columns}
+                      rows={page.rows}
+                      members={members}
+                      canEdit={!!canEdit}
+                      onChanged={({ columns, rows }) => setPage(p => p ? { ...p, columns, rows } : p)}
+                    />
+                  )}
+
+                  {view === 'files' && (
+                    <div className={page.isFolder ? 'mt-8' : ''}>
+                      <FileBrowser
+                        pageId={page.id}
+                        organizationId={organizationId}
+                        files={page.files}
+                        canEdit={!!canEdit}
+                        onChanged={(files: WorkspaceFile[]) => setPage(p => p ? { ...p, files } : p)}
+                      />
                     </div>
                   )}
 
-                  {viewMode === 'vault' && (
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-sm font-semibold text-foreground">Document Storage Vault</h3>
-                        <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-600">Enterprise Encrypted</Badge>
-                      </div>
-                      <FileUploader maxSizeMB={50} maxFiles={15} />
-                    </div>
-                  )}
+                  <p className="mt-8 border-t pt-4 text-xs text-muted-foreground">
+                    Version {page.version} · last edited{' '}
+                    {page.lastEditedByName ? `by ${page.lastEditedByName} ` : ''}
+                    {formatRelativeTime(page.updatedAt)}
+                  </p>
                 </div>
               </ScrollArea>
             </div>
@@ -696,136 +795,333 @@ export default function WorkspaceModule() {
         </main>
       </div>
 
-      {/* ─── Create Page Dialog ─── */}
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="max-w-md">
+      {/*
+        ─── Create ───
+        Keyed on the destination so the dialog is a fresh component each time it
+        opens. That is how the rest of this codebase resets a form — it avoids
+        an effect that writes state on open, which cascades a render.
+      */}
+      <CreateDialog
+        key={createIn ? `create-${createIn.parentId ?? 'root'}` : 'create-closed'}
+        state={createIn}
+        folders={nodes.filter(n => n.isFolder && n.permission !== 'view')}
+        onClose={() => setCreateIn(null)}
+        onSubmit={createNode}
+      />
+
+      {/* ─── Move ─── */}
+      <Dialog open={!!moving} onOpenChange={(open) => !open && setMoving(null)}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>New Page</DialogTitle>
-            <DialogDescription>Create a new page or folder in your workspace.</DialogDescription>
+            <DialogTitle>Move “{moving?.title}”</DialogTitle>
+            <DialogDescription>
+              Choose the folder this should live in. A folder cannot be moved inside itself.
+            </DialogDescription>
           </DialogHeader>
-
-          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="page-title">Title *</Label>
-              <Input id="page-title" {...register('title')} placeholder="Page title" autoFocus />
-              {errors.title && <p className="text-sm text-destructive">{errors.title.message}</p>}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Icon</Label>
-                <Controller
-                  control={control}
-                  name="icon"
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {ICON_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value} className="gap-2">
-                            <opt.icon className="size-4 inline mr-2" />
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Color</Label>
-                <Controller
-                  control={control}
-                  name="colour"
-                  render={({ field }) => (
-                    <div className="flex flex-wrap gap-1.5 mt-1">
-                      {COLOR_SWATCHES.map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          className={`w-6 h-6 rounded-full border-2 transition-all ${
-                            field.value === c ? 'border-foreground scale-110' : 'border-transparent'
-                          }`}
-                          style={{ backgroundColor: c }}
-                          onClick={() => field.onChange(c)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Controller
-                control={control}
-                name="isFolder"
-                render={({ field }) => (
-                  <Switch checked={field.value} onCheckedChange={field.onChange} />
-                )}
-              />
-              <Label>Create as folder</Label>
-            </div>
-
-            {watchIsFolder && (
-              <div className="space-y-2">
-                <Label>Parent Folder</Label>
-                <Controller
-                  control={control}
-                  name="parentId"
-                  render={({ field }) => (
-                    <Select value={field.value || '_none'} onValueChange={(v) => field.onChange(v === '_none' ? '' : v)}>
-                      <SelectTrigger><SelectValue placeholder="No parent" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_none">No parent (root level)</SelectItem>
-                        {pages
-                          .filter((p) => p.isFolder)
-                          .map((f) => (
-                            <SelectItem key={f.id} value={f.id}>{f.title}</SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
-              </div>
-            )}
-
-            {!watchIsFolder && (
-              <div className="space-y-2">
-                <Label htmlFor="page-content">Initial Content</Label>
-                <Textarea
-                  id="page-content"
-                  {...register('content')}
-                  rows={6}
-                  className="font-mono text-sm"
-                  placeholder="# Hello World\n\nWrite something..."
-                />
-              </div>
-            )}
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={saving} className="bg-emerald-600 text-white hover:bg-emerald-700">
-                {saving && <Loader2 className="size-4 animate-spin mr-1.5" />}
-                Create {watchIsFolder ? 'Folder' : 'Page'}
-              </Button>
-            </DialogFooter>
-          </form>
+          <div className="space-y-2">
+            <Label>Destination</Label>
+            <Select value={moveTarget} onValueChange={setMoveTarget}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent className="max-h-64">
+                <SelectItem value="_root">Top level</SelectItem>
+                {nodes
+                  .filter(n => n.isFolder && n.id !== moving?.id && n.permission !== 'view')
+                  .map(f => <SelectItem key={f.id} value={f.id}>{f.title}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMoving(null)}>Cancel</Button>
+            <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={confirmMove}>
+              Move
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ─── Delete Confirmation ─── */}
+      {/* ─── History ─── */}
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Version history</DialogTitle>
+            <DialogDescription>
+              Every saved change to “{page?.title}”. Restoring keeps the current version in the
+              history, so a restore can itself be undone.
+            </DialogDescription>
+          </DialogHeader>
+          {versions.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No earlier versions yet — history starts at the first edit after a page is created.
+            </p>
+          ) : (
+            <ScrollArea className="max-h-80">
+              <div className="divide-y rounded-md border">
+                {versions.map(v => (
+                  <div key={v.id} className="flex items-center gap-3 p-3">
+                    <Badge variant="outline" className="shrink-0 font-mono text-[10px]">v{v.version}</Badge>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{v.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {v.editor?.profiles?.fullName ?? 'A colleague'} · {formatDateTime(v.createdAt)}
+                      </p>
+                    </div>
+                    {canEdit && (
+                      <Button variant="outline" size="sm" className="shrink-0 gap-1.5"
+                        onClick={() => restoreVersion(v.version)}>
+                        <RotateCcw className="size-3.5" /> Restore
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <ShareDialog
+        page={page}
+        open={sharing}
+        onOpenChange={setSharing}
+        members={members}
+        departments={departments}
+        onSaved={() => { loadTree(); if (page) openPage(page.id); }}
+      />
+
       <ConfirmDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        title="Delete Page"
-        description={`Are you sure you want to delete "${deletingPage?.title}"? This action cannot be undone.`}
+        open={!!deleting}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title={deleting?.isFolder ? 'Delete folder' : 'Delete page'}
+        description={deleting?.isFolder
+          ? `Delete “${deleting?.title}” and everything inside it? An administrator can restore it.`
+          : `Delete “${deleting?.title}”? An administrator can restore it.`}
         confirmLabel="Delete"
         variant="destructive"
         onConfirm={confirmDelete}
-        isLoading={deleting}
+        isLoading={isDeleting}
       />
     </TooltipProvider>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Pieces
+// ═══════════════════════════════════════════════════════════════════════════
+
+function ViewTab({
+  active, onClick, icon: Icon, label,
+}: { active: boolean; onClick: () => void; icon: React.ElementType; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors',
+        active ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+      )}
+    >
+      <Icon className="size-3.5" /> {label}
+    </button>
+  );
+}
+
+/** What a folder contains, shown when a folder is the thing that is open. */
+function FolderContents({
+  nodes, onOpen, onCreate, canEdit,
+}: {
+  nodes: WorkspaceNode[];
+  onOpen: (id: string) => void;
+  onCreate: () => void;
+  canEdit: boolean;
+}) {
+  if (!nodes.length) {
+    return (
+      <div className="rounded-lg border border-dashed p-8 text-center">
+        <Folder className="mx-auto mb-3 size-8 text-muted-foreground" />
+        <p className="text-sm font-medium">This folder is empty</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Add a document, a spreadsheet or another folder.
+        </p>
+        {canEdit && (
+          <Button variant="outline" size="sm" className="mt-4 gap-1.5" onClick={onCreate}>
+            <Plus className="size-3.5" /> New inside
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold">Contents</h3>
+        {canEdit && (
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={onCreate}>
+            <Plus className="size-3.5" /> New inside
+          </Button>
+        )}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {nodes.map(node => {
+          const Icon = ICON_MAP[node.icon ?? ''] ?? (node.isFolder ? Folder : node.kind === 'sheet' ? Table : FileText);
+          return (
+            <button
+              key={node.id}
+              onClick={() => onOpen(node.id)}
+              className="flex items-center gap-3 rounded-lg border bg-card p-3 text-left transition-colors hover:bg-accent/40"
+            >
+              <Icon className="size-5 shrink-0" style={{ color: node.colour }} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">{node.title}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {node.isFolder
+                    ? `${node.childCount} item${node.childCount === 1 ? '' : 's'}`
+                    : node.kind === 'sheet' ? 'Spreadsheet' : 'Document'}
+                  {node.fileCount > 0 && ` · ${node.fileCount} file${node.fileCount === 1 ? '' : 's'}`}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CreateDialog({
+  state, folders, onClose, onSubmit,
+}: {
+  state: { parentId: string | null } | null;
+  folders: WorkspaceNode[];
+  onClose: () => void;
+  onSubmit: (values: {
+    title: string; kind: 'document' | 'sheet'; isFolder: boolean;
+    icon: string; colour: string; parentId: string | null; content: string;
+  }) => void;
+}) {
+  const [what, setWhat] = useState<'document' | 'sheet' | 'folder'>('document');
+  const [title, setTitle] = useState('');
+  /**
+   * `null` means "follow the kind".
+   *
+   * The icon tracks what is being created — picking Folder and being left with
+   * a document icon is the small wrongness that makes a tree hard to scan — but
+   * an explicit choice has to survive changing the kind afterwards. Deriving it
+   * during render rather than syncing it in an effect keeps both true without a
+   * cascading render.
+   */
+  const [chosenIcon, setChosenIcon] = useState<string | null>(null);
+  const icon = chosenIcon ?? (what === 'folder' ? 'folder' : what === 'sheet' ? 'table' : 'file-text');
+  const [colour, setColour] = useState('#10b981');
+  const [parentId, setParentId] = useState(state?.parentId ?? '_root');
+  const [saving, setSaving] = useState(false);
+
+  return (
+    <Dialog open={!!state} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Create</DialogTitle>
+          <DialogDescription>
+            A folder holds other pages and files. A document is written in Markdown; a spreadsheet
+            is a grid with columns you define.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              ['document', 'Document', FileText],
+              ['sheet', 'Spreadsheet', FileSpreadsheet],
+              ['folder', 'Folder', Folder],
+            ] as const).map(([value, label, Icon]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setWhat(value)}
+                className={cn(
+                  'flex flex-col items-center gap-1.5 rounded-lg border p-3 text-xs transition-colors',
+                  what === value ? 'border-emerald-500 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400'
+                    : 'hover:bg-accent/50',
+                )}
+              >
+                <Icon className="size-5" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="new-title">Name</Label>
+            <Input id="new-title" value={title} autoFocus
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={what === 'folder' ? 'e.g. HR Documents' : 'e.g. Expense tracker'} />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Inside</Label>
+            <Select value={parentId} onValueChange={setParentId}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent className="max-h-64">
+                <SelectItem value="_root">Top level</SelectItem>
+                {folders.map(f => <SelectItem key={f.id} value={f.id}>{f.title}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Icon</Label>
+              <Select value={icon} onValueChange={setChosenIcon}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ICON_OPTIONS.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      <span className="flex items-center gap-2"><opt.icon className="size-4" /> {opt.label}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Colour</Label>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {COLOR_SWATCHES.map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-label={`Colour ${c}`}
+                    className={cn('size-6 rounded-full border-2 transition-all',
+                      colour === c ? 'scale-110 border-foreground' : 'border-transparent')}
+                    style={{ backgroundColor: c }}
+                    onClick={() => setColour(c)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            className="bg-emerald-600 text-white hover:bg-emerald-700"
+            disabled={!title.trim() || saving}
+            onClick={() => {
+              setSaving(true);
+              onSubmit({
+                title: title.trim(),
+                kind: what === 'sheet' ? 'sheet' : 'document',
+                isFolder: what === 'folder',
+                icon, colour,
+                parentId: parentId === '_root' ? null : parentId,
+                content: what === 'document' ? '' : '',
+              });
+            }}
+          >
+            {saving && <Loader2 className="mr-1.5 size-4 animate-spin" />}
+            Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

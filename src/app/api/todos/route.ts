@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
+import { todayIn } from '@/lib/org-time';
 import { acceptBody } from '@/lib/case';
 
 /**
@@ -64,7 +65,9 @@ export async function GET(req: Request) {
    * including on the dashboard widget.
    */
   const view = searchParams.get('view');
-  const today = new Date().toISOString().slice(0, 10);
+  // The organisation's today. "Due today" has to mean the same day the person
+  // reading the list is living in, not UTC's.
+  const today = todayIn(ctx.org.timezone);
 
   switch (view) {
     case 'today':

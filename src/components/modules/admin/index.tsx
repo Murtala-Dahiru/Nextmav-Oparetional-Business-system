@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import {
   Users, Plus, Pencil, Trash2, MoreHorizontal, Settings, Shield,
   ClipboardList, Loader2, Save, ShieldCheck, Briefcase, DollarSign, CalendarOff, Megaphone,
+  Clock, FolderKanban,
 } from 'lucide-react';
 
 import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
@@ -17,6 +18,10 @@ import { normalizeRole, roleLabel } from '@/lib/permissions';
 import { CURRENCIES, COUNTRIES, NIGERIAN_STATES, DEFAULT_COUNTRY, DEFAULT_CURRENCY } from '@/lib/locale';
 import { useAppStore } from '@/store/app-store';
 import { HolidaysTab, AnnouncementsTab } from '@/components/modules/admin/workplace-tabs';
+import {
+  WorkplacePanel, LeavePanel, ProjectsPanel, NotificationsPanel,
+  BrandingPanel, DepartmentsPanel, type SettingsBundle,
+} from '@/components/modules/admin/settings-panels';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -446,6 +451,8 @@ export default function AdminModule() {
   const [financeForm, setFinanceForm] = useState({
     currency: DEFAULT_CURRENCY, taxRate: '0', invoicePrefix: 'INV-', fiscalYearStart: '01',
   });
+  /** The whole settings response, for the policy panels. */
+  const [bundle, setBundle] = useState<SettingsBundle | null>(null);
 
   // ── Dialogs ──
   const [userDialogOpen, setUserDialogOpen] = useState(false);
@@ -530,6 +537,15 @@ export default function AdminModule() {
 
       const org = res.data?.organization ?? {};
       const kv = res.data?.settings ?? {};
+
+      // Held whole as well as split into forms: the policy panels below read
+      // the organization row and the key/value documents together, and giving
+      // each one its own fetch would mean six requests for one screen.
+      setBundle({
+        organization: org,
+        settings: kv,
+        departments: (res.data?.departments ?? []) as any,
+      });
 
       setGeneralForm({
         companyName: org.name ?? '',
@@ -879,6 +895,15 @@ export default function AdminModule() {
           <TabsTrigger value="roles" className="gap-2"><Shield className="size-4" /> Roles</TabsTrigger>
           <TabsTrigger value="settings" className="gap-2"><Settings className="size-4" /> Settings</TabsTrigger>
           {/*
+            Split out of Settings rather than added to it. Working hours, leave
+            rules and project vocabulary are each a policy somebody owns, and
+            burying them under a single General form is how they went
+            unimplemented for so long — the columns existed, the endpoint
+            accepted them, and there was nowhere to type.
+          */}
+          <TabsTrigger value="workplace" className="gap-2"><Clock className="size-4" /> Workplace</TabsTrigger>
+          <TabsTrigger value="delivery" className="gap-2"><FolderKanban className="size-4" /> Delivery</TabsTrigger>
+          {/*
             Holidays and announcements are business rules rather than system
             configuration, so they sit alongside Settings rather than inside
             it: both change how the product behaves for everyone the moment
@@ -1077,6 +1102,54 @@ export default function AdminModule() {
               <Save className="size-4 mr-2" /> Save Settings
             </Button>
           </div>
+
+          {/*
+            Branding and departments sit under General because both describe
+            the company itself rather than a way of working. Each saves on its
+            own — a settings screen with one button at the bottom for six
+            unrelated policies is one where saving a colour also re-submits
+            the leave rules.
+          */}
+          {bundle && <BrandingPanel bundle={bundle} onSaved={fetchSettings} />}
+          {bundle && <DepartmentsPanel departments={bundle.departments} onChanged={fetchSettings} />}
+        </TabsContent>
+
+        {/* ════════════════════════════════════════════════════════
+            WORKPLACE TAB — the rules attendance and leave run on
+        ════════════════════════════════════════════════════════ */}
+        <TabsContent value="workplace" className="space-y-6">
+          <PageHeader
+            title="Workplace rules"
+            description="Working hours, the working week, and how leave is requested. Every control here is read by the attendance and leave logic."
+            icon={Clock}
+          />
+          {settingsLoading || !bundle ? (
+            <Card><CardContent className="p-6"><Loader2 className="size-5 animate-spin text-muted-foreground" /></CardContent></Card>
+          ) : (
+            <>
+              <WorkplacePanel bundle={bundle} onSaved={fetchSettings} />
+              <LeavePanel bundle={bundle} onSaved={fetchSettings} />
+            </>
+          )}
+        </TabsContent>
+
+        {/* ════════════════════════════════════════════════════════
+            DELIVERY TAB — project vocabulary and notifications
+        ════════════════════════════════════════════════════════ */}
+        <TabsContent value="delivery" className="space-y-6">
+          <PageHeader
+            title="Projects and notifications"
+            description="The vocabulary the project forms offer, and which events reach people's notification trays."
+            icon={FolderKanban}
+          />
+          {settingsLoading || !bundle ? (
+            <Card><CardContent className="p-6"><Loader2 className="size-5 animate-spin text-muted-foreground" /></CardContent></Card>
+          ) : (
+            <>
+              <ProjectsPanel bundle={bundle} onSaved={fetchSettings} />
+              <NotificationsPanel bundle={bundle} onSaved={fetchSettings} />
+            </>
+          )}
         </TabsContent>
 
         {/* ════════════════════════════════════════════════════════
