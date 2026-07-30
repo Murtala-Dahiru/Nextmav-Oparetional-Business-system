@@ -1119,10 +1119,24 @@ AS $$
       'announcement', true,
       'channel',      true
     ),
+    /**
+     * Branding describes the tenant's *own* surfaces, not this platform's.
+     *
+     * The two keys here were `login_message` and `show_logo_in_sidebar`, which
+     * named the platform's sign-in page and its navigation chrome — the
+     * vocabulary of a white-label shell, in a product that is not one. Having
+     * them here is what made rendering a customer's logo in place of this
+     * product's name look like a completed feature. Renamed in 0021, which also
+     * carries the stored values across.
+     *
+     * `primary_colour` accents their client portal and documents. The
+     * platform's own accent is fixed in `lib/platform.ts` and is the same for
+     * every customer.
+     */
     'branding', jsonb_build_object(
       'primary_colour', '#10b981',
-      'login_message',  '',
-      'show_logo_in_sidebar', true
+      'portal_welcome', '',
+      'show_logo_in_portal', true
     )
   );
 $$;

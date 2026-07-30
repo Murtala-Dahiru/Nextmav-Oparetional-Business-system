@@ -2326,11 +2326,13 @@ try {
     method: 'POST', body: JSON.stringify({ name: `SignOff Co ${run}` }),
   });
 
+  const signOffCoId = signOffCo.body?.data?.id;
+
   const signOffProject = await A.json('/api/projects/projects', {
     method: 'POST',
     body: JSON.stringify({
       name: `Sign-off ${run}`, status: 'active',
-      clientCompanyId: signOffCo.body?.data?.id ?? null,
+      clientCompanyId: signOffCoId ?? null,
     }),
   });
   const signOffId = signOffProject.body?.data?.id;
@@ -2701,8 +2703,8 @@ try {
       settings: {
         branding: {
           primaryColour: '#7c3aed',
-          loginMessage: '',
-          showLogoInSidebar: true,
+          portalWelcome: '',
+          showLogoInPortal: true,
         },
       },
     }),
@@ -2712,11 +2714,11 @@ try {
   const brandedSession = await A.json('/api/auth/session');
   const org = brandedSession.body?.data?.organization ?? {};
   check(org.name === `Rebranded ${run}`,
-    `the organisation's own name reaches the shell (${org.name})`);
+    `the workspace's own name is carried (${org.name})`);
   check(org.policies?.branding?.primaryColour === '#7c3aed',
     `and its brand colour (${org.policies?.branding?.primaryColour})`);
   check('logoUrl' in org,
-    'and the logo field the sidebar renders is carried, even when unset');
+    'and the logo field, even when unset');
 
   const badColour = await A.json('/api/admin/settings', {
     method: 'PATCH',
@@ -2724,6 +2726,74 @@ try {
   });
   check(badColour.status === 422,
     `an invalid brand colour is refused rather than reaching a style attribute (${badColour.status})`);
+
+  /**
+   * ── Tenant branding is the tenant's, not the platform's ──────────────────
+   *
+   * This product is multi-tenant SaaS, not a white-label shell. A customer
+   * uploading a logo brands *their company* — their client portal, their
+   * invoices — and never this application's name, mark or favicon.
+   *
+   * The two settings that used to say otherwise are refused rather than
+   * ignored. They named platform surfaces (`show_logo_in_sidebar`,
+   * `login_message`), and accepting them silently would let an administrator
+   * keep writing a setting that no longer does anything — which is how a
+   * control comes to be believed in long after it stopped working.
+   */
+  const oldSidebarKey = await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({ settings: { branding: { showLogoInSidebar: true } } }),
+  });
+  check(oldSidebarKey.status === 422,
+    `branding cannot claim this platform's sidebar (${oldSidebarKey.status})`);
+  check(/does not change this platform/.test(oldSidebarKey.body?.error?.message ?? ''),
+    `and the message says why (${oldSidebarKey.body?.error?.message})`);
+
+  const oldLoginKey = await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({ settings: { branding: { loginMessage: 'hello' } } }),
+  });
+  check(oldLoginKey.status === 422,
+    `nor its sign-in page, which cannot know the tenant anyway (${oldLoginKey.status})`);
+
+  /**
+   * The replacements point at the portal, which is a page that can show them.
+   */
+  const portalBranding = await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      settings: {
+        branding: {
+          primaryColour: '#7c3aed',
+          portalWelcome: `Welcome from Rebranded ${run}`,
+          showLogoInPortal: true,
+        },
+      },
+    }),
+  });
+  check(portalBranding.ok, `portal branding saves (${portalBranding.status})`,
+    portalBranding.body?.error?.message);
+
+  /**
+   * And it reaches the client's portal, where the audience is the *customer* —
+   * who expects to see the firm they hired, not the software that firm runs on.
+   */
+  const brandedPortal = await A.json(`/api/portal?companyId=${signOffCoId}`);
+  check(brandedPortal.body?.data?.supplier?.name === `Rebranded ${run}`,
+    `the supplier's name reaches their client's portal (${brandedPortal.body?.data?.supplier?.name})`);
+  check(brandedPortal.body?.data?.supplier?.welcome === `Welcome from Rebranded ${run}`,
+    'and the welcome message that used to be pointed at the sign-in page');
+  check(brandedPortal.body?.data?.supplier?.primaryColour === '#7c3aed',
+    `and their brand colour (${brandedPortal.body?.data?.supplier?.primaryColour})`);
+
+  // Turning it off withholds the logo rather than merely hiding it client-side.
+  await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({ settings: { branding: { showLogoInPortal: false } } }),
+  });
+  const unbrandedPortal = await A.json(`/api/portal?companyId=${signOffCoId}`);
+  check(unbrandedPortal.body?.data?.supplier?.logoUrl === null,
+    'and switching it off withholds the logo from the response, not just the render');
 
   /**
    * ── Message editing ───────────────────────────────────────────────────────

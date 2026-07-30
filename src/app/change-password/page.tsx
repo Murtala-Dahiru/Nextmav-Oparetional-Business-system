@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Hexagon, Loader2, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { PLATFORM } from '@/lib/platform';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -109,7 +110,7 @@ export default function ChangePasswordPage() {
         <div className="flex flex-col items-center mb-8">
           <div className="flex items-center gap-2 mb-2">
             <Hexagon className="size-8 text-emerald-500" />
-            <span className="text-2xl font-bold tracking-tight">NexusCorp</span>
+            <span className="text-2xl font-bold tracking-tight">{PLATFORM.name}</span>
           </div>
           <p className="text-sm text-muted-foreground">
             {forced ? 'One step before you start' : 'Account security'}

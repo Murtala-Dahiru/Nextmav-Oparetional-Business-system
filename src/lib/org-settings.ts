@@ -121,10 +121,42 @@ export const NOTIFICATION_EVENT_LABELS: {
 
 // ─── Branding ──────────────────────────────────────────────────────────────
 
+/**
+ * A tenant's branding — for their own artifacts, never for this product.
+ *
+ * ── The assumption that used to be encoded here ──────────────────────────
+ *
+ * The two fields this replaces were `showLogoInSidebar` and `loginMessage`.
+ * Both named surfaces belonging to the *platform*: the application's own
+ * navigation chrome, and the sign-in page. That is the vocabulary of a
+ * white-label shell, and having it in the settings model is what made it seem
+ * reasonable to render a customer's logo where this product's name goes.
+ *
+ * `loginMessage` had never appeared anywhere, and could not have: sign-in is
+ * unauthenticated, so there is no session and no way to know which workspace
+ * somebody is about to enter. A per-tenant message on a page that cannot know
+ * the tenant is not a feature that was missed — it is one that cannot exist.
+ *
+ * ── Where a tenant's branding legitimately goes ──────────────────────────
+ *
+ * Their own outward-facing surfaces, where the audience is *their* customer
+ * rather than this product's user:
+ *
+ *   · the client portal, which is their customer's view of their work
+ *   · invoices and exported documents
+ *   · their company profile screen
+ *
+ * `portalWelcome` is `loginMessage` repurposed to a page that can actually show
+ * it. Migration 0021 carries the stored values across, so nothing anybody typed
+ * is lost.
+ */
 export interface Branding {
+  /** Accent for the tenant's own artifacts. Not the platform's navigation. */
   primaryColour: string;
-  loginMessage: string;
-  showLogoInSidebar: boolean;
+  /** Shown to clients at the top of their portal. Was `loginMessage`. */
+  portalWelcome: string;
+  /** Whether the company logo appears on their client portal and documents. */
+  showLogoInPortal: boolean;
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -195,8 +227,11 @@ export const DEFAULT_SETTINGS: Record<SettingKey, Record<string, unknown>> = {
   },
   branding: {
     primary_colour: '#10b981',
-    login_message: '',
-    show_logo_in_sidebar: true,
+    // Renamed in 0021. See the note on `Branding`: the previous names —
+    // `login_message` and `show_logo_in_sidebar` — described the platform's
+    // own sign-in page and navigation, which is not a tenant's to brand.
+    portal_welcome: '',
+    show_logo_in_portal: true,
   },
 };
 
@@ -304,6 +339,24 @@ export function validateSetting(key: SettingKey, value: unknown): string | null 
     if (value.primary_colour !== undefined
         && !/^#[0-9a-fA-F]{6}$/.test(String(value.primary_colour))) {
       return 'The brand colour has to be a six-digit hex value, like #10b981.';
+    }
+    /**
+     * The retired keys are refused rather than ignored.
+     *
+     * They named platform surfaces — the sign-in page and the application
+     * sidebar — and accepting them silently would let a client keep writing
+     * settings that no longer do anything, which is how a control comes to be
+     * believed in long after it stopped working.
+     */
+    for (const [old, replacement] of [
+      ['login_message', 'portal_welcome'],
+      ['show_logo_in_sidebar', 'show_logo_in_portal'],
+    ]) {
+      if (old in value) {
+        return `"${old}" is no longer a branding setting — company branding does ` +
+          `not change this platform's sign-in page or navigation. Use ` +
+          `"${replacement}", which applies to your client portal.`;
+      }
     }
     return null;
   }

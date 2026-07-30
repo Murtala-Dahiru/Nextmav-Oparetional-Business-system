@@ -159,8 +159,24 @@ interface TimelineEntry {
 
 interface Company { id: string; name: string; industry: string | null }
 
+/**
+ * The firm delivering the work, as their client sees them.
+ *
+ * Named `supplier` rather than `organization` so it cannot be confused with
+ * `company`, which is the *client* reading this portal. The two are opposite
+ * ends of one relationship, and a portal that muddles them shows a customer
+ * their own logo above somebody else's projects.
+ */
+interface Supplier {
+  name: string;
+  logoUrl: string | null;
+  primaryColour: string;
+  welcome: string;
+}
+
 interface PortalData {
   company: Company;
+  supplier: Supplier;
   projects: PortalProject[];
   invoices: PortalInvoice[];
   tickets: PortalTicket[];
@@ -334,6 +350,38 @@ export default function PortalModule() {
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-auto p-4 md:p-6">
+      {/*
+        The supplier's brand, at the top of their client's portal.
+
+        This is where a tenant's logo belongs and the sidebar is where it does
+        not: here the reader is the *client*, and a customer looking at their
+        project expects to see the firm they hired. In the sidebar the reader is
+        the tenant's own staff using this product, and the product keeps its own
+        name. Same asset, different audience, different answer.
+
+        Rendered only when there is something to show, so a workspace that has
+        not uploaded a logo gets a clean header rather than an empty box.
+      */}
+      {(data?.supplier?.logoUrl || data?.supplier?.welcome) && (
+        <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-4">
+          {data.supplier.logoUrl && (
+            <img
+              src={data.supplier.logoUrl}
+              alt={data.supplier.name}
+              className="size-10 shrink-0 rounded object-contain"
+            />
+          )}
+          <div className="min-w-0 flex-1">
+            {data.supplier.name && (
+              <p className="text-sm font-medium text-foreground">{data.supplier.name}</p>
+            )}
+            {data.supplier.welcome && (
+              <p className="mt-0.5 text-sm text-muted-foreground">{data.supplier.welcome}</p>
+            )}
+          </div>
+        </div>
+      )}
+
       <PageHeader
         title={data?.company?.name ? `${data.company.name}` : 'Client Portal'}
         icon={Building2}

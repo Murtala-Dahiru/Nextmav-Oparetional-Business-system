@@ -147,7 +147,19 @@ export function Header() {
     : 'User';
 
   const userRole = user?.role || 'employee';
-  const userOrgName = user?.organizationName || 'NexusCorp';
+  /**
+   * Which workspace this is — the one piece of tenant identity the shell
+   * legitimately shows, and the reason it is a small outline badge next to the
+   * module title rather than the product's name in the corner.
+   *
+   * No fallback to the platform name. It used to read
+   * `user?.organizationName || 'NexusCorp'`, so a workspace whose name had not
+   * resolved yet displayed the *product's* name as though it were the
+   * customer's — the same conflation, in miniature, that put a tenant's logo in
+   * the sidebar. An unnamed workspace shows no badge, which is honest: there is
+   * nothing to say yet.
+   */
+  const workspaceName = user?.organizationName?.trim() || '';
 
   return (
     <header className="flex items-center h-14 px-4 border-b border-border bg-card/80 backdrop-blur-sm shrink-0 gap-3">
@@ -174,7 +186,7 @@ export function Header() {
           {currentModule?.label || 'Dashboard'}
         </h1>
         <AnimatePresence>
-          {userOrgName && (
+          {workspaceName && (
             <motion.span
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -182,7 +194,7 @@ export function Header() {
               className="hidden sm:inline-flex"
             >
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal text-muted-foreground">
-                {userOrgName}
+                {workspaceName}
               </Badge>
             </motion.span>
           )}

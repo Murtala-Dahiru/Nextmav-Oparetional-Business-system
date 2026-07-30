@@ -765,13 +765,27 @@ export function NotificationsPanel({
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Logo and brand colour.
+ * The company's logo and brand colour — for the company's own surfaces.
+ *
+ * ── What this panel does and does not change ─────────────────────────────
+ *
+ * It brands *this workspace's* outward-facing artifacts: the client portal,
+ * invoices and exported documents. It does not change this platform's name,
+ * mark or favicon, which are the same for every customer and live in
+ * `lib/platform.ts`.
+ *
+ * The panel used to imply otherwise — it offered "Message on the sign-in page"
+ * and "Show the logo in the sidebar", both of which describe the platform's own
+ * chrome. Those are renamed rather than removed: the settings they held are
+ * carried across by migration 0021 and now point at the portal, which is a page
+ * that can actually show them. The sign-in message never appeared anywhere and
+ * never could — sign-in is unauthenticated, so there is no way to know whose
+ * message to display.
  *
  * The logo goes to the public `logos` bucket under the organisation's own path
- * prefix, which is what the storage policies key on. It is public because it
- * is rendered in an `<img>` on the sign-in page, and signing that URL would be
- * a round trip on every unauthenticated page load for something that is on the
- * company's website anyway.
+ * prefix, which is what the storage policies key on. Public because a client
+ * portal is read by people outside the company and signing the URL would be a
+ * round trip for something already on the company's website.
  */
 export function BrandingPanel({
   bundle, onSaved,
@@ -781,8 +795,8 @@ export function BrandingPanel({
 
   const [logoUrl, setLogoUrl] = useState<string>(org.logoUrl ?? '');
   const [colour, setColour] = useState(String(branding.primaryColour ?? '#10b981'));
-  const [loginMessage, setLoginMessage] = useState(String(branding.loginMessage ?? ''));
-  const [showLogo, setShowLogo] = useState(branding.showLogoInSidebar !== false);
+  const [portalWelcome, setPortalWelcome] = useState(String(branding.portalWelcome ?? ''));
+  const [showLogo, setShowLogo] = useState(branding.showLogoInPortal !== false);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -821,8 +835,8 @@ export function BrandingPanel({
           settings: {
             branding: {
               primary_colour: colour,
-              login_message: loginMessage,
-              show_logo_in_sidebar: showLogo,
+              portal_welcome: portalWelcome,
+              show_logo_in_portal: showLogo,
             },
           },
         }),
@@ -834,12 +848,12 @@ export function BrandingPanel({
     } finally {
       setSaving(false);
     }
-  }, [logoUrl, colour, loginMessage, showLogo, onSaved]);
+  }, [logoUrl, colour, portalWelcome, showLogo, onSaved]);
 
   return (
     <Panel
       title="Branding"
-      description="How the workspace presents itself to your people and your clients."
+      description="How your company appears to your clients — on their portal, your invoices and your documents. This does not change the platform's own name or logo."
       icon={Palette}
       footer={<SaveButton onClick={save} saving={saving} />}
     >
@@ -885,16 +899,16 @@ export function BrandingPanel({
       </div>
 
       <div className="grid gap-2">
-        <Label htmlFor="b-msg">Message on the sign-in page</Label>
-        <Textarea id="b-msg" rows={2} value={loginMessage}
-          onChange={(e) => setLoginMessage(e.target.value)}
-          placeholder="Optional. Shown to everybody signing in." />
+        <Label htmlFor="b-msg">Welcome message on the client portal</Label>
+        <Textarea id="b-msg" rows={2} value={portalWelcome}
+          onChange={(e) => setPortalWelcome(e.target.value)}
+          placeholder="Optional. Shown to your clients at the top of their portal." />
       </div>
 
       <div className="rounded-lg border p-4">
         <ToggleRow
-          label="Show the logo in the sidebar"
-          hint="Otherwise the company name is shown as text."
+          label="Show the logo on the client portal"
+          hint="Your clients see it above their projects. Your own people see the platform's."
           checked={showLogo}
           onChange={setShowLogo}
         />

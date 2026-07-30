@@ -157,6 +157,99 @@ check(adminMisuse.length === 0,
   adminMisuse.join(', '));
 
 // ───────────────────────────────────────────────────────────────────────────
+section('2b. Tenant branding stays out of the platform shell');
+/**
+ * ── Why this is a security check and not a style one ──────────────────────
+ *
+ * This is a multi-tenant SaaS product. The platform keeps its own name, mark
+ * and favicon for every customer; a tenant's branding describes their company.
+ * When that boundary was not written down, a customer uploading a logo in
+ * Settings → Branding replaced this product's identity in their workspace —
+ * and it looked like a feature while it was being built, because nothing said
+ * the two identities were different things.
+ *
+ * It belongs here because it is an isolation rule with the same shape as the
+ * others: state belonging to one party leaking into a surface owned by
+ * another. The difference is only that the leak is visual rather than
+ * row-level.
+ *
+ * The shell is the enforced boundary — `components/layout` renders on every
+ * screen for every tenant, so it may read `PLATFORM` and never the store's
+ * organization. Modules are unrestricted: the client portal *should* carry the
+ * supplier's logo, and the settings screen *should* show the company its own
+ * branding.
+ */
+const TENANT_BRANDING = [
+  'organization?.logoUrl', 'organization.logoUrl',
+  'logoUrl', 'primaryColour', 'primary_colour',
+  'organizationName', 'organization?.name',
+];
+
+/** The one legitimate tenant fact in the shell: which workspace you are in. */
+const SHELL_ALLOWED = new Set([
+  // A small outline badge beside the module title. Not the product's identity,
+  // and it has no fallback to the platform name.
+  'components/layout/header.tsx',
+]);
+
+const shellFiles = walk('src/components/layout').filter(f => /\.tsx?$/.test(f));
+const leaks = [];
+
+for (const file of shellFiles) {
+  const rel = file.replace(/\\/g, '/').replace('src/', '');
+  if (SHELL_ALLOWED.has(rel)) continue;
+  const src = readFileSync(file, 'utf8');
+  // Comments explain the rule at length and must not trip it.
+  const code = src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  const found = TENANT_BRANDING.filter(t => code.includes(t));
+  if (found.length) leaks.push(`${rel}: ${found.join(', ')}`);
+}
+
+check(leaks.length === 0,
+  `the application shell renders no tenant branding (${shellFiles.length} files)`,
+  leaks.join(' | '));
+
+/** And the platform's identity is defined once, not scattered as literals. */
+const platformSrc = readFileSync('src/lib/platform.ts', 'utf8');
+check(/export const PLATFORM/.test(platformSrc),
+  'the platform identity has a single definition');
+
+/**
+ * The shell *and* the pre-authentication pages read that definition rather
+ * than restating it.
+ *
+ * Seven auth pages each carried their own `"NexusCorp"` literal. Every one was
+ * correct, and that is the point: an identity spread across eight files is one
+ * nothing owns, and nothing owning it is why replacing it with a tenant's logo
+ * did not look like a mistake while it was being written.
+ *
+ * The marketing pages are excluded deliberately — they are prose *about* the
+ * company ("NexusCorp was founded in 2021"), not chrome, and interpolating a
+ * constant into a paragraph makes it harder to read for no benefit. The support
+ * module's help articles are the same.
+ */
+const identityFiles = [
+  ...shellFiles,
+  ...walk('src/app').filter(f =>
+    /\.tsx$/.test(f)
+    && !f.replace(/\\/g, '/').includes('(marketing)')),
+];
+
+const literals = [];
+for (const file of identityFiles) {
+  const rel = file.replace(/\\/g, '/').replace('src/', '');
+  const code = readFileSync(file, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  if (/['"`>]\s*NexusCorp/.test(code)) literals.push(rel);
+}
+check(literals.length === 0,
+  `and every screen reads it rather than restating it (${identityFiles.length} files)`,
+  literals.join(', '));
+
+// ───────────────────────────────────────────────────────────────────────────
 section('3. Views do not become the hole in RLS');
 
 const migrations = readdirSync('supabase/migrations')

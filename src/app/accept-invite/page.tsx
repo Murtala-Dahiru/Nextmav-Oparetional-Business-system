@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Hexagon, Loader2, MailCheck, TriangleAlert, LogIn } from 'lucide-react';
+import { PLATFORM } from '@/lib/platform';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -103,7 +104,7 @@ function AcceptInvite() {
         <div className="flex flex-col items-center mb-8">
           <div className="flex items-center gap-2 mb-2">
             <Hexagon className="size-8 text-emerald-500" />
-            <span className="text-2xl font-bold tracking-tight">NexusCorp</span>
+            <span className="text-2xl font-bold tracking-tight">{PLATFORM.name}</span>
           </div>
           <p className="text-sm text-muted-foreground">You&apos;ve been invited</p>
         </div>

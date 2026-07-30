@@ -20,7 +20,7 @@ import {
 import { cn } from '@/lib/utils';
 import { MODULES, ROLE_PERMISSIONS, type ModuleId } from '@/lib/constants';
 import { useAppStore } from '@/store/app-store';
-import { OrgMark } from './org-mark';
+import { PlatformMark } from './platform-mark';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -206,13 +206,13 @@ function DesktopSidebar() {
         )}
       >
         {/*
-          The organisation's own mark and name, not the vendor's.
-          `logo_url`, `name` and `branding.primary_colour` were all stored,
-          validated and editable, and this rendered a generic hexagon and the
-          literal "NexusCorp" — so a company could configure all three and see
-          their own name nowhere in the product they had just set up.
+          The platform's identity, always — never the tenant's.
+          This briefly rendered the customer's logo and company name, which
+          turned their branding into the product's branding. A workspace is
+          something you are *in*; it is not what the software is called. The
+          workspace name lives in the header, beside the module title.
         */}
-        <OrgMark collapsed={sidebarCollapsed} />
+        <PlatformMark collapsed={sidebarCollapsed} />
       </div>
 
       {/* Nav */}
@@ -267,7 +267,7 @@ function MobileSidebar() {
 
         {/* Logo */}
         <div className="flex items-center gap-3 border-b border-border px-4 h-14 shrink-0">
-          <OrgMark />
+          <PlatformMark />
         </div>
 
         {/* Nav */}

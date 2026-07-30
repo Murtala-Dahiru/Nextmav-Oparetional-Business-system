@@ -83,6 +83,49 @@ export async function GET(req: Request) {
     }
   }
 
+  /**
+   * The supplier's branding — which is the one place it genuinely belongs.
+   *
+   * ── Whose brand is this, exactly ─────────────────────────────────────────
+   *
+   * Three parties are in play and it is worth naming them: this platform, the
+   * *tenant* who bought it, and the tenant's *client* reading this portal. The
+   * portal is the client's window onto the tenant's work, so the tenant's logo
+   * and colour are what should frame it — a customer looking at their project
+   * expects to see the firm they hired, not the software that firm happens to
+   * run on.
+   *
+   * That is the opposite of the sidebar, where the same logo was wrong: there
+   * the audience is the tenant's own staff using this product, and the product
+   * keeps its own name. Same asset, different audience, different answer.
+   *
+   * `show_logo_in_portal` is honoured, so a tenant who would rather not brand
+   * the portal simply does not.
+   */
+  const { data: brandRows } = await ctx.supabase
+    .from('org_settings')
+    .select('value')
+    .eq('organization_id', ctx.org.organizationId)
+    .eq('key', 'branding')
+    .maybeSingle();
+
+  const brandSettings = (brandRows?.value ?? {}) as Record<string, unknown>;
+
+  const { data: orgRow } = await ctx.supabase
+    .from('organizations')
+    .select('name, logo_url')
+    .eq('id', ctx.org.organizationId)
+    .maybeSingle();
+
+  const showLogo = brandSettings.show_logo_in_portal !== false;
+
+  const supplier = {
+    name: orgRow?.name ?? '',
+    logoUrl: showLogo ? (orgRow?.logo_url ?? null) : null,
+    primaryColour: String(brandSettings.primary_colour ?? '#10b981'),
+    welcome: String(brandSettings.portal_welcome ?? ''),
+  };
+
   const [company, projects, invoices, tickets, announcements] = await Promise.all([
     ctx.supabase
       .from('companies')
@@ -163,6 +206,14 @@ export async function GET(req: Request) {
 
   return success({
     company: company.data,
+    /**
+     * Who is delivering the work. Named `supplier` rather than `organization`
+     * so it cannot be confused with `company`, which is the *client* reading
+     * this — the two are opposite ends of the same relationship and a portal
+     * that muddles them shows a customer their own logo above somebody else's
+     * projects.
+     */
+    supplier,
     projects: projectRows,
     invoices: invoiceRows,
     tickets: ownTickets,

@@ -4,6 +4,7 @@ import { Suspense, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Hexagon, Loader2, Eye, EyeOff } from 'lucide-react';
+import { PLATFORM } from '@/lib/platform';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -101,9 +102,18 @@ function LoginForm() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-8">
+          {/*
+            The platform's identity, from the one place that defines it.
+
+            Necessarily so: this page is unauthenticated, so there is no session
+            and no way to know which workspace the person is about to sign in
+            to — a tenant logo here could only ever be a guess. The `branding`
+            settings carry a `login_message`, which is why it has never appeared
+            anywhere; see the note in `lib/org-settings`.
+          */}
           <div className="flex items-center gap-2 mb-2">
             <Hexagon className="size-8 text-emerald-500" />
-            <span className="text-2xl font-bold tracking-tight">NexusCorp</span>
+            <span className="text-2xl font-bold tracking-tight">{PLATFORM.name}</span>
           </div>
           <p className="text-sm text-muted-foreground">Sign in to your account</p>
         </div>

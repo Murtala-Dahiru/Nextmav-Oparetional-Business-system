@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Hexagon, Loader2, Building2 } from 'lucide-react';
+import { PLATFORM } from '@/lib/platform';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -109,7 +110,7 @@ export default function OnboardingPage() {
         <div className="flex flex-col items-center mb-8">
           <div className="flex items-center gap-2 mb-2">
             <Hexagon className="size-8 text-emerald-500" />
-            <span className="text-2xl font-bold tracking-tight">NexusCorp</span>
+            <span className="text-2xl font-bold tracking-tight">{PLATFORM.name}</span>
           </div>
           <p className="text-sm text-muted-foreground">One more step</p>
         </div>
@@ -161,7 +162,7 @@ export default function OnboardingPage() {
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
             <p className="text-xs text-center text-muted-foreground">
-              Joining a company that already uses NexusCorp? Open the invitation
+              Joining a company that already uses {PLATFORM.name}? Open the invitation
               link from your email instead — it will add you to their workspace.
             </p>
             <Button
