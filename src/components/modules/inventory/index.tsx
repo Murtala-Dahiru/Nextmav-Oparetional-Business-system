@@ -18,6 +18,7 @@ import { StatCard } from '@/components/shared/stat-card';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatCurrency } from '@/lib/format';
+import { useModuleRealtime } from '@/hooks/use-realtime';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -369,6 +370,18 @@ export default function InventoryModule() {
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
+
+  /**
+   * Stock is the strongest case in the product for a live table: the balance is
+   * written by `record_stock_movement()` from anywhere — a receipt booked in
+   * the warehouse, a purchase order received — and a stale figure on this
+   * screen is what a reorder decision gets made against.
+   */
+  useModuleRealtime(
+    'inventory',
+    ['products', 'stock_movements', 'warehouses', 'suppliers'],
+    () => { fetchProducts(); fetchStats(); },
+  );
 
   // ── Product CRUD ──
   const handleProductSubmit = async (form: ProductFormState) => {

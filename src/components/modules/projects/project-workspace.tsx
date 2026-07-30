@@ -13,6 +13,7 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { formatCurrency, formatDate, formatFileSize, initialsOf } from '@/lib/format';
 import { ROADMAP_STAGES, PROJECT_ROLES, statusLabel } from '@/lib/constants';
 import { useProjectRealtime } from '@/hooks/use-realtime';
+import { AvatarPresence } from '@/components/shared/presence-dot';
 import { cn } from '@/lib/utils';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -73,6 +74,14 @@ interface DirectoryMember {
   fullName: string;
   jobTitle: string | null;
   departmentName: string | null;
+  /**
+   * Coarse presence, from `/api/directory`.
+   *
+   * Three states and no timestamp: that endpoint deliberately withholds
+   * `last_seen_at`, because "online" is something a colleague can infer from
+   * chat anyway while "last active 03:12" says what hours somebody keeps.
+   */
+  presence?: 'online' | 'away' | 'offline';
 }
 
 interface Person { id: string; profiles?: { fullName: string; avatarUrl: string | null; jobTitle?: string | null } }
@@ -1015,11 +1024,21 @@ function TeamPanel({
             <div className="divide-y">
               {members.map(pm => (
                 <div key={pm.id} className="group flex items-center gap-3 p-4">
-                  <Avatar className="size-9">
-                    <AvatarFallback className="bg-muted text-xs">
-                      {initialsOf(pm.member?.profiles?.fullName)}
-                    </AvatarFallback>
-                  </Avatar>
+                  {/*
+                    Whether a teammate is around, on the panel where you decide
+                    who to ask. The verdict comes from the directory, which
+                    derives it through the same `presence_of()` as the chat — so
+                    somebody cannot read as online in one and away in the other.
+                  */}
+                  <AvatarPresence
+                    presence={directory.find(d => d.memberId === pm.member?.id)?.presence}
+                  >
+                    <Avatar className="size-9">
+                      <AvatarFallback className="bg-muted text-xs">
+                        {initialsOf(pm.member?.profiles?.fullName)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </AvatarPresence>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">
                       {pm.member?.profiles?.fullName ?? 'Unknown'}

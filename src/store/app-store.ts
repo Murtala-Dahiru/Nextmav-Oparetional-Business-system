@@ -124,6 +124,20 @@ interface AppState {
   notifications: Notification[];
   /** Unread across the whole tray, not just the page that was fetched. */
   unreadTotal: number;
+  /**
+   * Unread per module, for the sidebar badges — Support (3), Projects (2).
+   *
+   * Counted by the server across the whole tray for the same reason
+   * `unreadTotal` is: a badge derived from the twenty rows this store holds
+   * would cap at the page size and change as the user paged.
+   *
+   * Communication is composed differently on purpose. A notification is written
+   * only for a mention — posting in a channel does not notify everyone in it,
+   * and should not — so its count also carries unread *messages*, taken from
+   * each channel's own read marker. A chat badge that ignored those would read
+   * zero with eleven messages waiting.
+   */
+  unreadByModule: Partial<Record<ModuleId, number>>;
   notificationsLoading: boolean;
   setNotifications: (n: Notification[]) => void;
   unreadCount: () => number;
@@ -192,6 +206,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Notifications
   notifications: [],
   unreadTotal: 0,
+  unreadByModule: {},
   notificationsLoading: false,
   setNotifications: (n) => set({ notifications: n }),
   unreadCount: () => get().unreadTotal,
@@ -213,6 +228,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         // fetched page would cap the badge at the page size and quietly
         // under-report once someone has more than twenty unread.
         unreadTotal: Number(json?.meta?.unread ?? 0),
+        unreadByModule: json?.meta?.byModule ?? {},
         notificationsLoading: false,
       });
     } catch (e) {
@@ -280,6 +296,44 @@ export const useAppStore = create<AppState>((set, get) => ({
     // dashboard widget must not be able to open a module this role lacks.
     if (!canAccessModule(get().activeRole, m)) return;
     set({ activeModule: m });
+
+    /**
+     * Opening a module clears its badge — "badges disappear after viewing".
+     *
+     * Optimistic locally, then confirmed on the server. A badge that waits for
+     * a round trip before clearing reads as a click that did not register, and
+     * this is the one interaction where the user is definitely looking at the
+     * thing that changes.
+     *
+     * Only fired when there is something to clear, so ordinary navigation is
+     * not a write on every click.
+     */
+    const pending = get().unreadByModule[m] ?? 0;
+    if (pending <= 0) return;
+
+    set({
+      unreadByModule: { ...get().unreadByModule, [m]: 0 },
+      /**
+       * The bell total falls with it.
+       *
+       * Clamped rather than subtracted blindly: for `communication` the module
+       * count includes unread *messages*, which are not notifications and are
+       * cleared by opening the channel rather than by this call. Subtracting
+       * the full figure would drive the bell below the number of notifications
+       * that genuinely remain.
+       */
+      unreadTotal: Math.max(0, get().unreadTotal - pending),
+    });
+
+    void fetch('/api/notifications', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ module: m }),
+    })
+      // Re-read rather than trusting the optimistic figures: the server knows
+      // how many it actually marked, and for communication that differs.
+      .then(() => get().fetchNotifications())
+      .catch(() => get().fetchNotifications());
   },
   setSidebarCollapsed: (c) => set({ sidebarCollapsed: c }),
   setSidebarOpen: (o) => set({ sidebarOpen: o }),

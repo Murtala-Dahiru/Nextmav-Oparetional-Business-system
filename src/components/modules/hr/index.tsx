@@ -18,6 +18,7 @@ import { formatDate, formatRelativeTime, initialsOf } from '@/lib/format';
 import { normalizeRole, roleLabel } from '@/lib/permissions';
 import { LEAVE_TYPES as LEAVE_TYPE_VALUES, statusLabel } from '@/lib/constants';
 import { useModuleRealtime } from '@/hooks/use-realtime';
+import { PresenceDot, PresenceLabel } from '@/components/shared/presence-dot';
 import { useAppStore } from '@/store/app-store';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -65,6 +66,9 @@ interface UserRecord {
   managerId: string | null; managerName: string | null;
   employeeNumber: string | null; employmentType: string | null;
   hiredOn: string | null; isActive: boolean; lastSeenAt: string | null;
+  lastActiveAt: string | null;
+  /** Derived by `v_org_directory` through `presence_of()`. */
+  presence: 'online' | 'away' | 'offline';
   /** Added in 0012 alongside is_active, which remains the access gate. */
   status: 'active' | 'suspended' | 'terminated';
   terminatedOn: string | null;
@@ -458,11 +462,31 @@ function EmployeesTab() {
     },
     {
       accessorKey: 'lastSeen',
-      header: 'Last Seen',
+      header: 'Presence',
+      /**
+       * Presence, not just a timestamp.
+       *
+       * This column read `lastSeenAt` alone, and `profiles.last_seen_at` was
+       * never updated by anything — it defaults to `now()` when the row is
+       * created and the function written to maintain it was called from
+       * nowhere. So it showed every employee's signup date, for ever: somebody
+       * using the product daily read as last seen six months ago.
+       *
+       * The dot is the live state and the text is the history behind it, which
+       * is the pair an administrator actually needs — "online" answers "can I
+       * reach them", "last seen 3 days ago" answers "is this account in use".
+       */
       cell: ({ row }) => (
-        <span className="text-muted-foreground text-sm whitespace-nowrap">
-          {row.original.lastSeenAt ? formatRelativeTime(row.original.lastSeenAt) : 'Never'}
-        </span>
+        <div className="flex items-center gap-2 whitespace-nowrap">
+          <PresenceDot
+            presence={row.original.presence}
+            lastSeenAt={row.original.lastSeenAt}
+          />
+          <PresenceLabel
+            presence={row.original.presence}
+            lastSeenAt={row.original.lastSeenAt}
+          />
+        </div>
       ),
     },
     {

@@ -24,6 +24,7 @@ import { LEAD_STATUSES, DEAL_STAGES } from '@/lib/constants';
 import {
   createLeadSchema, createContactSchema, createCompanySchema, createDealSchema,
 } from '@/lib/validations';
+import { useModuleRealtime } from '@/hooks/use-realtime';
 import { z } from 'zod';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -297,6 +298,16 @@ function LeadsTab() {
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
+
+  /**
+   * A lead created or converted by a colleague appears without a reload.
+   *
+   * 0006 left the CRM out of the publication on the grounds that two people
+   * rarely edit the same lead. True, and beside the point: when it does happen
+   * the person on the stale row overwrites the other's work, and "rare" is the
+   * kind of defect that gets reported once a quarter and never reproduced.
+   */
+  useModuleRealtime('crm-leads', ['leads'], () => { fetchLeads(); fetchStats(); });
 
   const stats = useMemo(() => ({
     total: allLeads.length,
@@ -883,6 +894,9 @@ function DealsTab() {
 
   useEffect(() => { fetchDeals(); }, [fetchDeals]);
   useEffect(() => { fetchAllDeals(); }, [fetchAllDeals]);
+
+  // The pipeline totals are derived from every deal, so both reads refresh.
+  useModuleRealtime('crm-deals', ['deals'], () => { fetchDeals(); fetchAllDeals(); });
 
   const chartData = useMemo(() =>
     DEAL_STAGES.map(stage => ({

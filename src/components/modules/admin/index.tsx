@@ -32,6 +32,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { PresenceDot, PresenceLabel } from '@/components/shared/presence-dot';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -69,6 +70,9 @@ interface UserRecord {
   managerId: string | null; managerName: string | null;
   employeeNumber: string | null; employmentType: string | null;
   hiredOn: string | null; isActive: boolean; lastSeenAt: string | null;
+  lastActiveAt: string | null;
+  /** Derived by `v_org_directory` through `presence_of()`. */
+  presence: 'online' | 'away' | 'offline';
   /** Added in 0012 alongside is_active, which remains the access gate. */
   status: 'active' | 'suspended' | 'terminated';
   terminatedOn: string | null;

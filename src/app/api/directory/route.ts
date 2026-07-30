@@ -76,9 +76,25 @@ export async function GET(req: Request) {
     return success(data ?? []);
   }
 
+  /**
+   * `presence` is included; `last_seen_at` is still not.
+   *
+   * The distinction the note above draws is the right one and it survives here.
+   * "Online", "Away" and "Offline" are three coarse states that a colleague can
+   * already infer from whether you answer in chat, and every people picker,
+   * project team panel and directory row is more useful for showing them.
+   *
+   * An exact timestamp is a different thing: "last active 03:12" says what hours
+   * somebody keeps and when they were at their desk, which is not the
+   * directory's business. It stays behind the admin and HR endpoints, which read
+   * `v_org_directory` and are already restricted to the people who manage staff.
+   */
   let q = ctx.supabase
     .from('v_assignable_members')
-    .select('member_id, user_id, full_name, email, avatar_url, job_title, role, department_id, department_name')
+    .select(
+      'member_id, user_id, full_name, email, avatar_url, job_title, role, ' +
+      'department_id, department_name, presence',
+    )
     .eq('organization_id', ctx.org.organizationId);
 
   const search = searchParams.get('search')?.trim();

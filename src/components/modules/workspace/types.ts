@@ -124,3 +124,33 @@ export const VISIBILITY_LABELS: Record<WorkspaceNode['visibility'], string> = {
   department: 'One department',
   private: 'Only me and people I share with',
 };
+
+/**
+ * A page in the trash.
+ *
+ * ── Why this is not just `WorkspaceNode` with an optional field ────────────
+ *
+ * `deletedAt` was first added to `WorkspaceNode` as optional, and
+ * `contract:check` was right to reject it: that interface describes what
+ * `v_workspace_tree` returns, the tree view returns only live pages, and a
+ * field the endpoint never sends is exactly the drift that check exists to
+ * catch. Marking it optional would have silenced the checker without making the
+ * declaration true.
+ *
+ * A trashed page is a different shape from a tree node — no resolved
+ * permission, no children, no ordering — so it gets its own type. `/api/
+ * workspace/trash` is the only thing that returns it.
+ */
+export interface TrashedPage {
+  id: string;
+  title: string;
+  icon: string | null;
+  colour: string;
+  kind: 'document' | 'sheet';
+  isFolder: boolean;
+  parentId: string | null;
+  deletedAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+  lastEditedBy: string | null;
+}

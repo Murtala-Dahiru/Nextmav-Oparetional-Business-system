@@ -34,6 +34,8 @@ import { formatRelativeTime, initialsOf, truncate } from '@/lib/format';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAppStore } from '@/store/app-store';
 import { useModuleRealtime, useRealtime } from '@/hooks/use-realtime';
+import { type PresenceRow } from '@/hooks/use-presence';
+import { PresenceDot, AvatarPresence, PresenceLabel } from '@/components/shared/presence-dot';
 import { cn } from '@/lib/utils';
 
 /**
@@ -123,6 +125,9 @@ interface ChannelMember {
   email: string;
   jobTitle: string | null;
   lastSeenAt: string | null;
+  lastActiveAt: string | null;
+  /** Derived by `v_channel_members` through `presence_of()`. */
+  presence: 'online' | 'away' | 'offline';
   orgRole: string;
   departmentName: string | null;
 }
@@ -198,6 +203,15 @@ export default function CommunicationModule() {
   const [members, setMembers] = useState<ChannelMember[]>([]);
   const [directory, setDirectory] = useState<DirectoryMember[]>([]);
   const [onlineCount, setOnlineCount] = useState(0);
+  /**
+   * Presence by member id, for the dots on avatars.
+   *
+   * Kept as a map rather than merged into `members`, because the roster is
+   * refetched when a channel is opened and presence is refetched on its own
+   * schedule — merging would mean one of them clobbering the other's freshness
+   * depending on which request happened to land last.
+   */
+  const [presence, setPresence] = useState<Record<string, PresenceRow>>({});
 
   // ── Input ──
   const [draft, setDraft] = useState('');
@@ -269,6 +283,35 @@ export default function CommunicationModule() {
    */
   useModuleRealtime('channels', ['channels', 'channel_members'], () => loadChannels());
 
+  /**
+   * Presence, live.
+   *
+   * A dot that only changes on reload is worse than no dot: it makes a
+   * confident claim about somebody who left an hour ago. `profiles` carries the
+   * heartbeat, so a colleague going idle or closing their laptop reaches this
+   * sidebar within a beat.
+   *
+   * Debounced heavily — in a company of any size the heartbeats are constant,
+   * and a refetch per beat would be a request every second or two for a set of
+   * coloured dots. Two seconds collapses a burst into one.
+   */
+  useRealtime({
+    name: 'presence',
+    tables: [{ table: 'profiles', event: 'UPDATE' }],
+    debounceMs: 2000,
+    onChange: () => {
+      fetch('/api/presence')
+        .then(r => r.json())
+        .then(j => {
+          setOnlineCount(j?.meta?.online ?? 0);
+          setPresence(Object.fromEntries(
+            (j?.data ?? []).map((r: PresenceRow) => [r.memberId, r]),
+          ));
+        })
+        .catch(() => undefined);
+    },
+  });
+
   useEffect(() => {
     api<DirectoryMember[]>('/api/directory').then(setDirectory).catch(() => setDirectory([]));
   }, []);
@@ -276,23 +319,47 @@ export default function CommunicationModule() {
   /**
    * Who is here.
    *
-   * `online_members()` counts people whose presence heartbeat landed in the
-   * last five minutes. The figure used to be the literal `4`.
+   * ── Why this no longer computes its own cutoff ────────────────────────────
+   *
+   * It fetched the directory and counted rows whose `lastSeenAt` was within
+   * five minutes. Two things were wrong with that:
+   *
+   *   · `last_seen_at` was never updated by anything. It defaults to `now()`
+   *     when the profile row is created and `touch_presence()` — the function
+   *     written to maintain it — was called from nowhere. So the count was the
+   *     number of people who had signed up in the last five minutes, which is
+   *     almost always nobody. Before that it was the literal `4`.
+   *
+   *   · Even with the column maintained, a cutoff written here is a second
+   *     definition of "online". The chat header and the employee directory
+   *     would drift apart the first time either number was tuned.
+   *
+   * `/api/presence` returns the verdict from `v_presence`, which is where the
+   * rule now lives, and the count comes back in the response meta rather than
+   * being derived a third time.
    */
   useEffect(() => {
     let cancelled = false;
     const tick = () => {
-      fetch('/api/directory?online=true')
+      fetch('/api/presence')
         .then(r => r.json())
         .then(j => {
           if (cancelled) return;
-          const rows: { lastSeenAt?: string | null }[] = j?.data ?? [];
-          const cutoff = Date.now() - 5 * 60_000;
-          setOnlineCount(rows.filter(m => m.lastSeenAt && new Date(m.lastSeenAt).getTime() > cutoff).length);
+          setOnlineCount(j?.meta?.online ?? 0);
+          setPresence(
+            Object.fromEntries(
+              (j?.data ?? []).map((r: PresenceRow) => [r.memberId, r]),
+            ),
+          );
         })
         .catch(() => undefined);
     };
     tick();
+    /**
+     * A minute, matched to nothing in particular — presence changes are pushed
+     * over the socket below, and this is the fallback for a tab whose
+     * subscription could not connect.
+     */
     const timer = setInterval(tick, 60_000);
     return () => { cancelled = true; clearInterval(timer); };
   }, []);
@@ -760,11 +827,11 @@ export default function CommunicationModule() {
         ) : (
           <>
             <ChannelGroup label="Channels" rows={groups.channels}
-              selectedId={selectedId} onSelect={setSelectedId} />
+              selectedId={selectedId} onSelect={setSelectedId} presence={presence} />
             <ChannelGroup label="Private" rows={groups.private}
-              selectedId={selectedId} onSelect={setSelectedId} />
+              selectedId={selectedId} onSelect={setSelectedId} presence={presence} />
             <ChannelGroup label="Direct messages" rows={groups.direct}
-              selectedId={selectedId} onSelect={setSelectedId} />
+              selectedId={selectedId} onSelect={setSelectedId} presence={presence} />
           </>
         )}
       </ScrollArea>
@@ -1122,12 +1189,20 @@ export default function CommunicationModule() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function ChannelGroup({
-  label, rows, selectedId, onSelect,
+  label, rows, selectedId, onSelect, presence,
 }: {
   label: string;
   rows: ChannelRow[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /**
+   * Presence by member id, for direct messages.
+   *
+   * A direct conversation is with a person, so whether that person is at their
+   * desk is the single most useful thing the sidebar row can say — it is the
+   * difference between asking now and leaving a note.
+   */
+  presence: Record<string, PresenceRow>;
 }) {
   if (!rows.length) return null;
 
@@ -1151,8 +1226,20 @@ function ChannelGroup({
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground',
             )}
           >
-            <ChannelTypeIcon type={channel.type}
-              className={active ? 'text-emerald-600' : undefined} />
+            {/*
+              A direct message shows the other person's presence in place of
+              the generic person icon; everything else keeps its channel glyph.
+            */}
+            {channel.type === 'direct' && channel.counterpartId ? (
+              <PresenceDot
+                presence={presence[channel.counterpartId]?.presence ?? 'offline'}
+                lastSeenAt={presence[channel.counterpartId]?.lastSeenAt}
+                className="ml-0.5 mr-0.5"
+              />
+            ) : (
+              <ChannelTypeIcon type={channel.type}
+                className={active ? 'text-emerald-600' : undefined} />
+            )}
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-2">
                 <span className={cn('truncate',
@@ -1699,11 +1786,19 @@ function MembersDialog({
           <div className="divide-y rounded-md border">
             {members.map(member => (
               <div key={member.id} className="flex items-center gap-2.5 p-2.5">
-                <Avatar className="size-7 shrink-0">
-                  <AvatarFallback className={cn('text-[10px] text-white', avatarColor(member.memberId))}>
-                    {initialsOf(member.fullName)}
-                  </AvatarFallback>
-                </Avatar>
+                {/*
+                  The dot comes from `v_channel_members`, which derives it
+                  through the same `presence_of()` the directory and the chat
+                  header use — so a person cannot read as online here and away
+                  two panels over.
+                */}
+                <AvatarPresence presence={member.presence} lastSeenAt={member.lastSeenAt}>
+                  <Avatar className="size-7 shrink-0">
+                    <AvatarFallback className={cn('text-[10px] text-white', avatarColor(member.memberId))}>
+                      {initialsOf(member.fullName)}
+                    </AvatarFallback>
+                  </Avatar>
+                </AvatarPresence>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">
                     {member.fullName}
@@ -1711,9 +1806,17 @@ function MembersDialog({
                       <span className="ml-1 text-xs text-muted-foreground">(you)</span>
                     )}
                   </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {member.jobTitle || member.departmentName || member.email}
-                  </p>
+                  {/*
+                    Presence in words under the name, not only as a colour.
+                    "Last seen 3 hours ago" is the thing somebody actually wants
+                    before deciding whether to wait for a reply.
+                  */}
+                  <div className="flex items-center gap-1.5">
+                    <PresenceLabel presence={member.presence} lastSeenAt={member.lastSeenAt} />
+                    <span className="truncate text-xs text-muted-foreground">
+                      · {member.jobTitle || member.departmentName || member.email}
+                    </span>
+                  </div>
                 </div>
                 {member.role !== 'member' && (
                   <Badge variant="outline" className="shrink-0 gap-1 text-[10px] capitalize">

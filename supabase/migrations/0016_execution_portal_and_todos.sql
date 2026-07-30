@@ -863,7 +863,15 @@ CREATE POLICY calendar_events_client_select ON calendar_events FOR SELECT TO aut
  * policies above still apply — a client reading this view gets their own
  * projects and an employee gets whatever they could see anyway.
  */
-CREATE OR REPLACE VIEW public.v_client_portal_projects
+-- Dropped first rather than replaced. `db:apply` re-runs every migration, and
+-- 0018 extends this view with the deliverable counts — so on a second run this
+-- statement would be replacing the wider view with the narrower one, which
+-- Postgres refuses with "cannot drop columns from view". Recreating from
+-- scratch keeps the chain re-runnable; 0018 then re-adds its columns as it did
+-- the first time. Same fix 0007 needed once 0012 extended v_org_directory.
+DROP VIEW IF EXISTS public.v_client_portal_projects CASCADE;
+
+CREATE VIEW public.v_client_portal_projects
 WITH (security_invoker = true) AS
 SELECT
   p.organization_id,
@@ -1508,7 +1516,10 @@ CREATE POLICY "org members upload own files" ON storage.objects
 --  customer). Readable by any member, because knowing who your colleagues are
 --  is not privileged information inside a company.
 
-CREATE OR REPLACE VIEW public.v_assignable_members
+-- Dropped first, for the same reason: 0019 appends the presence columns.
+DROP VIEW IF EXISTS public.v_assignable_members CASCADE;
+
+CREATE VIEW public.v_assignable_members
 WITH (security_invoker = true) AS
 SELECT
   om.id            AS member_id,
@@ -1557,7 +1568,10 @@ WHERE om.is_active = true
  * Postgres permits adding columns to the end of a view definition but not
  * reordering or removing them, and a DROP would fail against dependents.
  */
-CREATE OR REPLACE VIEW public.v_org_directory
+-- Dropped first, for the same reason: 0019 appends the presence columns.
+DROP VIEW IF EXISTS public.v_org_directory CASCADE;
+
+CREATE VIEW public.v_org_directory
 WITH (security_invoker = true) AS
 SELECT
   om.id                AS member_id,

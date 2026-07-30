@@ -19,6 +19,7 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { formatRelativeTime, formatDateTime } from '@/lib/format';
 import { useAppStore } from '@/store/app-store';
 import { cn } from '@/lib/utils';
+import { useModuleRealtime } from '@/hooks/use-realtime';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +46,7 @@ import { FileBrowser } from './file-browser';
 import { ShareDialog } from './share-dialog';
 import type {
   WorkspaceNode, OpenPage, PageVersion, DirectoryMember, Department, WorkspaceFile,
+  TrashedPage,
 } from './types';
 
 /**
@@ -148,6 +150,17 @@ export default function WorkspaceModule() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [versions, setVersions] = useState<PageVersion[]>([]);
 
+  // ── Trash ──
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trash, setTrash] = useState<TrashedPage[]>([]);
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [restoring, setRestoring] = useState<string | null>(null);
+  /**
+   * Kept separate from `trash.length` so the count on the sidebar is right
+   * before the dialog has ever been opened.
+   */
+  const [trashCount, setTrashCount] = useState(0);
+
   // ── Reference data ──
   const [members, setMembers] = useState<DirectoryMember[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -166,6 +179,54 @@ export default function WorkspaceModule() {
   }, []);
 
   useEffect(() => { loadTree(); }, [loadTree]);
+
+  const loadTrash = useCallback(async () => {
+    setTrashLoading(true);
+    try {
+      const data = await api<TrashedPage[]>('/api/workspace/trash');
+      setTrash(data ?? []);
+      setTrashCount((data ?? []).length);
+    } catch (err: any) {
+      toast.error(err.message || 'Could not load the trash');
+    } finally {
+      setTrashLoading(false);
+    }
+  }, []);
+
+  // Once on mount, so the sidebar count is right without opening the dialog.
+  useEffect(() => { void loadTrash(); }, [loadTrash]);
+
+  const restore = useCallback(async (id: string) => {
+    setRestoring(id);
+    try {
+      const res = await api<{ restored: number }>('/api/workspace/trash', {
+        method: 'POST', body: JSON.stringify({ id }),
+      });
+      /**
+       * The count is the honest thing to report.
+       *
+       * Restoring a folder brings back everything that was deleted with it, and
+       * restoring a document brings back the folders it lived in — so "1
+       * restored" would understate what actually happened and leave somebody
+       * hunting for the rest.
+       */
+      toast.success(
+        res.restored > 1 ? `Restored ${res.restored} items` : 'Restored',
+      );
+      await Promise.all([loadTree(), loadTrash()]);
+    } catch (err: any) {
+      toast.error(err.message || 'Could not restore that');
+    } finally {
+      setRestoring(null);
+    }
+  }, [loadTree, loadTrash]);
+
+  /**
+   * A colleague creating, renaming, moving or deleting a page moves this tree.
+   * `files` is watched too — the vault tab lists them, and an upload is the
+   * change most likely to be happening while somebody else is looking.
+   */
+  useModuleRealtime('workspace', ['workspace_pages', 'files'], () => loadTree());
 
   useEffect(() => {
     /**
@@ -611,6 +672,28 @@ export default function WorkspaceModule() {
               </>
             )}
           </ScrollArea>
+
+          {/*
+            The trash, pinned to the bottom of the sidebar.
+            Deleting has always been soft — `deleted_at` is stamped and the row
+            survives — and nothing ever read those rows back, so every delete
+            was quietly recoverable with no way to recover it. Kept out of the
+            tree and out of the way: it is a place you go on purpose.
+          */}
+          <div className="border-t p-2">
+            <button
+              onClick={() => { setTrashOpen(true); void loadTrash(); }}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Trash2 className="size-4 shrink-0" />
+              <span className="flex-1">Trash</span>
+              {trashCount > 0 && (
+                <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums">
+                  {trashCount}
+                </span>
+              )}
+            </button>
+          </div>
         </aside>
 
         {/* ─── Content ─── */}
@@ -948,6 +1031,63 @@ export default function WorkspaceModule() {
         onConfirm={confirmDelete}
         isLoading={isDeleting}
       />
+
+      {/* ─── Trash ─── */}
+      <Dialog open={trashOpen} onOpenChange={setTrashOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Trash</DialogTitle>
+            <DialogDescription>
+              Deleted pages are kept here. Restoring one brings back the folders
+              it lived in, and restoring a folder brings back what was inside it.
+            </DialogDescription>
+          </DialogHeader>
+
+          {trashLoading ? (
+            <div className="space-y-2 py-2">
+              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-md" />)}
+            </div>
+          ) : trash.length === 0 ? (
+            <EmptyState
+              icon={Trash2}
+              title="The trash is empty"
+              description="Nothing has been deleted from this workspace."
+            />
+          ) : (
+            <ScrollArea className="max-h-96">
+              <div className="divide-y rounded-md border">
+                {trash.map(node => {
+                  const Icon = node.isFolder ? Folder : (ICON_MAP[node.icon ?? ''] ?? FileText);
+                  return (
+                    <div key={node.id} className="flex items-center gap-3 p-3">
+                      <Icon className="size-4 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{node.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {node.isFolder ? 'Folder' : node.kind === 'sheet' ? 'Spreadsheet' : 'Document'}
+                          {node.deletedAt && ` · deleted ${formatRelativeTime(node.deletedAt)}`}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0 gap-1.5"
+                        disabled={restoring === node.id}
+                        onClick={() => restore(node.id)}
+                      >
+                        {restoring === node.id
+                          ? <Loader2 className="size-3.5 animate-spin" />
+                          : <RotateCcw className="size-3.5" />}
+                        Restore
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          )}
+        </DialogContent>
+      </Dialog>
     </TooltipProvider>
   );
 }

@@ -63,7 +63,7 @@ function SidebarNav({
   collapsed: boolean;
   onNavigate?: () => void;
 }) {
-  const { activeModule, setActiveModule, visibleModules: allowedIds } = useAppStore();
+  const { activeModule, setActiveModule, visibleModules: allowedIds, unreadByModule } = useAppStore();
 
   const handleNav = (id: ModuleId) => {
     setActiveModule(id);
@@ -83,6 +83,15 @@ function SidebarNav({
         {visibleModules.map((mod) => {
           const Icon = iconMap[mod.icon] ?? LayoutDashboard;
           const isActive = activeModule === mod.id;
+          /**
+           * What is waiting in this module.
+           *
+           * Suppressed on the module you are looking at: a count against the
+           * screen currently open tells you nothing you cannot already see, and
+           * it would sit there until the notifications happened to be marked
+           * read — which reads as a badge that will not clear.
+           */
+          const badge = isActive ? 0 : (unreadByModule[mod.id] ?? 0);
 
           const button = (
             <button
@@ -108,7 +117,17 @@ function SidebarNav({
                 )}
               </AnimatePresence>
 
-              <Icon className={cn('size-5 shrink-0', isActive && 'text-emerald-500')} />
+              <span className="relative shrink-0">
+                <Icon className={cn('size-5', isActive && 'text-emerald-500')} />
+                {/*
+                  Collapsed, there is no room for a number, so the badge becomes
+                  a dot on the icon — still says "something is here", which is
+                  the part that matters at that width.
+                */}
+                {collapsed && badge > 0 && (
+                  <span className="absolute -right-1 -top-1 size-2 rounded-full bg-emerald-500 ring-2 ring-background" />
+                )}
+              </span>
 
               <AnimatePresence initial={false}>
                 {!collapsed && (
@@ -117,12 +136,26 @@ function SidebarNav({
                     animate={{ opacity: 1, width: 'auto' }}
                     exit={{ opacity: 0, width: 0 }}
                     transition={{ duration: 0.2, ease: 'easeInOut' }}
-                    className="overflow-hidden whitespace-nowrap"
+                    className="flex-1 overflow-hidden whitespace-nowrap text-left"
                   >
                     {mod.label}
                   </motion.span>
                 )}
               </AnimatePresence>
+
+              {/*
+                The count itself. Capped at 99+ because the difference between
+                "a lot" and "rather more" is not worth the column width, and an
+                unbounded number reflows the whole row.
+              */}
+              {!collapsed && badge > 0 && (
+                <span
+                  className="ml-auto shrink-0 rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white tabular-nums"
+                  aria-label={`${badge} unread in ${mod.label}`}
+                >
+                  {badge > 99 ? '99+' : badge}
+                </span>
+              )}
             </button>
           );
 
@@ -133,6 +166,11 @@ function SidebarNav({
                 <TooltipTrigger asChild>{button}</TooltipTrigger>
                 <TooltipContent side="right" sideOffset={8}>
                   {mod.label}
+                  {badge > 0 && (
+                    <span className="ml-1.5 font-semibold text-emerald-500">
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
                 </TooltipContent>
               </Tooltip>
             );

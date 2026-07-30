@@ -1412,7 +1412,16 @@ GRANT SELECT ON public.v_files TO authenticated;
  * shows a participant list then has to join to profiles itself, and the two
  * places that already did it spelled the relation differently.
  */
-CREATE OR REPLACE VIEW public.v_channel_members
+-- Dropped first rather than replaced. `db:apply` re-runs every migration, and
+-- 0019 extends this view with further columns — so on the second run this
+-- statement would be replacing the wider view with the narrower one, which
+-- Postgres refuses with "cannot drop columns from view". Recreating from
+-- scratch keeps the chain re-runnable; 0019 then re-adds its columns as it
+-- did the first time. Same fix as 0007 needed after 0012 extended
+-- v_org_directory.
+DROP VIEW IF EXISTS public.v_channel_members CASCADE;
+
+CREATE VIEW public.v_channel_members
 WITH (security_invoker = true) AS
 SELECT
   cm.id,

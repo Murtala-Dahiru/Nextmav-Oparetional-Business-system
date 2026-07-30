@@ -1,6 +1,7 @@
 import { authenticate, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
+import { unreadByModule, typesForModule } from '@/lib/notification-modules';
 
 /**
  * The signed-in user's notification tray.
@@ -57,7 +58,66 @@ export async function GET(req: Request) {
     .eq('recipient_id', ctx.org.memberId)
     .eq('is_read', false);
 
-  return paginated(data ?? [], count ?? 0, page, pageSize, { unread: unread ?? 0 });
+  /**
+   * ── Per-module counts, for the badges in the sidebar ─────────────────────
+   *
+   * Counted here rather than derived in the browser from `data`, for the same
+   * reason `unread` is: this endpoint returns one page, so a badge computed
+   * from it would cap at the page size. Somebody with thirty unread tickets
+   * would see Support (20), and the number would change when they paged.
+   *
+   * Only the `type` column is read, and only for unread rows. That is a small,
+   * indexed scan — unread notifications are by nature a working set, not a
+   * history — and the cap makes the worst case bounded rather than trusting
+   * that to stay true.
+   */
+  const { data: unreadTypes } = await ctx.supabase
+    .from('notifications')
+    .select('type')
+    .eq('recipient_id', ctx.org.memberId)
+    .eq('is_read', false)
+    .limit(500);
+
+  const byModule = unreadByModule(
+    (unreadTypes ?? []).map((r: any) => ({ type: r.type, isRead: false })),
+  );
+
+  /**
+   * Unread *messages*, which notifications do not represent.
+   *
+   * A notification is only written for a mention — posting in a channel does
+   * not notify everybody in it, and should not. So a Communication badge driven
+   * by the tray would show 0 while eleven unread messages sat in three
+   * channels, which is not what anybody means by the badge on a chat module.
+   *
+   * `channel_overview()` already computes the per-channel unread count from
+   * each member's own `last_read_at`, and the communication module already
+   * calls it on load — this is the same number, not a second definition.
+   *
+   * Best-effort: a client account has no communication grant at all, and the
+   * RPC returning nothing for them is correct rather than an error worth
+   * failing the whole tray over.
+   */
+  let unreadMessages = 0;
+  try {
+    const { data: channels } = await ctx.supabase
+      .rpc('channel_overview', { org: ctx.org.organizationId });
+    unreadMessages = (channels ?? []).reduce(
+      (sum: number, c: any) => sum + Number(c.unread_count ?? 0), 0,
+    );
+  } catch {
+    // No communication access, or no channels. Zero is the right answer.
+  }
+
+  if (unreadMessages > 0) {
+    byModule.communication = (byModule.communication ?? 0) + unreadMessages;
+  }
+
+  return paginated(data ?? [], count ?? 0, page, pageSize, {
+    unread: unread ?? 0,
+    byModule,
+    unreadMessages,
+  });
 }
 
 /**
@@ -73,6 +133,9 @@ export async function PATCH(req: Request) {
 
   const body = acceptBody(await req.json().catch(() => ({})));
   const ids: string[] = Array.isArray(body?.ids) ? body.ids : [];
+  // `moduleId`, not `module`: the latter shadows the CommonJS global and Next
+  // rejects it outright.
+  const moduleId = typeof body?.module === 'string' ? body.module : null;
 
   let query = ctx.supabase
     .from('notifications')
@@ -81,6 +144,29 @@ export async function PATCH(req: Request) {
     .eq('is_read', false);
 
   if (ids.length) query = query.in('id', ids);
+
+  /**
+   * Marking a whole module read, which is what opening it means.
+   *
+   * ── Why the types are resolved here rather than filtered in SQL ──────────
+   *
+   * `notifications` has no `module` column, deliberately: adding one would mean
+   * every fan-out trigger in 0016 restating something its `type` already
+   * implies, and the two drifting the first time a trigger was edited without
+   * its module being updated.
+   *
+   * So the same map the badge counts with is used to expand a module into the
+   * set of types that belong to it. One definition, used by the count and by
+   * the clear — which is the only way a badge can be guaranteed to disappear
+   * when the thing it counted is read.
+   */
+  if (moduleId) {
+    const types = typesForModule(moduleId);
+    if (!types.length) {
+      return error(`"${moduleId}" is not a module notifications are raised for.`, 422, 'UNKNOWN_MODULE');
+    }
+    query = query.in('type', types);
+  }
 
   const { data, error: e } = await query.select('id');
   if (e) return pgError(e);

@@ -11,6 +11,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { formatDateTime } from '@/lib/format';
+import { useModuleRealtime } from '@/hooks/use-realtime';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -235,6 +236,9 @@ export default function CalendarModule() {
   }, [firstDay, lastDay]);
 
   useEffect(() => { fetchEvents(); }, [fetchEvents]);
+
+  // A meeting somebody books lands on everyone's calendar without a reload.
+  useModuleRealtime('calendar', ['calendar_events'], () => fetchEvents());
 
   // ── Navigation ──
   const goToToday = () => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); setSelectedDate(today); };

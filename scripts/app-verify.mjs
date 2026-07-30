@@ -2682,6 +2682,239 @@ try {
     `attributed to a real person rather than a hard-coded name (${listedFile?.uploadedByName})`);
 
   // ─────────────────────────────────────────────────────────────────────────
+  section('58a. The workspace trash');
+  /**
+   * Deleting a page has always been soft — `deleted_at` is stamped and the row
+   * survives, and deleting a folder marks its descendants in the same statement
+   * so they do not reappear scattered at the root.
+   *
+   * Nothing ever read those rows back. Every delete was quietly recoverable and
+   * there was no way to recover anything: the storage cost of keeping it with
+   * none of the reassurance.
+   */
+
+  const binFolder = await A.json('/api/workspace/pages', {
+    method: 'POST',
+    body: JSON.stringify({ title: `Bin folder ${run}`, isFolder: true, parentId: '' }),
+  });
+  const binFolderId = binFolder.body?.data?.id;
+
+  const binDoc = await A.json('/api/workspace/pages', {
+    method: 'POST',
+    body: JSON.stringify({ title: `Bin doc ${run}`, parentId: binFolderId, kind: 'document' }),
+  });
+  const binDocId = binDoc.body?.data?.id;
+  check(binDoc.status === 201, `a page inside a folder (${binDoc.status})`, binDoc.body?.error?.message);
+
+  await A.json(`/api/workspace/pages/${binFolderId}`, { method: 'DELETE' });
+
+  const binned = await A.json('/api/workspace/trash');
+  const binnedIds = (binned.body?.data ?? []).map(p => p.id);
+  check(binnedIds.includes(binFolderId), 'a deleted folder is in the trash');
+  check(binnedIds.includes(binDocId),
+    'and so is what was inside it, rather than being orphaned at the root');
+
+  const tree = await A.json('/api/workspace/pages?pageSize=500');
+  const treeIds = (tree.body?.data ?? []).map(p => p.id);
+  check(!treeIds.includes(binFolderId) && !treeIds.includes(binDocId),
+    'neither appears in the live tree');
+
+  /**
+   * Restoring the *document* has to bring its folder back with it, or the page
+   * returns to a parent that is not there and renders at the root or nowhere.
+   */
+  const putBack = await A.json('/api/workspace/trash', {
+    method: 'POST', body: JSON.stringify({ id: binDocId }),
+  });
+  check(putBack.ok, `a page can be restored (${putBack.status})`, putBack.body?.error?.message);
+  check((putBack.body?.data?.restored ?? 0) >= 2,
+    `and its deleted ancestors come back with it (${putBack.body?.data?.restored})`);
+
+  const treeAfter = await A.json('/api/workspace/pages?pageSize=500');
+  const afterIds = (treeAfter.body?.data ?? []).map(p => p.id);
+  check(afterIds.includes(binDocId) && afterIds.includes(binFolderId),
+    'both are in the tree again');
+
+  const restoreLive = await A.json('/api/workspace/trash', {
+    method: 'POST', body: JSON.stringify({ id: binDocId }),
+  });
+  check(restoreLive.status === 409,
+    `restoring something that is not deleted is refused (${restoreLive.status})`);
+
+  /**
+   * A hard delete is only reachable for something already in the trash —
+   * otherwise this endpoint would be a way around the recovery it exists to
+   * provide.
+   */
+  const destroyLive = await A.json(`/api/workspace/trash?id=${binDocId}`, { method: 'DELETE' });
+  check(destroyLive.status === 409,
+    `and a live page cannot be destroyed through the trash (${destroyLive.status})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('58b. Presence reflects activity, not account age');
+  /**
+   * ── What this replaces ────────────────────────────────────────────────────
+   *
+   * `profiles.last_seen_at` is `NOT NULL DEFAULT now()`, so it was stamped when
+   * the profile row was created and never again: 0006 added `touch_presence()`
+   * to maintain it and nothing has ever called that function, from any route,
+   * component or script.
+   *
+   * So the Admin and HR "Last Seen" column showed every employee's signup date
+   * for ever, and the chat header's online count — which filtered on
+   * `last_seen_at > now() - 5 minutes` — was true only in the five minutes
+   * after somebody signed up. Before that it was the literal 4.
+   *
+   * The three states are asserted through the API rather than the function,
+   * because the derivation is only useful if the route, the view and the policy
+   * agree — and the interesting one is the last: a stale heartbeat must read
+   * offline no matter what the client last claimed, since a browser that
+   * crashes never gets to say goodbye.
+   */
+
+  const presenceOf = async () => {
+    const r = await A.json('/api/presence');
+    const mine = (r.body?.data ?? []).find(p => p.userId === userA.id);
+    return { row: mine, meta: r.body?.meta };
+  };
+
+  const beat = (status, active) => A.json('/api/presence', {
+    method: 'POST', body: JSON.stringify({ status, active }),
+  });
+
+  const fresh = await presenceOf();
+  check(fresh.row?.presence === 'offline',
+    `an account that has never beaten is offline, not online (${fresh.row?.presence})`);
+
+  await beat('online', true);
+  const nowOnline = await presenceOf();
+  check(nowOnline.row?.presence === 'online',
+    `a heartbeat puts somebody online (${nowOnline.row?.presence})`);
+  check(nowOnline.meta?.online === 1,
+    `and the count the chat header reads follows it (${nowOnline.meta?.online})`);
+  check(!!nowOnline.row?.lastActiveAt,
+    'an active beat records when they last did something');
+
+  await beat('away', false);
+  const nowAway = await presenceOf();
+  check(nowAway.row?.presence === 'away',
+    `an idle tab reports away rather than dropping offline (${nowAway.row?.presence})`);
+  check(nowAway.meta?.online === 0,
+    `and stops counting as online (${nowAway.meta?.online})`);
+
+  await beat('online', true);
+  check((await presenceOf()).row?.presence === 'online', 'coming back is immediate');
+
+  /**
+   * The case a stored status cannot handle. The heartbeat is forced into the
+   * past while the reported status still says `online`; the verdict must be
+   * offline anyway, because that is the only way a closed laptop is ever
+   * reflected.
+   */
+  await rest(`profiles?id=eq.${userA.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ presence_beat_at: new Date(Date.now() - 10 * 60_000).toISOString() }),
+  });
+  const staleBeat = await presenceOf();
+  check(staleBeat.row?.presence === 'offline',
+    `a stale heartbeat reads offline whatever the client last claimed (${staleBeat.row?.presence})`);
+
+  await beat('online', true);
+  const signedOff = await A.json('/api/presence', { method: 'DELETE' });
+  check(signedOff.ok, `signing off is explicit (${signedOff.status})`);
+  check((await presenceOf()).row?.presence === 'offline',
+    'and takes effect at once rather than after the offline window');
+
+  // Every people surface reads the same verdict.
+  await beat('online', true);
+  const dirWithPresence = await A.json('/api/directory');
+  const meInDirectory = (dirWithPresence.body?.data ?? []).find(m => m.userId === userA.id);
+  check(meInDirectory?.presence === 'online',
+    `the directory every people picker reads carries it (${meInDirectory?.presence})`);
+  check(!('lastSeenAt' in (meInDirectory ?? {})),
+    'and still withholds the exact last-seen timestamp, which is the sensitive half');
+
+  const adminRows = await A.json('/api/admin/users?pageSize=100');
+  const meInAdmin = (adminRows.body?.data ?? []).find(u => u.userId === userA.id);
+  check(meInAdmin?.presence === 'online',
+    `the administration table shows presence rather than a signup date (${meInAdmin?.presence})`);
+  check(!!meInAdmin?.lastSeenAt,
+    'with the timestamp behind it, which administrators may see');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('58c. Per-module notification badges');
+  /**
+   * "Support (3), Communication (5), Projects (2)" in the sidebar, and they have
+   * to clear on viewing.
+   *
+   * ── Two things worth asserting rather than assuming ───────────────────────
+   *
+   *   · The counts come from the server across the whole tray. Derived in the
+   *     browser from the twenty rows the store holds, a badge caps at the page
+   *     size — somebody with thirty unread tickets sees Support (20), and the
+   *     number changes when they page.
+   *
+   *   · Communication is composed differently on purpose. A notification is
+   *     written only for a *mention*; posting in a channel notifies nobody, and
+   *     should not. A badge driven by the tray alone would read 0 with unread
+   *     messages waiting, so the count also carries each channel's own unread
+   *     figure — which is the number the chat sidebar already shows per channel.
+   */
+
+  const trayFor = async (client) => (await client.json('/api/notifications')).body?.meta;
+
+  // C has been assigned a task and mentioned in a channel by now.
+  const badgeC = await trayFor(C);
+  check(typeof badgeC?.byModule === 'object' && badgeC.byModule !== null,
+    'the tray reports counts per module');
+  check((badgeC?.byModule?.projects ?? 0) > 0,
+    `a task assignment counts toward Projects (${badgeC?.byModule?.projects})`);
+  check((badgeC?.byModule?.communication ?? 0) > 0,
+    `a mention counts toward Communication (${badgeC?.byModule?.communication})`);
+
+  /**
+   * Unread messages, not just mentions. A is posting into a channel C is in;
+   * nobody is mentioned, so no notification is written — and the badge must
+   * still move.
+   */
+  const beforeMessages = (await trayFor(C))?.unreadMessages ?? 0;
+  await A.json('/api/communication/messages', {
+    method: 'POST',
+    body: JSON.stringify({ channelId: threadRoomId, body: `Unread probe ${run}` }),
+  });
+  const afterMessages = (await trayFor(C))?.unreadMessages ?? 0;
+  check(afterMessages > beforeMessages,
+    `an unread message counts even though it notifies nobody (${beforeMessages} → ${afterMessages})`);
+
+  // Opening a module clears its badge, and only its badge.
+  const beforeClear = await trayFor(C);
+  const clearProjects = await C.json('/api/notifications', {
+    method: 'PATCH', body: JSON.stringify({ module: 'projects' }),
+  });
+  check(clearProjects.ok, `a module's notifications can be marked read (${clearProjects.status})`,
+    clearProjects.body?.error?.message);
+
+  const afterClear = await trayFor(C);
+  check((afterClear?.byModule?.projects ?? 0) === 0,
+    `viewing Projects clears its badge (${afterClear?.byModule?.projects})`);
+  check((afterClear?.byModule?.communication ?? 0) === (beforeClear?.byModule?.communication ?? 0),
+    `and leaves the others alone (${afterClear?.byModule?.communication})`);
+
+  const bogusModule = await C.json('/api/notifications', {
+    method: 'PATCH', body: JSON.stringify({ module: 'not_a_module' }),
+  });
+  check(bogusModule.status === 422,
+    `an unknown module is refused rather than marking everything read (${bogusModule.status})`);
+
+  /**
+   * The dangerous shape of that last one: a module name that maps to no types
+   * must not fall through to "no filter", which would mark the entire tray read.
+   */
+  const stillUnread = await trayFor(C);
+  check((stillUnread?.unread ?? 0) > 0,
+    `and the tray still holds its unread notifications (${stillUnread?.unread})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
   section('59. Editing a record, with the payload the form actually sends');
   /**
    * ── Why this section is written in camelCase ──────────────────────────────
