@@ -201,6 +201,18 @@ export default function CommunicationModule() {
 
   // ── Input ──
   const [draft, setDraft] = useState('');
+  /**
+   * The message this draft is answering, if any.
+   *
+   * `messages.parent_id` and the endpoint's `?parent_id=` filter have both
+   * existed from the start — the main timeline is already `parent_id IS NULL`
+   * — so a reply had somewhere to go and no way to be sent. This is the only
+   * missing piece.
+   */
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  /** Which message's thread is expanded, and the replies loaded for it. */
+  const [openThread, setOpenThread] = useState<string | null>(null);
+  const [threadReplies, setThreadReplies] = useState<Record<string, Message[]>>({});
   const [search, setSearch] = useState('');
   const [messageSearch, setMessageSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -380,6 +392,63 @@ export default function CommunicationModule() {
 
   // ─── Actions ─────────────────────────────────────────────────────────────
 
+  /**
+   * Open or close a thread, loading its replies the first time.
+   *
+   * On demand rather than with the timeline: most messages have no replies, and
+   * fetching every thread to render a hundred messages would be a hundred
+   * queries to display nothing. Cached per message so collapsing and reopening
+   * is free, and refetched after posting so the new reply appears.
+   */
+  const toggleThread = useCallback(async (message: Message, force = false) => {
+    if (openThread === message.id && !force) { setOpenThread(null); return; }
+    setOpenThread(message.id);
+    if (threadReplies[message.id] && !force) return;
+    try {
+      const replies = await api<Message[]>(
+        `/api/communication/messages?channelId=${message.channelId}&parentId=${message.id}&pageSize=100`,
+      );
+      // Oldest-first: a thread reads as a conversation, unlike the scrollback.
+      setThreadReplies(prev => ({ ...prev, [message.id]: [...(replies ?? [])].reverse() }));
+    } catch (err: any) {
+      toast.error(err.message || 'Could not load that thread');
+    }
+  }, [openThread, threadReplies]);
+
+  /**
+   * Resolve `@Name` in the draft to the membership ids the trigger expects.
+   *
+   * ── Why this is here at all ───────────────────────────────────────────────
+   *
+   * `messages.mentions` is a uuid array, the endpoint has always accepted it,
+   * and `notify_message_mentions` has notified everyone in it since 0016. The
+   * composer never sent the field, so the column was empty on every message ever
+   * posted and that trigger had never fired — a whole notification path, wired
+   * end to end in the database, unreachable from the product.
+   *
+   * Names are matched longest-first so "@Ada Lovelace" wins over "@Ada" when
+   * both are in the channel; otherwise the shorter match consumes the prefix and
+   * the wrong person is notified. Matching is case-insensitive because nobody
+   * capitalises consistently while typing, and restricted to the channel's own
+   * members: mentioning somebody who cannot see the channel would notify them
+   * about a message they will never be able to open.
+   */
+  const resolveMentions = useCallback((text: string): string[] => {
+    const candidates = [...members]
+      .sort((a, b) => b.fullName.length - a.fullName.length);
+
+    const haystack = text.toLowerCase();
+    const found = new Set<string>();
+
+    for (const m of candidates) {
+      if (!m.fullName) continue;
+      if (haystack.includes(`@${m.fullName.toLowerCase()}`)) found.add(m.memberId);
+    }
+    // Never notify yourself for typing your own name.
+    if (currentMemberId) found.delete(currentMemberId);
+    return [...found];
+  }, [members, currentMemberId]);
+
   const send = useCallback(async () => {
     const body = draft.trim();
     if (!body || !selectedId || sending) return;
@@ -387,14 +456,29 @@ export default function CommunicationModule() {
     setSending(true);
     setDraft('');
     try {
+      const mentions = resolveMentions(body);
       const created = await api<Message>('/api/communication/messages', {
         method: 'POST',
-        body: JSON.stringify({ body, channelId: selectedId }),
+        body: JSON.stringify({
+          body,
+          channelId: selectedId,
+          mentions,
+          // A reply carries the message it answers. `parent_id` has been on the
+          // table and accepted by the endpoint since the start; the GET already
+          // separates roots from replies, so nothing else had to change to make
+          // threads work — only the composer had to say which it was sending.
+          parentId: replyTo?.id ?? null,
+        }),
       });
-      setMessages(prev => [...prev, created]);
+      // A reply belongs in its thread, not at the end of the main timeline —
+      // which is what the endpoint's `parent_id IS NULL` filter already means.
+      if (!replyTo) setMessages(prev => [...prev, created]);
       setChannels(prev => prev.map(c => c.channelId === selectedId
         ? { ...c, lastMessage: body, lastMessageAt: created.createdAt, messageCount: c.messageCount + 1 }
         : c));
+      // The reply belongs in the thread it answers, so that is what is reloaded.
+      if (replyTo) await toggleThread(replyTo, true);
+      setReplyTo(null);
     } catch (err: any) {
       toast.error(err.message || 'Could not send that');
       setDraft(body);
@@ -402,7 +486,7 @@ export default function CommunicationModule() {
       setSending(false);
       inputRef.current?.focus();
     }
-  }, [draft, selectedId, sending]);
+  }, [draft, selectedId, sending, resolveMentions, replyTo, toggleThread]);
 
   const togglePin = useCallback(async (message: Message) => {
     try {
@@ -869,9 +953,14 @@ export default function CommunicationModule() {
                         isConsecutive={index > 0 && shown[index - 1]?.senderId === message.senderId}
                         currentMemberId={currentMemberId}
                         canModerate={selected.isAdmin || isOrgAdmin}
+                        members={members}
                         onTogglePin={() => togglePin(message)}
                         onReact={(emoji) => react(message, emoji)}
                         onDelete={() => deleteMessage(message)}
+                        onReply={() => { setReplyTo(message); inputRef.current?.focus(); }}
+                        onToggleThread={() => void toggleThread(message)}
+                        threadOpen={openThread === message.id}
+                        replies={threadReplies[message.id]}
                       />
                     ))}
                     <div ref={endRef} />
@@ -883,14 +972,47 @@ export default function CommunicationModule() {
             {/* ─── Composer ─── */}
             <div className="border-t p-4">
               {canPost ? (
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-2">
+                  {/*
+                    What this draft is answering. Without it, "Reply in thread"
+                    and a normal send look identical from the composer, and the
+                    message lands somewhere the sender did not expect.
+                  */}
+                  {replyTo && (
+                    <div className="flex items-center gap-2 rounded-md border-l-2 border-emerald-500 bg-muted/50 px-2.5 py-1.5">
+                      <MessageSquare className="size-3.5 shrink-0 text-emerald-600" />
+                      <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                        Replying to{' '}
+                        <span className="font-medium text-foreground">
+                          {replyTo.sender?.profiles?.fullName || 'Unknown member'}
+                        </span>
+                        {' — '}{truncate(replyTo.body, 60)}
+                      </p>
+                      <Button
+                        variant="ghost" size="icon" className="size-5 shrink-0"
+                        onClick={() => setReplyTo(null)}
+                        aria-label="Cancel reply"
+                      >
+                        <X className="size-3.5" />
+                      </Button>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2">
                   <Input
                     ref={inputRef}
-                    placeholder={`Message ${channelLabel(selected)}`}
+                    placeholder={
+                      replyTo
+                        ? 'Reply in thread…'
+                        : `Message ${channelLabel(selected)} — @name to notify someone`
+                    }
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+                      // Escape drops out of a reply rather than leaving the
+                      // draft silently bound to a thread.
+                      if (e.key === 'Escape' && replyTo) setReplyTo(null);
                     }}
                     disabled={sending}
                     className="flex-1"
@@ -903,6 +1025,7 @@ export default function CommunicationModule() {
                   >
                     {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
                   </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2.5">
@@ -1067,17 +1190,23 @@ function ChannelGroup({
 // ═══════════════════════════════════════════════════════════════════════════
 
 function MessageBubble({
-  message, isOwn, isConsecutive, currentMemberId, canModerate,
-  onTogglePin, onReact, onDelete,
+  message, isOwn, isConsecutive, currentMemberId, canModerate, members,
+  onTogglePin, onReact, onDelete, onReply, onToggleThread,
+  threadOpen, replies,
 }: {
   message: Message;
   isOwn: boolean;
   isConsecutive: boolean;
   currentMemberId: string | null;
   canModerate: boolean;
+  members: ChannelMember[];
   onTogglePin: () => void;
   onReact: (emoji: string) => void;
   onDelete: () => void;
+  onReply: () => void;
+  onToggleThread: () => void;
+  threadOpen: boolean;
+  replies: Message[] | undefined;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -1085,6 +1214,41 @@ function MessageBubble({
   // have no name yet, and a chat line is still readable without one.
   const senderName = message.sender?.profiles?.fullName || 'Unknown member';
   const initials = initialsOf(message.sender?.profiles?.fullName);
+
+  /**
+   * Render `@Name` as a mention chip, and say when it is you.
+   *
+   * Driven by the names of the channel's members rather than by a regex over
+   * `@\w+`: a bare pattern cannot span "@Ada Lovelace" without also colouring
+   * "@lunch", and it would disagree with what the composer actually resolved.
+   * Matching the same list the composer matches means what is highlighted is
+   * exactly what was notified.
+   *
+   * A mention of *you* is emphasised more strongly, because the one thing
+   * anybody scans a channel for is whether they were named in it.
+   */
+  const rendered = useMemo(() => {
+    const names = members
+      .map(m => m.fullName)
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length);
+    if (!names.length) return [message.body] as (string | { name: string; isMe: boolean })[];
+
+    const escaped = names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const re = new RegExp(`@(${escaped.join('|')})`, 'gi');
+
+    const myName = members.find(m => m.memberId === currentMemberId)?.fullName?.toLowerCase();
+    const parts: (string | { name: string; isMe: boolean })[] = [];
+    let last = 0;
+    for (const m of message.body.matchAll(re)) {
+      const at = m.index ?? 0;
+      if (at > last) parts.push(message.body.slice(last, at));
+      parts.push({ name: m[1], isMe: m[1].toLowerCase() === myName });
+      last = at + m[0].length;
+    }
+    if (last < message.body.length) parts.push(message.body.slice(last));
+    return parts.length ? parts : [message.body];
+  }, [message.body, members, currentMemberId]);
 
   // Reactions arrive as one row per person per emoji; the bubble shows one
   // chip per emoji with a count, and highlights the ones you added.
@@ -1131,7 +1295,25 @@ function MessageBubble({
             {message.isPinned && <Pin className="size-3 text-amber-500" />}
           </div>
         )}
-        <p className="break-words text-sm leading-relaxed text-foreground/90">{message.body}</p>
+        <p className="break-words text-sm leading-relaxed text-foreground/90">
+          {rendered.map((part, i) =>
+            typeof part === 'string' ? (
+              <span key={i}>{part}</span>
+            ) : (
+              <span
+                key={i}
+                className={cn(
+                  'rounded px-1 font-medium',
+                  part.isMe
+                    ? 'bg-amber-200 text-amber-900 dark:bg-amber-500/30 dark:text-amber-200'
+                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300',
+                )}
+              >
+                @{part.name}
+              </span>
+            ),
+          )}
+        </p>
 
         {grouped.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1">
@@ -1148,6 +1330,52 @@ function MessageBubble({
                 <span className="text-[10px] text-muted-foreground">{count}</span>
               </button>
             ))}
+          </div>
+        )}
+
+        {/*
+          The thread. Shown only when it has replies or has been opened — a
+          "0 replies" affordance on every message is noise, and the count is not
+          known until the thread is fetched.
+        */}
+        {(threadOpen || (replies?.length ?? 0) > 0) && (
+          <div className="mt-1.5">
+            <button
+              onClick={onToggleThread}
+              className="text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-400"
+            >
+              {replies === undefined
+                ? 'Loading replies…'
+                : replies.length === 0
+                  ? 'No replies yet'
+                  : `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
+              {threadOpen ? ' · hide' : ''}
+            </button>
+
+            {threadOpen && !!replies?.length && (
+              <div className="mt-1.5 flex flex-col gap-2 border-l-2 border-border pl-3">
+                {replies.map(r => (
+                  <div key={r.id} className="flex gap-2">
+                    <Avatar className="mt-0.5 size-6 shrink-0">
+                      <AvatarFallback className={cn('text-[10px] font-medium text-white', avatarColor(r.senderId))}>
+                        {initialsOf(r.sender?.profiles?.fullName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-xs font-semibold">
+                          {r.sender?.profiles?.fullName || 'Unknown member'}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatRelativeTime(r.createdAt)}
+                        </span>
+                      </div>
+                      <p className="break-words text-sm text-foreground/90">{r.body}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1172,6 +1400,17 @@ function MessageBubble({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="size-6" onClick={onReply}>
+                  <MessageSquare className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Reply in thread</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
           <TooltipProvider>
             <Tooltip>

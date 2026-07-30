@@ -621,10 +621,27 @@ try {
     check(deact.ok, `a member can be deactivated (${deact.status})`);
   }
 
+  /**
+   * PUT is aliased to PATCH, and it has to save something.
+   *
+   * This used to send `{ settings: [] }` — an empty list, which writes nothing.
+   * It proved the verb was routed and nothing else, and it now returns 422
+   * because a request that changes nothing is no longer reported as saved.
+   * Sending a real value asserts both halves.
+   */
   const putSettings = await A.json('/api/admin/settings', {
-    method: 'PUT', body: JSON.stringify({ settings: [] }),
+    method: 'PUT', body: JSON.stringify({ industry: 'Verification' }),
   });
-  check(putSettings.ok, `PUT saves settings (${putSettings.status})`);
+  check(putSettings.ok, `PUT saves settings (${putSettings.status})`,
+    putSettings.body?.error?.message);
+  check(putSettings.body?.data?.organization?.industry === 'Verification',
+    `and the value is stored (${putSettings.body?.data?.organization?.industry})`);
+
+  const emptySettings = await A.json('/api/admin/settings', {
+    method: 'PUT', body: JSON.stringify({ settings: {} }),
+  });
+  check(emptySettings.status === 422,
+    `a settings request that writes nothing is refused (${emptySettings.status})`);
 
   section('16. Contracts the forms depend on');
 
@@ -2005,6 +2022,99 @@ try {
     `the last administrator cannot strand a channel (${lastAdminLeaves.status})`);
 
   // ─────────────────────────────────────────────────────────────────────────
+  section('51b. Mentions and threads');
+  /**
+   * ── Two features wired end to end in the database and unreachable ─────────
+   *
+   * `messages.mentions` is a uuid array, the endpoint has always accepted it,
+   * and `notify_message_mentions` has notified everyone in it since 0016. The
+   * composer never sent the field, so the column was empty on every message ever
+   * posted and that trigger had never once fired.
+   *
+   * `messages.parent_id` is the same story: accepted by the endpoint, and the
+   * message list already separates roots from replies with `parent_id IS NULL`.
+   * Nothing ever sent a parent, so every thread was empty and the filter was
+   * dividing a set in two where one half was always the whole thing.
+   */
+
+  /**
+   * A channel of its own: section 51 removes C from the group and then has A
+   * leave it, so by this point nobody is in it and every post is a 403.
+   */
+  const threadRoom = await A.json('/api/communication/channels', {
+    method: 'POST',
+    body: JSON.stringify({
+      displayName: `Threads ${run}`, type: 'private', memberIds: [memberIdC],
+    }),
+  });
+  const threadRoomId = threadRoom.body?.data?.id;
+  check(threadRoom.status === 201, `a channel for this (${threadRoom.status})`,
+    threadRoom.body?.error?.message);
+
+  const mentioning = await A.json('/api/communication/messages', {
+    method: 'POST',
+    body: JSON.stringify({
+      channelId: threadRoomId,
+      body: 'Morning — could you look at this today?',
+      mentions: [memberIdC],
+    }),
+  });
+  check(mentioning.status === 201, `a message can name someone (${mentioning.status})`,
+    mentioning.body?.error?.message);
+  check(Array.isArray(mentioning.body?.data?.mentions)
+    && mentioning.body.data.mentions.includes(memberIdC),
+    'and the mention is stored against the message');
+
+  const rootId = mentioning.body?.data?.id;
+  check(!!rootId, 'the message has an id to reply to');
+
+  // The trigger that had never fired.
+  const mentionedTray = await C.json('/api/notifications');
+  const mentionNote = (mentionedTray.body?.data ?? []).find(
+    n => /mention/i.test(n.type ?? '') || /mentioned/i.test(n.title ?? ''),
+  );
+  check(!!mentionNote,
+    'the person named is notified about it',
+    `tray held: ${(mentionedTray.body?.data ?? []).map(n => n.type).join(', ') || 'nothing'}`);
+
+  const reply = await C.json('/api/communication/messages', {
+    method: 'POST',
+    body: JSON.stringify({ channelId: threadRoomId, body: 'On it.', parentId: rootId }),
+  });
+  check(reply.status === 201, `a reply can be posted to it (${reply.status})`,
+    reply.body?.error?.message);
+  check(!!rootId && reply.body?.data?.parentId === rootId, 'and it records what it answers');
+
+  /**
+   * The main timeline must not show the reply — that is what makes it a thread
+   * rather than another line in the channel.
+   */
+  const timeline = await A.json(`/api/communication/messages?channelId=${threadRoomId}&pageSize=100`);
+  const timelineIds = (timeline.body?.data ?? []).map(m => m.id);
+  check(timelineIds.includes(rootId), 'the root message is in the channel timeline');
+  check(!!reply.body?.data?.id && !timelineIds.includes(reply.body.data.id),
+    'and the reply is not, because it belongs to the thread');
+
+  /**
+   * Both spellings of the parameter. The route read only `parent_id`, so a
+   * component asking for `?parentId=` was handed the channel's root messages
+   * instead of the thread — no error, just the wrong list.
+   */
+  const threadSnake = await A.json(
+    `/api/communication/messages?channelId=${threadRoomId}&parent_id=${rootId}`,
+  );
+  check((threadSnake.body?.data ?? []).length === 1,
+    `the thread can be fetched with parent_id (${(threadSnake.body?.data ?? []).length})`);
+
+  const threadCamel = await A.json(
+    `/api/communication/messages?channelId=${threadRoomId}&parentId=${rootId}`,
+  );
+  check((threadCamel.body?.data ?? []).length === 1,
+    `and with parentId, which the component sends (${(threadCamel.body?.data ?? []).length})`);
+  check(threadCamel.body?.data?.[0]?.sender?.profiles?.fullName,
+    `a reply carries its author's name (${threadCamel.body?.data?.[0]?.sender?.profiles?.fullName})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
   section('52. A client never reaches internal conversation');
 
   const clientChannels = await P.json('/api/communication/channels');
@@ -2079,6 +2189,273 @@ try {
   });
   check(badZone.status === 422,
     `an unrecognised time zone is refused before every date query silently falls back to UTC (${badZone.status})`);
+
+  /**
+   * Project defaults, which were stored and read by nothing.
+   *
+   * `project_defaults` holds statuses, priorities, a default status, a default
+   * priority and templates. The administration screen rendered and saved all of
+   * it, `org-settings.ts` validated it — and the project form read none of it:
+   * the status list came from a TypeScript constant, the priority list from an
+   * array literal, and a new project always opened as planning/medium.
+   *
+   * Asserted through the session, because that is how the form receives them.
+   * The form is a client component and cannot be exercised over HTTP, so what
+   * is checkable here is that the values it reads are the values that were
+   * saved — the same shape of check as the working-week one above.
+   */
+  const defaultsSaved = await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      settings: { projectDefaults: {
+        statuses: ['planning', 'active', 'completed'],
+        priorities: ['low', 'high', 'critical'],
+        defaultStatus: 'active',
+        defaultPriority: 'high',
+        taskCategories: ['feature', 'bug'],
+        milestoneStages: ['planning', 'development', 'review', 'completed'],
+        templates: [
+          {
+            name: `Onboarding ${run}`,
+            description: 'Standard client onboarding',
+            milestones: ['Kick-off', 'Discovery', 'Handover'],
+          },
+        ],
+      } },
+    }),
+  });
+  check(defaultsSaved.ok, `project defaults save (${defaultsSaved.status})`,
+    defaultsSaved.body?.error?.message);
+
+  /**
+   * A settings request that changes nothing is refused rather than reported
+   * as saved.
+   *
+   * Policy documents have to arrive wrapped in `settings`. A body naming one at
+   * the top level — which is the obvious shape to reach for, and what this
+   * harness sent on its first attempt — matched no organization column and no
+   * policy key, so nothing was written and the endpoint answered 200 with the
+   * organization row attached. The administrator saw a success toast and the
+   * setting was discarded. Settings are the worst place for that: they are
+   * changed once and then trusted for months.
+   */
+  const misdirected = await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({ projectDefaults: { defaultStatus: 'active' } }),
+  });
+  check(misdirected.status === 422,
+    `a setting sent at the wrong level is refused, not silently dropped (${misdirected.status})`);
+  check(/inside "settings"/.test(misdirected.body?.error?.message ?? ''),
+    `and the message says where it belongs (${misdirected.body?.error?.message})`);
+
+  const sessionDefaults = await A.json('/api/auth/session');
+  const pd = sessionDefaults.body?.data?.organization?.policies?.projectDefaults ?? {};
+  check(pd.defaultStatus === 'active' && pd.defaultPriority === 'high',
+    `and reach the session the project form reads (${pd.defaultStatus}/${pd.defaultPriority})`);
+  check(Array.isArray(pd.statuses) && pd.statuses.length === 3,
+    `with the status list an administrator chose (${JSON.stringify(pd.statuses)})`);
+  check((pd.templates ?? []).some(t => t.milestones?.length === 3),
+    'and a template carrying its phases');
+
+  /**
+   * A template creates real milestones. The form posts them one by one after
+   * the project, in order, so the assertion is that a roadmap built that way
+   * comes back in the order it was written.
+   */
+  const fromTemplate = await A.json('/api/projects/projects', {
+    method: 'POST', body: JSON.stringify({ name: `Templated ${run}`, status: 'active' }),
+  });
+  const templatedId = fromTemplate.body?.data?.id;
+  const templatePhases = (pd.templates ?? [])[0]?.milestones ?? [];
+  for (let i = 0; i < templatePhases.length; i++) {
+    await A.json('/api/projects/milestones', {
+      method: 'POST',
+      body: JSON.stringify({ projectId: templatedId, name: templatePhases[i], sortOrder: i }),
+    });
+  }
+  /**
+   * ── The filter that was silently ignored ──────────────────────────────────
+   *
+   * `filterable` lists snake_case column names and the list handler read only
+   * those, while every component builds its query string in camelCase. So
+   * `?projectId=` matched nothing, the query ran unfiltered, and this endpoint
+   * returned every milestone in the organisation — a roadmap panel showing
+   * other projects' phases, and a Tasks table whose Project filter did nothing
+   * at all. Both spellings are accepted now, and both are asserted.
+   */
+  const templatedRoadmap = await A.json(`/api/projects/milestones?projectId=${templatedId}`);
+  const templatedNames = (templatedRoadmap.body?.data ?? []).map(m => m.name);
+  check(templatedNames.join(' → ') === 'Kick-off → Discovery → Handover',
+    `a template's phases are created in order (${templatedNames.join(' → ')})`);
+
+  const snakeRoadmap = await A.json(`/api/projects/milestones?project_id=${templatedId}`);
+  check((snakeRoadmap.body?.data ?? []).length === templatedNames.length,
+    `project_id filters the same way projectId does (${(snakeRoadmap.body?.data ?? []).length})`);
+
+  const unfiltered = await A.json('/api/projects/milestones?pageSize=100');
+  check((unfiltered.body?.data ?? []).length > templatedNames.length,
+    `and without a filter the endpoint really does return more (${(unfiltered.body?.data ?? []).length})`);
+
+  /**
+   * The same fault, on the filter a user actually clicks: the Tasks table's
+   * Project dropdown sends `?projectId=`.
+   */
+  const tasksOfProject = await A.json(`/api/projects/tasks?projectId=${teamProjectId}&pageSize=100`);
+  const allTasks = await A.json('/api/projects/tasks?pageSize=100');
+  check((tasksOfProject.body?.data ?? []).length < (allTasks.body?.meta?.total ?? 0),
+    `the Tasks table's project filter narrows the list (${(tasksOfProject.body?.data ?? []).length} of ${allTasks.body?.meta?.total})`);
+  check((tasksOfProject.body?.data ?? []).every(t => t.projectId === teamProjectId),
+    'and every row it returns belongs to that project');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('53b. A client signs off a deliverable');
+  /**
+   * ── The loop that was missing ─────────────────────────────────────────────
+   *
+   * The portal could show a client what had been produced and gave them no way
+   * to respond to it, so acceptance happened in email and the project record
+   * never learned the outcome — the team could not tell an unreviewed
+   * deliverable from an approved one. It is also the third input to project
+   * progress: `v_project_health` scores acceptance alongside plan and
+   * execution, which it can only do because a decision is now recorded.
+   */
+
+  // Its own client company: the portal assertions below need the project to
+  // belong to one, and section 59's company does not exist yet.
+  const signOffCo = await A.json('/api/crm/companies', {
+    method: 'POST', body: JSON.stringify({ name: `SignOff Co ${run}` }),
+  });
+
+  const signOffProject = await A.json('/api/projects/projects', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: `Sign-off ${run}`, status: 'active',
+      clientCompanyId: signOffCo.body?.data?.id ?? null,
+    }),
+  });
+  const signOffId = signOffProject.body?.data?.id;
+
+  // Two tasks, both done, so execution alone would report 100%.
+  for (const t of ['Design', 'Build']) {
+    const made = await A.json('/api/projects/tasks', {
+      method: 'POST', body: JSON.stringify({ title: `${t} ${run}`, projectId: signOffId }),
+    });
+    await A.json(`/api/projects/tasks/${made.body?.data?.id}`, {
+      method: 'PUT', body: JSON.stringify({ status: 'done' }),
+    });
+  }
+
+  const beforeDeliverable = ((await A.json('/api/projects/projects?pageSize=100')).body?.data ?? [])
+    .find(p => p.id === signOffId);
+  check(beforeDeliverable?.progressPct === 100,
+    `all work done and nothing to accept reports 100% (${beforeDeliverable?.progressPct}%)`);
+
+  const deliverable = await A.json('/api/projects/files', {
+    method: 'POST',
+    body: JSON.stringify({
+      projectId: signOffId, bucket: 'documents',
+      path: `${orgIdA}/projects/${signOffId}/${run}-report.pdf`,
+      filename: 'report.pdf', sizeBytes: 4096, isClientVisible: true,
+    }),
+  });
+  const deliverableId = deliverable.body?.data?.id;
+  check(deliverable.status === 201, `a file is shared with the client (${deliverable.status})`,
+    deliverable.body?.error?.message);
+
+  /**
+   * A deliverable has to be visible to the client before it can be one:
+   * "awaiting their approval" on a file they cannot open is a project waiting
+   * for a decision nobody was asked to make.
+   */
+  const hiddenFile = await A.json('/api/projects/files', {
+    method: 'POST',
+    body: JSON.stringify({
+      projectId: signOffId, bucket: 'documents',
+      path: `${orgIdA}/projects/${signOffId}/${run}-internal.pdf`,
+      filename: 'internal.pdf', sizeBytes: 128, isClientVisible: false,
+    }),
+  });
+  const hiddenPromote = await A.json(`/api/projects/files/${hiddenFile.body?.data?.id}`, {
+    method: 'PATCH', body: JSON.stringify({ requiresApproval: true }),
+  });
+  check(hiddenPromote.status === 422,
+    `an unshared file cannot be put forward for approval (${hiddenPromote.status})`);
+
+  const promote = await A.json(`/api/projects/files/${deliverableId}`, {
+    method: 'PATCH', body: JSON.stringify({ requiresApproval: true }),
+  });
+  check(promote.body?.data?.requiresApproval === true,
+    `a shared file can be (${promote.status})`, promote.body?.error?.message);
+
+  const awaiting = ((await A.json('/api/projects/projects?pageSize=100')).body?.data ?? [])
+    .find(p => p.id === signOffId);
+  /**
+   * Execution is 100 at weight 30; acceptance is 0 at weight 20. Renormalised
+   * over the two signals this project has: (100x30 + 0x20) / 50 = 60.
+   */
+  check(awaiting?.progressPct === 60,
+    `a deliverable awaiting a decision holds the project back (${awaiting?.progressPct}%)`);
+
+  // A rejection has to say why, or the team has nothing to act on.
+  const bareRejection = await A.json(`/api/portal/deliverables/${deliverableId}`, {
+    method: 'PATCH', body: JSON.stringify({ decision: 'rejected' }),
+  });
+  check(bareRejection.status === 422,
+    `sending a deliverable back without a reason is refused (${bareRejection.status})`);
+
+  const nonsense = await A.json(`/api/portal/deliverables/${deliverableId}`, {
+    method: 'PATCH', body: JSON.stringify({ decision: 'maybe' }),
+  });
+  check(nonsense.status === 422, `and so is an invented decision (${nonsense.status})`);
+
+  const rejected = await A.json(`/api/portal/deliverables/${deliverableId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ decision: 'rejected', note: 'The totals on page 3 do not add up.' }),
+  });
+  check(rejected.body?.data?.approvalDecision === 'rejected',
+    `a deliverable can be sent back (${rejected.status})`, rejected.body?.error?.message);
+  check(!!rejected.body?.data?.approvedAt,
+    'and the server stamps when, not the client');
+
+  const afterReject = ((await A.json('/api/projects/projects?pageSize=100')).body?.data ?? [])
+    .find(p => p.id === signOffId);
+  check(afterReject?.health === 'at_risk',
+    `a rejected deliverable puts the project at risk (${afterReject?.health})`);
+
+  const approved = await A.json(`/api/portal/deliverables/${deliverableId}`, {
+    method: 'PATCH', body: JSON.stringify({ decision: 'approved' }),
+  });
+  check(approved.body?.data?.approvalDecision === 'approved',
+    `and then approved (${approved.status})`, approved.body?.error?.message);
+
+  const afterApprove = ((await A.json('/api/projects/projects?pageSize=100')).body?.data ?? [])
+    .find(p => p.id === signOffId);
+  check(afterApprove?.progressPct === 100,
+    `acceptance carries the project back to 100% (${afterApprove?.progressPct}%)`);
+  check(afterApprove?.health === 'on_track',
+    `and off the risk list (${afterApprove?.health})`);
+
+  // The portal reads the same figure, from the same view.
+  const portalAfter = await A.json(`/api/portal/projects/${signOffId}`);
+  check(Number(portalAfter.body?.data?.project?.progressPct) === Number(afterApprove?.progressPct),
+    `the client sees the same number as the board (${portalAfter.body?.data?.project?.progressPct})`);
+  check(portalAfter.body?.data?.approvals?.approved === 1,
+    `and a count of what they have signed off (${JSON.stringify(portalAfter.body?.data?.approvals)})`);
+  check((portalAfter.body?.data?.timeline ?? []).some(t => t.kind === 'deliverable_approved'),
+    'with the approval on their timeline');
+
+  /**
+   * Withdrawing a file from the client withdraws it as a deliverable.
+   *
+   * Otherwise `requires_approval` stays true on a file the portal no longer
+   * lists, and the project's denominator counts something that can never be
+   * approved — progress capped for ever with nothing on screen to explain it.
+   */
+  const unshared = await A.json(`/api/projects/files/${deliverableId}`, {
+    method: 'PATCH', body: JSON.stringify({ isClientVisible: false }),
+  });
+  check(unshared.body?.data?.requiresApproval === false,
+    `unsharing a file stops it being a deliverable (${unshared.status})`);
 
   // ─────────────────────────────────────────────────────────────────────────
   section('54. Today\'s attendance is visible on the day it happens');

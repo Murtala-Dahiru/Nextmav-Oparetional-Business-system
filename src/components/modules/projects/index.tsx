@@ -19,6 +19,7 @@ import { formatCurrency, formatDate, getInitials, initialsOf } from '@/lib/forma
 import { TASK_STATUSES, PROJECT_STATUSES } from '@/lib/constants';
 import { createTaskSchema, createProjectSchema } from '@/lib/validations';
 import { useModuleRealtime } from '@/hooks/use-realtime';
+import { useAppStore } from '@/store/app-store';
 import { z } from 'zod';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -188,6 +189,15 @@ const PRIORITY_LABELS: Record<string, string> = {
   critical: 'Critical',
 };
 
+/**
+ * The `priority_level` enum, as the database defines it.
+ *
+ * Named once rather than repeated as a literal in three places, because it is
+ * also the allow-list that keeps a mistyped priority in the organisation's
+ * settings out of a form the database would then reject.
+ */
+const PRIORITY_VALUES = ['low', 'medium', 'high', 'critical'];
+
 function progressColor(pct: number): string {
   if (pct > 60) return '[&>div]:bg-emerald-500';
   if (pct >= 30) return '[&>div]:bg-amber-500';
@@ -299,23 +309,43 @@ function TasksTab() {
   }, [page, pageSize, search, columnFilters, sorting]);
 
   // Fetch all tasks for stats (no pagination)
+  /**
+   * The three counters above the table.
+   *
+   * ── Why this is one await and one setState ────────────────────────────────
+   *
+   * It was three sequential requests, each awaited before the next was sent,
+   * each followed by its own `setStats`. Two costs, both avoidable:
+   *
+   *   · Latency was the sum of three round trips rather than the slowest of
+   *     them. On a connection where a request takes 200ms the counters took
+   *     600ms to settle, and this runs again on every realtime nudge.
+   *   · Three state writes meant three renders of a table that had not changed,
+   *     with the numbers visibly arriving one at a time.
+   *
+   * They are independent reads of the same endpoint, so there is no ordering to
+   * preserve. `Promise.all` makes it one round trip's wait, and building the
+   * whole object before setting it makes it one render.
+   *
+   * Still three requests rather than one aggregate endpoint: `pageSize=1` means
+   * each returns a single row and a count, the endpoint is already indexed on
+   * `(organization_id, status)`, and inventing a counts endpoint for one screen
+   * is a worse trade than three cheap parallel reads.
+   */
   const fetchStats = useCallback(async () => {
     try {
-      const params = new URLSearchParams();
-      params.set('page', '1');
-      params.set('pageSize', '1');
-      const res = await apiFetch<Task[]>(`/api/projects/tasks?${params.toString()}`);
-      setStats((prev) => ({ ...prev, total: res.meta?.total || 0 }));
-
-      // In progress count
-      const res2 = await apiFetch<Task[]>('/api/projects/tasks?status=in_progress&page=1&pageSize=1');
-      setStats((prev) => ({ ...prev, inProgress: res2.meta?.total || 0 }));
-
-      // Completed count
-      const res3 = await apiFetch<Task[]>('/api/projects/tasks?status=done&page=1&pageSize=1');
-      setStats((prev) => ({ ...prev, completed: res3.meta?.total || 0 }));
+      const [all, inProgress, done] = await Promise.all([
+        apiFetch<Task[]>('/api/projects/tasks?page=1&pageSize=1'),
+        apiFetch<Task[]>('/api/projects/tasks?status=in_progress&page=1&pageSize=1'),
+        apiFetch<Task[]>('/api/projects/tasks?status=done&page=1&pageSize=1'),
+      ]);
+      setStats({
+        total: all.meta?.total || 0,
+        inProgress: inProgress.meta?.total || 0,
+        completed: done.meta?.total || 0,
+      });
     } catch {
-      // silent
+      // Counters are not worth interrupting anyone over; the table still loads.
     }
   }, []);
 
@@ -540,7 +570,7 @@ function TasksTab() {
     {
       key: 'priority',
       label: 'Priority',
-      options: ['low', 'medium', 'high', 'critical'].map((p) => ({ value: p, label: PRIORITY_LABELS[p] || p })),
+      options: PRIORITY_VALUES.map((p) => ({ value: p, label: PRIORITY_LABELS[p] || p })),
     },
     {
       key: 'projectId',
@@ -777,6 +807,65 @@ function ProjectsTab() {
    */
   const [openProjectId, setOpenProjectId] = useState<string | null>(null);
 
+  /**
+   * The organisation's project vocabulary, from the Admin module.
+   *
+   * ── What was wrong ────────────────────────────────────────────────────────
+   *
+   * `project_defaults` holds statuses, priorities, a default status, a default
+   * priority and a set of templates. The administration screen renders and
+   * saves all of it, `org-settings.ts` validates it, and the settings endpoint
+   * stores it — and this form read none of it. The status list came from a
+   * constant, the priority list from an array literal, and a new project always
+   * opened as `planning` / `medium` whatever an administrator had chosen.
+   *
+   * An organisation that renamed its stages saw the change on the settings
+   * screen and nowhere else, which is precisely the "settings that are stored
+   * but never read" problem the platform is supposed to have finished with.
+   *
+   * Falls back to the constants when a policy row has not been written yet, so
+   * a workspace created before this existed still has a usable form.
+   */
+  const policies = useAppStore(s => s.organization?.policies);
+  const projectDefaults = (policies?.projectDefaults ?? {}) as {
+    statuses?: string[];
+    priorities?: string[];
+    defaultStatus?: string;
+    defaultPriority?: string;
+    templates?: { name: string; description: string; milestones: string[] }[];
+  };
+
+  const statusOptions = useMemo(() => {
+    const configured = (projectDefaults.statuses ?? [])
+      .filter(s => (PROJECT_STATUSES as readonly string[]).includes(s));
+    return configured.length ? configured : [...PROJECT_STATUSES];
+  }, [projectDefaults.statuses]);
+
+  const priorityOptions = useMemo(() => {
+    const configured = (projectDefaults.priorities ?? [])
+      .filter(p => PRIORITY_VALUES.includes(p));
+    return configured.length ? configured : PRIORITY_VALUES;
+  }, [projectDefaults.priorities]);
+
+  /**
+   * Only offer a default the list actually contains.
+   *
+   * An administrator can remove `planning` from the statuses without touching
+   * `defaultStatus`, and a Radix Select whose value is not among its items shows
+   * the placeholder — so the form would open apparently blank on a required
+   * field.
+   */
+  const defaultStatus = statusOptions.includes(projectDefaults.defaultStatus ?? '')
+    ? projectDefaults.defaultStatus!
+    : statusOptions[0];
+  const defaultPriority = priorityOptions.includes(projectDefaults.defaultPriority ?? '')
+    ? projectDefaults.defaultPriority!
+    : (priorityOptions.includes('medium') ? 'medium' : priorityOptions[0]);
+
+  const templates = projectDefaults.templates ?? [];
+  /** Which template a new project is being created from, if any. */
+  const [templateName, setTemplateName] = useState<string>('');
+
   useEffect(() => {
     const fromLink = new URLSearchParams(window.location.search).get('project');
     if (fromLink) setOpenProjectId(fromLink);
@@ -857,7 +946,7 @@ function ProjectsTab() {
   );
 
   // Form
-  const { register, handleSubmit, control, reset, formState: { errors } } = useForm<ProjectFormValues>({
+  const { register, handleSubmit, control, reset, setValue, formState: { errors } } = useForm<ProjectFormValues>({
      
     resolver: zodResolver(createProjectSchema) as any,
     defaultValues: {
@@ -870,13 +959,31 @@ function ProjectsTab() {
   // Open create dialog
   const openCreate = useCallback(() => {
     setEditingProject(null);
+    setTemplateName('');
     reset({
-      name: '', description: '', status: 'planning', priority: 'medium',
+      name: '', description: '', status: defaultStatus, priority: defaultPriority,
       startDate: null as any, endDate: null as any, budget: 0, ownerId: undefined,
       clientCompanyId: null as any,
     });
     setProjectDialogOpen(true);
-  }, [reset]);
+  }, [reset, defaultStatus, defaultPriority]);
+
+  /**
+   * Applying a template fills the form; it does not create anything yet.
+   *
+   * The phases are created after the project is, in `onSubmit`, because a
+   * milestone needs a project id. Filling the description too, since a template
+   * that only sets a name is barely a template — and it is left editable,
+   * because a template is a starting point rather than a form the user is
+   * locked into.
+   */
+  const applyTemplate = useCallback((name: string) => {
+    setTemplateName(name);
+    const t = templates.find(x => x.name === name);
+    if (!t) return;
+    setValue('name', t.name);
+    if (t.description) setValue('description', t.description);
+  }, [templates, setValue]);
 
   // Open edit dialog (click card)
   const openEdit = useCallback((project: Project) => {
@@ -910,8 +1017,43 @@ function ProjectsTab() {
         await apiFetch(`/api/projects/projects/${editingProject.id}`, { method: 'PUT', body: JSON.stringify(payload) });
         toast.success('Project updated');
       } else {
-        await apiFetch('/api/projects/projects', { method: 'POST', body: JSON.stringify(payload) });
-        toast.success('Project created');
+        // `apiFetch` returns the whole envelope; the project is on `.data`.
+        const { data: created } = await apiFetch<Project>('/api/projects/projects', {
+          method: 'POST', body: JSON.stringify(payload),
+        });
+
+        /**
+         * A template's phases, created against the new project.
+         *
+         * Sequentially rather than in parallel: `sort_order` is what puts a
+         * roadmap in the order somebody wrote it, and firing five creates at
+         * once means five rows whose order depends on which request the database
+         * happens to serve first.
+         *
+         * A failure here is reported but does not undo the project. Losing a
+         * project because one of its phases could not be written would be a far
+         * worse outcome than a roadmap the user has to finish by hand, and the
+         * message says which happened.
+         */
+        const template = templates.find(t => t.name === templateName);
+        const phases = template?.milestones ?? [];
+        if (created?.id && phases.length) {
+          try {
+            for (let i = 0; i < phases.length; i++) {
+              await apiFetch('/api/projects/milestones', {
+                method: 'POST',
+                body: JSON.stringify({
+                  projectId: created.id, name: phases[i], sortOrder: i,
+                }),
+              });
+            }
+            toast.success(`Project created with ${phases.length} phases`);
+          } catch {
+            toast.warning('Project created, but its phases could not be added.');
+          }
+        } else {
+          toast.success('Project created');
+        }
       }
       setProjectDialogOpen(false);
       fetchProjects();
@@ -1132,6 +1274,40 @@ function ProjectsTab() {
           </DialogHeader>
 
           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+            {/*
+              Project templates, from the organisation's own settings.
+
+              Offered only when creating: applying a template to an existing
+              project would either duplicate its phases or silently replace
+              them, and neither is what anybody means by the word. Hidden
+              entirely when none are configured, rather than showing an empty
+              picker that reads as a broken control.
+            */}
+            {!editingProject && templates.length > 0 && (
+              <div className="space-y-2">
+                <Label>Start from a template</Label>
+                <Select
+                  value={templateName || '_blank'}
+                  onValueChange={(v) => (v === '_blank' ? setTemplateName('') : applyTemplate(v))}
+                >
+                  <SelectTrigger><SelectValue placeholder="Blank project" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_blank">Blank project</SelectItem>
+                    {templates.map((t) => (
+                      <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {templateName && (
+                  <p className="text-xs text-muted-foreground">
+                    {(templates.find(t => t.name === templateName)?.milestones ?? []).length} phases
+                    will be created with this project:{' '}
+                    {(templates.find(t => t.name === templateName)?.milestones ?? []).join(' → ')}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="proj-name">Name *</Label>
               <Input id="proj-name" {...register('name')} placeholder="Project name" />
@@ -1171,8 +1347,8 @@ function ProjectsTab() {
                     <Select value={field.value} onValueChange={field.onChange}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {['low', 'medium', 'high', 'critical'].map((p) => (
-                          <SelectItem key={p} value={p}>{PRIORITY_LABELS[p]}</SelectItem>
+                        {priorityOptions.map((p) => (
+                          <SelectItem key={p} value={p}>{PRIORITY_LABELS[p] || p}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

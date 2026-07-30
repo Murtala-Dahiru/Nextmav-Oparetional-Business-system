@@ -120,8 +120,31 @@ export function listHandler(opts: ListOptions) {
       }
     }
 
+    /**
+     * Filters, accepted in either dialect.
+     *
+     * ── Why both spellings ────────────────────────────────────────────────
+     *
+     * `filterable` lists column names, which are snake_case, and this read
+     * `searchParams.get(key)` and nothing else. The components build query
+     * strings in camelCase — `params.set('projectId', …)` — so every one of
+     * those filters was silently ignored.
+     *
+     * Silently is the problem. An unmatched filter is not an error: the query
+     * simply runs unfiltered and returns everything. Choosing a project in the
+     * Tasks table's Project filter showed every task in the organisation, and
+     * `/api/projects/milestones?projectId=…` returned every milestone in the
+     * tenant rather than that project's roadmap. Both looked like working
+     * screens with surprising data in them.
+     *
+     * The snake_case name still wins where a caller sends both, matching the
+     * convention `acceptBody` uses on the way in and the one the messages and
+     * workspace routes already implemented by hand.
+     */
+    const camel = (k: string) => k.replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase());
+
     for (const key of filterable) {
-      const value = searchParams.get(key);
+      const value = searchParams.get(key) ?? searchParams.get(camel(key));
       if (isFilterValue(value)) {
         q = q.eq(key, value === 'true' ? true : value === 'false' ? false : value);
       }

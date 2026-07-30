@@ -11,7 +11,7 @@ import {
   FileText, BookOpen, Map as MapIcon, Folder, FolderOpen, Code, Lightbulb, Target,
   ChevronRight, ChevronDown, Loader2, BookMarked, Table, UploadCloud,
   FileSpreadsheet, Share2, History, FolderInput, Globe, Building2, Lock,
-  CornerDownRight, RotateCcw,
+  CornerDownRight, RotateCcw, Clock,
 } from 'lucide-react';
 
 import { EmptyState } from '@/components/shared/empty-state';
@@ -239,6 +239,26 @@ export default function WorkspaceModule() {
   );
 
   const starred = useMemo(() => nodes.filter(n => n.isStarred), [nodes]);
+
+  /**
+   * Recently edited documents.
+   *
+   * The five most recently touched, folders excluded — a folder's timestamp
+   * moves when anything inside it is renamed, so including them fills the list
+   * with containers rather than the thing somebody was actually working on.
+   *
+   * Derived here rather than fetched: `updated_at` is already on every node the
+   * tree returns, and the endpoint already accepts `?sort=updated_at`. A second
+   * request would be a second answer to a question the client can answer from
+   * what it has — and the two could then disagree after a local edit.
+   */
+  const recent = useMemo(
+    () => nodes
+      .filter(n => !n.isFolder && n.updatedAt)
+      .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+      .slice(0, 5),
+    [nodes],
+  );
 
   // Searching should reveal what it found rather than leave it behind a
   // collapsed folder the user then has to hunt for.
@@ -554,6 +574,34 @@ export default function WorkspaceModule() {
                       >
                         <Star className="size-3.5 shrink-0 fill-amber-500 text-amber-500" />
                         <span className="truncate">{node.title}</span>
+                      </button>
+                    ))}
+                    <Separator className="my-2" />
+                  </div>
+                )}
+
+                {/*
+                  Recent documents.
+                  Below Starred because starring is deliberate and recency is
+                  incidental — the things somebody chose to keep should not be
+                  pushed down the sidebar by whatever they last happened to open.
+                */}
+                {recent.length > 0 && !search && (
+                  <div className="mb-2">
+                    <p className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      Recent
+                    </p>
+                    {recent.map(node => (
+                      <button
+                        key={`recent-${node.id}`}
+                        onClick={() => openPage(node.id)}
+                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
+                      >
+                        <Clock className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate">{node.title}</span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          {formatRelativeTime(node.updatedAt)}
+                        </span>
                       </button>
                     ))}
                     <Separator className="my-2" />

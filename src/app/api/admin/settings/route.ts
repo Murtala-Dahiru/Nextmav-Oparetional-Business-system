@@ -139,6 +139,9 @@ export async function PATCH(req: Request) {
       b.work_days = [...new Set<number>(days)].sort((x, y) => x - y);
     }
 
+    /** Whether anything was actually written. See the check at the end. */
+    let touched = false;
+
     const orgUpdate: Record<string, any> = {};
     for (const k of [
       'name', 'logo_url', 'website', 'industry', 'timezone',
@@ -158,6 +161,7 @@ export async function PATCH(req: Request) {
       const { error: e } = await ctx.supabase
         .from('organizations').update(orgUpdate).eq('id', ctx.org.organizationId);
       if (e) return pgError(e);
+      touched = true;
     }
 
     /**
@@ -191,7 +195,36 @@ export async function PATCH(req: Request) {
         const { error: e } = await ctx.supabase
           .from('org_settings').upsert(rows, { onConflict: 'organization_id,key' });
         if (e) return pgError(e);
+        touched = true;
       }
+    }
+
+    /**
+     * A request that changed nothing is refused rather than reported as saved.
+     *
+     * ── The failure this closes ───────────────────────────────────────────────
+     *
+     * Policy documents have to arrive wrapped: `{ settings: { leave_policy: … } }`.
+     * A body that names one at the top level instead — `{ projectDefaults: … }`,
+     * which is the obvious shape to reach for and what the verification harness
+     * itself sent on its first attempt — matched no organization column and no
+     * policy key, so nothing was written and this returned 200 with the
+     * organization row attached. The caller saw a success, the screen showed a
+     * success toast, and the setting was silently discarded.
+     *
+     * That is precisely the class of silent failure this pass exists to remove,
+     * and it is worse here than elsewhere: settings are the thing an
+     * administrator changes once and then trusts for months.
+     *
+     * `touched` is set by each of the branches above that actually wrote
+     * something, so this cannot drift from what they do.
+     */
+    if (!touched) {
+      return error(
+        'Nothing in that request could be saved. Organization fields go at the ' +
+        'top level; policy documents go inside "settings".',
+        422, 'NOTHING_TO_UPDATE',
+      );
     }
 
     const { data } = await ctx.supabase

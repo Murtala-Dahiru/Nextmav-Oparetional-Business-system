@@ -34,8 +34,15 @@ export async function GET(req: Request) {
     .eq('channel_id', channelId)
     .is('deleted_at', null);
 
-  // Thread replies are fetched explicitly; the main timeline shows roots only.
-  const parentId = searchParams.get('parent_id');
+  /**
+   * Thread replies are fetched explicitly; the main timeline shows roots only.
+   *
+   * Both spellings accepted, as `channel_id` above already is. This read only
+   * `parent_id`, so a component asking for `?parentId=` got the channel's root
+   * messages back instead of the thread it asked for — no error, just the wrong
+   * list, which is the failure mode that takes longest to notice.
+   */
+  const parentId = searchParams.get('parent_id') ?? searchParams.get('parentId');
   if (parentId) query = query.eq('parent_id', parentId);
   else query = query.is('parent_id', null);
 

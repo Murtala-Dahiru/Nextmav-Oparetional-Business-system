@@ -1055,11 +1055,29 @@ function LeaveTab() {
   const [approvedThisMonth, setApprovedThisMonth] = useState(0);
   const [rejectedCount, setRejectedCount] = useState(0);
 
-  // Fetch all leaves for stats
-  const fetchStats = useCallback(async () => {
+  /**
+   * Every leave request, and the three counters derived from it.
+   *
+   * ── Why this used to be two requests ──────────────────────────────────────
+   *
+   * `fetchStats` and `fetchLeaves` issued the *same* call —
+   * `/api/hr/leave?pageSize=1000` — and were invoked together in the same
+   * effect. One populated the table, the other the counters, from two
+   * identical responses. A thousand rows fetched twice on every load, and twice
+   * again on every realtime nudge when a colleague's request was decided.
+   *
+   * They can only ever agree if they come from one read, which is also the
+   * reason worth caring about beyond the traffic: two requests can interleave,
+   * and a decision landing between them left the table and the counters
+   * describing different states of the same list.
+   */
+  const fetchLeaves = useCallback(async (silent = false) => {
+    if (!silent) setLeavesLoading(true);
     try {
       const res = await fetchList<LeaveRequest>('/api/hr/leave?pageSize=1000');
+      setLeaves(res.data);
       setAllLeaves(res.data);
+
       const now = new Date();
       const currentMonth = now.getMonth();
       const currentYear = now.getFullYear();
@@ -1072,21 +1090,10 @@ function LeaveTab() {
         }).length,
       );
       setRejectedCount(res.data.filter((l) => l.status === 'rejected').length);
-    } catch {
-      // non-critical
-    }
-  }, []);
-
-  // Fetch leaves for table (client-side, use all data)
-  const fetchLeaves = useCallback(async () => {
-    setLeavesLoading(true);
-    try {
-      const res = await fetchList<LeaveRequest>('/api/hr/leave?pageSize=1000');
-      setLeaves(res.data);
     } catch (e: any) {
-      toast.error(e.message || 'Failed to load leave requests');
+      if (!silent) toast.error(e.message || 'Failed to load leave requests');
     } finally {
-      setLeavesLoading(false);
+      if (!silent) setLeavesLoading(false);
     }
   }, []);
 
@@ -1104,17 +1111,15 @@ function LeaveTab() {
   }, []);
 
   useEffect(() => {
-    fetchStats();
     fetchLeaves();
     fetchUsers();
-  }, [fetchStats, fetchLeaves, fetchUsers]);
+  }, [fetchLeaves, fetchUsers]);
 
   // "Leave approved — dashboard updates instantly", and the approver's own
   // queue with it: a request decided by a colleague leaves this table.
-  useModuleRealtime('hr-leave', ['leave_requests'], () => {
-    fetchStats();
-    fetchLeaves();
-  });
+  // Silent, so somebody else's decision does not blank the table you are
+  // reading.
+  useModuleRealtime('hr-leave', ['leave_requests'], () => fetchLeaves(true));
 
   // Column definitions
   const columns: ColumnDef<LeaveRequest>[] = useMemo(() => [
@@ -1181,7 +1186,6 @@ function LeaveTab() {
                   await updateRecord(`/api/hr/leave/${leave.id}`, { status: 'approved' });
                   toast.success('Leave request approved');
                   fetchLeaves();
-                  fetchStats();
                 } catch (e: any) {
                   toast.error(e.message || 'Failed to approve');
                 }
@@ -1198,7 +1202,6 @@ function LeaveTab() {
                   await updateRecord(`/api/hr/leave/${leave.id}`, { status: 'rejected' });
                   toast.success('Leave request rejected');
                   fetchLeaves();
-                  fetchStats();
                 } catch (e: any) {
                   toast.error(e.message || 'Failed to reject');
                 }
@@ -1210,7 +1213,7 @@ function LeaveTab() {
         );
       },
     },
-  ], [fetchLeaves, fetchStats]);
+  ], [fetchLeaves]);
 
   // Create handler
   const handleCreate = async () => {
@@ -1229,7 +1232,6 @@ function LeaveTab() {
       setCreateOpen(false);
       setForm(LEAVE_DEFAULTS);
       fetchLeaves();
-      fetchStats();
     } catch (e: any) {
       toast.error(e.message || 'Failed to submit leave request');
     } finally {
