@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { useModuleRealtime } from '@/hooks/use-realtime';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
@@ -180,8 +181,8 @@ export default function MyWorkModule() {
   const [pinOpen, setPinOpen] = useState(false);
   const [assigned, setAssigned] = useState<AssignedTask[]>([]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams();
       params.set('view', view);
@@ -196,13 +197,21 @@ export default function MyWorkModule() {
       setLists(listRes.data ?? []);
       if (todoRes.meta?.counts) setCounts(todoRes.meta.counts);
     } catch (e: any) {
-      toast.error(e.message || 'Could not load your list');
+      if (!silent) toast.error(e.message || 'Could not load your list');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [view, listFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  /**
+   * Somebody assigning you a task should put it on your list without you
+   * pressing anything — this is the screen where a missed update means missed
+   * work. `todos` is a personal list nobody else writes to, so it is not
+   * published; `tasks` is where an assignment arrives from.
+   */
+  useModuleRealtime('mywork', ['tasks'], () => load(true));
 
   // ── Quick capture ────────────────────────────────────────────────────────
   /**

@@ -20,6 +20,7 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { StatCard } from '@/components/shared/stat-card';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { INVOICE_STATUSES, EXPENSE_CATEGORIES } from '@/lib/constants';
+import { useModuleRealtime } from '@/hooks/use-realtime';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -546,6 +547,10 @@ function InvoicesTab() {
 
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
 
+  // "Invoice created — Finance updates instantly." Line items too: the totals
+  // on every row are derived from them by the server.
+  useModuleRealtime('invoices', ['invoices'], () => fetchInvoices());
+
   /**
    * Loaded once the dialog opens rather than on mount: most visits to this tab
    * only read the register, and the list is only needed to fill the pickers.
@@ -991,18 +996,30 @@ function InvoicesTab() {
 //  Expenses Tab
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * The expense form.
+ *
+ * `expenseDate`, not `date`. The column is `expense_date`, and the create route
+ * reads `b.expense_date` — so a form sending `date` had its value discarded and
+ * the route substituted today, every time. Nobody noticed because the default
+ * *is* today: the field only visibly failed when someone claimed for a receipt
+ * from last week, and then it silently filed it as though it were today's.
+ *
+ * The same name is what broke editing an expense outright: `date` is not a
+ * column, so the update was refused rather than ignored.
+ */
 interface ExpenseFormData {
   title: string;
   amount: number;
   category: string;
   vendor: string;
-  date: string;
+  expenseDate: string;
   notes: string;
 }
 
 const EXPENSE_DEFAULTS: ExpenseFormData = {
   title: '', amount: 0, category: 'general', vendor: '',
-  date: new Date().toISOString().split('T')[0], notes: '',
+  expenseDate: new Date().toISOString().split('T')[0], notes: '',
 };
 
 function ExpensesTab() {
@@ -1049,6 +1066,9 @@ function ExpensesTab() {
   }, [page, pageSize, search, sorting, columnFilters]);
 
   useEffect(() => { fetchExpenses(); }, [fetchExpenses]);
+
+  // A claim submitted or decided moves both the table and the category chart.
+  useModuleRealtime('expenses', ['expenses'], () => fetchExpenses());
 
   // Column definitions
   const columns: ColumnDef<ExpenseRecord>[] = useMemo(() => [
@@ -1098,7 +1118,7 @@ function ExpensesTab() {
                 amount: exp.amount,
                 category: exp.category,
                 vendor: exp.vendor,
-                date: exp.expenseDate.split('T')[0],
+                expenseDate: exp.expenseDate.split('T')[0],
                 notes: exp.notes,
               });
               setEditOpen(true);
@@ -1118,7 +1138,7 @@ function ExpensesTab() {
   const handleCreate = async () => {
     if (!form.title) { toast.error('Title is required'); return; }
     if (form.amount <= 0) { toast.error('Amount must be greater than 0'); return; }
-    if (!form.date) { toast.error('Date is required'); return; }
+    if (!form.expenseDate) { toast.error('Date is required'); return; }
     setFormLoading(true);
     try {
       await createRecord('/api/finance/expenses', form);
@@ -1191,7 +1211,7 @@ function ExpensesTab() {
         <Input value={formData.vendor} onChange={(e) => onChange({ ...formData, vendor: e.target.value })} placeholder="Vendor name" />
       </Field>
       <Field label="Date *">
-        <Input type="date" value={formData.date} onChange={(e) => onChange({ ...formData, date: e.target.value })} />
+        <Input type="date" value={formData.expenseDate} onChange={(e) => onChange({ ...formData, expenseDate: e.target.value })} />
       </Field>
       <div className="sm:col-span-2">
         <Field label="Notes">

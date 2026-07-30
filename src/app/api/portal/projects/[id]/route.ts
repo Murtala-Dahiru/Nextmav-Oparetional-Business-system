@@ -60,13 +60,29 @@ export async function GET(_req: Request, { params }: Params) {
       .order('sort_order')
       .order('due_date', { nullsFirst: false }),
 
+    /**
+     * The deliverables, with whatever decision has been recorded on each.
+     *
+     * `requires_approval` is what turns a shared file into something the client
+     * is being asked to accept, and the portal has to show the difference — a
+     * list where "here is the spec for reference" looks identical to "we need
+     * your sign-off on this" is how a project waits a fortnight for a decision
+     * nobody realised was theirs to make.
+     */
     ctx.supabase
       .from('files')
-      .select('id, filename, mime_type, size_bytes, folder, created_at')
+      .select(
+        'id, filename, mime_type, size_bytes, folder, created_at, ' +
+        'requires_approval, approval_decision, approved_at, approval_note, ' +
+        'approver:organization_members!files_approved_by_fkey(' +
+        'id, profiles!organization_members_user_id_fkey(full_name))',
+      )
       .eq('project_id', id)
       .eq('is_client_visible', true)
       .eq('is_confidential', false)
       .is('deleted_at', null)
+      // Awaiting a decision first: those are the ones the client has to act on.
+      .order('requires_approval', { ascending: false })
       .order('created_at', { ascending: false }),
 
     ctx.supabase
@@ -88,6 +104,7 @@ export async function GET(_req: Request, { params }: Params) {
 
   const milestoneRows = milestones.data ?? [];
   const eventRows = events.data ?? [];
+  const fileRows = (files.data ?? []) as any[];
 
   // The organisation's today, so a client and the delivery team looking at the
   // same milestone never disagree about whether it has slipped.
@@ -96,8 +113,10 @@ export async function GET(_req: Request, { params }: Params) {
   /**
    * The timeline the client reads.
    *
-   * Milestones and meetings only — the two things that were agreed with them.
-   * Internal task movement is not part of the story a customer is owed.
+   * Milestones, meetings and the decisions they themselves made — the things
+   * that were agreed with them, plus a record of their own sign-offs so the
+   * history of an acceptance is visible to both sides. Internal task movement is
+   * still not part of the story a customer is owed.
    */
   const timeline = [
     ...(project.start_date
@@ -112,6 +131,17 @@ export async function GET(_req: Request, { params }: Params) {
       detail: m.completed_at ? 'Delivered' : `Scheduled — ${m.stage}`,
       id: m.id,
     })),
+    ...fileRows
+      .filter(f => f.requires_approval && f.approval_decision)
+      .map(f => ({
+        at: String(f.approved_at ?? f.created_at).slice(0, 10),
+        kind: f.approval_decision === 'approved' ? 'deliverable_approved' : 'deliverable_rejected',
+        title: f.filename,
+        detail: f.approval_decision === 'approved'
+          ? `Approved${f.approver?.profiles?.full_name ? ` by ${f.approver.profiles.full_name}` : ''}`
+          : `Sent back${f.approval_note ? ` — ${f.approval_note}` : ''}`,
+        id: f.id,
+      })),
     ...eventRows.map((ev: any) => ({
       at: String(ev.starts_at).slice(0, 10),
       kind: 'meeting',
@@ -129,11 +159,29 @@ export async function GET(_req: Request, { params }: Params) {
   return success({
     project,
     milestones: milestoneRows,
-    deliverables: files.data ?? [],
+    deliverables: fileRows,
     messages: comments.data ?? [],
     meetings: eventRows,
     timeline,
+    /**
+     * What is waiting on the client, counted once here rather than derived in
+     * three places on the screen.
+     */
+    approvals: {
+      total: fileRows.filter(f => f.requires_approval).length,
+      pending: fileRows.filter(f => f.requires_approval && !f.approval_decision).length,
+      approved: fileRows.filter(f => f.approval_decision === 'approved').length,
+      rejected: fileRows.filter(f => f.approval_decision === 'rejected').length,
+    },
+    /**
+     * `readOnly` is about the work, not the whole portal.
+     *
+     * A client cannot change a project, a milestone or a file — but they can now
+     * reply on a project and decide a deliverable, and a UI that reads this flag
+     * to hide every control would hide those too.
+     */
     readOnly: true,
+    canDecideDeliverables: true,
   });
 }
 

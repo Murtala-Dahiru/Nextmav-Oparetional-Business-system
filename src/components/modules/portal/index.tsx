@@ -14,12 +14,17 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { formatCurrency, formatDate, formatFileSize, initialsOf } from '@/lib/format';
 import { statusLabel, ROADMAP_STAGES } from '@/lib/constants';
 import { useAppStore } from '@/store/app-store';
+import { useProjectRealtime, useModuleRealtime } from '@/hooks/use-realtime';
 import { cn } from '@/lib/utils';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -121,6 +126,20 @@ interface Deliverable {
   sizeBytes: number;
   folder: string;
   createdAt: string;
+  /**
+   * Whether this file is being put forward for acceptance, and what the client
+   * decided.
+   *
+   * A shared file and a deliverable awaiting sign-off used to look identical
+   * here, which meant a project could wait a fortnight on a decision the client
+   * did not know was theirs to make. `approvalDecision` is null until somebody
+   * decides; `'rejected'` carries a note explaining what needs changing.
+   */
+  requiresApproval: boolean;
+  approvalDecision: 'approved' | 'rejected' | null;
+  approvedAt: string | null;
+  approvalNote: string;
+  approver?: { id: string; profiles?: { fullName: string } } | null;
 }
 
 interface PortalMessage {
@@ -164,6 +183,8 @@ interface ProjectDetail {
   messages: PortalMessage[];
   meetings: { id: string; title: string; startsAt: string; location: string | null }[];
   timeline: TimelineEntry[];
+  approvals: { total: number; pending: number; approved: number; rejected: number };
+  canDecideDeliverables: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -203,6 +224,37 @@ function HealthBadge({ health }: { health: string | null }) {
   );
 }
 
+/**
+ * Where a deliverable stands.
+ *
+ * Nothing at all for a file that was merely shared — a badge on every row would
+ * make the ones that need a decision harder to find, which is the opposite of
+ * the point.
+ */
+function DeliverableStatus({ file }: { file: Deliverable }) {
+  if (!file.requiresApproval) return null;
+
+  if (file.approvalDecision === 'approved') {
+    return (
+      <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+        <CheckCircle2 className="size-3" /> Approved
+      </Badge>
+    );
+  }
+  if (file.approvalDecision === 'rejected') {
+    return (
+      <Badge variant="secondary" className="gap-1 bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+        <AlertTriangle className="size-3" /> Changes requested
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="secondary" className="gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+      <Clock className="size-3" /> Awaiting your approval
+    </Badge>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  Module
 // ═══════════════════════════════════════════════════════════════════════════
@@ -235,24 +287,40 @@ export default function PortalModule() {
       .catch(() => setCompanies([]));
   }, [isClient]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!isClient && !companyId) { setLoading(false); return; }
 
-    setLoading(true);
-    setError(null);
+    if (!silent) { setLoading(true); setError(null); }
     try {
       const url = isClient ? '/api/portal' : `/api/portal?companyId=${companyId}`;
       const res = await api<PortalData>(url);
       setData(res.data);
     } catch (e: any) {
-      setError(e.message || 'Could not load the portal');
-      setData(null);
+      if (!silent) { setError(e.message || 'Could not load the portal'); setData(null); }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [isClient, companyId]);
 
   useEffect(() => { load(); }, [load]);
+
+  /**
+   * The portal keeps itself current.
+   *
+   * Unfiltered rather than per-project: this screen is the *list*, and a client
+   * with four engagements would otherwise need four subscriptions maintained as
+   * the list changes. RLS already confines delivery to their own company's rows,
+   * so the breadth costs nothing they should not receive.
+   *
+   * `invoices` and `announcements` are here as well as the project tables,
+   * because both appear on this screen and neither is a project change.
+   */
+  useModuleRealtime(
+    'portal',
+    ['projects', 'tasks', 'milestones', 'files', 'invoices', 'support_tickets', 'announcements'],
+    () => load(true),
+    isClient || !!companyId,
+  );
 
   if (openProject) {
     return (
@@ -521,20 +589,62 @@ function PortalProjectView({
   const [loading, setLoading] = useState(true);
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
+  /** Which deliverable is mid-decision, so only its own buttons spin. */
+  const [deciding, setDeciding] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<Deliverable | null>(null);
+  const [rejectNote, setRejectNote] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  /**
+   * `silent` reloads without the skeleton.
+   *
+   * A realtime nudge or a decision that just succeeded should refresh the
+   * numbers in place. Tearing the whole panel down to three grey blocks every
+   * time a colleague completes a task elsewhere is worse than not updating at
+   * all — the client loses their scroll position and whatever they were reading.
+   */
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await api<ProjectDetail>(`/api/portal/projects/${projectId}`);
       setDetail(res.data);
     } catch (e: any) {
-      toast.error(e.message || 'Could not load the project');
+      if (!silent) toast.error(e.message || 'Could not load the project');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [projectId]);
 
   useEffect(() => { load(); }, [load]);
+
+  /**
+   * Live for the client too.
+   *
+   * The portal is the screen most likely to be left open — a client checks it,
+   * leaves the tab, and comes back an hour later. Without this they are reading
+   * an hour-old status report with no indication of it. Progress, milestones and
+   * deliverables all move it, so all three are watched.
+   */
+  useProjectRealtime(projectId, () => load(true));
+
+  const decide = useCallback(async (fileId: string, decision: 'approved' | 'rejected', note = '') => {
+    setDeciding(fileId);
+    try {
+      await api(`/api/portal/deliverables/${fileId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ decision, note }),
+      });
+      toast.success(decision === 'approved' ? 'Deliverable approved' : 'Sent back to the team');
+      setRejecting(null);
+      setRejectNote('');
+      // Reloaded rather than patched in place: approving changes the project's
+      // progress figure and its health verdict, both computed by the server.
+      await load(true);
+    } catch (e: any) {
+      toast.error(e.message || 'Could not record your decision');
+    } finally {
+      setDeciding(null);
+    }
+  }, [load]);
 
   const send = useCallback(async () => {
     const body = reply.trim();
@@ -567,6 +677,10 @@ function PortalProjectView({
   if (!detail) return null;
 
   const { project, milestones, deliverables, messages, timeline } = detail;
+  // Defaulted, so a portal served by a deployment that predates the approvals
+  // work renders rather than throwing on an absent key.
+  const approvals = detail.approvals ?? { total: 0, pending: 0, approved: 0, rejected: 0 };
+  const canDecideDeliverables = detail.canDecideDeliverables ?? false;
   const today = new Date().toISOString().slice(0, 10);
 
   return (
@@ -709,44 +823,109 @@ function PortalProjectView({
               description="Files published to you will appear here."
             />
           ) : (
-            <Card>
-              <CardContent className="p-0">
-                <div className="divide-y">
-                  {deliverables.map(f => (
-                    <div key={f.id} className="flex items-center gap-3 p-4">
-                      <FileText className="size-4 shrink-0 text-muted-foreground" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-foreground">{f.filename}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {f.folder && `${f.folder} · `}
-                          {formatFileSize(f.sizeBytes)} · {formatDate(f.createdAt)}
-                        </p>
+            <div className="flex flex-col gap-4">
+              {/*
+                Said once, at the top, when something is actually waiting.
+                A count buried in a list is a count nobody acts on.
+              */}
+              {approvals.pending > 0 && (
+                <Card className="border-amber-300 bg-amber-50/60 dark:border-amber-900 dark:bg-amber-950/30">
+                  <CardContent className="flex items-center gap-3 p-4">
+                    <Clock className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <p className="text-sm text-amber-900 dark:text-amber-200">
+                      {approvals.pending === 1
+                        ? 'One deliverable is waiting for your approval.'
+                        : `${approvals.pending} deliverables are waiting for your approval.`}
+                      {' '}The project cannot be reported complete until they are decided.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardContent className="p-0">
+                  <div className="divide-y">
+                    {deliverables.map(f => (
+                      <div key={f.id} className="flex flex-wrap items-center gap-3 p-4">
+                        <FileText className="size-4 shrink-0 text-muted-foreground" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-medium text-foreground">{f.filename}</p>
+                            <DeliverableStatus file={f} />
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {f.folder && `${f.folder} · `}
+                            {formatFileSize(f.sizeBytes)} · {formatDate(f.createdAt)}
+                          </p>
+                          {/*
+                            The reason a deliverable was sent back is the whole
+                            point of recording a rejection, so it is shown rather
+                            than hidden behind a hover.
+                          */}
+                          {f.approvalDecision === 'rejected' && f.approvalNote && (
+                            <p className="mt-1 text-xs text-destructive">“{f.approvalNote}”</p>
+                          )}
+                          {f.approvalDecision === 'approved' && f.approvedAt && (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Approved {formatDate(f.approvedAt)}
+                              {f.approver?.profiles?.fullName ? ` by ${f.approver.profiles.fullName}` : ''}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {/*
+                            Download goes through the signed-URL endpoint rather
+                            than a stored path: the buckets are private, and the
+                            link it mints expires in ten minutes.
+                          */}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={async () => {
+                              try {
+                                const res = await api<{ url: string }>(`/api/projects/files/${f.id}`);
+                                if (res.data?.url) window.open(res.data.url, '_blank', 'noopener');
+                              } catch (e: any) {
+                                toast.error(e.message || 'Could not open that file');
+                              }
+                            }}
+                          >
+                            <Download className="size-3.5" /> Open
+                          </Button>
+
+                          {canDecideDeliverables && f.requiresApproval && !f.approvalDecision && (
+                            <>
+                              <Button
+                                size="sm"
+                                className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+                                disabled={deciding === f.id}
+                                onClick={() => decide(f.id, 'approved')}
+                              >
+                                {deciding === f.id
+                                  ? <Loader2 className="size-3.5 animate-spin" />
+                                  : <CheckCircle2 className="size-3.5" />}
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1.5"
+                                disabled={deciding === f.id}
+                                onClick={() => setRejecting(f)}
+                              >
+                                <AlertTriangle className="size-3.5" /> Request changes
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      {/*
-                        Download goes through the signed-URL endpoint rather
-                        than a stored path: the buckets are private, and the
-                        link it mints expires in ten minutes.
-                      */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="gap-1.5"
-                        onClick={async () => {
-                          try {
-                            const res = await api<{ url: string }>(`/api/projects/files/${f.id}`);
-                            if (res.data?.url) window.open(res.data.url, '_blank', 'noopener');
-                          } catch (e: any) {
-                            toast.error(e.message || 'Could not open that file');
-                          }
-                        }}
-                      >
-                        <Download className="size-3.5" /> Open
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           )}
         </TabsContent>
 
@@ -828,8 +1007,8 @@ function PortalProjectView({
                 <div key={`${t.kind}-${t.id ?? i}`} className="relative flex gap-3 pb-5">
                   <span className={cn(
                     'absolute -left-6 top-1.5 size-[9px] rounded-full ring-4 ring-background',
-                    t.kind === 'milestone_completed' ? 'bg-emerald-500'
-                      : t.kind === 'milestone_overdue' ? 'bg-destructive'
+                    t.kind === 'milestone_completed' || t.kind === 'deliverable_approved' ? 'bg-emerald-500'
+                      : t.kind === 'milestone_overdue' || t.kind === 'deliverable_rejected' ? 'bg-destructive'
                       : t.kind === 'meeting' ? 'bg-blue-500'
                       : 'bg-muted-foreground/40',
                   )} />
@@ -845,6 +1024,53 @@ function PortalProjectView({
           )}
         </TabsContent>
       </Tabs>
+
+      {/*
+        Requesting changes needs a reason, so it is a dialog rather than a
+        second button. The endpoint refuses a rejection with an empty note for
+        the same reason: a deliverable sent back with no explanation is a round
+        trip the team cannot act on.
+      */}
+      <Dialog
+        open={!!rejecting}
+        onOpenChange={open => { if (!open) { setRejecting(null); setRejectNote(''); } }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Request changes</DialogTitle>
+            <DialogDescription>
+              {rejecting?.filename} will be sent back to the team with your notes.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <Label htmlFor="reject-note">What needs changing?</Label>
+            <Textarea
+              id="reject-note"
+              rows={4}
+              value={rejectNote}
+              onChange={e => setRejectNote(e.target.value)}
+              placeholder="The header colour is wrong and the totals on page 3 do not add up."
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => { setRejecting(null); setRejectNote(''); }}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!rejectNote.trim() || deciding === rejecting?.id}
+              onClick={() => rejecting && decide(rejecting.id, 'rejected', rejectNote.trim())}
+            >
+              {deciding === rejecting?.id && <Loader2 className="mr-1.5 size-4 animate-spin" />}
+              Send back
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -232,6 +232,37 @@ export async function authorize(
  * result. Mapping them to 403 rather than 500 keeps "you may not do this"
  * distinguishable from "something broke".
  */
+/**
+ * Written explanations for the table constraints a user can actually trip.
+ *
+ * A check constraint raised by the schema (rather than by a trigger's RAISE)
+ * carries only Postgres' own wording:
+ *
+ *     new row for relation "projects" violates check constraint
+ *     "project_dates_valid"
+ *
+ * which names the rule but not what to do about it, and was being shown to the
+ * user verbatim. The create routes each restate these checks in `prepare` to get
+ * a readable message; the update routes have no `prepare`, so the constraint is
+ * the only thing standing between a bad edit and the database — it should
+ * explain itself as well as reject.
+ */
+const CONSTRAINT_MESSAGES: Record<string, string> = {
+  project_dates_valid: 'A project cannot end before it starts.',
+  task_hours_valid: 'Logged and estimated hours cannot be negative.',
+  invoice_totals_valid: 'An invoice total cannot be negative.',
+  leave_dates_valid: 'Leave cannot end before it starts.',
+  event_times_valid: 'An event cannot end before it starts.',
+  milestone_progress_valid: 'Milestone progress must be between 0 and 100.',
+  allocation_pct_check: 'An allocation must be between 0 and 100 percent.',
+};
+
+function constraintMessage(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const m = /violates check constraint "([^"]+)"/i.exec(raw);
+  return m ? (CONSTRAINT_MESSAGES[m[1]] ?? null) : null;
+}
+
 export function pgError(e: { code?: string; message?: string; details?: string } | null) {
   if (!e) return error('Unknown database error', 500);
 
@@ -250,8 +281,13 @@ export function pgError(e: { code?: string; message?: string; details?: string }
       return error('A referenced record does not exist.', 400, 'FK_VIOLATION');
     case '23514':
       // Business-rule triggers raise check_violation with a written message,
-      // so pass it through — it is the explanation the user needs.
-      return error(e.message ?? 'That change is not allowed.', 409, 'RULE_VIOLATION');
+      // so pass it through — it is the explanation the user needs. A schema
+      // constraint has no written message, only its own name, so translate the
+      // ones a user can reach and fall back to the raw text for the rest.
+      return error(
+        constraintMessage(e.message) ?? e.message ?? 'That change is not allowed.',
+        409, 'RULE_VIOLATION',
+      );
     case '22P02': {
       /**
        * invalid_text_representation — a value that is not a member of the
@@ -288,6 +324,23 @@ export function pgError(e: { code?: string; message?: string; details?: string }
       return error(e.message ?? 'That operation is not allowed.', 409, 'RULE_VIOLATION');
     case 'PGRST116':
       return error('Not found', 404, 'NOT_FOUND');
+    case 'PGRST204':
+      /**
+       * A column named in the write does not exist on the table.
+       *
+       * Always a fault in the application, never in the request — the caller
+       * cannot choose which columns a handler writes. It is mapped explicitly
+       * because it used to reach the default branch and surface to the user as
+       * a 500 reading "Could not find the 'clientCompanyId' column of
+       * 'projects' in the schema cache", which is what editing a project did
+       * before `acceptBody` stopped emitting camelCase aliases. Naming it as a
+       * server fault keeps a recurrence out of the user's face and in the logs
+       * where it belongs.
+       */
+      return error(
+        'This operation could not be completed: the server sent a field the database does not have.',
+        500, 'SCHEMA_MISMATCH',
+      );
     case 'PGRST202':
       // The function or its argument list does not exist — a deployment
       // mismatch between the app and the database, not a user error.

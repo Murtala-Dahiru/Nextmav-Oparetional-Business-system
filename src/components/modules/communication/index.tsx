@@ -33,6 +33,7 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { formatRelativeTime, initialsOf, truncate } from '@/lib/format';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAppStore } from '@/store/app-store';
+import { useModuleRealtime, useRealtime } from '@/hooks/use-realtime';
 import { cn } from '@/lib/utils';
 
 /**
@@ -244,6 +245,18 @@ export default function CommunicationModule() {
 
   useEffect(() => { loadChannels(); }, [loadChannels]);
 
+  /**
+   * The channel list itself is live.
+   *
+   * `channels` covers one being created, renamed or archived; `channel_members`
+   * covers being added to or removed from one, which is what makes a channel
+   * appear in the sidebar without a reload. Message arrival is handled by the
+   * per-channel subscription in the thread below — subscribing to `messages`
+   * here as well would refetch the whole channel list on every message sent
+   * anywhere in the organisation.
+   */
+  useModuleRealtime('channels', ['channels', 'channel_members'], () => loadChannels());
+
   useEffect(() => {
     api<DirectoryMember[]>('/api/directory').then(setDirectory).catch(() => setDirectory([]));
   }, []);
@@ -313,6 +326,53 @@ export default function CommunicationModule() {
     openChannel(selectedId);
     if (isMobile) setShowSidebar(false);
   }, [selectedId, openChannel, isMobile]);
+
+  /**
+   * Reload the open conversation's messages, without reopening it.
+   *
+   * Deliberately not `openChannel`: that shows the loading state, refetches the
+   * member list and marks the channel read. Called on every incoming message
+   * that would blank the thread mid-read, re-request the roster for no reason,
+   * and clear the unread marker of a channel the reader may have scrolled away
+   * from.
+   */
+  const refreshMessages = useCallback(async (channelId: string) => {
+    try {
+      const msgs = await api<Message[]>(
+        `/api/communication/messages?channelId=${channelId}&pageSize=100`,
+      );
+      setMessages([...(msgs ?? [])].reverse());
+    } catch {
+      // The thread still holds what it had; a failed background refresh is not
+      // worth interrupting a conversation over.
+    }
+  }, []);
+
+  /**
+   * "Message sent — appears instantly."
+   *
+   * Filtered to the open channel, which is the case a filter is most clearly
+   * worth having: without it every message anywhere in the organisation would
+   * refetch this thread. `message_reactions` is watched too — a reaction is a
+   * change to a message that is on screen, and it carries no `channel_id` to
+   * filter on, so it is subscribed unfiltered and costs a discarded event.
+   *
+   * Both this and the channel-list subscription exist because they answer
+   * different questions: this one is "what is in the conversation I am reading",
+   * the other is "which conversations do I have".
+   */
+  useRealtime({
+    name: `channel:${selectedId ?? 'none'}`,
+    enabled: !!selectedId,
+    debounceMs: 200,
+    tables: selectedId
+      ? [
+          { table: 'messages', filter: `channel_id=eq.${selectedId}` },
+          { table: 'message_reactions' },
+        ]
+      : [],
+    onChange: () => { if (selectedId) void refreshMessages(selectedId); },
+  });
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });

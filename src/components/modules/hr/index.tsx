@@ -17,6 +17,7 @@ import { StatCard } from '@/components/shared/stat-card';
 import { formatDate, formatRelativeTime, initialsOf } from '@/lib/format';
 import { normalizeRole, roleLabel } from '@/lib/permissions';
 import { LEAVE_TYPES as LEAVE_TYPE_VALUES, statusLabel } from '@/lib/constants';
+import { useModuleRealtime } from '@/hooks/use-realtime';
 import { useAppStore } from '@/store/app-store';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -405,6 +406,13 @@ function EmployeesTab() {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  /**
+   * The "on leave today" counter on this tab is derived from approved leave, so
+   * a decision made elsewhere changes a number on this screen. `leave_requests`
+   * rather than the employee table for that reason.
+   */
+  useModuleRealtime('hr-employees', ['leave_requests'], () => fetchStats());
 
   // Column definitions
   const columns: ColumnDef<UserRecord>[] = useMemo(() => [
@@ -1100,6 +1108,13 @@ function LeaveTab() {
     fetchLeaves();
     fetchUsers();
   }, [fetchStats, fetchLeaves, fetchUsers]);
+
+  // "Leave approved — dashboard updates instantly", and the approver's own
+  // queue with it: a request decided by a colleague leaves this table.
+  useModuleRealtime('hr-leave', ['leave_requests'], () => {
+    fetchStats();
+    fetchLeaves();
+  });
 
   // Column definitions
   const columns: ColumnDef<LeaveRequest>[] = useMemo(() => [

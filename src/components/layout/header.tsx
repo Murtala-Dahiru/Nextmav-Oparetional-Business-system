@@ -36,6 +36,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useRealtime } from '@/hooks/use-realtime';
 import { MODULES, ROLES } from '@/lib/constants';
 import { formatRelativeTime } from '@/lib/format';
 
@@ -63,24 +64,41 @@ export function Header() {
   const currentModule = MODULES.find((m) => m.id === activeModule);
 
   /**
-   * Poll for new notifications.
+   * Notifications arrive over the socket, and polling is now the fallback.
    *
-   * Thirty seconds is a deliberate compromise. Supabase Realtime is already
-   * configured for this table in migration 0006, and a subscription would be
-   * the better answer — but it needs a browser client holding the session, a
+   * ── What changed, and what was kept ─────────────────────────────────────
+   *
+   * This was a flat thirty-second poll. The note here said a subscription would
+   * be the better answer but needed "a browser client holding the session, a
    * reconnect strategy and a fallback for when the socket is blocked by a
    * corporate proxy, which is common in exactly the enterprises this product
-   * targets. Polling is what makes the tray correct today; the socket is a
-   * refinement on top of a feature that works, not a prerequisite for it.
+   * targets" — all three of which are true, and all three of which
+   * `useRealtime` now provides. The socket carries the session's JWT, phoenix
+   * reconnects on its own, and the hook reports whether the channel actually
+   * subscribed.
    *
-   * The interval is cleared on unmount and skipped entirely while signed out,
-   * so a login screen left open overnight is not issuing requests.
+   * So the poll is kept rather than deleted, because the proxy concern was
+   * correct — it just no longer has to run when the socket is working. The
+   * interval reads the subscription status: two minutes as a safety net while
+   * events are flowing, thirty seconds when they are not. A tray that stops
+   * updating behind a proxy would be a regression on a feature that worked, and
+   * nobody would find out until they missed something.
    */
+  const notificationsLive = useRealtime({
+    name: 'notifications',
+    enabled: isAuthenticated,
+    tables: [{ table: 'notifications', event: 'INSERT' }],
+    onChange: fetchNotifications,
+    // Short: the badge appearing is the whole point, and an INSERT on this table
+    // is one row, not a burst.
+    debounceMs: 150,
+  }) === 'subscribed';
+
   React.useEffect(() => {
     if (!isAuthenticated) return;
 
     fetchNotifications();
-    const timer = setInterval(fetchNotifications, 30_000);
+    const timer = setInterval(fetchNotifications, notificationsLive ? 120_000 : 30_000);
 
     // Coming back to the tab is the moment someone most wants an accurate
     // badge, and it is free compared with shortening the interval.
@@ -93,7 +111,7 @@ export function Header() {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [isAuthenticated, fetchNotifications]);
+  }, [isAuthenticated, fetchNotifications, notificationsLive]);
 
   /**
    * Open whatever a notification is about.

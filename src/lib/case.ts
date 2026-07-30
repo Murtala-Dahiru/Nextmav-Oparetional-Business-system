@@ -51,12 +51,37 @@ export function toSnake<T = unknown>(value: unknown): T {
 }
 
 /**
- * Accept a body in either shape.
+ * Accept a body in either shape, and return it in database shape.
  *
  * Forms in this codebase send a mixture: fields written before the migration
- * use camelCase, newer ones use snake_case. Merging the converted form over
- * the original means both are understood and an explicitly snake_cased key
- * always wins, so a caller can be precise when it matters.
+ * use camelCase, newer ones use snake_case. Both are understood, and an
+ * explicitly snake_cased key always wins, so a caller can be precise when it
+ * matters.
+ *
+ * ── Why the original is no longer spread back wholesale ────────────────────
+ *
+ * The "explicit snake_case wins" rule was implemented by layering every scalar
+ * from the original body over the converted one. For a key that snake-casing
+ * does not rename (`name`, `status`, `items`) that is a no-op and the rule
+ * holds. For a key it *does* rename it was a bug: the output carried both
+ * spellings, so `{ clientCompanyId }` became
+ * `{ client_company_id, clientCompanyId }`.
+ *
+ * `prepare` hid this on every create route, because it names the columns it
+ * wants and drops the rest. The thirteen `[id]` routes have no `prepare` — the
+ * body went straight to `.update()` — so Postgres was handed a column that does
+ * not exist and answered
+ *
+ *     PGRST204  Could not find the 'clientCompanyId' column of 'projects'
+ *
+ * which is why editing a project failed while creating one worked. Editing a
+ * lead, contact, deal, company, task, ticket, invoice, expense, product,
+ * supplier, warehouse or calendar event failed the same way, for the same
+ * reason, on whichever multi-word field that form happened to send first.
+ *
+ * So a key is only layered back when snake-casing leaves it unchanged — which
+ * is exactly the set of keys the rule was written for, and never introduces an
+ * alias for a key that was renamed.
  */
 export function acceptBody<T extends Record<string, any>>(body: T): Record<string, any> {
   if (!isPlainObject(body)) return body as Record<string, any>;
@@ -65,23 +90,21 @@ export function acceptBody<T extends Record<string, any>>(body: T): Record<strin
   const out: Record<string, any> = { ...converted };
 
   /**
-   * The original is layered back on so an explicitly snake_cased key beats the
-   * converted one — but only for scalars.
+   * Objects and arrays keep their converted form regardless.
    *
-   * Spreading the whole original was silently discarding nested conversion.
-   * Snake-casing does not rename a key that is already lowercase, so for a
-   * field like `items` the original and the converted value share a name, and
-   * the original won — putting back the array whose *inner* keys were still
-   * camelCase. A purchase order sent `items: [{ productId, unitCost }]`, the
-   * handler filtered on `product_id`, every line was discarded, and the create
-   * failed with "Add at least one line item" no matter what was on the form.
+   * Spreading the whole original was also discarding nested conversion. For a
+   * field like `items`, whose name snake-casing leaves alone, the original won
+   * — putting back the array whose *inner* keys were still camelCase. A
+   * purchase order sent `items: [{ productId, unitCost }]`, the handler
+   * filtered on `product_id`, every line was discarded, and the create failed
+   * with "Add at least one line item" no matter what was on the form.
    *
-   * Objects and arrays therefore keep their converted form. A caller wanting
-   * to be explicit about nested keys can already send them snake_cased, which
-   * `toSnake` leaves untouched.
+   * A caller wanting to be explicit about nested keys can send them
+   * snake_cased, which `toSnake` leaves untouched.
    */
   for (const [k, v] of Object.entries(body)) {
     if (isPlainObject(v) || Array.isArray(v)) continue;
+    if (toSnakeKey(k) !== k) continue;
     out[k] = v;
   }
 

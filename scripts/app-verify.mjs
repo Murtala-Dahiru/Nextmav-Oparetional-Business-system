@@ -1233,6 +1233,33 @@ try {
     `the board is told how many phases there are (${beforePhase?.totalMilestones})`);
   check(beforePhase?.progressPct === 0, `and that none are done yet (${beforePhase?.progressPct}%)`);
 
+  /**
+   * Status gates the ends of the range, so the project has to start before it
+   * can report progress.
+   *
+   * `progress_pct` used to be a bare ratio of completed milestones, which meant
+   * a project still being drafted reported delivery. Someone sketching a backlog
+   * and ticking two throwaway tasks showed 40% complete on work that had not
+   * begun, and the client portal showed the customer the same figure. The
+   * specification is explicit — "Planning 0%" — so `planning` now reports zero
+   * whatever is in the plan, and this project is in `planning` until moved.
+   */
+  const stillPlanning = await A.json('/api/projects/projects?pageSize=100');
+  check(
+    (stillPlanning.body?.data ?? []).find(p => p.id === teamProjectId)?.status === 'planning',
+    'the project is still in planning',
+  );
+
+  const started = await A.json(`/api/projects/projects/${teamProjectId}`, {
+    method: 'PUT', body: JSON.stringify({ status: 'active' }),
+  });
+  check(started.ok, `work can begin on it (${started.status})`, started.body?.error?.message);
+
+  const justStarted = ((await A.json('/api/projects/projects?pageSize=100')).body?.data ?? [])
+    .find(p => p.id === teamProjectId);
+  check(justStarted?.progressPct === 10,
+    `a started project with nothing done reports the floor, not zero (${justStarted?.progressPct}%)`);
+
   const completed = await A.json(`/api/projects/milestones/${phaseIds[0]}`, {
     method: 'PATCH', body: JSON.stringify({ completed: true }),
   });
@@ -1241,9 +1268,62 @@ try {
 
   const afterPhase = ((await A.json('/api/projects/projects?pageSize=100')).body?.data ?? [])
     .find(p => p.id === teamProjectId);
+  /**
+   * One of three phases, and no tasks on this project yet — so the plan is the
+   * only signal and it carries the whole figure. Unchanged from before the
+   * weighted model, which is the point: adding signals must not move the answer
+   * for a project that only has one.
+   */
   check(afterPhase?.progressPct === 33.3,
-    `progress follows the plan, not the task list (${afterPhase?.progressPct}%)`);
+    `progress follows the plan (${afterPhase?.progressPct}%)`);
   check(afterPhase?.completedMilestones === 1, 'and reports which phases are done');
+
+  /**
+   * A phase reporting partial progress now counts, at half credit.
+   *
+   * `milestones.progress_pct` has had a column, a CHECK constraint and an editor
+   * behind it since 0016 and was read by nothing: a phase honestly reported at
+   * 80% contributed exactly as much as one not started. It is halved rather than
+   * taken at face value because it is self-reported, and a phase that has
+   * claimed 90% for a month is the case a status report must not smooth over.
+   *
+   * 1 complete + 0.8/2 of another, over three phases = 46.7%.
+   */
+  const reported = await A.json(`/api/projects/milestones/${phaseIds[1]}`, {
+    method: 'PATCH', body: JSON.stringify({ progressPct: 80 }),
+  });
+  check(reported.ok, `a phase can report partial progress (${reported.status})`,
+    reported.body?.error?.message);
+
+  const withPartial = ((await A.json('/api/projects/projects?pageSize=100')).body?.data ?? [])
+    .find(p => p.id === teamProjectId);
+  check(withPartial?.progressPct === 46.7,
+    `and it counts at half credit (${withPartial?.progressPct}%)`);
+
+  /**
+   * Closing a project is the authoritative statement that it is done.
+   *
+   * This was the other end of the same defect: a project marked `completed` with
+   * one phase left un-ticked stayed at 66.7% for ever, and the portal told the
+   * client a finished engagement was two-thirds delivered.
+   */
+  const closed = await A.json(`/api/projects/projects/${teamProjectId}`, {
+    method: 'PUT', body: JSON.stringify({ status: 'completed' }),
+  });
+  check(closed.ok, `the project can be closed (${closed.status})`);
+
+  const afterClose = ((await A.json('/api/projects/projects?pageSize=100')).body?.data ?? [])
+    .find(p => p.id === teamProjectId);
+  check(afterClose?.progressPct === 100,
+    `a completed project reports 100%, whatever is left un-ticked (${afterClose?.progressPct}%)`);
+  check(afterClose?.health === 'on_track',
+    `and is never described as at risk (${afterClose?.health})`);
+
+  // Returned to `active` for the sections that follow, which assert on this
+  // project's tasks, risks and blockers.
+  await A.json(`/api/projects/projects/${teamProjectId}`, {
+    method: 'PUT', body: JSON.stringify({ status: 'active' }),
+  });
 
   // Reopening clears the stamp, so a mis-click does not leave a false date.
   const reopened = await A.json(`/api/projects/milestones/${phaseIds[0]}`, {
@@ -2223,6 +2303,270 @@ try {
   check(!!listedFile, 'and appears in the folder');
   check(!!listedFile?.uploadedByName,
     `attributed to a real person rather than a hard-coded name (${listedFile?.uploadedByName})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('59. Editing a record, with the payload the form actually sends');
+  /**
+   * ── Why this section is written in camelCase ──────────────────────────────
+   *
+   * Every other section of this harness sends snake_case, and that is exactly
+   * how it passed 267 checks while editing a project was impossible in the
+   * browser. The forms send camelCase; `acceptBody` was emitting *both*
+   * spellings of every renamed field, and the extra one is not a column:
+   *
+   *     PGRST204  Could not find the 'clientCompanyId' column of 'projects'
+   *
+   * Creating a record was unaffected, because every create route has a
+   * `prepare` that names its columns and drops the rest. The thirteen `[id]`
+   * routes had none, so the body reached `.update()` intact. The harness never
+   * saw it because the harness never sent the shape that triggers it.
+   *
+   * So these assertions use the field names the components use, deliberately,
+   * and each one edits a *multi-word* field — the only kind that can drift.
+   * A snake_case body would pass all of them without proving anything.
+   */
+
+  const editProbe = async (label, path, payload, expectField, expectValue) => {
+    const res = await A.json(path, { method: 'PUT', body: JSON.stringify(payload) });
+    const ok = res.status === 200 && res.body?.data?.[expectField] === expectValue;
+    check(ok, `${label} (${res.status})`,
+      res.body?.error?.message ??
+      `${expectField} came back as ${JSON.stringify(res.body?.data?.[expectField])}`);
+    return res.body?.data;
+  };
+
+  // A client company to attach, so the project edit carries a real relation.
+  const editCo = await A.json('/api/crm/companies', {
+    method: 'POST', body: JSON.stringify({ name: `EditCo ${run}` }),
+  });
+  const editCoId = editCo.body?.data?.id;
+
+  const editProject = await A.json('/api/projects/projects', {
+    method: 'POST',
+    body: JSON.stringify({ name: `Edit target ${run}`, status: 'planning' }),
+  });
+  const editProjectId = editProject.body?.data?.id;
+
+  /**
+   * The reported defect, asserted directly: attach a client through an edit.
+   * `clientCompanyId` is the field whose alias broke the write, and the one
+   * the whole client portal resolves through.
+   */
+  const editedProject = await editProbe(
+    'a project edit attaches a client company',
+    `/api/projects/projects/${editProjectId}`,
+    {
+      name: `Edit target ${run} v2`, description: 'edited', status: 'active',
+      priority: 'high', startDate: '2026-03-01', endDate: '2026-10-01',
+      budget: 42000, clientCompanyId: editCoId,
+    },
+    'clientCompanyId', editCoId,
+  );
+  check(editedProject?.startDate === '2026-03-01',
+    `and its start date (${editedProject?.startDate})`);
+  check(editedProject?.client?.name === `EditCo ${run}`,
+    `and the response carries the client relation the card renders (${editedProject?.client?.name})`);
+  check(editedProject?.owner?.profiles?.fullName,
+    `and the owner relation (${editedProject?.owner?.profiles?.fullName})`);
+
+  // An omitted field must survive. This is what `.partial()` could not do.
+  const partial = await A.json(`/api/projects/projects/${editProjectId}`, {
+    method: 'PUT', body: JSON.stringify({ priority: 'low' }),
+  });
+  check(partial.body?.data?.clientCompanyId === editCoId,
+    'an edit that omits the client does not unlink it');
+  check(partial.body?.data?.budget === 42000,
+    `nor reset the budget to its default (${partial.body?.data?.budget})`);
+  check(partial.body?.data?.name === `Edit target ${run} v2`,
+    'nor the name');
+
+  // Clearing has to remain possible, and distinguishable from omitting.
+  const unlinked = await A.json(`/api/projects/projects/${editProjectId}`, {
+    method: 'PUT', body: JSON.stringify({ clientCompanyId: null }),
+  });
+  check(unlinked.body?.data?.clientCompanyId === null,
+    'an explicit null does unlink the client');
+
+  // Mass assignment: the columns a caller must never be able to set.
+  const massAssign = await A.json(`/api/projects/projects/${editProjectId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ priority: 'high', deletedAt: '2020-01-01T00:00:00Z' }),
+  });
+  check(massAssign.status === 200 && massAssign.body?.data?.deletedAt == null,
+    'a column outside the update schema is ignored, not written');
+
+  const onlyUnknown = await A.json(`/api/projects/projects/${editProjectId}`, {
+    method: 'PUT', body: JSON.stringify({ progressPct: 99, totalTasks: 500 }),
+  });
+  check(onlyUnknown.status === 422,
+    `an edit naming no known column is refused rather than reported as saved (${onlyUnknown.status})`);
+
+  // Validation must apply to an edit, not only to a create.
+  const badDates = await A.json(`/api/projects/projects/${editProjectId}`, {
+    method: 'PUT', body: JSON.stringify({ startDate: '2026-06-01', endDate: '2026-01-01' }),
+  });
+  check(badDates.status === 409 || badDates.status === 422,
+    `an end date before the start date is refused on edit too (${badDates.status})`);
+  check(/cannot end before it starts/i.test(badDates.body?.error?.message ?? ''),
+    `and says so in words (${badDates.body?.error?.message})`);
+
+  // The remaining twelve routes, each on a multi-word field.
+  const editLead = await A.json('/api/crm/leads', {
+    method: 'POST', body: JSON.stringify({ first_name: 'Edit', last_name: 'Probe' }),
+  });
+  await editProbe('a lead edit stores companyName',
+    `/api/crm/leads/${editLead.body?.data?.id}`,
+    { firstName: 'Edit', lastName: 'Probe', companyName: `LeadCo ${run}`, estimatedValue: 4200 },
+    'companyName', `LeadCo ${run}`);
+
+  const editContact = await A.json('/api/crm/contacts', {
+    method: 'POST', body: JSON.stringify({ first_name: 'Con', last_name: 'Tact' }),
+  });
+  await editProbe('a contact edit stores jobTitle',
+    `/api/crm/contacts/${editContact.body?.data?.id}`,
+    { jobTitle: 'Head of Detail', companyId: editCoId },
+    'jobTitle', 'Head of Detail');
+
+  await editProbe('a company edit stores employeeCount',
+    `/api/crm/companies/${editCoId}`,
+    { employeeCount: 250, annualRevenue: 9000000 },
+    'employeeCount', 250);
+
+  const editDeal = await A.json('/api/crm/deals', {
+    method: 'POST', body: JSON.stringify({ name: `Deal ${run}` }),
+  });
+  await editProbe('a deal edit stores expectedClose',
+    `/api/crm/deals/${editDeal.body?.data?.id}`,
+    { expectedClose: '2026-12-01', companyId: editCoId },
+    'expectedClose', '2026-12-01');
+
+  const editTask = await A.json('/api/projects/tasks', {
+    method: 'POST',
+    body: JSON.stringify({ title: `Task ${run}`, project_id: editProjectId }),
+  });
+  await editProbe('a task edit stores estimatedHours',
+    `/api/projects/tasks/${editTask.body?.data?.id}`,
+    { estimatedHours: 12, dueDate: '2026-05-05', sortOrder: 3 },
+    'estimatedHours', 12);
+
+  const editTicket = await A.json('/api/support/tickets', {
+    method: 'POST', body: JSON.stringify({ subject: `Ticket ${run}` }),
+  });
+  await editProbe('a ticket edit stores contactEmail',
+    `/api/support/tickets/${editTicket.body?.data?.id}`,
+    { contactEmail: 'someone@example.com', status: 'in_progress' },
+    'contactEmail', 'someone@example.com');
+
+  const editExpense = await A.json('/api/finance/expenses', {
+    method: 'POST',
+    body: JSON.stringify({ title: `Expense ${run}`, amount: 10, expense_date: '2026-04-01' }),
+  });
+  /**
+   * `expenseDate`, the field the form was sending as `date`.
+   *
+   * The column is `expense_date`, so `date` was neither stored on create — the
+   * route substituted today and nobody noticed, because the form's default is
+   * today — nor accepted on edit. A claim for last week's receipt was filed as
+   * this week's.
+   */
+  const editedExpense = await editProbe('an expense edit stores expenseDate',
+    `/api/finance/expenses/${editExpense.body?.data?.id}`,
+    { title: `Expense ${run}`, amount: 55, category: 'travel', vendor: 'Rail', expenseDate: '2026-04-15' },
+    'expenseDate', '2026-04-15');
+  check(editedExpense?.amount === 55, `and the amount (${editedExpense?.amount})`);
+
+  const selfApprove = await A.json(`/api/finance/expenses/${editExpense.body?.data?.id}`, {
+    method: 'PUT', body: JSON.stringify({ status: 'approved' }),
+  });
+  check(selfApprove.body?.data?.status !== 'approved',
+    `an expense cannot be approved through a plain edit (${selfApprove.status})`);
+
+  // A distinct SKU: section 3 already holds `SKU-${run}` in this organization,
+  // and (organization_id, sku) is unique — as it should be.
+  const editProduct = await A.json('/api/inventory/products', {
+    method: 'POST', body: JSON.stringify({ name: `Widget ${run}`, sku: `SKU-EDIT-${run}` }),
+  });
+  check(editProduct.status === 201,
+    `a product to edit (${editProduct.status})`, editProduct.body?.error?.message);
+  await editProbe('a product edit stores reorderLevel',
+    `/api/inventory/products/${editProduct.body?.data?.id}`,
+    { reorderLevel: 25, isActive: true },
+    'reorderLevel', 25);
+
+  const editSupplier = await A.json('/api/inventory/suppliers', {
+    method: 'POST', body: JSON.stringify({ name: `Supplier ${run}` }),
+  });
+  /**
+   * `contactName` is free text on the supplier, not a CRM reference. The update
+   * schema said `contactId`, which is not a column — and because an unknown key
+   * is dropped rather than rejected, wiring it would have emptied this field on
+   * every edit while still answering 200.
+   */
+  await editProbe('a supplier edit stores contactName',
+    `/api/inventory/suppliers/${editSupplier.body?.data?.id}`,
+    { contactName: 'Dele Adeyemi', leadTimeDays: 21, paymentTerms: 'net60' },
+    'contactName', 'Dele Adeyemi');
+
+  const editWarehouse = await A.json('/api/inventory/warehouses', {
+    method: 'POST', body: JSON.stringify({ name: `Depot ${run}` }),
+  });
+  await editProbe('a warehouse edit stores isActive',
+    `/api/inventory/warehouses/${editWarehouse.body?.data?.id}`,
+    { isActive: false, capacity: 500 },
+    'isActive', false);
+
+  const editEvent = await A.json('/api/calendar/events', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: `Event ${run}`,
+      starts_at: '2026-05-01T09:00:00Z', ends_at: '2026-05-01T10:00:00Z',
+    }),
+  });
+  /**
+   * `startsAt`/`endsAt`/`colour`, which is what the calendar sends. The update
+   * schema said `startDate`/`endDate`/`color` — three names the table does not
+   * have, one of them differing only by British spelling.
+   */
+  const editedEvent = await editProbe('a calendar edit stores startsAt',
+    `/api/calendar/events/${editEvent.body?.data?.id}`,
+    {
+      title: `Event ${run} moved`,
+      startsAt: '2026-05-02T11:00:00Z', endsAt: '2026-05-02T12:00:00Z',
+      allDay: false, colour: '#ef4444',
+    },
+    'colour', '#ef4444');
+  check(editedEvent?.startsAt?.startsWith('2026-05-02'),
+    `and the new start time (${editedEvent?.startsAt})`);
+
+  const editInvoice = await A.json('/api/finance/invoices', {
+    method: 'POST',
+    body: JSON.stringify({
+      companyId: editCoId, dueDate: '2026-09-01', taxRate: 7.5,
+      lineItems: [{ description: 'Consulting', quantity: 2, unitPrice: 1000 }],
+    }),
+  });
+  const invoiceId = editInvoice.body?.data?.id;
+  const invoiceTotal = editInvoice.body?.data?.total;
+  await editProbe('an invoice edit stores dueDate',
+    `/api/finance/invoices/${invoiceId}`,
+    { status: 'sent', notes: 'Chased once', dueDate: '2026-09-15' },
+    'dueDate', '2026-09-15');
+
+  /**
+   * An invoice's money is computed by the server from the line items it holds.
+   * Leaving `total` writable meant a caller with `finance.edit` could zero a
+   * sent invoice without touching a line, and the ledger would agree.
+   */
+  const rewriteTotal = await A.json(`/api/finance/invoices/${invoiceId}`, {
+    method: 'PUT', body: JSON.stringify({ total: 0, subtotal: 0, invoiceNumber: 'INV-HACK' }),
+  });
+  check(rewriteTotal.status === 422,
+    `an edit that only names server-assigned money is refused (${rewriteTotal.status})`);
+  const invoiceAfter = await A.json(`/api/finance/invoices/${invoiceId}`);
+  check(invoiceAfter.body?.data?.total === invoiceTotal,
+    `and the total is unchanged (${invoiceAfter.body?.data?.total} vs ${invoiceTotal})`);
+  check(invoiceAfter.body?.data?.invoiceNumber !== 'INV-HACK',
+    `and the invoice number is still the server's (${invoiceAfter.body?.data?.invoiceNumber})`);
 
 } catch (e) {
   fail++; failed.push('harness error');

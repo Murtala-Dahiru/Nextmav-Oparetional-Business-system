@@ -3,7 +3,23 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ModuleId } from '@/lib/constants';
 import { authorize, pgError, type RequestContext } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
-import { acceptBody } from '@/lib/case';
+import { acceptBody, toCamel, toSnake } from '@/lib/case';
+
+/**
+ * Turn a Zod failure into the one sentence a user can act on.
+ *
+ * Routes in this codebase report validation failures as a written explanation
+ * with a 422 — "An invoice needs at least one line item" — and the toast shows
+ * it verbatim. A serialised issue array would be a regression in the same place
+ * that was just fixed to stop showing bare status codes, so the field is named
+ * and the first message is used.
+ */
+function firstIssue(err: any): string {
+  const issue = err?.issues?.[0];
+  if (!issue) return 'Invalid request body';
+  const path = (issue.path ?? []).join('.');
+  return path ? `${path}: ${issue.message}` : issue.message;
+}
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -174,6 +190,32 @@ export interface RecordOptions {
   prepare?: (body: any, ctx: RequestContext) => Record<string, any>;
   /** Action required to update. Defaults to `edit`. */
   updateAction?: 'edit' | 'approve' | 'manage';
+  /**
+   * The `toUpdateSchema(createX)` schema from `lib/validations`, in camelCase.
+   *
+   * ── Why an update needs a schema of its own ────────────────────────────────
+   *
+   * Eighteen of these were written and none of them was ever reached: no route
+   * imported one, so `updateHandler` wrote whatever the body contained. Two
+   * consequences, both real:
+   *
+   *   1. Mass assignment. Any column the caller could name was writable by
+   *      anyone holding `edit` on the module — `deleted_at` to resurrect a
+   *      deleted record, `created_at` to backdate one, `invoice_number` to
+   *      collide with another invoice, `stock` to bypass the movement ledger
+   *      that is supposed to be the only way stock changes.
+   *
+   *   2. No validation at all on the way in. Creating a project rejects an end
+   *      date before its start date; editing one did not, because the check
+   *      lives in the create route's `prepare` and the update path had none.
+   *
+   * `z.object` strips unknown keys, so naming the accepted fields is what
+   * closes (1). `toUpdateSchema` strips `.default()` as well as marking fields
+   * optional, so an omitted field stays omitted rather than being written back
+   * as its default — the distinction a PATCH depends on, and the reason
+   * `.partial()` is not usable here.
+   */
+  updateSchema?: { safeParse: (v: unknown) => { success: boolean; data?: any; error?: any } };
 }
 
 type Params = { params: Promise<{ id: string }> };
@@ -201,7 +243,7 @@ export function getOneHandler(opts: RecordOptions) {
 }
 
 export function updateHandler(opts: RecordOptions) {
-  const { table, module, select = '*', prepare, updateAction = 'edit' } = opts;
+  const { table, module, select = '*', prepare, updateAction = 'edit', updateSchema } = opts;
 
   return async function PATCH(req: Request, { params }: Params) {
     const ctx = await authorize(module, updateAction);
@@ -210,11 +252,40 @@ export function updateHandler(opts: RecordOptions) {
 
     let payload: Record<string, any>;
     try {
-      // Forms send a mix of camelCase (pre-migration fields) and snake_case.
-      const body = acceptBody(await req.json());
-      payload = prepare ? prepare(body, ctx) : body;
+      const raw = await req.json();
+
+      if (updateSchema) {
+        /**
+         * `toCamel` rather than `acceptBody` for the schema's input.
+         *
+         * The schemas in `lib/validations` are keyed in camelCase, and
+         * `toCamel` normalises both dialects into it unambiguously: it renames
+         * `first_name` and leaves `firstName` alone, so a form and the
+         * verification harness — which sends snake_case — are both accepted
+         * without the output ever carrying two spellings of one field.
+         */
+        const parsed = updateSchema.safeParse(toCamel(raw));
+        if (!parsed.success) throw new Error(firstIssue(parsed.error));
+        payload = toSnake(parsed.data) as Record<string, any>;
+      } else {
+        // Forms send a mix of camelCase (pre-migration fields) and snake_case.
+        payload = acceptBody(raw);
+      }
+
+      if (prepare) payload = prepare(payload, ctx);
     } catch (e: any) {
       return error(e.message || 'Invalid request body', 422, 'VALIDATION_ERROR');
+    }
+
+    /**
+     * An update that names no known column is refused rather than performed.
+     *
+     * `.update({})` is a no-op that PostgREST answers 200 to, so a form sending
+     * only fields the schema does not accept got a success toast and changed
+     * nothing — the silent failure this pass exists to remove.
+     */
+    if (!Object.keys(payload).length) {
+      return error('No recognised fields to update', 422, 'VALIDATION_ERROR');
     }
 
     // Never let a client move a record between tenants or reassign its id.

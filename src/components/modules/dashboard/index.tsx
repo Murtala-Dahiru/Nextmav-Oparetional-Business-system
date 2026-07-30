@@ -19,6 +19,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatCurrency, formatRelativeTime, formatDate, getInitials } from '@/lib/format';
 import { useAppStore } from '@/store/app-store';
+import { useModuleRealtime } from '@/hooks/use-realtime';
 import type { ModuleId } from '@/lib/constants';
 import { roleLabel as labelForRole, type Action } from '@/lib/permissions';
 
@@ -231,6 +232,21 @@ export default function DashboardModule() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  /**
+   * The dashboard is the widest claim in the specification — "leave approved,
+   * dashboard updates instantly", "attendance recorded, HR updates instantly",
+   * "invoice created, Finance updates instantly" — and it aggregates all of
+   * them, so it watches every table that feeds a tile.
+   *
+   * One endpoint behind it, so one refetch however many tables changed; the
+   * hook's debounce collapses a burst into a single call.
+   */
+  useModuleRealtime('dashboard', [
+    'projects', 'tasks', 'milestones',
+    'leave_requests', 'attendance_records',
+    'invoices', 'expenses', 'support_tickets',
+  ], () => load(true));
 
   const go = (m: ModuleId) => () => setActiveModule(m);
 

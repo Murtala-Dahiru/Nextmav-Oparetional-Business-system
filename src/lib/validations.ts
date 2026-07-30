@@ -214,25 +214,47 @@ export const updatePageSchema = toUpdateSchema(createPageSchema);
 //  Communication Validations
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * A channel.
+ *
+ * `creatorId` is gone: the column is `created_by` and the route takes it from
+ * the session. `displayName`, `topic` and the two policy columns were added in
+ * 0017 and belong on the editable surface — renaming a channel and changing who
+ * may post in it are exactly what the settings dialog does.
+ */
 export const createChannelSchema = z.object({
   name: z.string().min(1, 'Channel name is required'),
   type: z.string().optional().default('public'),
   description: z.string().optional().default(''),
-  creatorId: memberRef(),
+  displayName: z.string().optional(),
+  topic: z.string().optional(),
+  postPolicy: z.string().optional(),
+  joinPolicy: z.string().optional(),
+  departmentId: optionalFk(),
+  teamId: optionalFk(),
   isArchived: z.boolean().optional().default(false),
 });
 
 export const updateChannelSchema = toUpdateSchema(createChannelSchema);
 
+/**
+ * A message.
+ *
+ * The column is `body`, not `content`. `senderId` is gone for the reason the
+ * route already states in a comment: "the sender is taken from the session,
+ * never the body — accepting it would" let anyone post as anyone.
+ */
 export const createMessageSchema = z.object({
-  content: z.string().min(1, 'Message content is required'),
-  senderId: memberRef(),
+  body: z.string().optional().default(''),
   channelId: z.string().min(1, 'Channel ID is required'),
+  parentId: optionalFk(),
+  mentions: z.array(z.string()).optional(),
+  attachments: z.array(z.unknown()).optional(),
   isPinned: z.boolean().optional().default(false),
 });
 
 export const updateMessageSchema = z.object({
-  content: z.string().optional(),
+  body: z.string().optional(),
   isPinned: z.boolean().optional(),
 });
 
@@ -277,14 +299,26 @@ export const createEmployeeSchema = z.object({
 
 export const updateEmployeeSchema = toUpdateSchema(createEmployeeSchema).omit({ password: true });
 
+/**
+ * A leave request.
+ *
+ * `requesterId` and `approverId` named nothing: the columns are `member_id` and
+ * `approved_by`. Neither is a client input in practice — the requester is the
+ * session's member and the approver is stamped by the route when a decision is
+ * made — so they are not part of the editable surface at all.
+ *
+ * `status` is likewise absent. `hr/leave/[id]` treats a status change as a
+ * decision rather than an edit: it requires the `approve` capability, records
+ * `approved_by` and `decided_at` with it, and refuses self-approval. That
+ * separation is the whole point of the route being hand-written, and a generic
+ * status field here would go around it.
+ */
 export const createLeaveSchema = z.object({
-  requesterId: z.string().min(1, 'Requester ID is required'),
   type: z.string().optional().default('vacation'),
   startDate: z.string().datetime({ offset: true }).or(z.string()),
   endDate: z.string().datetime({ offset: true }).or(z.string()),
-  status: z.string().optional().default('pending'),
+  isHalfDay: z.boolean().optional().default(false),
   reason: z.string().optional().default(''),
-  approverId: z.string().optional().default(''),
 });
 
 export const updateLeaveSchema = toUpdateSchema(createLeaveSchema);
@@ -293,35 +327,91 @@ export const updateLeaveSchema = toUpdateSchema(createLeaveSchema);
 //  Finance Validations
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * An invoice.
+ *
+ * ── Field names corrected to the columns ───────────────────────────────────
+ *
+ * Three of these named nothing: `companyName` (the column is `company_id`),
+ * `items` (line items are rows in `invoice_line_items`, not a JSON string on
+ * the invoice) and `tax` (the columns are `tax_rate` and `tax_amount`).
+ */
 export const createInvoiceSchema = z.object({
-  invoiceNumber: z.string().min(1, 'Invoice number is required'),
-  // A ticket links to a CRM contact by id; there is no name column, so a
-  // typed name was discarded on save and the Contact column stayed blank.
+  companyId: optionalFk(),
   contactId: optionalFk(),
-  companyName: z.string().optional().default(''),
+  projectId: optionalFk(),
   status: z.string().optional().default('draft'),
-  items: z.string().optional().default('[]'),
-  subtotal: z.number().min(0).optional().default(0),
-  tax: z.number().min(0).optional().default(0),
-  total: z.number().min(0).optional().default(0),
+  issueDate: z.string().datetime({ offset: true }).or(z.string()).optional(),
   dueDate: z.string().datetime({ offset: true }).or(z.string()),
-  paidAt: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
+  taxRate: z.number().min(0).max(100).optional().default(0),
+  discount: z.number().min(0).optional().default(0),
   notes: z.string().optional().default(''),
-  ownerId: memberRef(),
+  lineItems: z.array(z.object({
+    description: z.string().min(1, 'A line item needs a description'),
+    quantity: z.number().min(0),
+    unitPrice: z.number().min(0),
+  })).optional(),
 });
 
-export const updateInvoiceSchema = toUpdateSchema(createInvoiceSchema);
+/**
+ * What an edit to an invoice may change — written out rather than derived.
+ *
+ * An invoice's money is not client input. `invoice_number` comes from a
+ * per-tenant sequence, and `subtotal`, `tax_amount`, `total` and `amount_paid`
+ * are computed by the server from the line items it stores; the figures on the
+ * form are a preview of that calculation, not a value to send. Deriving this
+ * from the create schema would be close enough to work and still leave `total`
+ * writable, so a caller holding `finance.edit` could set a paid invoice's total
+ * to zero without touching a single line item, and the ledger would agree with
+ * them.
+ *
+ * `lineItems` is absent for the same reason: replacing them has to recompute the
+ * totals, which is the create route's job and not something a generic column
+ * update can do correctly.
+ *
+ * Same shape of reasoning as `updatePurchaseOrderSchema` below, which is also
+ * written out for its own reasons.
+ */
+export const updateInvoiceSchema = z.object({
+  companyId: optionalFk(),
+  contactId: optionalFk(),
+  projectId: optionalFk(),
+  status: z.string().optional(),
+  issueDate: z.string().optional(),
+  dueDate: z.string().optional(),
+  notes: z.string().optional(),
+});
 
+/**
+ * An expense claim.
+ *
+ * ── Field names corrected to the columns ───────────────────────────────────
+ *
+ * `date` → `expenseDate` and `receipt` → `receiptPath`: the columns are
+ * `expense_date` and `receipt_path`, and neither `date` nor `receipt` exists on
+ * the table. The expense form still sends `date`, which is why the date a user
+ * picks has never been stored — the create route reads `b.expense_date`, finds
+ * nothing, and defaults to today — and why editing an expense failed outright.
+ * The form is corrected alongside this.
+ *
+ * `ownerId` is dropped: the column is `submitted_by` and it is the session's
+ * member, never a client's choice. `status` is dropped too — approving a claim
+ * is a decision, not an edit, and it is handled by the route so that
+ * `approved_by` and `decided_at` are recorded with it. Accepting `status` here
+ * would let a claimant approve their own expense: the database trigger that
+ * blocks self-approval only fires when `approved_by` is set, so a bare status
+ * change slipped straight past it.
+ */
 export const createExpenseSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   amount: z.number().min(0),
   category: z.string().optional().default('general'),
   vendor: z.string().optional().default(''),
-  date: z.string().datetime({ offset: true }).or(z.string()).optional().default(new Date().toISOString()),
-  status: z.string().optional().default('pending'),
-  receipt: z.string().optional().default(''),
+  expenseDate: z.string().datetime({ offset: true }).or(z.string()).optional(),
+  receiptPath: z.string().optional().default(''),
+  projectId: optionalFk(),
+  departmentId: optionalFk(),
   notes: z.string().optional().default(''),
-  ownerId: memberRef(),
 });
 
 export const updateExpenseSchema = toUpdateSchema(createExpenseSchema);
@@ -359,9 +449,18 @@ export const updateWarehouseSchema = toUpdateSchema(createWarehouseSchema);
 
 export const createSupplierSchema = z.object({
   name: z.string().min(1, 'Supplier name is required'),
-  // A ticket links to a CRM contact by id; there is no name column, so a
-  // typed name was discarded on save and the Contact column stayed blank.
-  contactId: optionalFk(),
+  /**
+   * `contact_name`, not `contact_id`.
+   *
+   * A supplier's contact is free text on the supplier row — unlike a ticket or
+   * an invoice, which reference a CRM contact by id. This field was
+   * `contactId: optionalFk()`, copied from those, and `suppliers` has no
+   * `contact_id` column at all. The form has always sent `contactName`
+   * correctly, so nothing was broken while no route read this schema; wiring it
+   * to the update route unchanged would have stripped the field on every edit
+   * and quietly emptied the contact name of every supplier that was touched.
+   */
+  contactName: z.string().optional().default(''),
   email: z.string().email('Invalid email').or(z.literal('')).optional().default(''),
   phone: z.string().optional().default(''),
   address: z.string().optional().default(''),
@@ -390,7 +489,9 @@ export const createStockMovementSchema = z.object({
   reference: z.string().optional().default(''),
   fromWarehouseId: optionalFk(),
   toWarehouseId: optionalFk(),
-  userId: memberRef(),
+  // The column is `member_id`, and the route passes the session's member to
+  // `record_stock_movement()`. A client-nominated mover would make the ledger
+  // unattributable, which is the one thing a stock ledger must not be.
 });
 
 export const PURCHASE_ORDER_STATUSES = ['draft', 'submitted', 'approved', 'received', 'cancelled'] as const;
@@ -423,15 +524,33 @@ export const updatePurchaseOrderSchema = z.object({
 //  Calendar Validations
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * A calendar event.
+ *
+ * ── Field names corrected to the columns ───────────────────────────────────
+ *
+ * This schema said `startDate`, `endDate` and `color`. The table has
+ * `starts_at`, `ends_at` and `colour` — the British spelling — and there are no
+ * `start_date`/`end_date`/`color` columns on it. The component was fixed to
+ * send the right three some time ago (there is a note in the calendar module
+ * saying every event used to be rejected as "Start and end times are required")
+ * but this schema was never part of that fix, because no route read it.
+ *
+ * `creatorId` is gone rather than renamed. `created_by` is taken from the
+ * session — a client that could nominate the creator of a record could forge
+ * authorship, and the create route has always ignored it.
+ */
 export const createEventSchema = z.object({
   title: z.string().min(1, 'Event title is required'),
   description: z.string().optional().default(''),
-  startDate: z.string().datetime({ offset: true }).or(z.string()),
-  endDate: z.string().datetime({ offset: true }).or(z.string()),
+  startsAt: z.string().datetime({ offset: true }).or(z.string()),
+  endsAt: z.string().datetime({ offset: true }).or(z.string()),
   allDay: z.boolean().optional().default(false),
   location: z.string().optional().default(''),
-  color: z.string().optional().default('#10b981'),
-  creatorId: memberRef(),
+  colour: z.string().optional().default('#10b981'),
+  visibility: z.string().optional().default('organization'),
+  departmentId: optionalFk(),
+  projectId: optionalFk(),
 });
 
 export const updateEventSchema = toUpdateSchema(createEventSchema);
@@ -444,14 +563,20 @@ export const createUserSchema = createEmployeeSchema;
 
 export const updateUserSchema = updateEmployeeSchema;
 
-export const createRoleSchema = z.object({
-  name: z.string().min(1, 'Role name is required'),
-  description: z.string().optional().default(''),
-  isSystem: z.boolean().optional().default(false),
-  permissions: z.string().optional().default('{}'),
-});
-
-export const updateRoleSchema = toUpdateSchema(createRoleSchema);
+/**
+ * ── Removed: createRoleSchema / updateRoleSchema ───────────────────────────
+ *
+ * They described a `roles` table with `permissions` as a JSON string. No such
+ * table exists — it was the pre-migration ORM's `Role` model, one of the three
+ * unreconciled role vocabularies the permission work consolidated. A role is
+ * now a canonical id on `organization_members.role`, and what it may do is
+ * defined by `ROLE_GRANTS` in `lib/permissions.ts` and nowhere else.
+ *
+ * Kept as a note rather than deleted silently, because a schema for storing
+ * per-role permissions in the database is exactly the shape of thing someone
+ * would reasonably re-add — and doing so would reintroduce a second source of
+ * truth for access control. `/api/admin/roles` reads `organization_members`.
+ */
 
 export const updateSettingsSchema = z.object({
   settings: z.array(z.object({

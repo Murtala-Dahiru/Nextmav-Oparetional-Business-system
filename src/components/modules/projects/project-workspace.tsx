@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { formatCurrency, formatDate, formatFileSize, initialsOf } from '@/lib/format';
 import { ROADMAP_STAGES, PROJECT_ROLES, statusLabel } from '@/lib/constants';
+import { useProjectRealtime } from '@/hooks/use-realtime';
 import { cn } from '@/lib/utils';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -208,18 +209,34 @@ export function ProjectWorkspace({
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  /**
+   * `silent` skips the toast and the spinner, for a realtime-triggered reload.
+   *
+   * An error on a background refresh is not something to interrupt anyone
+   * with — the screen still holds the last good data, and a toast saying
+   * "could not load the project" while the project is plainly on screen is
+   * worse than saying nothing.
+   */
+  const load = useCallback(async (silent = false) => {
     try {
       const res = await api<Overview>(`/api/projects/projects/${projectId}/overview`);
       setData(res.data);
     } catch (e: any) {
-      toast.error(e.message || 'Could not load the project');
+      if (!silent) toast.error(e.message || 'Could not load the project');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [projectId]);
 
   useEffect(() => { load(); }, [load]);
+
+  /**
+   * The overview is entirely derived data — progress, health, the roadmap, the
+   * task counts, the risk list — so it is stale the moment anyone touches the
+   * project. This is the screen the specification means by "task completed,
+   * project progress updates immediately".
+   */
+  useProjectRealtime(projectId, () => load(true));
 
   if (loading) {
     return (

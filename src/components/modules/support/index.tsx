@@ -20,6 +20,7 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { formatDate, formatRelativeTime } from '@/lib/format';
 import { TICKET_PRIORITIES, TICKET_STATUSES, PAGE_SIZE } from '@/lib/constants';
 import { createTicketSchema, updateTicketSchema } from '@/lib/validations';
+import { useModuleRealtime } from '@/hooks/use-realtime';
 import { cn } from '@/lib/utils';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -447,6 +448,13 @@ export default function SupportModule() {
   useEffect(() => {
     fetchTickets();
   }, [fetchTickets]);
+
+  /**
+   * A ticket raised by a client through the portal, or picked up by a
+   * colleague, appears without anyone pressing refresh. Support is the module
+   * where a stale queue means two agents answer the same ticket.
+   */
+  useModuleRealtime('support', ['support_tickets'], () => fetchTickets());
 
   // ─── Create ticket ────────────────────────────────────────────────
   const createForm = useForm({

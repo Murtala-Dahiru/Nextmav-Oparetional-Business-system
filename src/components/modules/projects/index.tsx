@@ -18,6 +18,7 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { formatCurrency, formatDate, getInitials, initialsOf } from '@/lib/format';
 import { TASK_STATUSES, PROJECT_STATUSES } from '@/lib/constants';
 import { createTaskSchema, createProjectSchema } from '@/lib/validations';
+import { useModuleRealtime } from '@/hooks/use-realtime';
 import { z } from 'zod';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -334,6 +335,17 @@ function TasksTab() {
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
   useEffect(() => { fetchStats(); fetchDropdowns(); }, [fetchStats, fetchDropdowns]);
+
+  /**
+   * A task completed anywhere changes this table and its three counters.
+   *
+   * `projects` is watched too, because the table's Project column renders the
+   * project's name — renaming one leaves every row referring to it stale.
+   */
+  useModuleRealtime('tasks', ['tasks', 'projects'], () => {
+    fetchTasks();
+    fetchStats();
+  });
 
   // Form
   const { register, handleSubmit, control, reset, formState: { errors } } = useForm<TaskFormValues>({
@@ -778,17 +790,25 @@ function ProjectsTab() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Fetch projects
-  const fetchProjects = useCallback(async () => {
-    setLoading(true);
+  /**
+   * Fetch projects. `silent` refreshes in place, for a realtime nudge.
+   *
+   * Without it, a colleague completing a task would replace the whole board
+   * with six skeleton cards for the length of a request — a visible flicker
+   * caused by somebody else's work, which is worse than the staleness it fixes.
+   * A failure on a silent refresh is also not worth a toast: the board still
+   * shows the last good data.
+   */
+  const fetchProjects = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams({ page: '1', pageSize: '100' });
       const res = await apiFetch<Project[]>(`/api/projects/projects?${params.toString()}`);
       setProjects(res.data || []);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to load projects');
+      if (!silent) toast.error(err.message || 'Failed to load projects');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -817,6 +837,24 @@ function ProjectsTab() {
   }, []);
 
   useEffect(() => { fetchProjects(); fetchUsers(); }, [fetchProjects, fetchUsers]);
+
+  /**
+   * Every card shows progress, health and task counts computed by
+   * `v_project_health`, so the board is stale after a write to any of the
+   * tables that view reads. This is "project edited — immediately updates
+   * everywhere" and "task completed — project progress updates immediately",
+   * for the board rather than one project.
+   *
+   * Suspended while a project's workspace is open: that screen has its own,
+   * narrower subscription, and refetching a hundred cards behind it is work
+   * nobody can see.
+   */
+  useModuleRealtime(
+    'projects-board',
+    ['projects', 'tasks', 'milestones', 'files'],
+    () => fetchProjects(true),
+    !openProjectId,
+  );
 
   // Form
   const { register, handleSubmit, control, reset, formState: { errors } } = useForm<ProjectFormValues>({

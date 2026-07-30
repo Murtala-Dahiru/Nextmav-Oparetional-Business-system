@@ -402,6 +402,53 @@ try {
   const dir = await q(`SELECT count(*)::int AS n FROM v_org_directory WHERE organization_id=$1`, [orgA.id]);
   check(dir[0].n >= 1, `v_org_directory resolves members (${dir[0].n})`);
 
+  section('8. Realtime is configured for the tables the UI subscribes to');
+  /**
+   * Asserted against the catalog, because every way this can be wrong is
+   * silent.
+   *
+   * `hooks/use-realtime.ts` names these tables. A table missing from the
+   * publication produces a subscription that joins successfully and never
+   * fires — identical, from the browser, to a table nobody is writing to. And a
+   * published table without `REPLICA IDENTITY FULL` delivers an UPDATE carrying
+   * only the primary key, so `filter: project_id=eq.…` matches nothing: the
+   * per-project subscriptions would receive INSERTs and silently miss every
+   * edit, which is the harder bug to notice of the two.
+   *
+   * Keep this list in step with the hooks. It is the contract between them.
+   */
+  const REALTIME_TABLES = [
+    'projects', 'tasks', 'milestones', 'files', 'comments',
+    'messages', 'message_reactions', 'notifications',
+    'leave_requests', 'invoices', 'expenses',
+    'channels', 'channel_members', 'announcements',
+    'attendance_records', 'support_tickets', 'activity_log',
+  ];
+
+  const publishedRows = await q(
+    `SELECT tablename FROM pg_publication_tables
+      WHERE pubname = 'supabase_realtime' AND schemaname = 'public'`,
+  );
+  const published = new Set(publishedRows.map(r => r.tablename));
+  const missing = REALTIME_TABLES.filter(t => !published.has(t));
+  check(missing.length === 0,
+    `all ${REALTIME_TABLES.length} subscribed tables are in the publication`,
+    missing.length ? `missing: ${missing.join(', ')}` : '');
+
+  /**
+   * `relreplident`: 'f' is FULL, 'd' is the default (primary key only).
+   */
+  const identities = await q(
+    `SELECT c.relname, c.relreplident
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname = ANY($1)`,
+    [REALTIME_TABLES],
+  );
+  const notFull = identities.filter(r => r.relreplident !== 'f').map(r => r.relname);
+  check(notFull.length === 0,
+    'and each has REPLICA IDENTITY FULL, so filtered UPDATEs are delivered',
+    notFull.length ? `default identity: ${notFull.join(', ')}` : '');
+
 } catch (e) {
   fail++;
   failures.push('harness error');
