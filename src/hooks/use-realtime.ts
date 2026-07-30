@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createClient, type SupabaseClient } from '@/lib/supabase/client';
 
 /**
@@ -282,6 +282,160 @@ export function useProjectRealtime(projectId: string | null, onChange: () => voi
         ]
       : [],
   });
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  Typing indicators
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * ── Why this is broadcast and not a table ─────────────────────────────────
+ *
+ * Everything else here is `postgres_changes`: something was written, so go and
+ * read it again. "Alice is typing" is the opposite kind of fact — it is true
+ * for about two seconds, nobody needs it after that, and writing it down would
+ * mean a row per keystroke-burst per person, an index to keep, and a cleanup
+ * job for state that expires on its own.
+ *
+ * Supabase Realtime's `broadcast` carries it directly between clients without
+ * touching the database. The cost of a lost message is that a "typing…" line
+ * does not appear, which is exactly the right failure for something this
+ * ephemeral.
+ *
+ * ── The two timers, and why both are needed ───────────────────────────────
+ *
+ *   · The sender throttles. A keystroke is not an event worth sending; one
+ *     signal every few seconds while somebody is actively typing is.
+ *   · The receiver expires. Nothing announces "I stopped typing" reliably — a
+ *     closed tab, a dropped connection or simply walking away all end the
+ *     typing without a final message. So each name carries its own deadline and
+ *     disappears on its own, and a stuck "Alice is typing…" is impossible.
+ */
+
+export interface TypingUser {
+  memberId: string;
+  name: string;
+}
+
+/** How often the sender re-announces while typing continues. */
+const TYPING_THROTTLE_MS = 3000;
+/** How long a received signal stays valid. Comfortably above the throttle. */
+const TYPING_TTL_MS = 5000;
+
+export function useTyping(
+  channelId: string | null,
+  me: { memberId: string; name: string } | null,
+) {
+  const [received, setReceived] = useState<TypingUser[]>([]);
+  const chanRef = useRef<ReturnType<SupabaseClient['channel']> | null>(null);
+  const lastSent = useRef(0);
+  /** memberId → the moment their signal stops counting. */
+  const deadlines = useRef(new Map<string, number>());
+
+  /**
+   * The caller's identity, in a ref.
+   *
+   * `signal` is called on every keystroke, so it must not be rebuilt whenever
+   * the roster reloads and produces a new `me` object — and a `useCallback`
+   * closing over `me?.memberId` is one React's compiler cannot verify, which is
+   * what `preserve-manual-memoization` objects to. The ref makes the callback
+   * genuinely stable and always current.
+   */
+  const meRef = useRef(me);
+  useEffect(() => { meRef.current = me; });
+
+  const active = !!channelId && !!me;
+
+  /**
+   * Derived, not reset by an effect.
+   *
+   * Clearing with `setTyping([])` at the top of the effect is a synchronous
+   * setState inside an effect body — an extra render on every channel switch,
+   * and what `react-hooks/set-state-in-effect` exists to catch. Returning an
+   * empty list when there is nothing to listen on says the same thing with no
+   * state to keep in step.
+   */
+  const typing = active ? received : [];
+
+  useEffect(() => {
+    if (!channelId || !me) return;
+
+    const supabase = client();
+    // A separate channel from the postgres one: mixing a two-second ephemeral
+    // signal into the subscription that drives refetches would mean every
+    // keystroke burst triggering a reload of the message list.
+    const chan = supabase.channel(`typing:${channelId}`, {
+      config: { broadcast: { self: false } },
+    });
+    chanRef.current = chan;
+
+    chan.on('broadcast', { event: 'typing' }, ({ payload }: any) => {
+      const from = payload?.memberId;
+      if (!from || from === me.memberId) return;
+      deadlines.current.set(from, Date.now() + TYPING_TTL_MS);
+      setReceived(prev =>
+        prev.some(t => t.memberId === from)
+          ? prev
+          : [...prev, { memberId: from, name: payload.name ?? 'Someone' }],
+      );
+    });
+
+    void (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (token) supabase.realtime.setAuth(token);
+      } catch { /* an unauthenticated tab simply sends and receives nothing */ }
+      chan.subscribe();
+    })();
+
+    /**
+     * Expiry runs on a timer rather than being scheduled per signal.
+     *
+     * One interval for the channel, not one `setTimeout` per person per
+     * keystroke — which on a busy channel is a stream of timers to track and
+     * cancel, and a leak the first time one is missed.
+     */
+    const sweep = setInterval(() => {
+      const now = Date.now();
+      let changed = false;
+      for (const [id, until] of deadlines.current) {
+        if (until <= now) { deadlines.current.delete(id); changed = true; }
+      }
+      if (changed) {
+        setReceived(prev => prev.filter(t => deadlines.current.has(t.memberId)));
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(sweep);
+      deadlines.current.clear();
+      chanRef.current = null;
+      void supabase.removeChannel(chan);
+    };
+  }, [channelId, me?.memberId, me?.name]);
+
+  /**
+   * Call on every keystroke; the throttle decides what actually goes out.
+   *
+   * No dependencies: everything it needs is in a ref, so the identity is stable
+   * for the life of the component and an `onChange` handler that calls it does
+   * not change on every render.
+   */
+  const signal = useCallback(() => {
+    const self = meRef.current;
+    if (!chanRef.current || !self) return;
+    const now = Date.now();
+    if (now - lastSent.current < TYPING_THROTTLE_MS) return;
+    lastSent.current = now;
+    void chanRef.current.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { memberId: self.memberId, name: self.name },
+    });
+  }, []);
+
+  return { typing, signal };
 }
 
 /**

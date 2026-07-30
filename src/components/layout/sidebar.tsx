@@ -16,11 +16,11 @@ import {
   Settings,
   ChevronsLeft,
   ChevronsRight,
-  Hexagon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MODULES, ROLE_PERMISSIONS, type ModuleId } from '@/lib/constants';
 import { useAppStore } from '@/store/app-store';
+import { OrgMark } from './org-mark';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -205,22 +205,14 @@ function DesktopSidebar() {
           sidebarCollapsed && 'justify-center px-0'
         )}
       >
-        <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10">
-          <Hexagon className="size-5 text-emerald-500" />
-        </div>
-        <AnimatePresence initial={false}>
-          {!sidebarCollapsed && (
-            <motion.span
-              initial={{ opacity: 0, width: 0 }}
-              animate={{ opacity: 1, width: 'auto' }}
-              exit={{ opacity: 0, width: 0 }}
-              transition={{ duration: 0.2, ease: 'easeInOut' }}
-              className="overflow-hidden whitespace-nowrap text-base font-semibold tracking-tight text-foreground"
-            >
-              NexusCorp
-            </motion.span>
-          )}
-        </AnimatePresence>
+        {/*
+          The organisation's own mark and name, not the vendor's.
+          `logo_url`, `name` and `branding.primary_colour` were all stored,
+          validated and editable, and this rendered a generic hexagon and the
+          literal "NexusCorp" — so a company could configure all three and see
+          their own name nowhere in the product they had just set up.
+        */}
+        <OrgMark collapsed={sidebarCollapsed} />
       </div>
 
       {/* Nav */}
@@ -275,12 +267,7 @@ function MobileSidebar() {
 
         {/* Logo */}
         <div className="flex items-center gap-3 border-b border-border px-4 h-14 shrink-0">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10">
-            <Hexagon className="size-5 text-emerald-500" />
-          </div>
-          <span className="text-base font-semibold tracking-tight text-foreground">
-            NexusCorp
-          </span>
+          <OrgMark />
         </div>
 
         {/* Nav */}

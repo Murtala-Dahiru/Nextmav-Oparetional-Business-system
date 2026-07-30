@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import {
   Hash, Lock, User, Settings, Search, Send, Pin, PinOff, Plus,
   MoreHorizontal, SmilePlus, Menu, Loader2, MessageSquare, Users,
-  UserPlus, LogOut, Megaphone, Trash2, Shield, X, Archive,
+  UserPlus, LogOut, Megaphone, Trash2, Shield, X, Archive, Pencil,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -33,7 +33,7 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { formatRelativeTime, initialsOf, truncate } from '@/lib/format';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAppStore } from '@/store/app-store';
-import { useModuleRealtime, useRealtime } from '@/hooks/use-realtime';
+import { useModuleRealtime, useRealtime, useTyping } from '@/hooks/use-realtime';
 import { type PresenceRow } from '@/hooks/use-presence';
 import { PresenceDot, AvatarPresence, PresenceLabel } from '@/components/shared/presence-dot';
 import { cn } from '@/lib/utils';
@@ -120,6 +120,13 @@ interface ChannelMember {
   channelId: string;
   memberId: string;
   role: 'owner' | 'admin' | 'member';
+  /**
+   * How far this member has read.
+   *
+   * The same marker `channel_overview()` computes the unread badge from — which
+   * is why a read receipt derived from it can never disagree with the count.
+   */
+  lastReadAt: string | null;
   fullName: string;
   avatarUrl: string | null;
   email: string;
@@ -440,6 +447,27 @@ export default function CommunicationModule() {
    * different questions: this one is "what is in the conversation I am reading",
    * the other is "which conversations do I have".
    */
+  /**
+   * Who is typing, right now.
+   *
+   * Broadcast rather than a table: "Alice is typing" is true for two seconds
+   * and worthless afterwards, so writing it down would mean a row per
+   * keystroke-burst and a cleanup job for state that expires on its own.
+   *
+   * The name is resolved from the roster rather than sent by the sender, so a
+   * client cannot announce itself as somebody else.
+   */
+  const me = useMemo(
+    () => (currentMemberId
+      ? {
+          memberId: currentMemberId,
+          name: members.find(m => m.memberId === currentMemberId)?.fullName ?? 'Someone',
+        }
+      : null),
+    [currentMemberId, members],
+  );
+  const { typing, signal: signalTyping } = useTyping(selectedId, me);
+
   useRealtime({
     name: `channel:${selectedId ?? 'none'}`,
     enabled: !!selectedId,
@@ -554,6 +582,31 @@ export default function CommunicationModule() {
       inputRef.current?.focus();
     }
   }, [draft, selectedId, sending, resolveMentions, replyTo, toggleThread]);
+
+  const editMessage = useCallback(async (message: Message, body: string) => {
+    try {
+      await api(`/api/communication/messages/${message.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ body }),
+      });
+      /**
+       * Patched in place rather than refetched.
+       *
+       * The exception to this file's usual rule: the endpoint returns nothing
+       * derived, the author is looking straight at the line they just changed,
+       * and a refetch would rebuild the whole thread and lose their scroll
+       * position for a one-word correction. The realtime subscription still
+       * carries the change to everyone else.
+       */
+      setMessages(prev => prev.map(m =>
+        m.id === message.id
+          ? { ...m, body, editedAt: new Date().toISOString() }
+          : m));
+    } catch (err: any) {
+      toast.error(err.message || 'Could not edit that message');
+      throw err;
+    }
+  }, []);
 
   const togglePin = useCallback(async (message: Message) => {
     try {
@@ -1021,10 +1074,36 @@ export default function CommunicationModule() {
                         currentMemberId={currentMemberId}
                         canModerate={selected.isAdmin || isOrgAdmin}
                         members={members}
+                        /**
+                         * Who has seen it.
+                         *
+                         * Derived from `channel_members.last_read_at`, which
+                         * has existed since the first communication migration
+                         * and already drives the unread badge — a member whose
+                         * marker is at or past this message has read it. No new
+                         * table, no per-message receipt row, and by construction
+                         * it cannot disagree with the unread count.
+                         *
+                         * Only computed for your own messages: "who has read
+                         * this" is a question people ask about what they sent,
+                         * and rendering it on every line would put a row of
+                         * avatars under a colleague's message answering nothing
+                         * anybody asked.
+                         */
+                        readBy={
+                          !!currentMemberId && message.senderId === currentMemberId
+                            ? members.filter(
+                                m => m.memberId !== currentMemberId
+                                  && m.lastReadAt
+                                  && m.lastReadAt >= message.createdAt,
+                              )
+                            : []
+                        }
                         onTogglePin={() => togglePin(message)}
                         onReact={(emoji) => react(message, emoji)}
                         onDelete={() => deleteMessage(message)}
                         onReply={() => { setReplyTo(message); inputRef.current?.focus(); }}
+                        onEdit={(body) => editMessage(message, body)}
                         onToggleThread={() => void toggleThread(message)}
                         threadOpen={openThread === message.id}
                         replies={threadReplies[message.id]}
@@ -1033,6 +1112,26 @@ export default function CommunicationModule() {
                     <div ref={endRef} />
                   </div>
                 </ScrollArea>
+              )}
+            </div>
+
+            {/*
+              Who is typing.
+
+              Above the composer and outside it, so the input does not move
+              when somebody starts or stops — a text box that jumps while you
+              are typing in it is worse than no indicator. The row keeps its
+              height for the same reason.
+            */}
+            <div className="h-5 px-4 text-xs text-muted-foreground" aria-live="polite">
+              {typing.length > 0 && (
+                <span className="italic">
+                  {typing.length === 1
+                    ? `${typing[0].name} is typing…`
+                    : typing.length === 2
+                      ? `${typing[0].name} and ${typing[1].name} are typing…`
+                      : `${typing.length} people are typing…`}
+                </span>
               )}
             </div>
 
@@ -1074,7 +1173,7 @@ export default function CommunicationModule() {
                         : `Message ${channelLabel(selected)} — @name to notify someone`
                     }
                     value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
+                    onChange={(e) => { setDraft(e.target.value); signalTyping(); }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
                       // Escape drops out of a reply rather than leaving the
@@ -1277,8 +1376,8 @@ function ChannelGroup({
 // ═══════════════════════════════════════════════════════════════════════════
 
 function MessageBubble({
-  message, isOwn, isConsecutive, currentMemberId, canModerate, members,
-  onTogglePin, onReact, onDelete, onReply, onToggleThread,
+  message, isOwn, isConsecutive, currentMemberId, canModerate, members, readBy,
+  onTogglePin, onReact, onDelete, onReply, onToggleThread, onEdit,
   threadOpen, replies,
 }: {
   message: Message;
@@ -1287,15 +1386,44 @@ function MessageBubble({
   currentMemberId: string | null;
   canModerate: boolean;
   members: ChannelMember[];
+  /** Colleagues whose read marker has passed this message. Own messages only. */
+  readBy: ChannelMember[];
   onTogglePin: () => void;
   onReact: (emoji: string) => void;
   onDelete: () => void;
   onReply: () => void;
   onToggleThread: () => void;
+  onEdit: (body: string) => Promise<void>;
   threadOpen: boolean;
   replies: Message[] | undefined;
 }) {
   const [hovered, setHovered] = useState(false);
+
+  /**
+   * Editing happens in place.
+   *
+   * The endpoint has always accepted a new body and stamped `edited_at`, and
+   * this bubble already renders an "(edited)" marker from it — there was simply
+   * no way to trigger one. Inline rather than a dialog: almost every message
+   * edit is a one-line correction, and a modal for that is a interruption.
+   */
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState(message.body);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const commitEdit = async () => {
+    const next = editDraft.trim();
+    // An unchanged body must not stamp `edited_at` and label the message as
+    // edited when nothing was.
+    if (!next || next === message.body) { setEditing(false); return; }
+    setSavingEdit(true);
+    try {
+      await onEdit(next);
+      setEditing(false);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   // Falls back rather than rendering 'undefined': a profile can legitimately
   // have no name yet, and a chat line is still readable without one.
@@ -1382,6 +1510,26 @@ function MessageBubble({
             {message.isPinned && <Pin className="size-3 text-amber-500" />}
           </div>
         )}
+        {editing ? (
+          <div className="flex flex-col gap-1.5 py-1">
+            <Input
+              value={editDraft}
+              onChange={e => setEditDraft(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void commitEdit(); }
+                // Escape abandons the edit and restores what was there, which is
+                // what every editor in the product does.
+                if (e.key === 'Escape') { setEditDraft(message.body); setEditing(false); }
+              }}
+              disabled={savingEdit}
+              autoFocus
+              className="h-8 text-sm"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Enter to save · Escape to cancel
+            </p>
+          </div>
+        ) : (
         <p className="break-words text-sm leading-relaxed text-foreground/90">
           {rendered.map((part, i) =>
             typeof part === 'string' ? (
@@ -1401,6 +1549,22 @@ function MessageBubble({
             ),
           )}
         </p>
+        )}
+
+        {/*
+          Who has read it.
+
+          Names rather than a row of avatars: three initials tell you nothing
+          you can act on, and this appears only under your own messages, where
+          the question "did they see it" is the one actually being asked.
+        */}
+        {readBy.length > 0 && !editing && (
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            Read by {readBy.length <= 3
+              ? readBy.map(m => m.fullName).join(', ')
+              : `${readBy.slice(0, 2).map(m => m.fullName).join(', ')} and ${readBy.length - 2} others`}
+          </p>
+        )}
 
         {grouped.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1">
@@ -1518,6 +1682,18 @@ function MessageBubble({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {/*
+                  Only the author edits. Moderation can remove a message but not
+                  rewrite it — putting words in somebody's mouth is a different
+                  power from taking them away, and the RLS policy allows an
+                  UPDATE only to rows whose sender is the caller, so this is the
+                  UI agreeing with the boundary rather than inventing one.
+                */}
+                {isOwn && (
+                  <DropdownMenuItem onClick={() => { setEditDraft(message.body); setEditing(true); }}>
+                    <Pencil className="mr-2 size-4" /> Edit message
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={onDelete}>
                   <Trash2 className="mr-2 size-4" /> Delete message
                 </DropdownMenuItem>

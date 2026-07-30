@@ -2682,6 +2682,98 @@ try {
     `attributed to a real person rather than a hard-coded name (${listedFile?.uploadedByName})`);
 
   // ─────────────────────────────────────────────────────────────────────────
+  section('57b. Branding reaches the shell, and messages can be corrected');
+  /**
+   * ── Branding ──────────────────────────────────────────────────────────────
+   *
+   * `organizations.logo_url`, `organizations.name` and
+   * `branding.primary_colour` all had columns, validators and controls on the
+   * settings screen — and the sidebar rendered a generic hexagon and the
+   * literal string "NexusCorp". A company could configure all three and see
+   * their own name nowhere in the product they had just set up.
+   *
+   * Asserted through the session, because that is where the shell reads them.
+   */
+  const branded = await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      name: `Rebranded ${run}`,
+      settings: {
+        branding: {
+          primaryColour: '#7c3aed',
+          loginMessage: '',
+          showLogoInSidebar: true,
+        },
+      },
+    }),
+  });
+  check(branded.ok, `branding saves (${branded.status})`, branded.body?.error?.message);
+
+  const brandedSession = await A.json('/api/auth/session');
+  const org = brandedSession.body?.data?.organization ?? {};
+  check(org.name === `Rebranded ${run}`,
+    `the organisation's own name reaches the shell (${org.name})`);
+  check(org.policies?.branding?.primaryColour === '#7c3aed',
+    `and its brand colour (${org.policies?.branding?.primaryColour})`);
+  check('logoUrl' in org,
+    'and the logo field the sidebar renders is carried, even when unset');
+
+  const badColour = await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({ settings: { branding: { primaryColour: 'not-a-colour' } } }),
+  });
+  check(badColour.status === 422,
+    `an invalid brand colour is refused rather than reaching a style attribute (${badColour.status})`);
+
+  /**
+   * ── Message editing ───────────────────────────────────────────────────────
+   *
+   * The endpoint has always accepted a new body and stamped `edited_at`, and
+   * the bubble has always rendered an "(edited)" marker from it. Nothing could
+   * trigger one, so that marker had never appeared.
+   */
+  const editable = await A.json('/api/communication/messages', {
+    method: 'POST',
+    body: JSON.stringify({ channelId: threadRoomId, body: 'Teh quick brown fox' }),
+  });
+  const editableId = editable.body?.data?.id;
+
+  const corrected = await A.json(`/api/communication/messages/${editableId}`, {
+    method: 'PATCH', body: JSON.stringify({ body: 'The quick brown fox' }),
+  });
+  check(corrected.ok, `an author can correct their own message (${corrected.status})`,
+    corrected.body?.error?.message);
+  check(corrected.body?.data?.body === 'The quick brown fox', 'the new text is stored');
+  check(!!corrected.body?.data?.editedAt,
+    'and it is stamped as edited, which is what the marker renders from');
+
+  /**
+   * Only the author. Moderation can remove a message but not rewrite it —
+   * putting words in somebody's mouth is a different power from taking them
+   * away, and the RLS policy admits an UPDATE only to rows the caller sent.
+   */
+  const rewriteOther = await C.json(`/api/communication/messages/${editableId}`, {
+    method: 'PATCH', body: JSON.stringify({ body: 'Something I never said' }),
+  });
+  const afterRewrite = await A.json(
+    `/api/communication/messages?channelId=${threadRoomId}&pageSize=100`,
+  );
+  const untouched = (afterRewrite.body?.data ?? []).find(m => m.id === editableId);
+  check(untouched?.body === 'The quick brown fox',
+    `a colleague cannot rewrite it (${rewriteOther.status})`);
+
+  /**
+   * ── Read receipts ─────────────────────────────────────────────────────────
+   *
+   * Derived from `channel_members.last_read_at`, the same marker the unread
+   * badge is computed from — so a receipt can never disagree with the count,
+   * and no per-message receipt table is needed.
+   */
+  const roster = await A.json(`/api/communication/channels/${threadRoomId}/members`);
+  check((roster.body?.data ?? []).every(m => 'lastReadAt' in m),
+    'the roster carries each member\'s read marker');
+
+  // ─────────────────────────────────────────────────────────────────────────
   section('58a. The workspace trash');
   /**
    * Deleting a page has always been soft — `deleted_at` is stamped and the row
