@@ -66,6 +66,8 @@ const MAP: Array<{ schema: string; table: string | null; why?: string }> = [
   { schema: 'updateTaskSchema', table: 'tasks' },
   { schema: 'createTicketSchema', table: 'support_tickets' },
   { schema: 'updateTicketSchema', table: 'support_tickets' },
+  { schema: 'createCrmActivitySchema', table: 'crm_activities' },
+  { schema: 'updateCrmActivitySchema', table: 'crm_activities' },
   { schema: 'createExpenseSchema', table: 'expenses' },
   { schema: 'updateExpenseSchema', table: 'expenses' },
   { schema: 'createProductSchema', table: 'products' },

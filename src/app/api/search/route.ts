@@ -31,7 +31,9 @@ export async function GET(req: Request) {
   const sees = (m: ModuleId) => can(ctx.org.role, m, 'view');
   const none = Promise.resolve({ data: [] as any[] });
 
-  const [leads, companies, projects, tasks, tickets, pages, products] = await Promise.all([
+  const [
+    leads, companies, projects, tasks, tickets, pages, products, contacts, deals, invoices,
+  ] = await Promise.all([
     sees('crm')
       ? ctx.supabase.from('leads').select('id, first_name, last_name, company_name, status')
           .eq('organization_id', orgId).is('deleted_at', null)
@@ -68,6 +70,37 @@ export async function GET(req: Request) {
           .eq('organization_id', orgId).is('deleted_at', null)
           .or(`name.ilike.${like},sku.ilike.${like}`).limit(limit)
       : none,
+
+    /**
+     * Contacts, deals and invoices.
+     *
+     * The three record types a commercial team looks up by name more often
+     * than anything else, and the original seven omitted all of them: a
+     * customer's name found their *company* but not the person you actually
+     * deal with, and an invoice number — the single most looked-up string in
+     * any finance conversation — matched nothing at all.
+     */
+    sees('crm')
+      ? ctx.supabase.from('contacts')
+          .select('id, first_name, last_name, job_title, company:companies(name)')
+          .eq('organization_id', orgId).is('deleted_at', null)
+          .or(`first_name.ilike.${like},last_name.ilike.${like},email.ilike.${like},job_title.ilike.${like}`)
+          .limit(limit)
+      : none,
+    // `notes`, not `description`: deals keep their free text in `notes`, and
+    // naming a column that does not exist makes PostgREST reject the whole
+    // query — which this endpoint would have swallowed as "no deals matched".
+    sees('crm')
+      ? ctx.supabase.from('deals').select('id, name, stage, value')
+          .eq('organization_id', orgId).is('deleted_at', null)
+          .or(`name.ilike.${like},notes.ilike.${like}`).limit(limit)
+      : none,
+    sees('finance')
+      ? ctx.supabase.from('invoices')
+          .select('id, invoice_number, status, total, company:companies(name)')
+          .eq('organization_id', orgId).is('deleted_at', null)
+          .or(`invoice_number.ilike.${like},notes.ilike.${like}`).limit(limit)
+      : none,
   ]);
 
   // Flattened into one ranked list so the palette can render a single
@@ -102,7 +135,44 @@ export async function GET(req: Request) {
       type: 'product', module: 'inventory', id: r.id, title: r.name,
       subtitle: r.sku, meta: `${r.stock} ${r.unit}`,
     })),
+    ...(contacts.data ?? []).map((r: any) => ({
+      type: 'contact', module: 'crm', id: r.id,
+      title: [r.first_name, r.last_name].filter(Boolean).join(' '),
+      subtitle: [r.job_title, r.company?.name].filter(Boolean).join(' · ') || null,
+      meta: null,
+    })),
+    ...(deals.data ?? []).map((r: any) => ({
+      type: 'deal', module: 'crm', id: r.id, title: r.name,
+      subtitle: null, meta: r.stage,
+    })),
+    ...(invoices.data ?? []).map((r: any) => ({
+      type: 'invoice', module: 'finance', id: r.id, title: r.invoice_number,
+      subtitle: r.company?.name ?? null, meta: r.status,
+    })),
   ];
 
-  return success({ query: raw, results, total: results.length });
+  /**
+   * A sub-query that failed is reported, not silently dropped.
+   *
+   * Every branch above is independent, so one rejected query — a renamed
+   * column, a revoked grant — leaves that entity type simply absent from the
+   * results, which is indistinguishable from "nothing matched". That is how a
+   * search for a deal by name returned nothing at all while looking perfectly
+   * healthy: the filter named `description` and deals keep their text in
+   * `notes`. Degrading is right; degrading quietly is not.
+   */
+  const failures = Object.entries({
+    leads, companies, projects, tasks, tickets, pages, products, contacts, deals, invoices,
+  })
+    .filter(([, r]) => (r as any).error)
+    .map(([name, r]) => `${name}: ${(r as any).error.message}`);
+
+  if (failures.length) console.error('[search] partial results —', failures.join('; '));
+
+  return success({
+    query: raw,
+    results,
+    total: results.length,
+    ...(failures.length ? { partial: failures } : {}),
+  });
 }

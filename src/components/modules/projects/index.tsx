@@ -19,6 +19,7 @@ import { formatCurrency, formatDate, getInitials, initialsOf } from '@/lib/forma
 import { TASK_STATUSES, PROJECT_STATUSES } from '@/lib/constants';
 import { createTaskSchema, createProjectSchema } from '@/lib/validations';
 import { useModuleRealtime } from '@/hooks/use-realtime';
+import { useFocusRequest } from '@/hooks/use-focus-request';
 import { useAppStore } from '@/store/app-store';
 import { z } from 'zod';
 
@@ -222,6 +223,27 @@ async function apiFetch<T>(url: string, init?: RequestInit): Promise<{ data: T; 
 export default function ProjectsModule() {
   const [activeTab, setActiveTab] = useState('tasks');
 
+  /**
+   * A record the palette (or any other module) asked this one to open.
+   *
+   * Held at the root because the tabs unmount their content: a request for a
+   * project that arrives while the Tasks tab is showing has to survive being
+   * handed to a `ProjectsTab` that does not exist yet. The tab is switched
+   * first and the id is passed down, so the child opens it as it mounts.
+   */
+  const [focusProjectId, setFocusProjectId] = useState<string | null>(null);
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null);
+
+  useFocusRequest('projects', ({ type, id }) => {
+    if (type === 'project') {
+      setActiveTab('projects');
+      setFocusProjectId(id);
+    } else if (type === 'task') {
+      setActiveTab('tasks');
+      setFocusTaskId(id);
+    }
+  });
+
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6 overflow-auto h-full">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -235,10 +257,10 @@ export default function ProjectsModule() {
         </TabsList>
 
         <TabsContent value="tasks" className="mt-4">
-          <TasksTab />
+          <TasksTab focusTaskId={focusTaskId} onFocusHandled={() => setFocusTaskId(null)} />
         </TabsContent>
         <TabsContent value="projects" className="mt-4">
-          <ProjectsTab />
+          <ProjectsTab focusProjectId={focusProjectId} onFocusHandled={() => setFocusProjectId(null)} />
         </TabsContent>
       </Tabs>
     </div>
@@ -249,7 +271,13 @@ export default function ProjectsModule() {
 //  Tasks Tab
 // ═══════════════════════════════════════════════════════════════════════════
 
-function TasksTab() {
+function TasksTab({
+  focusTaskId,
+  onFocusHandled,
+}: {
+  focusTaskId?: string | null;
+  onFocusHandled?: () => void;
+}) {
   // Data state
   const [tasks, setTasks] = useState<Task[]>([]);
   const [total, setTotal] = useState(0);
@@ -414,6 +442,30 @@ function TasksTab() {
     });
     setTaskDialogOpen(true);
   }, [reset]);
+
+  /**
+   * Open a task the palette found.
+   *
+   * Fetched by id rather than looked up in `tasks`: the list on screen is one
+   * page of twenty under whatever filters the user last set, so the task they
+   * just searched for is usually not in it. Searching for a record and being
+   * told it cannot be found is the worst possible answer.
+   */
+  useEffect(() => {
+    if (!focusTaskId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch<Task>(`/api/projects/tasks/${focusTaskId}`);
+        if (!cancelled && res.data) openEdit(res.data);
+      } catch {
+        toast.error('That task could no longer be opened.');
+      } finally {
+        if (!cancelled) onFocusHandled?.();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [focusTaskId, openEdit, onFocusHandled]);
 
   // Submit
   const onSubmit = useCallback(async (values: TaskFormValues) => {
@@ -783,7 +835,13 @@ function TasksTab() {
 //  Projects Tab
 // ═══════════════════════════════════════════════════════════════════════════
 
-function ProjectsTab() {
+function ProjectsTab({
+  focusProjectId,
+  onFocusHandled,
+}: {
+  focusProjectId?: string | null;
+  onFocusHandled?: () => void;
+}) {
   // Data state
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -870,6 +928,20 @@ function ProjectsTab() {
     const fromLink = new URLSearchParams(window.location.search).get('project');
     if (fromLink) setOpenProjectId(fromLink);
   }, []);
+
+  /**
+   * The same destination, reached from inside the session.
+   *
+   * The effect above handles arriving on a notification's link, which is read
+   * once at mount. A search result chosen while this tab is already open would
+   * never re-run it, so the request comes down as a prop instead and opens the
+   * workspace whenever it changes.
+   */
+  useEffect(() => {
+    if (!focusProjectId) return;
+    setOpenProjectId(focusProjectId);
+    onFocusHandled?.();
+  }, [focusProjectId, onFocusHandled]);
 
   // Dialog state
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);

@@ -17,14 +17,19 @@ import { PageHeader } from '@/components/shared/page-header';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { StatCard } from '@/components/shared/stat-card';
 import {
-  formatCurrency, formatDate, formatRelativeTime, getInitials, formatNumber,
+  formatCurrency, formatDate, formatDateTime, formatRelativeTime, getInitials, formatNumber,
   activeCurrencyCode,
 } from '@/lib/format';
+import { EmptyState } from '@/components/shared/empty-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import { LEAD_STATUSES, DEAL_STAGES } from '@/lib/constants';
 import {
   createLeadSchema, createContactSchema, createCompanySchema, createDealSchema,
 } from '@/lib/validations';
 import { useModuleRealtime } from '@/hooks/use-realtime';
+import { useFocusRequest } from '@/hooks/use-focus-request';
+import { CompanyDetail } from '@/components/modules/crm/company-detail';
+import { ExportButton } from '@/components/shared/export-button';
 import { z } from 'zod';
 
 import { Card, CardContent } from '@/components/ui/card';
@@ -87,6 +92,22 @@ interface Deal {
   owner?: { id: string; profiles?: { fullName: string; avatarUrl: string | null } };
 }
 
+/**
+ * A logged call, email, meeting or note.
+ *
+ * Polymorphic by design: an activity hangs off whichever of lead, contact,
+ * company or deal it is about, and the database requires at least one.
+ */
+interface CrmActivity {
+  id: string; activityType: string; subject: string; body: string;
+  dueAt: string | null; completedAt: string | null; createdAt: string;
+  member?: { id: string; profiles?: { fullName: string; avatarUrl: string | null } } | null;
+  company?: { id: string; name: string } | null;
+  contact?: { id: string; firstName: string; lastName: string } | null;
+  lead?: { id: string; firstName: string; lastName: string } | null;
+  deal?: { id: string; name: string } | null;
+}
+
 type LeadFormValues = z.infer<typeof createLeadSchema>;
 type ContactFormValues = z.infer<typeof createContactSchema>;
 type CompanyFormValues = z.infer<typeof createCompanySchema>;
@@ -139,6 +160,54 @@ async function fetchList<T>(url: string): Promise<{ data: T[]; meta: ApiMeta }> 
   const res = await fetch(url);
   if (!res.ok) { const e = await res.json().catch(() => ({ message: 'Request failed' })); throw new Error((e as any).error?.message ?? `Error ${res.status}`); }
   return res.json();
+}
+
+/**
+ * One record, by id.
+ *
+ * Used when a record is opened from outside this module — a search result, a
+ * link from the customer panel. Fetched rather than looked up in the table's
+ * current page: that page is twenty rows under whatever filter and sort the
+ * user last chose, so the record they explicitly asked for is usually not in
+ * it, and "not found" would be a lie.
+ */
+async function fetchOne<T>(url: string): Promise<T> {
+  const res = await fetch(url);
+  const json = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(json?.error?.message ?? `Error ${res.status}`);
+  return json.data as T;
+}
+
+/**
+ * Open a record's edit dialog when another surface asks for it.
+ *
+ * Shared by the four record tabs, which differ only in the endpoint and in how
+ * they populate their form — so the fetch, the failure message and the
+ * acknowledgement live here once.
+ */
+function useFocusedRecord<T>(
+  focusId: string | null | undefined,
+  endpoint: string,
+  open: (record: T) => void,
+  onHandled?: () => void,
+) {
+  useEffect(() => {
+    if (!focusId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const record = await fetchOne<T>(`${endpoint}/${focusId}`);
+        if (!cancelled && record) open(record);
+      } catch (err: any) {
+        toast.error(err.message || 'That record could no longer be opened');
+      } finally {
+        if (!cancelled) onHandled?.();
+      }
+    })();
+    return () => { cancelled = true; };
+    // Keyed on the id: `open` is recreated on every render in these tabs, so
+    // depending on it would refetch in a loop. The id is the request.
+  }, [focusId, endpoint]);
 }
 
 async function createRecord<T>(url: string, data: unknown): Promise<T> {
@@ -252,7 +321,7 @@ const DEAL_DEFAULTS: DealFormValues = {
 //  Leads Tab
 // ═══════════════════════════════════════════════════════════════════════════
 
-function LeadsTab() {
+function LeadsTab({ focusId, onFocusHandled }: { focusId?: string | null; onFocusHandled?: () => void }) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<ApiMeta>({ total: 0, page: 1, pageSize: 20, totalPages: 0 });
@@ -274,6 +343,18 @@ function LeadsTab() {
   const [deleting, setDeleting] = useState(false);
 
   const form = useForm<LeadFormValues>({ resolver: zodResolver(createLeadSchema) as any, defaultValues: LEAD_DEFAULTS });
+
+  const openEdit = (l: Lead) => {
+    setEditing(l);
+    form.reset({
+      firstName: l.firstName, lastName: l.lastName, email: l.email, phone: l.phone,
+      companyName: l.companyName, jobTitle: l.jobTitle, source: l.source, status: l.status,
+      score: l.score, estimatedValue: l.estimatedValue, notes: l.notes, ownerId: l.ownerId,
+    });
+    setOpen(true);
+  };
+
+  useFocusedRecord<Lead>(focusId, '/api/crm/leads', openEdit, onFocusHandled);
 
   const fetchLeads = useCallback(async () => {
     setLoading(true);
@@ -354,7 +435,7 @@ function LeadsTab() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="Actions"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => { setEditing(row.original); form.reset({ firstName: row.original.firstName, lastName: row.original.lastName, email: row.original.email, phone: row.original.phone, companyName: row.original.companyName, jobTitle: row.original.jobTitle, source: row.original.source, status: row.original.status, score: row.original.score, estimatedValue: row.original.estimatedValue, notes: row.original.notes, ownerId: row.original.ownerId }); setOpen(true); }}>
+          <DropdownMenuItem onClick={() => openEdit(row.original)}>
             <Pencil className="size-4 mr-2" /> Edit
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => { setDeletingItem(row.original); setDeleteOpen(true); }} className="text-red-600 focus:text-red-600">
@@ -482,7 +563,7 @@ function LeadsTab() {
 //  Contacts Tab
 // ═══════════════════════════════════════════════════════════════════════════
 
-function ContactsTab() {
+function ContactsTab({ focusId, onFocusHandled }: { focusId?: string | null; onFocusHandled?: () => void }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<ApiMeta>({ total: 0, page: 1, pageSize: 20, totalPages: 0 });
@@ -501,6 +582,18 @@ function ContactsTab() {
   const [deleting, setDeleting] = useState(false);
 
   const form = useForm<ContactFormValues>({ resolver: zodResolver(createContactSchema) as any, defaultValues: CONTACT_DEFAULTS });
+
+  const openEdit = (c: Contact) => {
+    setEditing(c);
+    form.reset({
+      firstName: c.firstName, lastName: c.lastName, email: c.email, phone: c.phone,
+      jobTitle: c.jobTitle, companyId: c.companyId, source: c.source,
+      isActive: c.isActive, notes: c.notes,
+    });
+    setOpen(true);
+  };
+
+  useFocusedRecord<Contact>(focusId, '/api/crm/contacts', openEdit, onFocusHandled);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -542,7 +635,7 @@ function ContactsTab() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="Actions"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => { const c = row.original; setEditing(c); form.reset({ firstName: c.firstName, lastName: c.lastName, email: c.email, phone: c.phone, jobTitle: c.jobTitle, companyId: c.companyId, source: c.source, isActive: c.isActive, notes: c.notes }); setOpen(true); }}>
+          <DropdownMenuItem onClick={() => openEdit(row.original)}>
             <Pencil className="size-4 mr-2" /> Edit
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => { setDeletingItem(row.original); setDeleteOpen(true); }} className="text-red-600 focus:text-red-600">
@@ -680,7 +773,7 @@ function ContactsTab() {
 //  Companies Tab
 // ═══════════════════════════════════════════════════════════════════════════
 
-function CompaniesTab() {
+function CompaniesTab({ onOpenDetail }: { onOpenDetail: (companyId: string) => void }) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<ApiMeta>({ total: 0, page: 1, pageSize: 20, totalPages: 0 });
@@ -698,6 +791,16 @@ function CompaniesTab() {
   const [deleting, setDeleting] = useState(false);
 
   const form = useForm<CompanyFormValues>({ resolver: zodResolver(createCompanySchema) as any, defaultValues: COMPANY_DEFAULTS });
+
+  const openEdit = (c: Company) => {
+    setEditing(c);
+    form.reset({
+      name: c.name, industry: c.industry, website: c.website, phone: c.phone,
+      email: c.email, city: c.city, country: c.country,
+      employeeCount: c.employeeCount, annualRevenue: c.annualRevenue, notes: c.notes,
+    });
+    setOpen(true);
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -733,7 +836,10 @@ function CompaniesTab() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="Actions"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => { const c = row.original; setEditing(c); form.reset({ name: c.name, industry: c.industry, website: c.website, phone: c.phone, email: c.email, city: c.city, country: c.country, employeeCount: c.employeeCount, annualRevenue: c.annualRevenue, notes: c.notes }); setOpen(true); }}>
+          <DropdownMenuItem onClick={() => onOpenDetail(row.original.id)}>
+            <Building2 className="size-4 mr-2" /> Open customer
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => openEdit(row.original)}>
             <Pencil className="size-4 mr-2" /> Edit
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => { setDeletingItem(row.original); setDeleteOpen(true); }} className="text-red-600 focus:text-red-600">
@@ -764,7 +870,7 @@ function CompaniesTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Companies" description="Manage companies in your CRM">
+      <PageHeader title="Companies" description="Open a customer to see their contacts, deals, projects, invoices and support history">
         <Button onClick={() => { setEditing(null); form.reset(COMPANY_DEFAULTS); setOpen(true); }} className="bg-emerald-600 hover:bg-emerald-700">
           <Plus className="size-4 mr-2" /> New Company
         </Button>
@@ -778,6 +884,9 @@ function CompaniesTab() {
         onPageChange={setPage} onPageSizeChange={s => { setPageSize(s); setPage(0); }}
         page={page} pageSize={pageSize} total={meta.total}
         emptyMessage="No companies found" emptyIcon={Building2}
+        // The row is the customer. Clicking it opens the relationship rather
+        // than an edit form: reading is what people come here to do.
+        onRowClick={(c) => onOpenDetail(c.id)}
       />
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -847,7 +956,7 @@ function CompaniesTab() {
 //  Deals Tab
 // ═══════════════════════════════════════════════════════════════════════════
 
-function DealsTab() {
+function DealsTab({ focusId, onFocusHandled }: { focusId?: string | null; onFocusHandled?: () => void }) {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
   const [meta, setMeta] = useState<ApiMeta>({ total: 0, page: 1, pageSize: 20, totalPages: 0 });
@@ -870,6 +979,18 @@ function DealsTab() {
   const [deleting, setDeleting] = useState(false);
 
   const form = useForm<DealFormValues>({ resolver: zodResolver(createDealSchema) as any, defaultValues: DEAL_DEFAULTS });
+
+  const openEdit = (d: Deal) => {
+    setEditing(d);
+    form.reset({
+      name: d.name, value: d.value, stage: d.stage, probability: d.probability,
+      expectedClose: d.expectedClose?.split('T')[0] || '',
+      companyId: d.companyId, contactId: d.contactId, notes: d.notes, ownerId: d.ownerId,
+    });
+    setOpen(true);
+  };
+
+  useFocusedRecord<Deal>(focusId, '/api/crm/deals', openEdit, onFocusHandled);
 
   const fetchDeals = useCallback(async () => {
     setLoading(true);
@@ -933,7 +1054,7 @@ function DealsTab() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8" aria-label="Actions"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => { const d = row.original; setEditing(d); form.reset({ name: d.name, value: d.value, stage: d.stage, probability: d.probability, expectedClose: d.expectedClose?.split('T')[0] || '', companyId: d.companyId, contactId: d.contactId, notes: d.notes, ownerId: d.ownerId }); setOpen(true); }}>
+          <DropdownMenuItem onClick={() => openEdit(row.original)}>
             <Pencil className="size-4 mr-2" /> Edit
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => { setDeletingItem(row.original); setDeleteOpen(true); }} className="text-red-600 focus:text-red-600">
@@ -1301,76 +1422,140 @@ function PipelineTab() {
 //  Activities & Customer Timeline Tab
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * ── What this tab used to be ──────────────────────────────────────────────
+ *
+ * Three hard-coded rows in `useState` — "Discovery Call with Sarah Jenkins",
+ * the same three for every tenant — and a "Log Activity" button whose handler
+ * appended to that array and raised "Activity logged successfully". Nothing
+ * was ever sent anywhere. A salesperson who logged a call saw it confirmed,
+ * saw it in the list, and lost it on the next refresh.
+ *
+ * `crm_activities` had been in the schema since 0003, purpose-built for this,
+ * with no endpoint on it. The endpoint now exists and this reads and writes it.
+ */
 function ActivitiesTab() {
-  const [activities, setActivities] = useState([
-    { id: '1', type: 'call', title: 'Discovery Call with Sarah Jenkins', contact: 'Sarah Jenkins (Acme Corp)', date: '2026-07-22 14:00', duration: '25 mins', outcome: 'Qualified — interested in Enterprise tier', loggedBy: 'Alex Morgan' },
-    { id: '2', type: 'meeting', title: 'Product Demo & Architecture Q&A', contact: 'Michael Chang (TechFlow)', date: '2026-07-21 11:00', duration: '45 mins', outcome: 'Sent proposal draft to Procurement', loggedBy: 'Alex Morgan' },
-    { id: '3', type: 'email', title: 'Follow-up Email regarding Contract Redline', contact: 'Elena Rostova (Global Inc)', date: '2026-07-20 09:30', duration: 'Sent', outcome: 'Awaiting legal signature', loggedBy: 'Jordan Lee' },
-  ]);
+  const [activities, setActivities] = useState<CrmActivity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [typeFilter, setTypeFilter] = useState('');
 
   const [open, setOpen] = useState(false);
+  const { companyOptions, contactOptions } = useCrmLinks(open);
   const [actType, setActType] = useState('call');
   const [title, setTitle] = useState('');
-  const [contact, setContact] = useState('');
+  const [linkTo, setLinkTo] = useState('');
   const [outcome, setOutcome] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const handleCreate = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title || !contact) {
-      toast.error('Title and contact are required');
-      return;
+  const fetchActivities = useCallback(async () => {
+    setLoading(true);
+    try {
+      const p = new URLSearchParams({ pageSize: '60', sort: 'created_at', sortDir: 'desc' });
+      if (typeFilter) p.set('activityType', typeFilter);
+      const res = await fetchList<CrmActivity>(`/api/crm/activities?${p}`);
+      setActivities(res.data);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to load activities');
+    } finally {
+      setLoading(false);
     }
-    const newAct = {
-      id: String(Date.now()),
-      type: actType,
-      title,
-      contact,
-      date: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      duration: actType === 'call' ? '15 mins' : actType === 'meeting' ? '30 mins' : 'Sent',
-      outcome: outcome || 'Logged activity',
-      loggedBy: 'Alex Morgan',
-    };
-    setActivities([newAct, ...activities]);
-    toast.success('Activity logged successfully');
-    setOpen(false);
-    setTitle('');
-    setContact('');
-    setOutcome('');
+  }, [typeFilter]);
+
+  useEffect(() => { fetchActivities(); }, [fetchActivities]);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) { toast.error('A subject is required'); return; }
+    if (!linkTo) { toast.error('Choose the customer or contact this is about'); return; }
+
+    // The picker offers both kinds in one list, so the value carries which.
+    const [kind, id] = linkTo.split(':');
+    setSaving(true);
+    try {
+      await createRecord('/api/crm/activities', {
+        activityType: actType,
+        subject: title.trim(),
+        body: outcome.trim(),
+        ...(kind === 'company' ? { companyId: id } : { contactId: id }),
+      });
+      toast.success('Activity logged');
+      setOpen(false);
+      setTitle(''); setLinkTo(''); setOutcome('');
+      fetchActivities();
+    } catch (err: any) {
+      toast.error(err.message || 'Could not log this activity');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const subjectOf = (a: CrmActivity) => {
+    if (a.company?.name) return a.company.name;
+    if (a.contact) return `${a.contact.firstName} ${a.contact.lastName}`.trim();
+    if (a.lead) return `${a.lead.firstName} ${a.lead.lastName}`.trim();
+    if (a.deal?.name) return a.deal.name;
+    return 'Unattached';
   };
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="Sales Activities & Timeline" description="Log calls, meetings, emails, and notes across all customer touchpoints">
-        <Button onClick={() => setOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">
-          <Plus className="size-4 mr-2" /> Log Activity
-        </Button>
+        <div className="flex items-center gap-2">
+          <Select value={typeFilter || 'all'} onValueChange={v => setTypeFilter(v === 'all' ? '' : v)}>
+            <SelectTrigger className="h-9 w-[150px]"><SelectValue placeholder="All types" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              <SelectItem value="call">Calls</SelectItem>
+              <SelectItem value="meeting">Meetings</SelectItem>
+              <SelectItem value="email">Emails</SelectItem>
+              <SelectItem value="note">Notes</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button onClick={() => setOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">
+            <Plus className="size-4 mr-2" /> Log Activity
+          </Button>
+        </div>
       </PageHeader>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {activities.map((act) => (
-          <Card key={act.id} className="border border-border hover:border-emerald-500/50 transition-all">
-            <CardContent className="p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <Badge variant="outline" className="capitalize text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
-                  {act.type}
-                </Badge>
-                <span className="text-xs text-muted-foreground">{act.date}</span>
-              </div>
-              <div>
-                <h4 className="text-sm font-semibold text-foreground">{act.title}</h4>
-                <p className="text-xs text-muted-foreground mt-0.5">{act.contact}</p>
-              </div>
-              <div className="text-xs bg-muted/40 p-2.5 rounded-md border text-foreground/90">
-                <span className="font-medium">Outcome: </span>{act.outcome}
-              </div>
-              <div className="flex justify-between items-center text-[10px] text-muted-foreground pt-1">
-                <span>Logged by {act.loggedBy}</span>
-                <span>{act.duration}</span>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-lg" />)}
+        </div>
+      ) : activities.length === 0 ? (
+        <EmptyState
+          icon={Sparkles}
+          title="No activities logged yet"
+          description="Record a call, meeting, email or note against a customer and it will appear here — and on that customer's own timeline."
+        />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {activities.map((act) => (
+            <Card key={act.id} className="border border-border hover:border-emerald-500/50 transition-all">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <Badge variant="outline" className="capitalize text-[10px] bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                    {act.activityType}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{formatDateTime(act.createdAt)}</span>
+                </div>
+                <div>
+                  <h4 className="text-sm font-semibold text-foreground">{act.subject}</h4>
+                  <p className="text-xs text-muted-foreground mt-0.5">{subjectOf(act)}</p>
+                </div>
+                {act.body && (
+                  <div className="text-xs bg-muted/40 p-2.5 rounded-md border text-foreground/90">
+                    <span className="font-medium">Outcome: </span>{act.body}
+                  </div>
+                )}
+                <div className="flex justify-between items-center text-[10px] text-muted-foreground pt-1">
+                  <span>Logged by {act.member?.profiles?.fullName ?? 'someone'}</span>
+                  <span>{formatRelativeTime(act.createdAt)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md">
@@ -1393,15 +1578,35 @@ function ActivitiesTab() {
             <Field label="Title / Subject">
               <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Discovery Call with Acme Corp" />
             </Field>
-            <Field label="Contact / Company">
-              <Input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="e.g. Sarah Jenkins (Acme Corp)" />
+            {/*
+              A picker, not a free-text box. It used to be an Input, so what a
+              salesperson typed was a string attached to nothing — which is why
+              the activity could never appear on the customer it was about.
+            */}
+            <Field label="About">
+              <Select value={linkTo} onValueChange={setLinkTo}>
+                <SelectTrigger><SelectValue placeholder="Choose a customer or contact" /></SelectTrigger>
+                <SelectContent>
+                  {companyOptions.map(c => (
+                    <SelectItem key={`company:${c.id}`} value={`company:${c.id}`}>{c.name}</SelectItem>
+                  ))}
+                  {contactOptions.map(c => (
+                    <SelectItem key={`contact:${c.id}`} value={`contact:${c.id}`}>
+                      {`${c.firstName} ${c.lastName}`.trim()}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
             <Field label="Outcome / Notes">
               <Textarea value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="Key takeaways and next steps..." rows={3} />
             </Field>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700">Save Activity</Button>
+              <Button type="submit" disabled={saving} className="bg-emerald-600 hover:bg-emerald-700">
+                {saving && <Loader2 className="size-4 animate-spin mr-1.5" />}
+                Save Activity
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -1417,17 +1622,31 @@ function ActivitiesTab() {
 export default function CrmModule() {
   const [activeTab, setActiveTab] = useState('leads');
 
-  const handleExportCSV = () => {
-    const csvContent = "data:text/csv;charset=utf-8,ID,Type,Name,Email,Company,Status,Value\n1,Lead,Sarah Jenkins,sarah@acme.com,Acme Corp,Qualified,45000\n2,Deal,TechFlow Cloud,m.chang@techflow.io,TechFlow,Negotiation,85000";
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `crm-export-${new Date().toISOString().substring(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Exported CRM data to CSV');
-  };
+  /**
+   * A record another surface asked this module to open.
+   *
+   * Held at the root because the tabs render exclusively: a request for a deal
+   * arriving while Leads is showing has to survive being handed to a tab that
+   * is not mounted. The tab switches first, then the id goes down as a prop.
+   */
+  const [focusCompanyId, setFocusCompanyId] = useState<string | null>(null);
+  const [focusLeadId, setFocusLeadId] = useState<string | null>(null);
+  const [focusContactId, setFocusContactId] = useState<string | null>(null);
+  const [focusDealId, setFocusDealId] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+
+  useFocusRequest('crm', ({ type, id }) => {
+    switch (type) {
+      case 'company':
+        setActiveTab('companies');
+        setFocusCompanyId(id);
+        setDetailOpen(true);
+        break;
+      case 'lead': setActiveTab('leads'); setFocusLeadId(id); break;
+      case 'contact': setActiveTab('contacts'); setFocusContactId(id); break;
+      case 'deal': setActiveTab('deals'); setFocusDealId(id); break;
+    }
+  });
 
   return (
     <div className="flex-1 flex flex-col gap-4 p-4 md:p-6 overflow-auto">
@@ -1443,30 +1662,36 @@ export default function CrmModule() {
           </TabsList>
         </Tabs>
 
-        <Button variant="outline" size="sm" onClick={handleExportCSV} className="gap-2 text-xs">
-          Export CSV
-        </Button>
+        <ExportButton
+          module="crm"
+          datasets={[
+            { key: 'leads', label: 'Leads' },
+            { key: 'deals', label: 'Deals' },
+          ]}
+        />
       </div>
 
       <AnimatePresence mode="wait">
         {activeTab === 'leads' && (
           <motion.div key="leads" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
-            <LeadsTab />
+            <LeadsTab focusId={focusLeadId} onFocusHandled={() => setFocusLeadId(null)} />
           </motion.div>
         )}
         {activeTab === 'contacts' && (
           <motion.div key="contacts" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
-            <ContactsTab />
+            <ContactsTab focusId={focusContactId} onFocusHandled={() => setFocusContactId(null)} />
           </motion.div>
         )}
         {activeTab === 'companies' && (
           <motion.div key="companies" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
-            <CompaniesTab />
+            <CompaniesTab
+              onOpenDetail={(id) => { setFocusCompanyId(id); setDetailOpen(true); }}
+            />
           </motion.div>
         )}
         {activeTab === 'deals' && (
           <motion.div key="deals" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
-            <DealsTab />
+            <DealsTab focusId={focusDealId} onFocusHandled={() => setFocusDealId(null)} />
           </motion.div>
         )}
         {activeTab === 'pipeline' && (
@@ -1480,6 +1705,17 @@ export default function CrmModule() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/*
+        The customer, whole — mounted at the module root rather than inside the
+        Companies tab, so a search result can open it directly without the tab
+        having rendered first.
+      */}
+      <CompanyDetail
+        companyId={focusCompanyId}
+        open={detailOpen}
+        onOpenChange={(o) => { setDetailOpen(o); if (!o) setFocusCompanyId(null); }}
+      />
     </div>
   );
 }

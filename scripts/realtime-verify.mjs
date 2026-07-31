@@ -78,13 +78,33 @@ function makeClient() {
 /**
  * Wait for one event on a subscription, or give up.
  *
- * Returns `{ subscribed, received }` rather than throwing, so a channel that
- * could not subscribe is reported differently from one that subscribed and
- * heard nothing — those have completely different causes and the distinction is
- * the main thing this harness exists to make.
+ * Resolves to `{ subscribed, received }` rather than throwing, so a channel
+ * that could not subscribe is reported differently from one that subscribed
+ * and heard nothing — those have completely different causes and the
+ * distinction is the main thing this harness exists to make. The returned
+ * promise also carries a `.ready` promise that settles when the channel is
+ * actually SUBSCRIBED.
+ *
+ * ── Why `.ready` exists ───────────────────────────────────────────────────
+ *
+ * Every call site used to sleep a flat 1500ms between subscribing and writing.
+ * That is a guess at how long the websocket handshake takes, and on a slow
+ * link it is the wrong guess: the write lands before the subscription is live,
+ * the event is legitimately never delivered, and the harness reports a broken
+ * feature. That is exactly what happened — "editing a project notifies a
+ * subscriber" failed on one run and passed on the next with no code change
+ * between them, which is the worst thing a verification suite can do, because
+ * it teaches you to re-run it until it is green.
+ *
+ * Waiting for the actual SUBSCRIBED callback removes the guess. The timeout
+ * remains as a bound, so a subscription that never establishes still fails
+ * rather than hanging.
  */
 function watch(sb, name, tables, timeoutMs = 12_000) {
-  return new Promise(resolve => {
+  let markReady;
+  const ready = new Promise(resolve => { markReady = resolve; });
+
+  const outcome = new Promise(resolve => {
     let subscribed = false;
     const channel = sb.channel(name);
 
@@ -107,13 +127,26 @@ function watch(sb, name, tables, timeoutMs = 12_000) {
 
     const timer = setTimeout(() => {
       void sb.removeChannel(channel);
+      markReady(false);
       resolve({ subscribed, received: false });
     }, timeoutMs);
 
     channel.subscribe(state => {
-      if (state === 'SUBSCRIBED') subscribed = true;
+      if (state === 'SUBSCRIBED') {
+        subscribed = true;
+        markReady(true);
+      }
+      // A channel that errors or times out will never subscribe; release the
+      // waiter so the write still happens and the check fails honestly
+      // rather than the run hanging until the harness timeout.
+      if (state === 'CHANNEL_ERROR' || state === 'TIMED_OUT' || state === 'CLOSED') {
+        markReady(false);
+      }
     });
   });
+
+  outcome.ready = ready;
+  return outcome;
 }
 
 const run = Date.now().toString(36);
@@ -176,9 +209,8 @@ try {
   const projectWatch = watch(sb, `rt-project-${run}`, [
     { table: 'projects', filter: `id=eq.${projectId}` },
   ]);
-  // A moment for the join to complete before the write, or the event predates
-  // the subscription and is legitimately never delivered.
-  await new Promise(r => setTimeout(r, 1500));
+  // Wait for the subscription to be live, not for a guessed interval.
+  await projectWatch.ready;
 
   await A.json(`/api/projects/projects/${projectId}`, {
     method: 'PUT', body: JSON.stringify({ priority: 'critical' }),
@@ -208,7 +240,7 @@ try {
   const taskWatch = watch(sb, `rt-task-${run}`, [
     { table: 'tasks', filter: `project_id=eq.${projectId}` },
   ]);
-  await new Promise(r => setTimeout(r, 1500));
+  await taskWatch.ready;
 
   await A.json(`/api/projects/tasks/${taskId}`, {
     method: 'PUT', body: JSON.stringify({ status: 'done' }),
@@ -242,7 +274,7 @@ try {
   const msWatch = watch(sb, `rt-ms-${run}`, [
     { table: 'milestones', filter: `project_id=eq.${projectId}` },
   ]);
-  await new Promise(r => setTimeout(r, 1500));
+  await msWatch.ready;
 
   await A.json(`/api/projects/milestones/${milestoneId}`, {
     method: 'PATCH', body: JSON.stringify({ completed: true }),
@@ -309,7 +341,7 @@ try {
   const notifyWatch = watch(sbMate, `rt-notif-${run}`, [
     { table: 'notifications', event: 'INSERT' },
   ]);
-  await new Promise(r => setTimeout(r, 1500));
+  await notifyWatch.ready;
 
   // Assigning a task notifies the assignee — `notify_task_assignment` in 0016.
   const assigned = await A.json('/api/projects/tasks', {
@@ -340,7 +372,7 @@ try {
     const msgWatch = watch(sb, `rt-msg-${run}`, [
       { table: 'messages', filter: `channel_id=eq.${channelId}` },
     ]);
-    await new Promise(r => setTimeout(r, 1500));
+    await msgWatch.ready;
 
     await A.json('/api/communication/messages', {
       method: 'POST', body: JSON.stringify({ channelId, body: `realtime probe ${run}` }),
@@ -381,7 +413,7 @@ try {
   const fileWatch = watch(sb, `rt-file-${run}`, [
     { table: 'files', filter: `project_id=eq.${projectId}` },
   ]);
-  await new Promise(r => setTimeout(r, 1500));
+  await fileWatch.ready;
 
   const decided = await A.json(`/api/portal/deliverables/${fileId}`, {
     method: 'PATCH', body: JSON.stringify({ decision: 'approved' }),

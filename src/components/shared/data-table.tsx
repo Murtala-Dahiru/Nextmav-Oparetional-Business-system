@@ -102,6 +102,24 @@ export interface DataTableProps<TData, TValue> {
   onFilterChange?: (filters: ColumnFiltersState) => void;
   /** Callback when sort changes */
   onSortChange?: (sorting: SortingState) => void;
+  /**
+   * Open the record a row represents.
+   *
+   * A pointer convenience, deliberately not a control. Clicks originating
+   * inside a button, link, menu or input are ignored, so the actions column
+   * and every inline control keep working — a row handler that swallows its
+   * own Delete button is worse than no row handler.
+   *
+   * ── Why the row is not given `role="button"` ─────────────────────────────
+   *
+   * It would read as a button to a screen reader and stop reading as a row:
+   * the column associations that make a table navigable are lost, and a user
+   * hears "button" where the cells should be. Every table offering this also
+   * offers the same action as a named item in its row menu, which is properly
+   * focusable and announced — so the keyboard path exists without pretending
+   * a table row is a button.
+   */
+  onRowClick?: (row: TData) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +166,7 @@ export function DataTable<TData, TValue>({
   onSearchChange,
   onFilterChange,
   onSortChange,
+  onRowClick,
 }: DataTableProps<TData, TValue>) {
   const isServerSide = !!onSearchChange;
 
@@ -488,7 +507,21 @@ export function DataTable<TData, TValue>({
               <LoadingRows columns={visibleColumnsCount} />
             ) : table.getRowModel().rows?.length ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id} data-state={row.getIsSelected() && 'selected'}>
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() && 'selected'}
+                  className={onRowClick ? 'cursor-pointer' : undefined}
+                  onClick={
+                    onRowClick
+                      ? (e) => {
+                          // Anything interactive inside the row keeps its own
+                          // behaviour — the actions menu, links, checkboxes.
+                          if ((e.target as HTMLElement).closest('button, a, input, select, [role="menuitem"]')) return;
+                          onRowClick(row.original);
+                        }
+                      : undefined
+                  }
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

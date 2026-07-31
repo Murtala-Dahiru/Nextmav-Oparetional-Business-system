@@ -64,8 +64,28 @@ function makeClient() {
       try { body = await r.json(); } catch { /* non-JSON */ }
       return { status: r.status, ok: r.ok, body };
     },
+    /**
+     * This session's cookies, for a request that must not be parsed as JSON.
+     *
+     * The CSV export returns a file, so `json()` would swallow it — but the
+     * headers are half of what is being asserted (content type, disposition,
+     * filename), and those only exist on the raw response.
+     */
+    cookieHeader() {
+      return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
+    },
   };
 }
+
+/**
+ * Accounts created by the later sections, cleaned up in `finally`.
+ *
+ * A list rather than another `userG`, `userH`: the earlier sections each named
+ * their own variable and the cleanup block had grown to ten lines of
+ * `if (x?.id)`. A new section should not have to edit two places to avoid
+ * leaving accounts behind in the project.
+ */
+const scratchUsers = [];
 
 /**
  * Create a confirmed account.
@@ -3340,10 +3360,347 @@ try {
   check(invoiceAfter.body?.data?.invoiceNumber !== 'INV-HACK',
     `and the invoice number is still the server's (${invoiceAfter.body?.data?.invoiceNumber})`);
 
+  // ─────────────────────────────────────────────────────────────────────────
+  section('60. Cross-module search finds records, not just menu entries');
+  /**
+   * `/api/search` existed, complete and permission-aware, and no screen called
+   * it. It is now what the command palette queries, so the palette is only as
+   * good as this: each type is asserted separately, because one sub-query
+   * naming a column that does not exist fails silently and simply returns
+   * nothing for that type — which is exactly how deals were unfindable while
+   * the endpoint reported perfect health.
+   */
+
+  const searchTag = `Zyxwv${run}`;
+
+  const sCompany = await A.json('/api/crm/companies', {
+    method: 'POST', body: JSON.stringify({ name: `${searchTag} Holdings`, industry: 'Mining' }),
+  });
+  const sCompanyId = sCompany.body?.data?.id;
+
+  const sContact = await A.json('/api/crm/contacts', {
+    method: 'POST',
+    body: JSON.stringify({
+      firstName: 'Grace', lastName: searchTag,
+      email: `grace-${run}@example.com`, jobTitle: 'Head of Ops', companyId: sCompanyId,
+    }),
+  });
+  const sDeal = await A.json('/api/crm/deals', {
+    method: 'POST',
+    body: JSON.stringify({ name: `${searchTag} renewal`, companyId: sCompanyId, stage: 'proposal', value: 12000 }),
+  });
+  const sProject = await A.json('/api/projects/projects', {
+    method: 'POST',
+    body: JSON.stringify({ name: `${searchTag} rollout`, status: 'active', clientCompanyId: sCompanyId }),
+  });
+  const sProjectId = sProject.body?.data?.id;
+  const sTask = await A.json('/api/projects/tasks', {
+    method: 'POST', body: JSON.stringify({ title: `${searchTag} migration`, projectId: sProjectId }),
+  });
+  const sTicket = await A.json('/api/support/tickets', {
+    method: 'POST',
+    body: JSON.stringify({
+      subject: `${searchTag} cannot log in`, contactId: sContact.body?.data?.id,
+      priority: 'high', ticketNumber: `TKT-${run}-S`,
+    }),
+  });
+  const sProduct = await A.json('/api/inventory/products', {
+    method: 'POST',
+    body: JSON.stringify({ name: `${searchTag} widget`, sku: `SKU-${run}`, price: 10, cost: 5, stock: 3, unit: 'unit' }),
+  });
+  const sInvoice = await A.json('/api/finance/invoices', {
+    method: 'POST',
+    body: JSON.stringify({
+      companyId: sCompanyId, dueDate: '2027-01-01',
+      lineItems: [{ description: 'Renewal', quantity: 1, unitPrice: 500 }],
+    }),
+  });
+
+  const searchAll = await A.json(`/api/search?q=${encodeURIComponent(searchTag)}`);
+  const hits = searchAll.body?.data?.results ?? [];
+  const hitTypes = new Set(hits.map(h => h.type));
+
+  check(!searchAll.body?.data?.partial,
+    'every sub-query succeeds — no entity type is silently dropped',
+    JSON.stringify(searchAll.body?.data?.partial ?? []));
+
+  for (const [type, created] of [
+    ['company', sCompany], ['contact', sContact], ['deal', sDeal],
+    ['project', sProject], ['task', sTask], ['ticket', sTicket], ['product', sProduct],
+  ]) {
+    if (created?.status !== 201) continue;
+    check(hitTypes.has(type), `search finds a ${type}`);
+  }
+
+  // An invoice is looked up by its number, which is the string a finance
+  // conversation actually contains — and which no search covered before.
+  const byNumber = await A.json(
+    `/api/search?q=${encodeURIComponent(sInvoice.body?.data?.invoiceNumber ?? 'INV-NONE')}`);
+  check((byNumber.body?.data?.results ?? []).some(r => r.type === 'invoice'),
+    'search finds an invoice by its number');
+
+  // Matching a column the label never shows: the case cmdk's own filter would
+  // have hidden, and the reason the palette turns its filter off.
+  const byEmail = await A.json(`/api/search?q=${encodeURIComponent(`grace-${run}@example.com`)}`);
+  check((byEmail.body?.data?.results ?? []).some(r => r.type === 'contact'),
+    'search finds a contact by an email address that is not in the title');
+
+  const tooShort = await A.json('/api/search?q=a');
+  check((tooShort.body?.data?.results ?? []).length === 0,
+    'a one-character query returns nothing rather than the whole tenant');
+
+  // Every hit must carry what the palette needs to open it.
+  check(hits.every(h => h.id && h.module && h.type && h.title),
+    'every result carries the module, type and id needed to open it');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('61. Activity is recorded, and stays inside the modules a role can open');
+  /**
+   * `activity_log` had a table, an index, RLS, a place in the realtime
+   * publication, an endpoint and a dashboard panel reading it — and no writer,
+   * so "Team activity" showed "No recent activity" to everyone, for ever.
+   */
+
+  const feed = await A.json('/api/activity-log?pageSize=50');
+  const feedRows = feed.body?.data ?? [];
+  check(feed.status === 200 && feedRows.length > 0,
+    `creating records now writes activity (${feedRows.length} entries)`);
+
+  check(feedRows.some(r => r.title === `Created company: ${searchTag} Holdings`),
+    'an entry names what was created, not just its id');
+  check(feedRows.every(r => r.user && typeof r.user.firstName === 'string'),
+    'every entry carries the person who did it');
+
+  const activityEdit = await A.json(`/api/crm/companies/${sCompanyId}`, {
+    method: 'PUT', body: JSON.stringify({ industry: 'Quarrying' }),
+  });
+  check(activityEdit.status === 200, 'a record is edited');
+
+  // `after()` runs the insert once the response is flushed, so the row is not
+  // guaranteed to exist the instant the PUT returns.
+  await new Promise(r => setTimeout(r, 1500));
+
+  const entityFeed = await A.json(`/api/activity-log?entityType=company&entityId=${sCompanyId}`);
+  const entityRows = entityFeed.body?.data ?? [];
+  check(entityRows.some(r => r.action === 'update'),
+    'editing it appends to that record’s own timeline');
+  check(entityRows.every(r => r.entityId === sCompanyId),
+    'and that timeline holds only that record’s entries');
+
+  const deletedForFeed = await A.json('/api/crm/companies', {
+    method: 'POST', body: JSON.stringify({ name: `Ephemeral ${run}` }),
+  });
+  await A.json(`/api/crm/companies/${deletedForFeed.body?.data?.id}`, { method: 'DELETE' });
+  await new Promise(r => setTimeout(r, 1500));
+  const afterDelete = await A.json('/api/activity-log?pageSize=10');
+  check((afterDelete.body?.data ?? []).some(r => r.title === `Deleted company: Ephemeral ${run}`),
+    'a deletion names the record that went, which cannot be looked up afterwards');
+
+  /**
+   * The access boundary.
+   *
+   * RLS scopes these rows to the tenant and knows nothing about module grants,
+   * so without a filter on the reading side the dashboard narrates Finance and
+   * HR to everyone. `hr_staff` cannot open Finance, so no Finance entry may
+   * reach them — the expense above is in the same tenant and would otherwise
+   * be perfectly visible.
+   */
+  const hrFeedClient = makeClient();
+  const hrFeedEmail = `feed-hr-${run}@nexustest.dev`;
+  const hrFeedUser = await adminCreateUser(hrFeedEmail, PW);
+  scratchUsers.push(hrFeedUser?.id);
+  await A.json('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({ email: hrFeedEmail, firstName: 'Hana', lastName: 'Records', role: 'hr_staff' }),
+  });
+  await hrFeedClient.json('/api/auth/login', {
+    method: 'POST', body: JSON.stringify({ email: hrFeedEmail, password: PW }),
+  });
+
+  await A.json('/api/finance/expenses', {
+    method: 'POST',
+    body: JSON.stringify({ title: `Executive bonus ${run}`, amount: 90000, category: 'general', expenseDate: '2026-06-01' }),
+  });
+  await new Promise(r => setTimeout(r, 1500));
+
+  const hrFeed = await hrFeedClient.json('/api/activity-log?pageSize=100');
+  const hrRows = hrFeed.body?.data ?? [];
+  check(hrFeed.status === 200, `a role without Finance can still read the feed (${hrFeed.status})`);
+  check(!hrRows.some(r => r.module === 'finance'),
+    'but sees no Finance activity in it');
+
+  const hrDash = await hrFeedClient.json('/api/dashboard');
+  check(!(hrDash.body?.data?.activity ?? []).some(a => a.module === 'finance'),
+    'and the dashboard panel applies the same boundary');
+
+  /**
+   * An expense is never written to the feed at all.
+   *
+   * Asserted against the *owner's* feed, who can read every module — so this
+   * proves the row does not exist rather than that it is merely filtered from
+   * one reader. It has to be that strong, because the module filter cannot
+   * save an entry that was mislabelled on the way in: `/api/finance/expenses`
+   * gates on `module: 'hr'` so that any employee may file their own claim, and
+   * labelling activity with the route's gate published "Created expense:
+   * Executive bonus" to all staff as an HR entry — past the Finance filter,
+   * and past the RLS that hides the expense row itself. Which is why the
+   * feed's tables are an allow-list carrying their own module.
+   */
+  const ownerFeed = await A.json('/api/activity-log?pageSize=100');
+  const ownerRows = ownerFeed.body?.data ?? [];
+  check(!ownerRows.some(r => String(r.title).includes('Executive bonus')),
+    'an expense leaves no feed entry for anyone, because its rows are not org-visible');
+  check(ownerRows.some(r => r.module === 'crm'),
+    'while records that are org-visible still appear');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('62. Export is real data, and requires the export capability');
+  /**
+   * The CRM's "Export CSV" button downloaded a hard-coded string — two invented
+   * rows, the same for every tenant. `/api/export` was the real thing and no
+   * screen called it.
+   */
+
+  const csvRes = await fetch(`${BASE}/api/export?dataset=leads`, {
+    headers: { cookie: A.cookieHeader() },
+  });
+  const csvText = await csvRes.text();
+  check(csvRes.status === 200, `an export returns a file (${csvRes.status})`);
+  check((csvRes.headers.get('content-type') ?? '').includes('text/csv'),
+    'served as text/csv');
+  check((csvRes.headers.get('content-disposition') ?? '').includes('attachment'),
+    'as an attachment with a filename');
+  check(csvText.split('\r\n')[0]?.startsWith('First name,Last name'),
+    'with a header row of real column labels');
+  check(!csvText.includes('Sarah Jenkins'),
+    'and none of the invented rows the old button produced');
+
+  const leadList = await A.json('/api/crm/leads?pageSize=100');
+  const firstLead = (leadList.body?.data ?? [])[0];
+  if (firstLead?.firstName) {
+    check(csvText.includes(firstLead.firstName),
+      'the export contains this tenant’s own records');
+  }
+
+  const badDataset = await A.json('/api/export?dataset=salaries');
+  check(badDataset.status === 422,
+    `an unknown dataset is refused rather than guessed at (${badDataset.status})`);
+
+  /**
+   * `export` is a capability of its own, not implied by `view`. `hr_staff` can
+   * read HR but must not be able to walk out with the register unless the role
+   * grants it — the check is that the answer is the role's grant, not `view`.
+   */
+  const hrExport = await fetch(`${BASE}/api/export?dataset=leads`, {
+    headers: { cookie: hrFeedClient.cookieHeader() },
+  });
+  check(hrExport.status === 403,
+    `a role that cannot open CRM cannot export it either (${hrExport.status})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('63. The customer, whole: one read across every module');
+  /**
+   * Every relationship below already existed in the schema and nothing read
+   * across them, so opening a customer in the CRM showed their address and
+   * nothing about the relationship.
+   */
+
+  const ov = await A.json(`/api/crm/companies/${sCompanyId}/overview`);
+  const o = ov.body?.data;
+  check(ov.status === 200, `a company overview loads (${ov.status})`);
+  check(o?.company?.id === sCompanyId, 'it is the company that was asked for');
+  check((o?.contacts ?? []).length >= 1, 'with the people who work there');
+  check((o?.deals ?? []).length >= 1, 'the deals in play');
+  check((o?.projects ?? []).some(p => p.id === sProjectId), 'the projects being delivered for them');
+  check((o?.invoices ?? []).length >= 1, 'what they have been invoiced');
+  check((o?.tickets ?? []).length >= 1, 'and what they have reported');
+
+  /**
+   * The figures and the panels must be computed from the same rows, or the
+   * header and the list disagree the first time anyone checks the arithmetic.
+   */
+  const openDealValue = (o?.deals ?? [])
+    .filter(d => !['closed_won', 'closed_lost'].includes(d.stage))
+    .reduce((s, d) => s + Number(d.value ?? 0), 0);
+  check(o?.summary?.openDealValue === openDealValue,
+    `the headline pipeline equals the deals listed under it (${o?.summary?.openDealValue})`);
+  check(o?.summary?.contacts === (o?.contacts ?? []).length,
+    'and the contact count equals the contacts listed');
+
+  // Project health comes from the same view the project board reads, so a
+  // client's view of a project and the team's cannot drift apart.
+  const ovProject = (o?.projects ?? []).find(p => p.id === sProjectId);
+  check(typeof ovProject?.progressPct === 'number',
+    `each project carries the progress v_project_health computed (${ovProject?.progressPct}%)`);
+
+  const missingOverview = await A.json('/api/crm/companies/00000000-0000-0000-0000-000000000000/overview');
+  check(missingOverview.status === 404,
+    `a company that does not exist is a 404, not an empty shell (${missingOverview.status})`);
+
+  /**
+   * Reaching a customer through the CRM must not become a way to read modules
+   * the sidebar does not offer. `sales_staff` has CRM but no Finance, so the
+   * key must be absent — not present and empty, which a client could not tell
+   * from "this customer has no invoices".
+   */
+  const salesClient = makeClient();
+  const salesEmail = `ov-sales-${run}@nexustest.dev`;
+  const salesUser = await adminCreateUser(salesEmail, PW);
+  scratchUsers.push(salesUser?.id);
+  await A.json('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({ email: salesEmail, firstName: 'Sade', lastName: 'Seller', role: 'sales_staff' }),
+  });
+  await salesClient.json('/api/auth/login', {
+    method: 'POST', body: JSON.stringify({ email: salesEmail, password: PW }),
+  });
+
+  const salesOv = await salesClient.json(`/api/crm/companies/${sCompanyId}/overview`);
+  check(salesOv.status === 200, 'a salesperson can open the same customer');
+  check(Array.isArray(salesOv.body?.data?.deals), 'and sees the pipeline');
+  check(salesOv.body?.data?.invoices === undefined,
+    'but the response carries no invoices key at all, rather than an empty one');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('64. Logging a call actually records it');
+  /**
+   * The Activities tab was three hard-coded rows and a handler that appended to
+   * local state and raised "Activity logged successfully". `crm_activities` had
+   * existed since 0003 with no endpoint on it at all.
+   */
+
+  const logged = await A.json('/api/crm/activities', {
+    method: 'POST',
+    body: JSON.stringify({
+      activityType: 'call', subject: `Discovery call ${run}`,
+      body: 'Qualified — enterprise tier', companyId: sCompanyId,
+    }),
+  });
+  check(logged.status === 201, `an activity is logged (${logged.status})`);
+  check(logged.body?.data?.member?.profiles?.fullName,
+    'and the created row names who logged it, without a refetch');
+
+  const loggedList = await A.json(`/api/crm/activities?companyId=${sCompanyId}`);
+  check((loggedList.body?.data ?? []).some(a => a.subject === `Discovery call ${run}`),
+    'it survives being read back — the thing the old tab never did');
+
+  const detached = await A.json('/api/crm/activities', {
+    method: 'POST', body: JSON.stringify({ activityType: 'note', subject: 'Attached to nothing' }),
+  });
+  check(detached.status === 422,
+    `an activity attached to nothing is refused (${detached.status})`);
+  check(/lead, contact, company or deal/i.test(detached.body?.error?.message ?? ''),
+    'and says which link is missing', detached.body?.error?.message);
+
+  const ovAfterLog = await A.json(`/api/crm/companies/${sCompanyId}/overview`);
+  check((ovAfterLog.body?.data?.activities ?? []).some(a => a.subject === `Discovery call ${run}`),
+    'and it appears on that customer’s own timeline');
+
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);
 } finally {
+  for (const id of scratchUsers) { if (id) await adminDeleteUser(id); }
   if (userA?.id) await adminDeleteUser(userA.id);
   if (userB?.id) await adminDeleteUser(userB.id);
   if (userC?.id) await adminDeleteUser(userC.id);

@@ -280,6 +280,51 @@ export const createTicketSchema = z.object({
 
 export const updateTicketSchema = toUpdateSchema(createTicketSchema);
 
+/**
+ * A logged call, email, meeting or note against a customer.
+ *
+ * `crm_activities` is polymorphic — an activity hangs off a lead, a contact, a
+ * company or a deal — and the database enforces that it hangs off at least one
+ * of them (`crm_activity_has_subject`). The same rule is stated here so the
+ * failure is a sentence rather than a constraint-violation code, and so the
+ * client can be told which field is missing before the round trip.
+ */
+export const createCrmActivitySchema = z
+  .object({
+    activityType: z.string().min(1, 'An activity type is required').default('note'),
+    subject: z.string().min(1, 'A subject is required'),
+    body: z.string().optional().default(''),
+    leadId: optionalFk(),
+    contactId: optionalFk(),
+    companyId: optionalFk(),
+    dealId: optionalFk(),
+    dueAt: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
+    completedAt: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
+  })
+  .refine(
+    v => Boolean(v.leadId || v.contactId || v.companyId || v.dealId),
+    {
+      message: 'Attach the activity to a lead, contact, company or deal',
+      path: ['companyId'],
+    },
+  );
+
+/**
+ * `.omit()` before `toUpdateSchema`, because the create schema is a
+ * `ZodEffects` once `.refine()` is applied and `toUpdateSchema` reads `.shape`.
+ * The subject rule belongs to creation anyway: an edit that does not mention
+ * the links must not be read as detaching the activity from all of them.
+ */
+export const updateCrmActivitySchema = toUpdateSchema(
+  z.object({
+    activityType: z.string().min(1).default('note'),
+    subject: z.string().min(1, 'A subject is required'),
+    body: z.string().optional().default(''),
+    dueAt: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
+    completedAt: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
+  }),
+);
+
 // ═══════════════════════════════════════════════════════════════
 //  HR Validations
 // ═══════════════════════════════════════════════════════════════

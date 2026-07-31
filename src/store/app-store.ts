@@ -111,7 +111,25 @@ interface AppState {
   sidebarCollapsed: boolean;
   sidebarOpen: boolean;
   searchOpen: boolean;
-  
+
+  /**
+   * A record another surface has asked this module to open.
+   *
+   * ── Why the store carries this ────────────────────────────────────────────
+   *
+   * Modules are chosen by id and mounted lazily; there is no route per record,
+   * so "open company X" cannot be expressed as a URL. Without somewhere to put
+   * the request, a cross-module link can only ever go as far as the module —
+   * which is what made `/api/search` unusable and left it unreferenced: a
+   * palette that can find a customer but can only drop you on the CRM landing
+   * tab has not actually taken you anywhere.
+   *
+   * Consumed once and cleared, by `useFocusRequest`. It is a request, not
+   * state: leaving it set would make the module reopen the same record every
+   * time it remounted, and the user could never navigate away from it.
+   */
+  focusRequest: { module: ModuleId; type: string; id: string } | null;
+
   /**
    * Notifications.
    *
@@ -160,6 +178,16 @@ interface AppState {
 
   // Actions
   setActiveModule: (m: ModuleId) => void;
+  /**
+   * Open one record, from anywhere.
+   *
+   * Switches module and leaves the request for that module to pick up. Refuses
+   * silently when the role cannot open the module, for the same reason
+   * `setActiveModule` does — a search result is exactly the kind of stale or
+   * over-broad link that must not become a way in.
+   */
+  openRecord: (module: ModuleId, type: string, id: string) => void;
+  clearFocusRequest: () => void;
   setSidebarCollapsed: (c: boolean) => void;
   setSidebarOpen: (o: boolean) => void;
   setSearchOpen: (o: boolean) => void;
@@ -202,7 +230,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarCollapsed: false,
   sidebarOpen: false,
   searchOpen: false,
-  
+  focusRequest: null,
+
   // Notifications
   notifications: [],
   unreadTotal: 0,
@@ -335,6 +364,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       .then(() => get().fetchNotifications())
       .catch(() => get().fetchNotifications());
   },
+  openRecord: (module, type, id) => {
+    if (!canAccessModule(get().activeRole, module)) return;
+    // Through `setActiveModule` rather than a bare `set`, so opening a record
+    // clears the module's badge exactly as clicking the sidebar does.
+    get().setActiveModule(module);
+    set({ focusRequest: { module, type, id } });
+  },
+  clearFocusRequest: () => set({ focusRequest: null }),
   setSidebarCollapsed: (c) => set({ sidebarCollapsed: c }),
   setSidebarOpen: (o) => set({ sidebarOpen: o }),
   setSearchOpen: (o) => set({ searchOpen: o }),

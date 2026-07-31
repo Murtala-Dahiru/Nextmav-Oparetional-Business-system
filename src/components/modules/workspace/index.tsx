@@ -20,6 +20,7 @@ import { formatRelativeTime, formatDateTime } from '@/lib/format';
 import { useAppStore } from '@/store/app-store';
 import { cn } from '@/lib/utils';
 import { useModuleRealtime } from '@/hooks/use-realtime';
+import { useFocusRequest } from '@/hooks/use-focus-request';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -266,6 +267,18 @@ export default function WorkspaceModule() {
       setPageLoading(false);
     }
   }, []);
+
+  /**
+   * Open a page the palette found.
+   *
+   * `/api/search` matches page *content* as well as titles, which is the whole
+   * point of searching a workspace — and the tree on the left only ever shows
+   * titles, so a phrase buried three folders deep was unreachable from the UI
+   * despite the endpoint having found it since the day it was written.
+   */
+  useFocusRequest('workspace', ({ type, id }) => {
+    if (type === 'page') void openPage(id);
+  });
 
   // ─── Tree shape ──────────────────────────────────────────────────────────
 

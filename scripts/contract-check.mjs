@@ -202,6 +202,25 @@ const LIST_CONTRACTS = [
   { label: 'Comms · Message',   file: COMMS, iface: 'Message',
     path: (s) => '/api/communication/messages?channelId=' + s.channelId,
     nested: [{ field: 'sender', iface: 'Sender' }] },
+  { label: 'CRM · Activity',    file: CRM, iface: 'CrmActivity', path: '/api/crm/activities' },
+];
+
+/**
+ * Aggregate endpoints, compared against the object they return.
+ *
+ * `LIST_CONTRACTS` reads `data[0]`; these read `data` itself, because the
+ * response is one composed object rather than a page of rows. The customer
+ * panel is the shape most worth guarding in the whole product: it reads across
+ * six modules, so a single renamed field there renders a blank panel on a
+ * screen whose entire purpose is to look complete.
+ */
+const OBJECT_CONTRACTS = [
+  {
+    label: 'CRM · Customer overview',
+    file: 'src/components/modules/crm/company-detail.tsx',
+    iface: 'Overview',
+    path: (s) => `/api/crm/companies/${s.companyId}/overview`,
+  },
 ];
 
 /**
@@ -322,7 +341,21 @@ try {
   await A.json('/api/communication/messages', {
     method: 'POST', body: JSON.stringify({ channelId: seedChannel.body?.data?.id, body: 'seed' }),
   });
-  const seeded = { channelId: seedChannel.body?.data?.id };
+  /**
+   * A logged call, so the CRM activity list and the customer panel both have
+   * something to compare against. An aggregate whose sections are all empty
+   * would pass every check while telling you nothing.
+   */
+  await A.json('/api/crm/activities', {
+    method: 'POST',
+    body: JSON.stringify({
+      activityType: 'call', subject: `Seed call ${run}`, companyId: seedCo.body?.data?.id,
+    }),
+  });
+  const seeded = {
+    channelId: seedChannel.body?.data?.id,
+    companyId: seedCo.body?.data?.id,
+  };
   await A.json('/api/hr/attendance/clock', { method: 'POST', body: JSON.stringify({ action: 'in' }) });
   await A.json('/api/hr/leave', {
     method: 'POST',
@@ -363,6 +396,18 @@ try {
     }
     compare(c.label, c.iface, interfaceFields(c.file, c.iface), row);
     compareNested(c.label, c.nested, row);
+  }
+
+  console.log('\n  Aggregate reads\n  ───────────────');
+  for (const c of OBJECT_CONTRACTS) {
+    const path = typeof c.path === 'function' ? c.path(seeded) : c.path;
+    const res = await A.json(path);
+    if (!res.ok) {
+      console.log(`  SKIP  ${c.label} — returned ${res.status}`);
+      continue;
+    }
+    // The object itself, not a row of a page.
+    compare(c.label, c.iface, interfaceFields(c.file, c.iface), res.body?.data);
   }
 } catch (e) {
   console.error(`\n  HARNESS ERROR: ${e.message}`);

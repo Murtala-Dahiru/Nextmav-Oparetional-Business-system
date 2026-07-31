@@ -2,6 +2,7 @@ import { authorize, pgError } from '@/lib/auth-context';
 import { success } from '@/lib/api-response';
 import { todayIn, startOfMonthIn, daysFromTodayIn } from '@/lib/org-time';
 import { can, scopeFor } from '@/lib/permissions';
+import { visibleModuleFilter } from '@/lib/activity';
 import type { ModuleId } from '@/lib/constants';
 
 /**
@@ -64,10 +65,20 @@ export async function GET() {
       .eq('organization_id', orgId).gte('starts_at', today).lte('starts_at', in7)
       .order('starts_at', { ascending: true }).limit(6),
 
+    /**
+     * The activity feed, scoped to the modules this role may open.
+     *
+     * `.in('module', …)` is the access boundary, not a preference: RLS keeps
+     * these rows inside the tenant but knows nothing about module grants, so
+     * without it this panel narrates Finance and HR to everyone who can see a
+     * dashboard. See `visibleModuleFilter` for the full reasoning.
+     */
     sees('communication')
       ? supabase.from('activity_log')
-          .select('id, module, action, title, created_at, member:organization_members!activity_log_member_id_fkey(profiles!organization_members_user_id_fkey(full_name, avatar_url))')
-          .eq('organization_id', orgId).order('created_at', { ascending: false }).limit(8)
+          .select('id, module, action, title, entity_type, entity_id, created_at, member:organization_members!activity_log_member_id_fkey(profiles!organization_members_user_id_fkey(first_name, last_name, avatar_url))')
+          .eq('organization_id', orgId)
+          .in('module', visibleModuleFilter(ctx))
+          .order('created_at', { ascending: false }).limit(8)
       : none,
 
     sees('projects')
@@ -206,7 +217,27 @@ export async function GET() {
     },
   };
 
-  if (activityRes.data) payload.activity = activityRes.data;
+  /**
+   * Flattened to the `user: { firstName, lastName, avatar }` the panel reads.
+   *
+   * The panel has always declared that shape while the query returned
+   * `member.profiles.full_name`, so its avatar initials could only ever have
+   * rendered the em-dash fallback. Invisible until now for the reason the rest
+   * of this change exists: the list was permanently empty, so nothing rendered.
+   */
+  if (activityRes.data) {
+    payload.activity = (activityRes.data as any[]).map(a => {
+      const p = a.member?.profiles ?? null;
+      return {
+        id: a.id, module: a.module, action: a.action, title: a.title,
+        description: '', entityType: a.entity_type, entityId: a.entity_id,
+        createdAt: a.created_at,
+        user: p
+          ? { firstName: p.first_name ?? '', lastName: p.last_name ?? '', avatar: p.avatar_url ?? '' }
+          : undefined,
+      };
+    });
+  }
 
   if (sees('crm')) {
     const leads = (leadsRes.data ?? []) as any[];

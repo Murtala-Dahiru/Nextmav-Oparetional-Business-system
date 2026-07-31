@@ -16,11 +16,13 @@ import {
 
 import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
+import { ExportButton } from '@/components/shared/export-button';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { StatCard } from '@/components/shared/stat-card';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { INVOICE_STATUSES, EXPENSE_CATEGORIES } from '@/lib/constants';
 import { useModuleRealtime } from '@/hooks/use-realtime';
+import { useFocusRequest } from '@/hooks/use-focus-request';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -493,7 +495,13 @@ const INVOICE_FORM_DEFAULTS: InvoiceFormData = {
   items: [{ ...EMPTY_LINE_ITEM }], taxRate: 10, dueDate: '', notes: '',
 };
 
-function InvoicesTab() {
+function InvoicesTab({
+  focusInvoiceId,
+  onFocusHandled,
+}: {
+  focusInvoiceId?: string | null;
+  onFocusHandled?: () => void;
+}) {
   // Table state
   const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
   const [meta, setMeta] = useState<ApiMeta>({ total: 0, page: 1, pageSize: 10, totalPages: 0 });
@@ -520,6 +528,36 @@ function InvoicesTab() {
   const [companies, setCompanies] = useState<CustomerOption[]>([]);
   const [contacts, setContacts] = useState<ContactOption[]>([]);
   const [customersLoading, setCustomersLoading] = useState(false);
+
+  /**
+   * Open an invoice the palette found, or that a customer's panel linked to.
+   *
+   * Fetched by id rather than looked up in `invoices`: the table shows one
+   * page of ten under the current filters, and an invoice looked up by number
+   * — the way finance conversations actually refer to them — is rarely on it.
+   */
+  useEffect(() => {
+    if (!focusInvoiceId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/finance/invoices/${focusInvoiceId}`);
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error?.message ?? 'Not found');
+        if (!cancelled && json.data) {
+          setSelected(json.data);
+          setEditStatus(json.data.status);
+          setEditNotes(json.data.notes ?? '');
+          setEditOpen(true);
+        }
+      } catch {
+        toast.error('That invoice could no longer be opened.');
+      } finally {
+        if (!cancelled) onFocusHandled?.();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [focusInvoiceId, onFocusHandled]);
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
@@ -755,6 +793,7 @@ function InvoicesTab() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Invoices" icon={FileText}>
+        <ExportButton module="finance" datasets={[{ key: 'invoices', label: 'Invoices' }]} />
         <Button onClick={() => { setForm(INVOICE_FORM_DEFAULTS); setCreateOpen(true); }} className="bg-emerald-600 text-white hover:bg-emerald-700">
           <Plus className="size-4 mr-2" />New Invoice
         </Button>
@@ -1224,6 +1263,7 @@ function ExpensesTab() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Expenses" icon={Receipt}>
+        <ExportButton module="finance" datasets={[{ key: 'expenses', label: 'Expenses' }]} />
         <Button onClick={() => { setForm(EXPENSE_DEFAULTS); setCreateOpen(true); }} className="bg-emerald-600 text-white hover:bg-emerald-700">
           <Plus className="size-4 mr-2" />New Expense
         </Button>
@@ -1383,6 +1423,21 @@ function PurchaseRequestsTab() {
 export default function FinanceModule() {
   const [activeTab, setActiveTab] = useState('overview');
 
+  /**
+   * An invoice another surface asked this module to open — a palette search
+   * result, or the Invoices panel on a customer's own screen.
+   *
+   * Held at the root because the tabs render exclusively: the request has to
+   * survive being handed to an `InvoicesTab` that has not mounted yet.
+   */
+  const [focusInvoiceId, setFocusInvoiceId] = useState<string | null>(null);
+
+  useFocusRequest('finance', ({ type, id }) => {
+    if (type !== 'invoice') return;
+    setActiveTab('invoices');
+    setFocusInvoiceId(id);
+  });
+
   return (
     <div className="flex-1 flex flex-col gap-4 p-4 md:p-6 overflow-auto">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -1410,7 +1465,7 @@ export default function FinanceModule() {
         )}
         {activeTab === 'invoices' && (
           <motion.div key="invoices" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
-            <InvoicesTab />
+            <InvoicesTab focusInvoiceId={focusInvoiceId} onFocusHandled={() => setFocusInvoiceId(null)} />
           </motion.div>
         )}
         {activeTab === 'expenses' && (

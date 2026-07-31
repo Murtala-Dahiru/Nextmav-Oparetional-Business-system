@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/page-header';
+import { ExportButton } from '@/components/shared/export-button';
 import { StatCard } from '@/components/shared/stat-card';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Card, CardContent } from '@/components/ui/card';
@@ -351,6 +352,7 @@ export default function AttendanceTab() {
               ))}
             </SelectContent>
           </Select>
+          <ExportButton module="hr" datasets={[{ key: 'attendance', label: 'Attendance' }]} />
         </div>
       </PageHeader>
 

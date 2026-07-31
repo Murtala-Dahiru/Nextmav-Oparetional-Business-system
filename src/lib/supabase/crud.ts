@@ -4,6 +4,7 @@ import type { ModuleId } from '@/lib/constants';
 import { authorize, pgError, type RequestContext } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
 import { acceptBody, toCamel, toSnake } from '@/lib/case';
+import { recordActivity } from '@/lib/activity';
 
 /**
  * Turn a Zod failure into the one sentence a user can act on.
@@ -199,6 +200,7 @@ export function createHandler(opts: CreateOptions) {
       .single();
 
     if (e) return pgError(e);
+    recordActivity(ctx, { action: 'create', table, row: data as any });
     return success(data, undefined, 201);
   };
 }
@@ -324,6 +326,7 @@ export function updateHandler(opts: RecordOptions) {
 
     if (e) return pgError(e);
     if (!data) return error('Not found', 404, 'NOT_FOUND');
+    recordActivity(ctx, { action: 'update', table, row: data as any });
     return success(data);
   };
 }
@@ -342,15 +345,27 @@ export function deleteHandler(opts: RecordOptions) {
     if (ctx instanceof Response) return ctx;
     const { id } = await params;
 
-    const { error: e } = softDelete
+    /**
+     * The removed row is returned so the activity feed can name what went.
+     *
+     * "Deleted company: Northwind Traders" is the only version of that entry
+     * worth writing — an id tells a colleague reading the feed nothing, and by
+     * the time they read it the row is gone or hidden, so it cannot be looked
+     * up afterwards. The representation costs nothing: PostgREST already has
+     * the row in hand to delete it.
+     */
+    const { data, error: e } = softDelete
       ? await ctx.supabase.from(table)
           .update({ deleted_at: new Date().toISOString() })
           .eq('organization_id', ctx.org.organizationId).eq('id', id)
+          .select().maybeSingle()
       : await ctx.supabase.from(table)
           .delete()
-          .eq('organization_id', ctx.org.organizationId).eq('id', id);
+          .eq('organization_id', ctx.org.organizationId).eq('id', id)
+          .select().maybeSingle();
 
     if (e) return pgError(e);
+    recordActivity(ctx, { action: 'delete', table, row: data as any });
     return success({ deleted: true, soft: softDelete });
   };
 }

@@ -14,6 +14,7 @@ import {
 
 import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
+import { ExportButton } from '@/components/shared/export-button';
 import { StatCard } from '@/components/shared/stat-card';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -21,6 +22,7 @@ import { formatDate, formatRelativeTime } from '@/lib/format';
 import { TICKET_PRIORITIES, TICKET_STATUSES, PAGE_SIZE } from '@/lib/constants';
 import { createTicketSchema, updateTicketSchema } from '@/lib/validations';
 import { useModuleRealtime } from '@/hooks/use-realtime';
+import { useFocusRequest } from '@/hooks/use-focus-request';
 import { cn } from '@/lib/utils';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -390,6 +392,27 @@ export default function SupportModule() {
   const [creating, setCreating] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  /**
+   * Open a ticket someone searched for.
+   *
+   * Fetched by id rather than found in `tickets`: the table holds one filtered,
+   * sorted page, and a ticket resolved last month — the kind you look up by
+   * number — is never on it.
+   */
+  useFocusRequest('support', ({ type, id }) => {
+    if (type !== 'ticket') return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/support/tickets/${id}`);
+        const json = await res.json();
+        if (json?.data) setEditTicket(json.data);
+        else toast.error('That ticket could no longer be opened.');
+      } catch {
+        toast.error('That ticket could no longer be opened.');
+      }
+    })();
+  });
 
   // ─── Fetch users ──────────────────────────────────────────────────
   useEffect(() => {
@@ -772,6 +795,7 @@ export default function SupportModule() {
         {/* ═══ TICKETS TAB ═══ */}
         <TabsContent value="tickets" className="mt-6 space-y-6">
           <PageHeader title="Support Desk" description="Manage customer support tickets">
+            <ExportButton module="support" datasets={[{ key: 'tickets', label: 'Tickets' }]} />
             <Button
               className="bg-emerald-600 text-white hover:bg-emerald-700"
               onClick={() => setCreateOpen(true)}

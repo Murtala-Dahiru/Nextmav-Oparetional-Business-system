@@ -14,11 +14,13 @@ import {
 
 import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
+import { ExportButton } from '@/components/shared/export-button';
 import { StatCard } from '@/components/shared/stat-card';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { EmptyState } from '@/components/shared/empty-state';
 import { formatCurrency } from '@/lib/format';
 import { useModuleRealtime } from '@/hooks/use-realtime';
+import { useFocusRequest } from '@/hooks/use-focus-request';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -288,6 +290,32 @@ export default function InventoryModule() {
   >(null);
   /** Bumped whenever stock changes, so dependent tabs refetch. */
   const [stockVersion, setStockVersion] = useState(0);
+
+  /**
+   * Open a product the palette found.
+   *
+   * `/api/search` matches SKU as well as name, so this is the path that makes
+   * typing a part number into the palette land on the part — the lookup an
+   * operations team does more than any other.
+   */
+  useFocusRequest('inventory', ({ type, id }) => {
+    if (type !== 'product') return;
+    setActiveTab('products');
+    (async () => {
+      try {
+        const res = await fetch(`/api/inventory/products/${id}`);
+        const json = await res.json();
+        if (json?.data) {
+          setEditingProduct(json.data);
+          setProductDialogOpen(true);
+        } else {
+          toast.error('That product could no longer be opened.');
+        }
+      } catch {
+        toast.error('That product could no longer be opened.');
+      }
+    })();
+  });
   /** Unpaginated lookup list backing the product selects in the new tabs. */
   const [allProducts, setAllProducts] = useState<Product[]>([]);
 
@@ -552,6 +580,7 @@ export default function InventoryModule() {
         {/* ═══════════ PRODUCTS TAB ═══════════ */}
         <TabsContent value="products" className="space-y-6">
           <PageHeader title="Inventory" description="Manage products, stock levels, and warehouses." icon={Package}>
+            <ExportButton module="inventory" datasets={[{ key: 'products', label: 'Products' }]} />
             <Button onClick={() => { setEditingProduct(null); setProductDialogOpen(true); }}
               className="bg-emerald-600 text-white hover:bg-emerald-700">
               <Plus className="size-4 mr-2" /> Add Product

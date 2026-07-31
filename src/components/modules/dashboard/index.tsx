@@ -90,7 +90,12 @@ interface DashboardData {
     unread: number;
     items: { id: string; title: string; message: string; type: string; isRead: boolean; createdAt: string }[];
   };
-  activity?: { id: string; module: string; action: string; title: string; description: string; createdAt: string; user?: { firstName: string; lastName: string; avatar: string } }[];
+  /**
+   * `entityType` and `entityId` are what make a feed entry a destination
+   * rather than a sentence: "Created ticket: Telematics unit offline" is worth
+   * reading, but only useful if it opens the ticket.
+   */
+  activity?: { id: string; module: string; action: string; title: string; description: string; entityType?: string | null; entityId?: string | null; createdAt: string; user?: { firstName: string; lastName: string; avatar: string } }[];
   recentFiles?: { id: string; title: string; icon: string; color: string; updatedAt: string; isStarred: boolean }[];
 }
 
@@ -209,7 +214,7 @@ function ChartTooltip({ active, payload, label }: any) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function DashboardModule() {
-  const { user, setActiveModule, allows, activeRole } = useAppStore();
+  const { user, setActiveModule, allows, activeRole, openRecord } = useAppStore();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -711,21 +716,33 @@ export default function DashboardModule() {
             <EmptyState icon={Activity} title="No recent activity" description="Actions across modules will appear here." />
           ) : (
             <ul className="flex flex-col gap-3.5">
-              {activity.slice(0, 6).map(a => (
-                <li key={a.id} className="flex items-start gap-2.5">
-                  <Avatar className="mt-0.5 size-7 shrink-0">
-                    <AvatarFallback className="bg-emerald-500/10 text-[10px] text-emerald-700">
-                      {a.user ? getInitials(a.user.firstName, a.user.lastName) : '—'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm">{a.title}</p>
-                    <p className="text-muted-foreground truncate text-xs">
-                      {a.module} · {formatRelativeTime(a.createdAt)}
-                    </p>
-                  </div>
-                </li>
-              ))}
+              {activity.slice(0, 6).map(a => {
+                // A deleted record has nowhere to go, so it stays plain text
+                // rather than becoming a link that leads to a 404.
+                const canOpen = a.action !== 'delete' && !!a.entityType && !!a.entityId;
+                return (
+                  <li key={a.id}>
+                    <button
+                      type="button"
+                      disabled={!canOpen}
+                      onClick={() => canOpen && openRecord(a.module as ModuleId, a.entityType!, a.entityId!)}
+                      className="flex w-full items-start gap-2.5 rounded-md p-1 text-left enabled:hover:bg-accent/60 enabled:focus-visible:bg-accent/60 focus-visible:outline-none disabled:cursor-default"
+                    >
+                      <Avatar className="mt-0.5 size-7 shrink-0">
+                        <AvatarFallback className="bg-emerald-500/10 text-[10px] text-emerald-700">
+                          {a.user ? getInitials(a.user.firstName, a.user.lastName) : '—'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm">{a.title}</p>
+                        <p className="text-muted-foreground truncate text-xs">
+                          {a.module} · {formatRelativeTime(a.createdAt)}
+                        </p>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Panel>)}
