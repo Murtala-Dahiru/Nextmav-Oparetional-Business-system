@@ -1,7 +1,8 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
-import { todayIn } from '@/lib/org-time';
+import { todayIn, startOfDayIn } from '@/lib/org-time';
 import { acceptBody } from '@/lib/case';
+import { readRecurrence } from '@/lib/todo-recurrence';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -38,7 +39,7 @@ import { acceptBody } from '@/lib/case';
 
 const SELECT =
   'id, title, note, is_done, completed_at, due_on, is_starred, sort_order, ' +
-  'list_id, linked_task_id, created_at, updated_at, ' +
+  'list_id, linked_task_id, recurrence, created_at, updated_at, ' +
   'list:todo_lists(id, name, color), ' +
   // The linked task is read-only context: what the assigned work is called and
   // where it stands, so the list can show it without a second request.
@@ -121,7 +122,7 @@ export async function GET(req: Request) {
    * otherwise a separate cheap count, because a badge that reflects the
    * current filter rather than the whole list is a badge that lies.
    */
-  const [openCount, todayCount, starredCount] = await Promise.all([
+  const [openCount, todayCount, starredCount, doneTodayCount] = await Promise.all([
     ctx.supabase.from('todos').select('id', { count: 'exact', head: true })
       .eq('member_id', ctx.org.memberId).eq('is_done', false),
     ctx.supabase.from('todos').select('id', { count: 'exact', head: true })
@@ -129,6 +130,20 @@ export async function GET(req: Request) {
       .lte('due_on', today).not('due_on', 'is', null),
     ctx.supabase.from('todos').select('id', { count: 'exact', head: true })
       .eq('member_id', ctx.org.memberId).eq('is_done', false).eq('is_starred', true),
+    /**
+     * What was finished today, for the day's progress.
+     *
+     * Counted here rather than from the rows returned, because the default
+     * view excludes completed items — deriving it on the client would show
+     * "0 done today" to somebody who had just spent the morning clearing
+     * their list, which is the most demoralising possible reading.
+     *
+     * `completed_at` is a `timestamptz` stamped by a trigger, so the bound is
+     * the *instant* local midnight happened rather than a date string.
+     */
+    ctx.supabase.from('todos').select('id', { count: 'exact', head: true })
+      .eq('member_id', ctx.org.memberId).eq('is_done', true)
+      .gte('completed_at', startOfDayIn(ctx.org.timezone)),
   ]);
 
   return success(data ?? [], {
@@ -136,6 +151,7 @@ export async function GET(req: Request) {
       open: openCount.count ?? 0,
       today: todayCount.count ?? 0,
       starred: starredCount.count ?? 0,
+      doneToday: doneTodayCount.count ?? 0,
     },
   });
 }
@@ -184,6 +200,10 @@ export async function POST(req: Request) {
       if (!task) return error('That task is not one you can see.', 404, 'TASK_NOT_FOUND');
     }
 
+    const dueOn = b.due_on || null;
+    const recurrence = readRecurrence(b.recurrence, dueOn);
+    if ('message' in recurrence) return error(recurrence.message, 422, 'INVALID_RECURRENCE');
+
     const { data, error: e } = await ctx.supabase
       .from('todos')
       .insert({
@@ -191,10 +211,11 @@ export async function POST(req: Request) {
         member_id: ctx.org.memberId,
         title,
         note: b.note ?? '',
-        due_on: b.due_on || null,
+        due_on: dueOn,
         is_starred: b.is_starred === true,
         list_id: listId,
         linked_task_id: linkedTaskId,
+        recurrence: recurrence.value,
         sort_order: Number(b.sort_order) || 0,
       })
       .select(SELECT)

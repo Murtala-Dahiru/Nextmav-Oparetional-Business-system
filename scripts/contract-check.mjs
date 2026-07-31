@@ -203,6 +203,13 @@ const LIST_CONTRACTS = [
     path: (s) => '/api/communication/messages?channelId=' + s.channelId,
     nested: [{ field: 'sender', iface: 'Sender' }] },
   { label: 'CRM · Activity',    file: CRM, iface: 'CrmActivity', path: '/api/crm/activities' },
+  // My Work's shapes live in their own module: the list, the board, the
+  // schedule and focus mode all read the same `Todo`, and four copies of one
+  // response shape is exactly the drift this tool exists to find.
+  { label: 'My Work · Todo',    file: 'src/components/modules/mywork/types.ts', iface: 'Todo',
+    path: '/api/todos?view=all' },
+  { label: 'My Work · List',    file: 'src/components/modules/mywork/types.ts', iface: 'TodoList',
+    path: '/api/todos/lists' },
 ];
 
 /**
@@ -352,6 +359,20 @@ try {
       activityType: 'call', subject: `Seed call ${run}`, companyId: seedCo.body?.data?.id,
     }),
   });
+  // A personal to-do and a list to file it in, so My Work's shapes are
+  // compared against a populated row rather than skipped as an empty list.
+  const seedTodoList = await A.json('/api/todos/lists', {
+    method: 'POST', body: JSON.stringify({ name: `Seed list ${run}`, color: 'blue' }),
+  });
+  await A.json('/api/todos', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: `Seed todo ${run}`, note: 'contract check',
+      dueOn: '2030-01-01', recurrence: 'weekly',
+      listId: seedTodoList.body?.data?.id,
+    }),
+  });
+
   const seeded = {
     channelId: seedChannel.body?.data?.id,
     companyId: seedCo.body?.data?.id,

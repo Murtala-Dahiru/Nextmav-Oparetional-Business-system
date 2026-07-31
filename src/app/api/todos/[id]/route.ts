@@ -1,6 +1,7 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
+import { readRecurrence } from '@/lib/todo-recurrence';
 
 /**
  * One personal to-do.
@@ -16,7 +17,7 @@ type Params = { params: Promise<{ id: string }> };
 
 const SELECT =
   'id, title, note, is_done, completed_at, due_on, is_starred, sort_order, ' +
-  'list_id, linked_task_id, created_at, updated_at, ' +
+  'list_id, linked_task_id, recurrence, created_at, updated_at, ' +
   'list:todo_lists(id, name, color), ' +
   'linkedTask:tasks(id, title, status, due_date, project:projects(id, name))';
 
@@ -85,6 +86,40 @@ export async function PATCH(req: Request, { params }: Params) {
         if (!task) return error('That task is not one you can see.', 404, 'TASK_NOT_FOUND');
       }
       update.linked_task_id = taskId;
+    }
+
+    /**
+     * The repeat, and the date it repeats from.
+     *
+     * These two are validated together because they constrain each other: the
+     * database refuses a recurrence with no due date, and clearing a due date
+     * on a repeating item would leave a row the CHECK constraint rejects — a
+     * 23514 the user would see as an unexplained failure.
+     *
+     * So the effective due date is resolved first, reading the stored one when
+     * this request does not mention it, and the pair is judged as it will
+     * actually be written.
+     */
+    if ('recurrence' in b || 'due_on' in b) {
+      const { data: current } = await ctx.supabase
+        .from('todos').select('due_on, recurrence')
+        .eq('member_id', ctx.org.memberId).eq('id', id).maybeSingle();
+
+      const effectiveDue = 'due_on' in b ? update.due_on : (current?.due_on ?? null);
+      const effectiveRule = 'recurrence' in b ? b.recurrence : (current?.recurrence ?? null);
+
+      const parsed = readRecurrence(effectiveRule, effectiveDue);
+      if ('message' in parsed) {
+        return error(
+          // Clearing the date on a repeating item is the common way to hit
+          // this, so the message names that case rather than the constraint.
+          'due_on' in b && !effectiveDue && effectiveRule
+            ? 'This to-do repeats, so it needs a date. Turn the repeat off to leave it undated.'
+            : parsed.message,
+          422, 'INVALID_RECURRENCE',
+        );
+      }
+      update.recurrence = parsed.value;
     }
 
     if (!Object.keys(update).length) return error('Nothing to update', 422, 'VALIDATION_ERROR');

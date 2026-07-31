@@ -3696,6 +3696,196 @@ try {
   check((ovAfterLog.body?.data?.activities ?? []).some(a => a.subject === `Discovery call ${run}`),
     'and it appears on that customer’s own timeline');
 
+  // ─────────────────────────────────────────────────────────────────────────
+  section('65. My Work: the three things the API did that no screen asked for');
+  /**
+   * Reordering, list management and search were all implemented server-side —
+   * with ownership pre-verification, with "deleting a list unfiles its to-dos
+   * rather than destroying them", with a search across titles and notes — and
+   * no screen had ever called any of them. Asserted here so the next screen
+   * that stops calling them fails a test rather than going quiet.
+   */
+
+  const myList = await A.json('/api/todos/lists', {
+    method: 'POST', body: JSON.stringify({ name: `Errands ${run}`, color: 'blue' }),
+  });
+  const myListId = myList.body?.data?.id;
+  check(myList.status === 201, `a personal list is created (${myList.status})`);
+
+  const renamed = await A.json(`/api/todos/lists/${myListId}`, {
+    method: 'PATCH', body: JSON.stringify({ name: `Renamed ${run}`, color: 'rose' }),
+  });
+  check(renamed.status === 200 && renamed.body?.data?.name === `Renamed ${run}`,
+    'a list can be renamed');
+  check(renamed.body?.data?.color === 'rose', 'and recoloured');
+
+  const badListColour = await A.json(`/api/todos/lists/${myListId}`, {
+    method: 'PATCH', body: JSON.stringify({ color: 'chartreuse' }),
+  });
+  check(badListColour.status === 422, `an unknown colour is refused (${badListColour.status})`);
+
+  await A.json('/api/todos', {
+    method: 'POST', body: JSON.stringify({ title: `Filed item ${run}`, listId: myListId }),
+  });
+  const listGone = await A.json(`/api/todos/lists/${myListId}`, { method: 'DELETE' });
+  check(listGone.body?.data?.todosUnfiled === 1,
+    'deleting a list reports how many to-dos it unfiled');
+  const survivor = await A.json(`/api/todos?view=all&search=Filed item ${run}`);
+  check((survivor.body?.data ?? []).length === 1,
+    'and the to-dos inside it survive rather than being destroyed with it');
+  check(survivor.body?.data?.[0]?.listId === null, 'they are simply unfiled');
+
+  await A.json('/api/todos', {
+    method: 'POST',
+    body: JSON.stringify({ title: `Call the dentist ${run}`, note: 'ask about the crown' }),
+  });
+  const byTodoTitle = await A.json(`/api/todos?search=dentist ${run}`);
+  const byTodoNote = await A.json('/api/todos?search=crown');
+  check((byTodoTitle.body?.data ?? []).length >= 1, 'search matches a to-do title');
+  check((byTodoNote.body?.data ?? []).length >= 1, 'and matches its note');
+
+  const openTodos = await A.json('/api/todos');
+  const todoIds = (openTodos.body?.data ?? []).map(t => t.id);
+  const reorder = await A.json('/api/todos', {
+    method: 'PATCH', body: JSON.stringify({ order: [...todoIds].reverse() }),
+  });
+  check(reorder.status === 200 && reorder.body?.data?.reordered === todoIds.length,
+    `a hand-ordering is saved (${reorder.body?.data?.reordered} items)`);
+
+  const foreignReorder = await A.json('/api/todos', {
+    method: 'PATCH',
+    body: JSON.stringify({ order: [...todoIds, '00000000-0000-0000-0000-000000000000'] }),
+  });
+  check(foreignReorder.status === 403,
+    `a reorder naming somebody else's to-do is refused outright (${foreignReorder.status})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('66. A to-do that comes back');
+  /**
+   * The next occurrence is queued by a trigger rather than by the route, so
+   * the repeat holds for every path that sets `is_done` — including a future
+   * bulk action nobody has written yet.
+   */
+
+  const noDate = await A.json('/api/todos', {
+    method: 'POST', body: JSON.stringify({ title: 'Undated repeat', recurrence: 'weekly' }),
+  });
+  check(noDate.status === 422, `a repeat with no date to repeat from is refused (${noDate.status})`);
+
+  const badRule = await A.json('/api/todos', {
+    method: 'POST',
+    body: JSON.stringify({ title: 'Bad rule', dueOn: '2026-09-01', recurrence: 'fortnightly' }),
+  });
+  check(badRule.status === 422, `an unknown interval is refused (${badRule.status})`);
+  check(/daily, weekdays, weekly, monthly/.test(badRule.body?.error?.message ?? ''),
+    'and lists the ones that exist', badRule.body?.error?.message);
+
+  const repeatTitle = `Weekly report ${run}`;
+  const repeat = await A.json('/api/todos', {
+    method: 'POST',
+    body: JSON.stringify({ title: repeatTitle, dueOn: '2026-09-04', recurrence: 'weekly' }),
+  });
+  const repeatId = repeat.body?.data?.id;
+  check(repeat.body?.data?.recurrence === 'weekly', 'a repeating to-do stores its interval');
+
+  await A.json(`/api/todos/${repeatId}`, { method: 'PATCH', body: JSON.stringify({ isDone: true }) });
+  const afterTick = await A.json(`/api/todos?view=all&search=${encodeURIComponent(repeatTitle)}`);
+  const occurrences = (afterTick.body?.data ?? []).filter(t => t.title === repeatTitle);
+  check(occurrences.length === 2, `completing it queues the next one (${occurrences.length} rows)`);
+  check(occurrences.some(t => t.dueOn === '2026-09-11' && !t.isDone),
+    'dated a week on from the one that was due, not a week from today');
+
+  // Un-ticking and re-ticking is an ordinary accident; it must not queue a third.
+  await A.json(`/api/todos/${repeatId}`, { method: 'PATCH', body: JSON.stringify({ isDone: false }) });
+  await A.json(`/api/todos/${repeatId}`, { method: 'PATCH', body: JSON.stringify({ isDone: true }) });
+  const afterRetick = await A.json(`/api/todos?view=all&search=${encodeURIComponent(repeatTitle)}`);
+  check((afterRetick.body?.data ?? []).filter(t => t.title === repeatTitle).length === 2,
+    'and un-ticking then re-ticking does not queue a duplicate');
+
+  const strip = await A.json(`/api/todos/${repeatId}`, {
+    method: 'PATCH', body: JSON.stringify({ dueOn: null }),
+  });
+  check(strip.status === 422,
+    `clearing the date on a repeating to-do is refused rather than left broken (${strip.status})`);
+  check(/repeats/i.test(strip.body?.error?.message ?? ''),
+    'and explains what to do instead', strip.body?.error?.message);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('67. Promoting a private note into work the team can see');
+  /**
+   * The bridge only ran one way — "pin a task" copies assigned work onto the
+   * list. Going the other way meant retyping the title into the Projects
+   * dialog and, in practice, never deleting the to-do, so the same work
+   * existed twice in two different states.
+   */
+
+  const promoteProject = await A.json('/api/projects/projects', {
+    method: 'POST', body: JSON.stringify({ name: `Promote ${run}`, status: 'active' }),
+  });
+  const promoteProjectId = promoteProject.body?.data?.id;
+
+  const note = await A.json('/api/todos', {
+    method: 'POST',
+    body: JSON.stringify({ title: `Chase the quote ${run}`, note: 'turned out to be two days' }),
+  });
+  const noteId = note.body?.data?.id;
+
+  const noProject = await A.json(`/api/todos/${noteId}/convert`, {
+    method: 'POST', body: JSON.stringify({}),
+  });
+  check(noProject.status === 422, `converting with no project is refused (${noProject.status})`);
+
+  const converted = await A.json(`/api/todos/${noteId}/convert`, {
+    method: 'POST', body: JSON.stringify({ projectId: promoteProjectId }),
+  });
+  check(converted.status === 201, `a to-do becomes a project task (${converted.status})`);
+  check(converted.body?.data?.task?.title === `Chase the quote ${run}`,
+    'carrying its title across');
+
+  const keptTodo = await A.json(`/api/todos/${noteId}`);
+  check(!!keptTodo.body?.data?.linkedTaskId,
+    'the to-do is kept and linked, not consumed');
+  check(keptTodo.body?.data?.linkedTask?.project?.name === `Promote ${run}`,
+    'and now shows which project it belongs to');
+
+  const convertTwice = await A.json(`/api/todos/${noteId}/convert`, {
+    method: 'POST', body: JSON.stringify({ projectId: promoteProjectId }),
+  });
+  check(convertTwice.status === 409,
+    `converting the same note twice is refused (${convertTwice.status})`);
+
+  /**
+   * `mywork.view` is not `projects.create`. A role that keeps a to-do list but
+   * cannot write into a project must not reach one through this side door.
+   */
+  const clerkClient = makeClient();
+  const clerkEmail = `mywork-clerk-${run}@nexustest.dev`;
+  const clerkUser = await adminCreateUser(clerkEmail, PW);
+  scratchUsers.push(clerkUser?.id);
+  await A.json('/api/admin/users', {
+    method: 'POST',
+    body: JSON.stringify({ email: clerkEmail, firstName: 'Femi', lastName: 'Clerk', role: 'finance_staff' }),
+  });
+  await clerkClient.json('/api/auth/login', {
+    method: 'POST', body: JSON.stringify({ email: clerkEmail, password: PW }),
+  });
+
+  const clerkTodo = await clerkClient.json('/api/todos', {
+    method: 'POST', body: JSON.stringify({ title: `Clerk note ${run}` }),
+  });
+  check(clerkTodo.status === 201, 'a finance clerk still has their own list');
+
+  const clerkConvert = await clerkClient.json(`/api/todos/${clerkTodo.body?.data?.id}/convert`, {
+    method: 'POST', body: JSON.stringify({ projectId: promoteProjectId }),
+  });
+  check(clerkConvert.status === 403,
+    `but cannot create a project task through it (${clerkConvert.status})`);
+
+  /** And a private list stays private, which is the whole promise. */
+  const clerkSeesMine = await clerkClient.json('/api/todos?view=all');
+  check(!(clerkSeesMine.body?.data ?? []).some(t => t.title === `Chase the quote ${run}`),
+    'and cannot see anybody else’s to-dos');
+
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);

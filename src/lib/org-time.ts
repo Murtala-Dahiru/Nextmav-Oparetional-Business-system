@@ -72,3 +72,33 @@ export function startOfMonthIn(zone: string | null | undefined): string {
 export function daysFromTodayIn(zone: string | null | undefined, days: number): string {
   return dateIn(new Date(Date.now() + days * 86_400_000), zone);
 }
+
+/**
+ * The instant local midnight happened in `zone`, as an ISO timestamp.
+ *
+ * The helpers above all produce a `YYYY-MM-DD` for comparing against `date`
+ * columns. This one is for `timestamptz` columns, where "today" is a moment
+ * rather than a day — `todos.completed_at`, stamped by a trigger with `now()`,
+ * is the case that needed it: counting what somebody finished today cannot be
+ * done by comparing a timestamp to a date string, and comparing it to UTC
+ * midnight tells a workspace in Lagos it has done nothing for the first hour
+ * of every day, and counts yesterday evening's work as today's for the last.
+ *
+ * Derived by reading the same instant as wall-clock time in the zone and in
+ * UTC, which is the offset; `Intl` handles daylight saving, so no arithmetic
+ * here has to know about it.
+ */
+export function startOfDayIn(zone: string | null | undefined): string {
+  const now = new Date();
+  const day = dateIn(now, zone);
+
+  try {
+    const asZone = new Date(now.toLocaleString('en-US', { timeZone: zone || 'UTC' }));
+    const asUTC = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
+    const offsetMs = asZone.getTime() - asUTC.getTime();
+    return new Date(Date.parse(`${day}T00:00:00Z`) - offsetMs).toISOString();
+  } catch {
+    // Same reasoning as `dateIn`: an unknown zone must not take the query down.
+    return `${day}T00:00:00.000Z`;
+  }
+}
