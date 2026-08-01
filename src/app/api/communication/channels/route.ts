@@ -1,6 +1,7 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
+import { audit, communicationPolicy, isOrgAdmin } from '@/lib/communication';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -36,7 +37,16 @@ export async function GET(req: Request) {
     total: filtered.length,
     // The bell and the sidebar both want this, and computing it twice from the
     // same list is how the two come to disagree.
-    unreadTotal: filtered.reduce((sum, r) => sum + (r.unread_count ?? 0), 0),
+    //
+    // A muted conversation is deliberately excluded. Muting means "do not
+    // interrupt me about this", and a badge on the navigation is an
+    // interruption — the unread count on the row itself still shows, because
+    // muting is not the same as marking read.
+    unreadTotal: filtered.reduce(
+      (sum, r) => sum + (r.is_muted ? 0 : (r.unread_count ?? 0)), 0),
+    // Mentions are never muted. Being named is the one thing that has to reach
+    // somebody regardless of how they have configured the channel.
+    mentionTotal: filtered.reduce((sum, r) => sum + (r.mention_count ?? 0), 0),
   });
 }
 
@@ -63,6 +73,25 @@ export async function POST(req: Request) {
     b = acceptBody(await req.json());
   } catch {
     return error('Invalid request body', 422, 'VALIDATION_ERROR');
+  }
+
+  /**
+   * The organisation may reserve channel creation for administrators.
+   *
+   * Checked here rather than in RLS because it is a policy document rather
+   * than a property of the row — the same insert is legitimate or not
+   * depending on a setting that can change between two requests — and because
+   * a refusal has to say why. An organisation that curates its channel list is
+   * a real thing; one where nobody understands why the button stopped working
+   * is not.
+   */
+  const policy = await communicationPolicy(ctx);
+  if (policy.channelCreation === 'admins' && !isOrgAdmin(ctx)) {
+    return error(
+      'This organisation reserves creating channels for administrators. '
+      + 'You can still message colleagues directly.',
+      403, 'POLICY_FORBIDS',
+    );
   }
 
   const rawName = String(b.display_name ?? b.name ?? '').trim();
@@ -105,6 +134,18 @@ export async function POST(req: Request) {
         : (['open', 'invite'].includes(b.join_policy) ? b.join_policy : 'open'),
       department_id: b.department_id || null,
       team_id: b.team_id || null,
+      /**
+       * What the conversation is about.
+       *
+       * New in 0023. `department_id` and `team_id` have been on this table
+       * since 0003 and nothing has ever set them, which is why a channel could
+       * not be opened from the project it concerned, or the project from the
+       * channel. Linking is not access: a private channel about a project is
+       * still private, and a public one is still public — the link only says
+       * what this conversation is for.
+       */
+      project_id: b.project_id || null,
+      company_id: b.company_id || null,
       created_by: ctx.org.memberId,
     })
     .select('*')
@@ -153,6 +194,8 @@ export async function POST(req: Request) {
       nlink: '/dashboard?module=communication',
     });
   }
+
+  await audit(ctx, 'channel_created', { channelId: channel.id, reason: `${type} channel` });
 
   return success(channel, undefined, 201);
 }

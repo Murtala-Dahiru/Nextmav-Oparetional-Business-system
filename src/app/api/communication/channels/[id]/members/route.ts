@@ -1,6 +1,7 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
+import { audit } from '@/lib/communication';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -101,6 +102,13 @@ export async function POST(req: Request, { params }: Params) {
       eid: id,
       nlink: '/dashboard?module=communication',
     });
+
+    // One entry per person, not one per request: "who put Ada in the
+    // leadership channel" is the question this table is asked, and a row
+    // saying "three people were added" cannot answer it.
+    for (const memberId of added) {
+      await audit(ctx, 'member_added', { channelId: id, targetMemberId: memberId });
+    }
   }
 
   return success(data ?? [], undefined, 201);
@@ -146,6 +154,15 @@ export async function PATCH(req: Request, { params }: Params) {
 
   if (e) return pgError(e);
   if (!data) return error('That person is not in this channel.', 404, 'NOT_FOUND');
+
+  // Marking a channel read and muting it are personal, constant and nobody
+  // else's business; a trail of them would bury the acts that matter.
+  if (update.role) {
+    await audit(ctx, 'member_role_changed', {
+      channelId: id, targetMemberId: target, reason: `now ${update.role}`,
+    });
+  }
+
   return success(data);
 }
 
@@ -184,5 +201,12 @@ export async function DELETE(req: Request, { params }: Params) {
     .eq('channel_id', id).eq('member_id', target);
 
   if (e) return pgError(e);
+
+  // Leaving is your own business; being removed by somebody else is the act
+  // worth a record.
+  if (target !== ctx.org.memberId) {
+    await audit(ctx, 'member_removed', { channelId: id, targetMemberId: target });
+  }
+
   return success({ removed: true, memberId: target });
 }

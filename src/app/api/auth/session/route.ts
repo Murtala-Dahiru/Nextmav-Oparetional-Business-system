@@ -49,7 +49,20 @@ export async function GET() {
       .from('org_settings')
       .select('key, value')
       .eq('organization_id', ctx.org.organizationId)
-      .in('key', ['leave_policy', 'project_defaults', 'attendance_policy', 'branding']);
+      /**
+       * `communication_policy` joins the list in 0023 for exactly the reason
+       * above: every employee's composer needs to know the attachment limit
+       * and whether a sent message may still be edited, and the only other
+       * source is `/api/admin/settings`, which an employee is rightly refused.
+       * A module that silently fell back to defaults for everybody but
+       * administrators would show a control that the endpoint then refuses.
+       * Nothing in it is sensitive — it is a description of what the product
+       * will let you do, which you find out by trying.
+       */
+      .in('key', [
+        'leave_policy', 'project_defaults', 'attendance_policy', 'branding',
+        'communication_policy',
+      ]);
 
     const policies = (policyRows ?? []).reduce<Record<string, unknown>>((acc, row: any) => {
       acc[row.key] = row.value;

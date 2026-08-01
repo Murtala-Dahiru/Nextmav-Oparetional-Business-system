@@ -46,6 +46,16 @@ const EXACT: Record<string, ModuleId> = {
   // A mention always arrives in a conversation.
   mention: 'communication',
   message_mention: 'communication',
+  /**
+   * A meeting invitation opens Communication, not Calendar.
+   *
+   * A scheduled meeting writes a `calendar_events` row, so it is in everybody's
+   * week — but the notification is "you were invited", and the thing to do
+   * about it is join, which happens in the module the meeting lives in. Its
+   * `link` says the same; a badge that sent people to a different module from
+   * the link underneath it would be worse than no badge.
+   */
+  meeting: 'communication',
   // A deliverable decision is a client acting on a project.
   deliverable_approved: 'projects',
   deliverable_rejected: 'projects',
@@ -73,7 +83,9 @@ const BY_PREFIX: Record<string, ModuleId> = {
   product: 'inventory',
   purchase: 'inventory',
   event: 'calendar',
-  meeting: 'calendar',
+  // Meetings moved into Communication in 0023. See the note on `meeting` in
+  // EXACT above; anything shaped `meeting_*` added later belongs with it.
+  meeting: 'communication',
   page: 'workspace',
   document: 'workspace',
   todo: 'mywork',
@@ -130,6 +142,10 @@ export const EMITTED_TYPES = [
   'expense_submitted', 'expense_approved', 'expense_rejected',
   'leave_request', 'leave_requested', 'leave_approved', 'leave_rejected', 'on_leave',
   'announcement',
+  // 0023: `notify_meeting_invite()`. Without it here the badge would count a
+  // meeting invitation and never clear it, because `typesForModule` builds the
+  // SQL `IN` clause from this list.
+  'meeting',
 ];
 
 export function moduleOfNotification(type: string | null | undefined): ModuleId | null {

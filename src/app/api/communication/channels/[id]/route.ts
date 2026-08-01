@@ -1,6 +1,7 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
+import { audit } from '@/lib/communication';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -58,6 +59,10 @@ export async function PATCH(req: Request, { params }: Params) {
   if (typeof b.topic === 'string') update.topic = b.topic;
   if ('is_archived' in b) update.is_archived = !!b.is_archived;
   if ('department_id' in b) update.department_id = b.department_id || null;
+  // What the conversation is about. See the note in the create handler: a link
+  // is a subject, never a grant.
+  if ('project_id' in b) update.project_id = b.project_id || null;
+  if ('company_id' in b) update.company_id = b.company_id || null;
 
   if ('post_policy' in b) {
     if (!['everyone', 'members', 'admins'].includes(b.post_policy)) {
@@ -88,6 +93,16 @@ export async function PATCH(req: Request, { params }: Params) {
 
   if (e) return pgError(e);
   if (!data) return error('You do not administer this channel.', 403, 'RLS_DENIED');
+
+  // Archiving is singled out from the other settings because it is the one
+  // that stops a conversation, and "why can nobody post in here any more" is a
+  // question somebody eventually asks.
+  await audit(
+    ctx,
+    'is_archived' in update && update.is_archived ? 'channel_archived' : 'channel_settings_changed',
+    { channelId: id, reason: Object.keys(update).filter(k => k !== 'updated_at').join(', ') },
+  );
+
   return success(data);
 }
 
@@ -117,6 +132,19 @@ export async function DELETE(_req: Request, { params }: Params) {
       409, 'RULE_VIOLATION',
     );
   }
+
+  /**
+   * The trail is written before the row goes, not after.
+   *
+   * `communication_audit.channel_id` is `ON DELETE SET NULL`, so the entry
+   * survives the deletion with its channel reference cleared — which is why
+   * the name is put into `reason` as well. A record of "a channel was deleted"
+   * that cannot say which one is not a record of anything.
+   */
+  await audit(ctx, 'channel_deleted', {
+    channelId: id,
+    reason: channel.name ? `#${channel.name}` : '',
+  });
 
   const { error: e } = await ctx.supabase
     .from('channels').delete()

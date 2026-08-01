@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import {
   Users, Plus, Pencil, Trash2, MoreHorizontal, Settings, Shield,
   ClipboardList, Loader2, Save, ShieldCheck, Briefcase, DollarSign, CalendarOff, Megaphone,
-  Clock, FolderKanban,
+  Clock, FolderKanban, MessageSquare,
 } from 'lucide-react';
 
 import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
@@ -22,6 +22,9 @@ import {
   WorkplacePanel, LeavePanel, ProjectsPanel, NotificationsPanel,
   BrandingPanel, DepartmentsPanel, type SettingsBundle,
 } from '@/components/modules/admin/settings-panels';
+import {
+  CommunicationPanel, CommunicationAuditPanel,
+} from '@/components/modules/admin/communication-panels';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -913,6 +916,14 @@ export default function AdminModule() {
             it: both change how the product behaves for everyone the moment
             they are saved.
           */}
+          {/*
+            Communication has its own tab rather than a section inside
+            Settings, for the same reason Workplace does: the policy and the
+            moderation trail belong to different people from the working week,
+            and the trail is something an administrator comes here *to* read
+            rather than something they scroll past.
+          */}
+          <TabsTrigger value="communication" className="gap-2"><MessageSquare className="size-4" /> Communication</TabsTrigger>
           <TabsTrigger value="holidays" className="gap-2"><CalendarOff className="size-4" /> Holidays</TabsTrigger>
           <TabsTrigger value="announcements" className="gap-2"><Megaphone className="size-4" /> Announcements</TabsTrigger>
           <TabsTrigger value="audit" className="gap-2"><ClipboardList className="size-4" /> Audit Log</TabsTrigger>
@@ -1154,6 +1165,23 @@ export default function AdminModule() {
               <NotificationsPanel bundle={bundle} onSaved={fetchSettings} />
             </>
           )}
+        </TabsContent>
+
+        {/* ════════════════════════════════════════════════════════
+            COMMUNICATION TAB — policy and moderation
+        ════════════════════════════════════════════════════════ */}
+        <TabsContent value="communication" className="space-y-6">
+          <PageHeader
+            title="Communication"
+            description="How messaging and meetings behave, and a record of what has been moderated."
+            icon={MessageSquare}
+          />
+          {settingsLoading || !bundle ? (
+            <Card><CardContent className="p-6"><Loader2 className="size-5 animate-spin text-muted-foreground" /></CardContent></Card>
+          ) : (
+            <CommunicationPanel bundle={bundle} onSaved={fetchSettings} />
+          )}
+          <CommunicationAuditPanel />
         </TabsContent>
 
         {/* ════════════════════════════════════════════════════════

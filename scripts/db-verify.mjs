@@ -423,6 +423,11 @@ try {
     'leave_requests', 'invoices', 'expenses',
     'channels', 'channel_members', 'announcements',
     'attendance_records', 'support_tickets', 'activity_log',
+    // 0023. A hand going up and a participant being admitted are UPDATEs on
+    // non-key columns, which is exactly the case REPLICA IDENTITY FULL exists
+    // for — without it a filtered subscription matches nothing and fails
+    // silently.
+    'meetings', 'meeting_participants',
   ];
 
   const publishedRows = await q(

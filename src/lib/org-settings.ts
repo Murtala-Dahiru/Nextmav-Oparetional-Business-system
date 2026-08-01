@@ -99,6 +99,8 @@ export interface NotificationEvents {
   message: boolean;
   announcement: boolean;
   channel: boolean;
+  /** Added in 0023: you were invited to a meeting, or one is starting. */
+  meeting: boolean;
 }
 
 /** Label and explanation for each toggle, in the order the screen shows them. */
@@ -116,6 +118,7 @@ export const NOTIFICATION_EVENT_LABELS: {
   { key: 'mention', label: 'Mentions', hint: 'Someone names you in a message or comment.' },
   { key: 'message', label: 'Direct messages', hint: 'A colleague messages you privately.' },
   { key: 'channel', label: 'Channel invitations', hint: 'You are added to a channel.' },
+  { key: 'meeting', label: 'Meeting invitations', hint: 'You are invited to a meeting, or one you are in is starting.' },
   { key: 'announcement', label: 'Announcements', hint: 'Company-wide notices from administrators.' },
 ];
 
@@ -159,6 +162,61 @@ export interface Branding {
   showLogoInPortal: boolean;
 }
 
+// ─── Communication ─────────────────────────────────────────────────────────
+
+/**
+ * How this organisation wants its internal communication to behave.
+ *
+ * ── Why these seven and not more ─────────────────────────────────────────
+ *
+ * Each one answers a question a real administrator asks, and each one is read
+ * by something. A settings screen full of toggles that nothing consults is the
+ * dominant defect in this repository, so the test applied to every candidate
+ * here was: name the line of code that reads it.
+ *
+ *   channelCreation      → the create-channel endpoint refuses when 'admins'
+ *   allowMessageEdit     → the edit endpoint and the message menu
+ *   editWindowMinutes    → the same pair, for "you can no longer edit this"
+ *   allowMessageDelete   → the delete endpoint, for the *author's* own delete
+ *   retentionDays        → `apply_message_retention()`
+ *   allowClientMeetings  → the meeting invite endpoint
+ *   maxAttachmentMb      → the composer, before a file is uploaded
+ *
+ * Moderation — a channel or organisation administrator removing somebody
+ * else's message — is deliberately not governed by any of these. It is a
+ * responsibility of the role, not a setting, and an organisation that could
+ * switch it off would have no way to deal with something posted in error.
+ */
+export interface CommunicationPolicy {
+  /** Who may open a new channel. */
+  channelCreation: 'everyone' | 'admins';
+  /** Whether an author may edit a message after sending it. */
+  allowMessageEdit: boolean;
+  /** How long they have. 0 means for ever, which is the historical behaviour. */
+  editWindowMinutes: number;
+  /** Whether an author may delete their own message. */
+  allowMessageDelete: boolean;
+  /** How long messages are kept. 0 means for ever. */
+  retentionDays: number;
+  /** Whether an external client account may be admitted to a meeting. */
+  allowClientMeetings: boolean;
+  /** Largest attachment, in megabytes. The bucket's own 25MB limit still applies. */
+  maxAttachmentMb: number;
+}
+
+/** Label and explanation for each control, in the order the screen shows them. */
+export const COMMUNICATION_POLICY_LABELS: {
+  key: keyof CommunicationPolicy; label: string; hint: string;
+}[] = [
+  { key: 'channelCreation', label: 'Who can create channels', hint: 'Curated channel lists suit regulated teams; most companies leave this open.' },
+  { key: 'allowMessageEdit', label: 'Allow editing sent messages', hint: 'An edited message is always marked as edited.' },
+  { key: 'editWindowMinutes', label: 'Edit window', hint: 'Minutes after sending. 0 means no time limit.' },
+  { key: 'allowMessageDelete', label: 'Allow authors to delete their own messages', hint: 'Administrators can always remove a message; this is about the author.' },
+  { key: 'retentionDays', label: 'Message retention', hint: 'Days to keep messages. 0 keeps everything. Applied when you run it, never silently.' },
+  { key: 'allowClientMeetings', label: 'Allow clients in meetings', hint: 'Lets an external client account be invited to a meeting.' },
+  { key: 'maxAttachmentMb', label: 'Largest attachment', hint: 'Megabytes. Storage caps this at 25MB regardless.' },
+];
+
 // ───────────────────────────────────────────────────────────────────────────
 
 export interface OrgSettings {
@@ -167,6 +225,7 @@ export interface OrgSettings {
   projectDefaults: ProjectDefaults;
   notificationEvents: NotificationEvents;
   branding: Branding;
+  communicationPolicy: CommunicationPolicy;
 }
 
 /**
@@ -182,6 +241,7 @@ export const SETTING_KEYS = [
   'project_defaults',
   'notification_events',
   'branding',
+  'communication_policy',
 ] as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[number];
@@ -224,6 +284,17 @@ export const DEFAULT_SETTINGS: Record<SettingKey, Record<string, unknown>> = {
     message: true,
     announcement: true,
     channel: true,
+    // Added in 0023 alongside meetings.
+    meeting: true,
+  },
+  communication_policy: {
+    channel_creation: 'everyone',
+    allow_message_edit: true,
+    edit_window_minutes: 0,
+    allow_message_delete: true,
+    retention_days: 0,
+    allow_client_meetings: false,
+    max_attachment_mb: 25,
   },
   branding: {
     primary_colour: '#10b981',
@@ -361,10 +432,69 @@ export function validateSetting(key: SettingKey, value: unknown): string | null 
     return null;
   }
 
+  if (key === 'communication_policy') {
+    if (value.channel_creation !== undefined
+        && !['everyone', 'admins'].includes(String(value.channel_creation))) {
+      return 'Channel creation is open to "everyone" or to "admins".';
+    }
+    /**
+     * The numeric fields are bounded rather than merely non-negative.
+     *
+     * `retention_days` is the one setting in this product that destroys data,
+     * and a mistyped `3` where `300` was meant would soft-delete nearly a
+     * year of conversation the moment somebody pressed the button. A floor of
+     * seven days will not stop a determined mistake, but it does stop the
+     * common one, and there is no organisation whose real policy is "keep
+     * messages for a day".
+     */
+    if ('retention_days' in value) {
+      const n = Number(value.retention_days);
+      if (!Number.isFinite(n) || n < 0 || n > 3650) {
+        return 'Retention has to be between 0 (keep everything) and 3650 days.';
+      }
+      if (n > 0 && n < 7) {
+        return 'The shortest retention this system will apply is 7 days.';
+      }
+    }
+    if ('edit_window_minutes' in value) {
+      const n = Number(value.edit_window_minutes);
+      if (!Number.isFinite(n) || n < 0 || n > 1440) {
+        return 'The edit window has to be between 0 (no limit) and 1440 minutes.';
+      }
+    }
+    if ('max_attachment_mb' in value) {
+      const n = Number(value.max_attachment_mb);
+      // 25 is the `attachments` bucket's own limit, set in migration 0006.
+      // Accepting a larger number here would produce a setting that promises
+      // something storage then refuses, halfway through an upload.
+      if (!Number.isFinite(n) || n < 1 || n > 25) {
+        return 'The attachment limit has to be between 1 and 25 MB — storage refuses anything larger.';
+      }
+    }
+    return null;
+  }
+
   // notification_events: every field is a boolean toggle, and an unknown key
   // is simply an event nothing listens for yet.
   return null;
 }
+
+/**
+ * The communication policy, camelised, for the modules that read it.
+ *
+ * Mirrors `DEFAULT_SETTINGS.communication_policy` — which is the snake_cased
+ * shape that goes into the database — so `settingsOf()` has something of the
+ * right shape to merge a stored document over.
+ */
+export const DEFAULT_COMMUNICATION_POLICY: CommunicationPolicy = {
+  channelCreation: 'everyone',
+  allowMessageEdit: true,
+  editWindowMinutes: 0,
+  allowMessageDelete: true,
+  retentionDays: 0,
+  allowClientMeetings: false,
+  maxAttachmentMb: 25,
+};
 
 /**
  * Read a policy out of the camelised settings map an endpoint returned,

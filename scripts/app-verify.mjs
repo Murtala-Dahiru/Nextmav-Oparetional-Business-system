@@ -3886,6 +3886,386 @@ try {
   check(!(clerkSeesMine.body?.data ?? []).some(t => t.title === `Chase the quote ${run}`),
     'and cannot see anybody else’s to-dos');
 
+  // ─────────────────────────────────────────────────────────────────────────
+  section('68. A conversation can carry a file, and it stays as private as the channel');
+  /**
+   * `messages.attachments` was accepted by the endpoint from the first
+   * migration and was `[]` on every message ever posted — the composer never
+   * sent it. 0023 splits the two things that were being conflated: a file gets
+   * a `files` row (findable, attributable, revocable) and the jsonb column
+   * carries references to business records.
+   *
+   * The check that matters most is the last one. A `files` row is readable
+   * organisation-wide by `files_select`, which was right while every file
+   * belonged to a workspace page — and would have published the name of
+   * anything dropped into a private HR channel to the whole company.
+   */
+  /**
+   * A channel of its own for sections 68–72.
+   *
+   * Not the group from section 49: that one is deliberately emptied there —
+   * the last administrator leaves it to prove a channel cannot be stranded —
+   * so posting into it afterwards is correctly refused by
+   * `can_post_to_channel`. Reusing it made twenty checks fail on a 403 that
+   * was the *policy working*, which is the most misleading kind of red.
+   */
+  const commGroup = await A.json('/api/communication/channels', {
+    method: 'POST',
+    body: JSON.stringify({
+      displayName: `Q3 Launch Team ${run}`,
+      type: 'private',
+      memberIds: [memberIdC],
+    }),
+  });
+  const commGroupId = commGroup.body?.data?.id;
+  check(commGroup.status === 201, `a channel to work in (${commGroup.status})`,
+    commGroup.body?.error?.message);
+
+  const withFile = await A.json('/api/communication/messages', {
+    method: 'POST',
+    body: JSON.stringify({
+      channelId: commGroupId,
+      body: 'The signed contract',
+      files: [{
+        bucket: 'attachments',
+        path: `${orgIdA}/communication/${commGroupId}/${run}-contract.pdf`,
+        filename: 'contract.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 24_000,
+      }],
+    }),
+  });
+  check(withFile.status === 201, `a message can carry a file (${withFile.status})`,
+    withFile.body?.error?.message);
+  check((withFile.body?.data?.files ?? []).some(f => f.filename === 'contract.pdf'),
+    'and the attachment comes back on the message, not in a second request');
+  const attachedFileId = withFile.body?.data?.files?.[0]?.id;
+
+  const commForeignPath = await A.json('/api/communication/messages', {
+    method: 'POST',
+    body: JSON.stringify({
+      channelId: commGroupId,
+      body: 'not mine',
+      files: [{ bucket: 'attachments', path: `${crypto.randomUUID()}/x/y.pdf`, filename: 'y.pdf' }],
+    }),
+  });
+  check(commForeignPath.status === 403,
+    `a file stored outside the organisation is refused (${commForeignPath.status})`);
+
+  const tooBig = await A.json('/api/communication/messages', {
+    method: 'POST',
+    body: JSON.stringify({
+      channelId: commGroupId,
+      body: 'enormous',
+      files: [{
+        bucket: 'attachments',
+        path: `${orgIdA}/communication/${commGroupId}/${run}-big.zip`,
+        filename: 'big.zip', sizeBytes: 60 * 1024 * 1024,
+      }],
+    }),
+  });
+  check(tooBig.status === 422, `and one above the size policy is refused (${tooBig.status})`);
+
+  const outsiderFile = await D.json(`/api/communication/files/${attachedFileId}`);
+  check(outsiderFile.status === 404,
+    `a file posted in a private channel is unreachable to a non-member (${outsiderFile.status})`);
+
+  /** A record reference is not a file, and is kept apart from one. */
+  const withReference = await A.json('/api/communication/messages', {
+    method: 'POST',
+    body: JSON.stringify({
+      channelId: commGroupId,
+      body: 'see the plan',
+      attachments: [{ kind: 'project', id: promoteProjectId, label: `Promote ${run}` }],
+    }),
+  });
+  check(withReference.status === 201, `a message can link a record (${withReference.status})`);
+  check(withReference.body?.data?.attachments?.[0]?.kind === 'project',
+    'and the reference survives the round trip');
+
+  const badReference = await A.json('/api/communication/messages', {
+    method: 'POST',
+    body: JSON.stringify({
+      channelId: commGroupId, body: 'nonsense',
+      attachments: [{ kind: 'unicorn', id: promoteProjectId, label: 'x' }],
+    }),
+  });
+  check((badReference.body?.data?.attachments ?? []).length === 0,
+    'an unknown reference kind is dropped rather than rendered as a dead link');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('69. Who has read a message is the author’s question to ask');
+  /**
+   * The module used to render "Read by Ada, Grace" under every message its
+   * author had sent — noise on every line, and a standing reading log kept on
+   * everybody by default. It is now a request, and one only the author may
+   * make.
+   */
+  const readable = await A.json('/api/communication/messages', {
+    method: 'POST', body: JSON.stringify({ channelId: commGroupId, body: `Receipt probe ${run}` }),
+  });
+  const readableId = readable.body?.data?.id;
+
+  const receipts = await A.json(`/api/communication/messages/${readableId}/receipts`);
+  check(receipts.status === 200, `the author can ask who has seen it (${receipts.status})`,
+    receipts.body?.error?.message);
+  check(Array.isArray(receipts.body?.data)
+    && receipts.body.data.some(r => typeof r.hasRead === 'boolean'),
+    'and gets people with a read state, not a count');
+  check(typeof receipts.body?.meta?.read === 'number',
+    'with the number who have, alongside');
+
+  const nosy = await C.json(`/api/communication/messages/${readableId}/receipts`);
+  check(nosy.status === 403,
+    `but a colleague cannot ask it about somebody else’s message (${nosy.status})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('70. Search reaches past the conversation that happens to be open');
+  /**
+   * The module filtered the hundred messages it had already loaded. Anything
+   * older, or in another channel, could not be found — which nobody discovers
+   * until the moment they need it.
+   *
+   * `message_search()` is SECURITY INVOKER precisely so the check below holds:
+   * visibility is decided by `messages_select`, not re-implemented in a search.
+   */
+  const needle = `zarquon${run}`;
+  await A.json('/api/communication/messages', {
+    method: 'POST', body: JSON.stringify({ channelId: commGroupId, body: `the ${needle} report` }),
+  });
+
+  const found = await A.json(`/api/communication/search?q=${needle}`);
+  check(found.status === 200 && (found.body?.data ?? []).length > 0,
+    `a message is findable by its words (${found.status})`, found.body?.error?.message);
+  check((found.body?.data ?? [])[0]?.channelLabel?.includes('Q3 Launch Team'),
+    'and the result says which conversation it was in');
+
+  const prefix = await A.json(`/api/communication/search?q=${needle.slice(0, 8)}`);
+  check((prefix.body?.data ?? []).length > 0,
+    'the last word matches as a prefix, so results narrow while you type');
+
+  const outsiderSearch = await D.json(`/api/communication/search?q=${needle}`);
+  check((outsiderSearch.body?.data ?? []).length === 0,
+    'and a private channel stays private to search as well as to the sidebar');
+
+  const commTooShort = await A.json('/api/communication/search?q=z');
+  check(commTooShort.body?.meta?.tooShort === true,
+    'one character returns nothing rather than most of the company');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('71. Meetings: a room, a door, and somebody holding it');
+  /**
+   * The waiting room is the check worth making. "You have not been admitted"
+   * has to be a fact the server holds — the media connects browser to browser,
+   * so a client that is merely *told* to stay out is already in. The row is
+   * what every other participant consults before offering a connection.
+   */
+  const meeting = await A.json('/api/communication/meetings', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: `Launch sync ${run}`,
+      channelId: commGroupId,
+      mode: 'video',
+      waitingRoom: true,
+    }),
+  });
+  check(meeting.status === 201, `a meeting can be started in a channel (${meeting.status})`,
+    meeting.body?.error?.message);
+  const meetingId = meeting.body?.data?.id;
+  check(meeting.body?.data?.status === 'live',
+    'and one with no scheduled time starts immediately');
+
+  const meetingOverviewList = await A.json('/api/communication/meetings');
+  const meetingRow = (meetingOverviewList.body?.data ?? []).find(m => m.meetingId === meetingId);
+  check(!!meetingRow, 'it appears on the meeting list');
+  check(meetingRow?.amHost === true, 'with the caller marked as its host');
+  check(meetingRow?.channelLabel?.includes('Q3 Launch Team'),
+    'and says which conversation it belongs to');
+
+  const channelsWithMeeting = await A.json('/api/communication/channels');
+  check((channelsWithMeeting.body?.data ?? [])
+    .find(c => c.channelId === commGroupId)?.liveMeetingId === meetingId,
+    'and the channel row says a call is happening in it');
+
+  const knock = await C.json(`/api/communication/meetings/${meetingId}/participants`, {
+    method: 'POST', body: JSON.stringify({}),
+  });
+  check(knock.body?.meta?.waiting === true,
+    'a colleague joining lands in the waiting room, not the meeting');
+
+  const selfAdmit = await C.json(`/api/communication/meetings/${meetingId}/participants`, {
+    method: 'PATCH', body: JSON.stringify({ state: 'admitted' }),
+  });
+  check(selfAdmit.status === 403, `and cannot admit themselves (${selfAdmit.status})`);
+
+  const selfPromote = await C.json(`/api/communication/meetings/${meetingId}/participants`, {
+    method: 'PATCH', body: JSON.stringify({ role: 'host' }),
+  });
+  check(selfPromote.status === 403, `nor make themselves the host (${selfPromote.status})`);
+
+  const admit = await A.json(`/api/communication/meetings/${meetingId}/participants`, {
+    method: 'PATCH', body: JSON.stringify({ memberId: memberIdC, state: 'admitted' }),
+  });
+  check(admit.status === 200, `the host admits them (${admit.status})`, admit.body?.error?.message);
+
+  const raise = await C.json(`/api/communication/meetings/${meetingId}/participants`, {
+    method: 'PATCH', body: JSON.stringify({ handRaised: true }),
+  });
+  check(raise.status === 200 && !!raise.body?.data?.handRaisedAt,
+    'and they can raise their own hand');
+
+  const hostMute = await A.json(`/api/communication/meetings/${meetingId}/participants`, {
+    method: 'PATCH', body: JSON.stringify({ memberId: memberIdC, isMuted: true }),
+  });
+  check(hostMute.body?.data?.isMuted === true, 'the host can mute somebody');
+
+  const commOutsiderJoin = await D.json(`/api/communication/meetings/${meetingId}/participants`, {
+    method: 'POST', body: JSON.stringify({}),
+  });
+  check(commOutsiderJoin.status === 404,
+    `a meeting in a private channel is not joinable from outside it (${commOutsiderJoin.status})`);
+
+  const ended = await A.json(`/api/communication/meetings/${meetingId}`, {
+    method: 'PATCH', body: JSON.stringify({ status: 'ended' }),
+  });
+  check(ended.status === 200 && !!ended.body?.data?.endedAt,
+    `the host ends it (${ended.status})`);
+
+  const afterEnd = await A.json(`/api/communication/meetings/${meetingId}/participants`);
+  check(!(afterEnd.body?.data ?? []).some(p => p.state === 'joined'),
+    'and nobody is left apparently still sitting in the room');
+
+  const restart = await A.json(`/api/communication/meetings/${meetingId}`, {
+    method: 'PATCH', body: JSON.stringify({ status: 'live' }),
+  });
+  check(restart.status === 409, `a finished meeting cannot be restarted (${restart.status})`);
+
+  const deleteEnded = await A.json(`/api/communication/meetings/${meetingId}`, { method: 'DELETE' });
+  check(deleteEnded.status === 409,
+    `and one that took place is part of the record (${deleteEnded.status})`);
+
+  /** A scheduled meeting is on the calendar, not only inside this module. */
+  const scheduled = await A.json('/api/communication/meetings', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: `Planning ${run}`,
+      scheduledAt: '2030-02-01T09:00:00.000Z',
+      durationMinutes: 45,
+      memberIds: [memberIdC],
+    }),
+  });
+  check(scheduled.status === 201, `a meeting can be scheduled (${scheduled.status})`);
+  const calendarAfter = await A.json('/api/calendar/events?from=2030-01-01&to=2030-12-31');
+  check((calendarAfter.body?.data ?? []).some(e => e.title === `Planning ${run}`),
+    'and it appears in the calendar, so it is in everybody’s week');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('72. The communication policy refuses things, and the trail records acts');
+  /**
+   * A settings screen full of switches that change nothing is the dominant
+   * defect in this codebase. Each toggle below is set and then the behaviour
+   * it claims to control is attempted.
+   */
+  await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({ settings: { communication_policy: { channel_creation: 'admins' } } }),
+  });
+  const clerkChannel = await C.json('/api/communication/channels', {
+    method: 'POST', body: JSON.stringify({ displayName: `Not allowed ${run}` }),
+  });
+  check(clerkChannel.status === 403,
+    `"administrators only" actually stops a channel being created (${clerkChannel.status})`);
+  const ownerChannel = await A.json('/api/communication/channels', {
+    method: 'POST', body: JSON.stringify({ displayName: `Allowed ${run}` }),
+  });
+  check(ownerChannel.status === 201, 'while an administrator still can');
+
+  await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      settings: {
+        communication_policy: { channel_creation: 'everyone', allow_message_edit: false },
+      },
+    }),
+  });
+  const blockedEdit = await A.json(`/api/communication/messages/${readableId}`, {
+    method: 'PATCH', body: JSON.stringify({ body: 'rewritten' }),
+  });
+  check(blockedEdit.status === 403,
+    `turning editing off stops even the author rewriting a message (${blockedEdit.status})`);
+
+  await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({ settings: { communication_policy: { allow_message_edit: true } } }),
+  });
+  const allowedEdit = await A.json(`/api/communication/messages/${readableId}`, {
+    method: 'PATCH', body: JSON.stringify({ body: 'rewritten' }),
+  });
+  check(allowedEdit.status === 200, 'and turning it back on restores it');
+
+  const badRetention = await A.json('/api/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify({ settings: { communication_policy: { retention_days: 2 } } }),
+  });
+  check(badRetention.status === 422,
+    `a retention period short enough to be a typo is refused (${badRetention.status})`);
+
+  const trail = await A.json('/api/communication/audit?limit=100');
+  check(trail.status === 200, `an administrator can read the moderation trail (${trail.status})`);
+  check((trail.body?.data ?? []).some(e => e.action === 'channel_created'),
+    'and it records what was done');
+  /**
+   * The trail must never carry the words. Copying a message into a table every
+   * administrator can read defeats the RLS on the channel that made moderating
+   * it necessary — the same mistake that put an expense title into the
+   * organisation-wide activity feed.
+   */
+  check(!JSON.stringify(trail.body?.data ?? []).includes(needle),
+    'without ever recording what anybody said');
+  check(!(trail.body?.data ?? []).some(e => e.channelLabel && e.channelLabel.includes('dm-')),
+    'and without naming a direct conversation');
+
+  const clerkTrail = await C.json('/api/communication/audit');
+  check(clerkTrail.status === 403,
+    `and an ordinary employee cannot read it (${clerkTrail.status})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('73. An administrator’s sidebar is not everybody’s direct messages');
+  /**
+   * 0017 admitted an organisation administrator to every channel row, which
+   * was written to let administration manage channels and had the side effect
+   * of listing every private conversation in the company — with both
+   * participants' names — in the owner's Messages list, and of making
+   * `is_channel_admin()` true for them, which carries the right to delete.
+   */
+  const sessionD = await D.json('/api/auth/session');
+  const memberIdD = sessionD.body?.data?.user?.memberId;
+
+  const dmBetweenOthers = await C.json('/api/communication/direct', {
+    method: 'POST', body: JSON.stringify({ memberId: memberIdD }),
+  });
+  const foreignDmId = dmBetweenOthers.body?.data?.id;
+  check(dmBetweenOthers.status === 201,
+    `two colleagues can open a conversation (${dmBetweenOthers.status})`,
+    dmBetweenOthers.body?.error?.message);
+
+  const ownerList = await A.json('/api/communication/channels');
+  check(!(ownerList.body?.data ?? []).some(c => c.channelId === foreignDmId),
+    'and it does not appear in the owner’s sidebar');
+
+  const ownerReads = await A.json(`/api/communication/messages?channelId=${foreignDmId}`);
+  check((ownerReads.body?.data ?? []).length === 0,
+    'nor can the owner read it by asking for it directly');
+
+  const ownerDeletes = await A.json(`/api/communication/channels/${foreignDmId}`, { method: 'DELETE' });
+  check(ownerDeletes.status === 404 || ownerDeletes.status === 409,
+    `nor delete it (${ownerDeletes.status})`);
+
+  /** Administering *channels* is untouched, which is what that grant was for. */
+  const ownerSeesGroup = await A.json('/api/communication/channels');
+  check((ownerSeesGroup.body?.data ?? []).some(c => c.channelId === commGroupId),
+    'while every non-direct channel is still administrable');
+
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);

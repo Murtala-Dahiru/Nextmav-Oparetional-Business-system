@@ -894,6 +894,18 @@ GRANT EXECUTE ON FUNCTION public.open_direct_channel(uuid, uuid) TO authenticate
  * nothing to read it from. `last_read_at` on the membership has been the right
  * source since 0003; this is the query that finally uses it.
  */
+/**
+ * Dropped before it is created.
+ *
+ * Every migration in this repository is re-run from the beginning on each
+ * `db:apply`, so a definition here has to survive a *later* migration having
+ * changed it. 0023 widens this function's return type, and `CREATE OR REPLACE`
+ * refuses to change a return type — so on the second run this statement failed
+ * with "cannot change return type of existing function" and stopped the chain
+ * at 0017. The drop makes the pair idempotent in either order.
+ */
+DROP FUNCTION IF EXISTS public.channel_overview(uuid);
+
 CREATE OR REPLACE FUNCTION public.channel_overview(org uuid)
 RETURNS TABLE (
   channel_id      uuid,

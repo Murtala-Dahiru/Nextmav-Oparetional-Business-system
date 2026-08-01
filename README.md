@@ -62,6 +62,16 @@ derived from their line items. Stock is the running total of an append-only
 ledger. Approving your own leave or expense is blocked by trigger, so the rule
 holds regardless of which client is writing.
 
+**Communication is a layer, not an app.** A channel belongs to a project, a
+client or a department, so a conversation opens the work it is about and the
+work opens the conversation. A file posted in a channel is a `files` row like
+any other — findable, attributable, and no more visible than the channel it was
+posted in. A meeting is a conversation with a time attached: it lives in the
+channel the team already talks in, writes a `calendar_events` row so it appears
+in everybody's week, and connects browsers directly rather than through this
+platform's infrastructure. Read receipts are something a sender asks for, never
+something a message wears.
+
 **Capability model.** `src/lib/permissions.ts` is the single source of truth for
 who may do what: `role → module → { actions, scope }`, where scope is `own`,
 `department` or `organization`. `approve` is deliberately separate from `edit`,
@@ -122,12 +132,14 @@ Nothing here is asserted without being run:
 
 Honest list of what is not built, as distinct from broken:
 
-- **Storage upload UI.** Buckets, policies and the `files` table exist and are
-  verified; there is no upload component or signed-download route yet.
-- **Realtime subscriptions.** Nine tables are published and verified, but the
-  client does not subscribe, so chat and notifications do not update live.
-- **Performance reviews, budget screens, notification preferences,
-  version-history UI.** Not implemented.
+- **Meetings need a TURN server for the hard networks.** Voice, video and
+  screen sharing connect browsers directly in a mesh, signalled over Realtime.
+  That works on ordinary networks and for the size of meeting this product is
+  for — a team, a client call, a stand-up. Two participants behind symmetric
+  NAT cannot connect without a TURN relay, which is infrastructure rather than
+  code, and a mesh is the wrong shape above roughly eight people. An SFU is the
+  answer to both; neither is pretended away in `hooks/use-meeting.ts`.
+- **Performance reviews, budget screens, version-history UI.** Not implemented.
 - **Email delivery for invitations.** The database issues the token and the API
   returns the link; sending the email is not wired up.
 - **Public signup** is blocked until email confirmation is disabled or custom

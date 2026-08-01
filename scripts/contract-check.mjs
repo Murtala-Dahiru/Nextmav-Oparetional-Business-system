@@ -126,7 +126,11 @@ const WORKSPACE = 'src/components/modules/workspace/types.ts';
 const FINANCE = 'src/components/modules/finance/index.tsx';
 const HR = 'src/components/modules/hr/index.tsx';
 const ATTENDANCE = 'src/components/modules/hr/attendance-tab.tsx';
-const COMMS = 'src/components/modules/communication/index.tsx';
+// The communication shapes moved into their own module in 0023, for the same
+// reason My Work's did: the timeline, the composer, the dialogs and the
+// meeting room all read the same `ChannelRow` and `Message`, and four copies
+// of one response shape is exactly the drift this tool exists to find.
+const COMMS = 'src/components/modules/communication/types.ts';
 const ADMIN = 'src/components/modules/admin/index.tsx';
 const CALENDAR = 'src/components/modules/calendar/index.tsx';
 
@@ -202,6 +206,12 @@ const LIST_CONTRACTS = [
   { label: 'Comms · Message',   file: COMMS, iface: 'Message',
     path: (s) => '/api/communication/messages?channelId=' + s.channelId,
     nested: [{ field: 'sender', iface: 'Sender' }] },
+  // Added in 0023. A meeting's shape comes from `meeting_overview()`, and the
+  // room reads twenty-odd fields off it — precisely the size of interface
+  // where one renamed column goes unnoticed until somebody opens the panel
+  // that reads it.
+  { label: 'Comms · Meeting',   file: COMMS, iface: 'MeetingRow',
+    path: '/api/communication/meetings' },
   { label: 'CRM · Activity',    file: CRM, iface: 'CrmActivity', path: '/api/crm/activities' },
   // My Work's shapes live in their own module: the list, the board, the
   // schedule and focus mode all read the same `Todo`, and four copies of one
@@ -347,6 +357,18 @@ try {
   });
   await A.json('/api/communication/messages', {
     method: 'POST', body: JSON.stringify({ channelId: seedChannel.body?.data?.id, body: 'seed' }),
+  });
+  // A scheduled meeting, so `MeetingRow` is compared against a real row of
+  // `meeting_overview()` rather than skipped as an empty list. Scheduled
+  // rather than started, so nothing is left live in the tenant afterwards.
+  await A.json('/api/communication/meetings', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: `Seed meeting ${run}`,
+      channelId: seedChannel.body?.data?.id,
+      scheduledAt: '2030-01-01T10:00:00.000Z',
+      durationMinutes: 30,
+    }),
   });
   /**
    * A logged call, so the CRM activity list and the customer panel both have

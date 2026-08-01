@@ -73,6 +73,11 @@ for(const blk of joined.split(/CREATE POLICY /).slice(1)){
 const exempt=new Set(['profiles','team_members','project_members','task_dependencies',
   'channel_members','message_reactions','invoice_line_items','purchase_order_items',
   'workspace_page_versions','ticket_comments','event_attendees','organizations',
+  // A child of `meetings`, exactly as `event_attendees` is a child of
+  // `calendar_events`: the tenant comes from the parent, and duplicating it
+  // here would be a second answer to "which organisation is this" that can
+  // disagree with the first.
+  'meeting_participants',
   'document_counters','org_settings','leave_balances','audit_log']);
 for(const m of joined.matchAll(/CREATE TABLE IF NOT EXISTS (\w+) \(([\s\S]*?)\n\);/g)){
   const [,name,body]=m;

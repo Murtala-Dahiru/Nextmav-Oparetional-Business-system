@@ -382,6 +382,46 @@ try {
     check(msgResult.received,
       'a message posted notifies a subscriber on that channel',
       msgResult.subscribed ? 'subscribed but no event arrived' : 'never subscribed');
+
+    // ───────────────────────────────────────────────────────────────────────
+    section('6b. A hand going up reaches the room');
+    /**
+     * The one case in this file that is an UPDATE on a non-key column, which
+     * is exactly what `REPLICA IDENTITY FULL` exists for: without it a
+     * filtered UPDATE matches nothing and is silently never delivered, and a
+     * meeting where nobody sees a raised hand looks identical to a meeting
+     * where nobody raises one.
+     */
+    const meeting = await A.json('/api/communication/meetings', {
+      method: 'POST',
+      body: JSON.stringify({ title: `Realtime meeting ${run}`, channelId }),
+    });
+    const meetingId = meeting.body?.data?.id;
+    check(!!meetingId, 'a meeting to sit in', meeting.body?.error?.message);
+
+    if (meetingId) {
+      await A.json(`/api/communication/meetings/${meetingId}/participants`, {
+        method: 'POST', body: JSON.stringify({}),
+      });
+
+      const handWatch = watch(sb, `rt-meeting-${run}`, [
+        { table: 'meeting_participants', filter: `meeting_id=eq.${meetingId}` },
+      ]);
+      await handWatch.ready;
+
+      await A.json(`/api/communication/meetings/${meetingId}/participants`, {
+        method: 'PATCH', body: JSON.stringify({ handRaised: true }),
+      });
+
+      const handResult = await handWatch;
+      check(handResult.received,
+        'raising a hand reaches everybody else in the meeting',
+        handResult.subscribed ? 'subscribed but no event arrived' : 'never subscribed');
+
+      await A.json(`/api/communication/meetings/${meetingId}`, {
+        method: 'PATCH', body: JSON.stringify({ status: 'ended' }),
+      });
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
