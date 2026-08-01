@@ -94,6 +94,19 @@ export async function GET(req: Request) {
    * each member's own `last_read_at`, and the communication module already
    * calls it on load — this is the same number, not a second definition.
    *
+   * ── Muted conversations are excluded, as they are everywhere else ─────────
+   *
+   * `/api/communication/channels` has always left them out of its own
+   * `unreadTotal`, on the stated grounds that muting means "do not interrupt
+   * me about this" and a badge on the navigation is an interruption. This sum
+   * did not, so the badge in the sidebar and the count inside the module
+   * disagreed for anybody who had ever muted anything — and the sidebar was
+   * the one that was wrong. One rule, applied in both places.
+   *
+   * Mentions are the exception, here as there: being named reaches you whatever
+   * you have done to the channel, so an unread mention still counts even in a
+   * conversation that has been silenced.
+   *
    * Best-effort: a client account has no communication grant at all, and the
    * RPC returning nothing for them is correct rather than an error worth
    * failing the whole tray over.
@@ -103,7 +116,12 @@ export async function GET(req: Request) {
     const { data: channels } = await ctx.supabase
       .rpc('channel_overview', { org: ctx.org.organizationId });
     unreadMessages = (channels ?? []).reduce(
-      (sum: number, c: any) => sum + Number(c.unread_count ?? 0), 0,
+      (sum: number, c: any) => sum + (
+        c.is_muted
+          ? Number(c.mention_count ?? 0)
+          : Number(c.unread_count ?? 0)
+      ),
+      0,
     );
   } catch {
     // No communication access, or no channels. Zero is the right answer.

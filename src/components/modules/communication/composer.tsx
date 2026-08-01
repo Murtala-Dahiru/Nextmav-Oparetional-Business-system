@@ -279,6 +279,7 @@ export function Composer({
       sizeBytes: p.file.size,
     }));
     const refs = references;
+    const attached = pending;
 
     setSending(true);
     // Cleared optimistically: a composer that stays full while a request is in
@@ -290,10 +291,20 @@ export function Composer({
     try {
       await onSend({ body, mentions: resolveMentions(body), files, attachments: refs });
     } catch {
-      // The module has already reported it. Put the work back so nothing
-      // anybody typed is lost to a failed request.
+      /**
+       * The module has already reported it. Put the work back so nothing
+       * anybody typed is lost to a failed request.
+       *
+       * The attachments included — they were restored for the text and the
+       * record links and not for the files, so a send that failed left
+       * somebody looking at their message with the document missing from it,
+       * and no sign that it had ever been there. The objects are already in
+       * storage at a path this row still holds, so putting the chips back
+       * costs nothing and a retry sends the same message it was meant to.
+       */
       setDraft(body);
       setReferences(refs);
+      setPending(attached);
     } finally {
       setSending(false);
       textRef.current?.focus();

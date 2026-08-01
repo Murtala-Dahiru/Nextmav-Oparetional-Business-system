@@ -35,17 +35,24 @@ export async function GET(req: Request) {
 
   return success(filtered, {
     total: filtered.length,
-    // The bell and the sidebar both want this, and computing it twice from the
-    // same list is how the two come to disagree.
-    //
-    // A muted conversation is deliberately excluded. Muting means "do not
-    // interrupt me about this", and a badge on the navigation is an
-    // interruption — the unread count on the row itself still shows, because
-    // muting is not the same as marking read.
+    /**
+     * What ought to interrupt somebody, in one number.
+     *
+     * A muted conversation is excluded: muting means "do not interrupt me
+     * about this", and a badge on the navigation is an interruption — the
+     * unread count on the row itself still shows, because muting is not the
+     * same as marking read.
+     *
+     * Except for a mention. Being named is the one thing that has to reach
+     * somebody however they have configured the channel, so a muted
+     * conversation still contributes the mentions in it. The same expression
+     * appears in `/api/notifications`, which composes the sidebar badge — and
+     * it has to, because two definitions of "unread" are two badges that
+     * disagree in front of the user. This one and that one are the same
+     * sentence, deliberately.
+     */
     unreadTotal: filtered.reduce(
-      (sum, r) => sum + (r.is_muted ? 0 : (r.unread_count ?? 0)), 0),
-    // Mentions are never muted. Being named is the one thing that has to reach
-    // somebody regardless of how they have configured the channel.
+      (sum, r) => sum + (r.is_muted ? (r.mention_count ?? 0) : (r.unread_count ?? 0)), 0),
     mentionTotal: filtered.reduce((sum, r) => sum + (r.mention_count ?? 0), 0),
   });
 }

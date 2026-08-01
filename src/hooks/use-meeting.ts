@@ -85,6 +85,8 @@ export function useMeeting({
   const [camOn, setCamOn] = useState(!audioOnly);
   const [sharing, setSharing] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
+  /** A connection to rebuild after a failure. See the effect below `connect`. */
+  const [rebuild, setRebuild] = useState<{ peerId: string; at: number } | null>(null);
 
   const connections = useRef(new Map<string, RTCPeerConnection>());
   /**
@@ -96,6 +98,18 @@ export function useMeeting({
    * they wait.
    */
   const pendingIce = useRef(new Map<string, RTCIceCandidateInit[]>());
+  /**
+   * How many times a connection to one person has been rebuilt.
+   *
+   * ICE fails for reasons that pass: a laptop moving between access points, a
+   * VPN reconnecting, a candidate pair that simply loses the race. The previous
+   * behaviour was to close the connection and never try again, so a two-second
+   * network blip removed somebody from the meeting for its remainder and the
+   * only cure was for one of them to leave and rejoin. Bounded, because the
+   * other reason ICE fails is that it cannot succeed at all — a symmetric NAT
+   * with no TURN server — and retrying that for ever is a loop, not a recovery.
+   */
+  const rebuilds = useRef(new Map<string, number>());
   const localRef = useRef<MediaStream | null>(null);
   /** The camera track, kept aside while a screen share is standing in for it. */
   const cameraTrack = useRef<MediaStreamTrack | null>(null);
@@ -160,10 +174,34 @@ export function useMeeting({
     };
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'connected') setStatus('connected');
-      // `failed` is terminal and means the connection will not recover on its
-      // own; `disconnected` is often a blip and recovers, so it is left alone.
-      if (pc.connectionState === 'failed') dropPeer(peerId);
+      if (pc.connectionState === 'connected') {
+        setStatus('connected');
+        // It came back, so the budget for rebuilding it is restored — a call
+        // that survives four separate blips over an hour is a call that worked.
+        rebuilds.current.delete(peerId);
+      }
+      /**
+       * `failed` is terminal for *this* connection — it will not recover on its
+       * own, which is why `disconnected` (usually a blip that heals) is left
+       * alone and this is not.
+       *
+       * Rebuilding it takes both sides: tearing down here and offering again
+       * finds the far end holding a connection it still believes in, and no
+       * offer is ever made. `reset` is the message that gets the other browser
+       * to drop its half too, after which the id ordering decides which of them
+       * offers — the same rule that stops two offers crossing on a first join.
+       */
+      if (pc.connectionState === 'failed') {
+        const used = rebuilds.current.get(peerId) ?? 0;
+        dropPeer(peerId);
+        if (used >= 3 || !admittedRef.current.includes(peerId)) return;
+        rebuilds.current.set(peerId, used + 1);
+        post('reset', { from: memberId, to: peerId });
+        // Asked for rather than done here: this is the function that would be
+        // doing the calling, and a `useCallback` that names itself is not
+        // something React's rules can verify. The effect below owns the retry.
+        setRebuild({ peerId, at: Date.now() });
+      }
     };
 
     if (initiate) {
@@ -180,6 +218,24 @@ export function useMeeting({
 
     return pc;
   }, [memberId, post, dropPeer]);
+
+  /**
+   * Rebuild one connection, shortly.
+   *
+   * The delay is for the far end's own teardown to land first — offering into
+   * a peer that has not let go of its half is the state this is trying to get
+   * out of, not into. `at` is what makes two failures in a row two separate
+   * requests rather than one value React sees as unchanged.
+   */
+  useEffect(() => {
+    if (!rebuild || !enabled || !memberId) return;
+    const timer = setTimeout(() => {
+      if (!admittedRef.current.includes(rebuild.peerId)) return;
+      if (connections.current.has(rebuild.peerId)) return;
+      connect(rebuild.peerId, memberId < rebuild.peerId);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [rebuild, enabled, memberId, connect]);
 
   const flushIce = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
     const queued = pendingIce.current.get(peerId);
@@ -317,6 +373,21 @@ export function useMeeting({
         })
         .on('broadcast', { event: 'bye' }, ({ payload }: any) => {
           if (payload?.from) dropPeer(payload.from);
+        })
+        /**
+         * The far end's connection to us failed and it is rebuilding.
+         *
+         * Ours may still look healthy from here — a peer connection can fail
+         * in one direction — so it has to be let go deliberately, or the offer
+         * that follows arrives at a connection that thinks it is already
+         * negotiated and is discarded.
+         */
+        .on('broadcast', { event: 'reset' }, ({ payload }: any) => {
+          const from = payload?.from;
+          if (!from || payload?.to !== memberId) return;
+          dropPeer(from);
+          if (!admittedRef.current.includes(from)) return;
+          setRebuild({ peerId: from, at: Date.now() });
         });
 
       chan.subscribe((state) => {
@@ -339,6 +410,7 @@ export function useMeeting({
       for (const pc of connections.current.values()) pc.close();
       connections.current.clear();
       pendingIce.current.clear();
+      rebuilds.current.clear();
       localRef.current?.getTracks().forEach(t => t.stop());
       localRef.current = null;
       cameraTrack.current = null;

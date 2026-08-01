@@ -4266,6 +4266,245 @@ try {
   check((ownerSeesGroup.body?.data ?? []).some(c => c.channelId === commGroupId),
     'while every non-direct channel is still administrable');
 
+  // ─────────────────────────────────────────────────────────────────────────
+  section('74. Unread that means something, and a badge that clears');
+  /**
+   * `channel_overview()` fell back to `-infinity` when the caller had no
+   * membership row — and the channel list deliberately carries channels you
+   * are *not* in, so every public channel in the company reported its entire
+   * history as unread. A badge of 340 on #general that nothing can clear,
+   * because the endpoint that marks a channel read updates `channel_members`
+   * and correctly answers 404 for somebody who is not a member.
+   */
+  const notices = await A.json('/api/communication/channels', {
+    method: 'POST',
+    body: JSON.stringify({ displayName: `Notices ${run}`, type: 'public' }),
+  });
+  const noticesId = notices.body?.data?.id;
+  check(notices.status === 201, `a public channel anyone may find (${notices.status})`,
+    notices.body?.error?.message);
+
+  for (let i = 0; i < 3; i++) {
+    await A.json('/api/communication/messages', {
+      method: 'POST', body: JSON.stringify({ channelId: noticesId, body: `notice ${i} ${run}` }),
+    });
+  }
+
+  const strangerList = await D.json('/api/communication/channels');
+  const strangerRow = (strangerList.body?.data ?? []).find(c => c.channelId === noticesId);
+  check(!!strangerRow, 'a public channel is listed for somebody who has not joined it');
+  check(strangerRow?.isMember === false, 'and is reported as one they are not in');
+  check(strangerRow?.unreadCount === 0,
+    `carrying no unread count, because nothing there was said to them (${strangerRow?.unreadCount})`);
+
+  const strangerMarks = await D.json(`/api/communication/channels/${noticesId}/members`, {
+    method: 'PATCH', body: JSON.stringify({ markRead: true }),
+  });
+  check(strangerMarks.status === 404,
+    `— which matters, because there is no row for them to mark read (${strangerMarks.status})`);
+
+  await D.json(`/api/communication/channels/${noticesId}/members`, {
+    method: 'POST', body: JSON.stringify({}),
+  });
+  const joinedRow = ((await D.json('/api/communication/channels')).body?.data ?? [])
+    .find(c => c.channelId === noticesId);
+  check(joinedRow?.isMember === true && joinedRow?.unreadCount === 0,
+    `joining does not import the backlog as unread (${joinedRow?.unreadCount})`);
+
+  await A.json('/api/communication/messages', {
+    method: 'POST', body: JSON.stringify({ channelId: noticesId, body: `said afterwards ${run}` }),
+  });
+  const oneUnread = ((await D.json('/api/communication/channels')).body?.data ?? [])
+    .find(c => c.channelId === noticesId);
+  check(oneUnread?.unreadCount === 1,
+    `and something said after they joined does count (${oneUnread?.unreadCount})`);
+
+  const memberMarks = await D.json(`/api/communication/channels/${noticesId}/members`, {
+    method: 'PATCH', body: JSON.stringify({ markRead: true }),
+  });
+  check(memberMarks.status === 200, `reading it is a call a member may make (${memberMarks.status})`);
+  const afterRead = ((await D.json('/api/communication/channels')).body?.data ?? [])
+    .find(c => c.channelId === noticesId);
+  check(afterRead?.unreadCount === 0, 'and the count is gone straight afterwards');
+
+  /**
+   * The module's own total and the navigation badge are the same number.
+   *
+   * They were computed from the same rows by two different rules: the module
+   * dropped muted conversations, `/api/notifications` did not. Anybody who had
+   * ever muted anything saw a sidebar badge that the module could not account
+   * for and that opening the conversation would not clear.
+   */
+  await A.json('/api/communication/messages', {
+    method: 'POST', body: JSON.stringify({ channelId: noticesId, body: `while muted ${run}` }),
+  });
+  await D.json(`/api/communication/channels/${noticesId}/members`, {
+    method: 'PATCH', body: JSON.stringify({ isMuted: true }),
+  });
+
+  const mutedList = await D.json('/api/communication/channels');
+  const mutedRow = (mutedList.body?.data ?? []).find(c => c.channelId === noticesId);
+  check(mutedRow?.isMuted === true && mutedRow?.unreadCount === 1,
+    'a muted conversation still shows its own unread count on the row');
+
+  const moduleTotal = mutedList.body?.meta?.unreadTotal ?? -1;
+  const commTray = await D.json('/api/notifications');
+  const trayMessages = commTray.body?.meta?.unreadMessages ?? -2;
+  check(moduleTotal === trayMessages,
+    `and the sidebar badge counts exactly what the module does (${trayMessages} vs ${moduleTotal})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('75. A door that opens, and one that is shut with an answer');
+  /**
+   * Admitting somebody writes `admitted`, which is a permission and not a
+   * seat: a second request is what turns it into `joined`. The room never sent
+   * one, so an admitted guest sat on "Waiting to be let in" for the length of
+   * the meeting while everybody else could see them in the participant list.
+   * A refusal was worse — the row went to `removed` and nothing was said, so
+   * being turned away and being ignored looked identical.
+   */
+  const door = await A.json('/api/communication/meetings', {
+    method: 'POST',
+    body: JSON.stringify({ title: `Door ${run}`, channelId: commGroupId, waitingRoom: true }),
+  });
+  const doorId = door.body?.data?.id;
+  check(door.status === 201, `a meeting with a waiting room (${door.status})`,
+    door.body?.error?.message);
+
+  const knocked = await C.json(`/api/communication/meetings/${doorId}/participants`, {
+    method: 'POST', body: JSON.stringify({}),
+  });
+  check(knocked.body?.meta?.waiting === true, 'a colleague knocks and waits');
+  check(!!knocked.body?.data?.knockedAt,
+    'and the moment they arrived is recorded, so the host can see how long');
+
+  const hostSeesKnock = (await A.json('/api/communication/meetings')).body?.data
+    ?.find(m => m.meetingId === doorId);
+  check(hostSeesKnock?.knockingCount === 1,
+    `the host's own list says somebody is waiting (${hostSeesKnock?.knockingCount})`);
+
+  await A.json(`/api/communication/meetings/${doorId}/participants`, {
+    method: 'PATCH', body: JSON.stringify({ memberId: memberIdC, state: 'admitted' }),
+  });
+  const admittedRow = (await A.json(`/api/communication/meetings/${doorId}/participants`))
+    .body?.data?.find(p => p.memberId === memberIdC);
+  check(admittedRow?.state === 'admitted',
+    'admitting writes a permission — which on its own is nobody in the room');
+
+  const walksIn = await C.json(`/api/communication/meetings/${doorId}/participants`, {
+    method: 'POST', body: JSON.stringify({}),
+  });
+  check(walksIn.body?.data?.state === 'joined' && walksIn.body?.meta?.waiting === false,
+    'and asking again turns it into a seat — the step the room now takes for them');
+
+  await A.json(`/api/communication/meetings/${doorId}/participants`, {
+    method: 'PATCH', body: JSON.stringify({ memberId: memberIdC, state: 'removed' }),
+  });
+  const turnedAway = await C.json(`/api/communication/meetings/${doorId}/participants`, {
+    method: 'POST', body: JSON.stringify({}),
+  });
+  check(turnedAway.status === 403,
+    `somebody the host refused cannot let themselves back in (${turnedAway.status})`);
+  check(/removed/i.test(turnedAway.body?.error?.message ?? ''),
+    'and is given a reason, rather than left at a door that will never open');
+
+  /** Taking the door away has to release the people standing behind it. */
+  const openDoor = await A.json('/api/communication/meetings', {
+    method: 'POST',
+    body: JSON.stringify({ title: `Open door ${run}`, waitingRoom: true, memberIds: [memberIdD] }),
+  });
+  const openDoorId = openDoor.body?.data?.id;
+  const dKnocks = await D.json(`/api/communication/meetings/${openDoorId}/participants`, {
+    method: 'POST', body: JSON.stringify({}),
+  });
+  check(dKnocks.body?.meta?.waiting === true, 'an invited colleague waits at the door too');
+
+  await A.json(`/api/communication/meetings/${openDoorId}`, {
+    method: 'PATCH', body: JSON.stringify({ waitingRoom: false }),
+  });
+  const dWalksIn = await D.json(`/api/communication/meetings/${openDoorId}/participants`, {
+    method: 'POST', body: JSON.stringify({}),
+  });
+  check(dWalksIn.body?.data?.state === 'joined',
+    'and turning the waiting room off lets them in rather than stranding them there');
+
+  /** Inviting is not only something done at the moment a meeting is created. */
+  const lateInvite = await A.json(`/api/communication/meetings/${openDoorId}/participants`, {
+    method: 'POST', body: JSON.stringify({ memberIds: [memberIdC] }),
+  });
+  check(lateInvite.status === 201,
+    `the host can invite somebody after it has started (${lateInvite.status})`,
+    lateInvite.body?.error?.message);
+  check((await A.json(`/api/communication/meetings/${openDoorId}/participants`))
+    .body?.data?.some(p => p.memberId === memberIdC),
+    'and they appear on the participant list');
+
+  const guestInvites = await D.json(`/api/communication/meetings/${openDoorId}/participants`, {
+    method: 'POST', body: JSON.stringify({ memberIds: [memberIdA] }),
+  });
+  check(guestInvites.status === 403,
+    `while somebody who is merely in the room cannot (${guestInvites.status})`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  section('76. What was decided outlives the meeting');
+  /**
+   * `meetings.notes` could only ever be read from the side panel of a running
+   * meeting, and the room could only be opened while the meeting was still
+   * running. So the moment a meeting ended, everything written in it became
+   * unreachable — present in the database, and behind no door at all. It is on
+   * the list row, which is where somebody goes looking a week later.
+   */
+  const decided = `Decided: ship on Friday. ${run}`;
+  const wroteUp = await A.json(`/api/communication/meetings/${openDoorId}`, {
+    method: 'PATCH', body: JSON.stringify({ notes: decided }),
+  });
+  check(wroteUp.status === 200, `the host writes the meeting up (${wroteUp.status})`,
+    wroteUp.body?.error?.message);
+
+  await A.json(`/api/communication/meetings/${openDoorId}`, {
+    method: 'PATCH', body: JSON.stringify({ status: 'ended' }),
+  });
+
+  const afterwards = (await D.json('/api/communication/meetings')).body?.data
+    ?.find(m => m.meetingId === openDoorId);
+  check(afterwards?.status === 'ended', 'the meeting ends');
+  check(afterwards?.notes === decided,
+    'and somebody who was in it can still read what was decided, with no room to open');
+  check(afterwards?.hostName != null && afterwards?.startedAt != null,
+    'alongside who ran it and when — the context that makes a note readable later');
+
+  const guestRewrites = await C.json(`/api/communication/meetings/${openDoorId}`, {
+    method: 'PATCH', body: JSON.stringify({ notes: 'rewritten' }),
+  });
+  check(guestRewrites.status === 403,
+    `while an attendee cannot rewrite them (${guestRewrites.status})`);
+
+  /** Starting a meeting is an event the people invited to it should hear about. */
+  const standup = await A.json('/api/communication/meetings', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: `Standup ${run}`,
+      scheduledAt: '2031-03-01T09:00:00.000Z',
+      memberIds: [memberIdC],
+    }),
+  });
+  const standupId = standup.body?.data?.id;
+  const startedTitle = `Standup ${run} has started`;
+
+  const beforeStart = await C.json('/api/notifications?pageSize=100');
+  check(!(beforeStart.body?.data ?? []).some(n => n.title === startedTitle),
+    'a meeting that is merely scheduled announces no such thing');
+
+  await A.json(`/api/communication/meetings/${standupId}`, {
+    method: 'PATCH', body: JSON.stringify({ status: 'live' }),
+  });
+  const afterStart = await C.json('/api/notifications?pageSize=100');
+  check((afterStart.body?.data ?? []).some(n => n.title === startedTitle),
+    'and when the host starts it, the people invited are told');
+  const hostTray = await A.json('/api/notifications?pageSize=100');
+  check(!(hostTray.body?.data ?? []).some(n => n.title === startedTitle),
+    'while the host is not notified of their own act');
+
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);

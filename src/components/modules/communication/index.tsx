@@ -210,20 +210,80 @@ export default function CommunicationModule() {
   const [deleteTarget, setDeleteTarget] = useState<ChannelRow | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // ── The meeting room ──
-  const [activeMeeting, setActiveMeeting] = useState<MeetingRow | null>(null);
+  /**
+   * The meeting room, held as an id rather than as a row.
+   *
+   * ── Why the row itself cannot be the state ───────────────────────────────
+   *
+   * It used to be: `setActiveMeeting(row)` froze one snapshot of
+   * `meeting_overview()` for as long as the room was open, and the room read
+   * everything from it. Every fact on it then went stale the moment it
+   * mattered — the host ended the meeting and nobody else's room noticed,
+   * because their copy still said `live`; somebody saved the notes and the
+   * panel kept showing the text from when the room opened; the waiting room
+   * was turned on and the flag never moved.
+   *
+   * The id is the thing worth remembering. The row is looked up in the list
+   * the module already keeps live, so the room re-renders on the same events
+   * every other surface does.
+   */
+  const [activeMeetingId, setActiveMeetingId] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   const selected = channels.find(c => c.channelId === selectedId) ?? null;
+  /**
+   * The open meeting, resolved from the live list on every render.
+   *
+   * This is what makes the room react to the meeting ending, the notes being
+   * saved, the waiting room being switched on and somebody being promoted to
+   * co-host — none of which the room could see when it held its own copy.
+   */
+  const activeMeeting = activeMeetingId
+    ? meetings.find(m => m.meetingId === activeMeetingId) ?? null
+    : null;
 
   // ─── Loading ─────────────────────────────────────────────────────────────
+
+  /**
+   * ═════════════════════════════════════════════════════════════════════════
+   *  Unread, and why it used to be wrong
+   * ═════════════════════════════════════════════════════════════════════════
+   *
+   * The count is derived by `channel_overview()` from `channel_members.
+   * last_read_at`, which is the only definition of "read" in the product —
+   * the badge, the navigation total and the read receipts all come from it,
+   * so they cannot disagree with each other. What they *could* disagree with
+   * was the screen, in two ways:
+   *
+   *   · The marker was moved exactly once, when the conversation was opened.
+   *     Everything that arrived afterwards while the reader sat looking at it
+   *     counted as unread for ever — so the next time anything refetched the
+   *     sidebar, a badge appeared on the conversation currently on screen and
+   *     stayed there. That is the reported fault, and it is fixed by treating
+   *     reading as continuous rather than as a single event: see the effect
+   *     below.
+   *
+   *   · A refetch that was already in flight when the marker moved came back
+   *     with the pre-read snapshot and put the badge back for a moment. This
+   *     watermark is the fix: once we know the conversation was read at a
+   *     given moment, any later snapshot showing unread messages that all
+   *     predate it is simply out of date, and is corrected rather than shown.
+   */
+  const readAt = useRef<Record<string, string>>({});
+
+  const applyReadWatermark = useCallback((rows: ChannelRow[]) => rows.map(c => {
+    const at = readAt.current[c.channelId];
+    if (!at) return c;
+    if (c.lastMessageAt && c.lastMessageAt > at) return c;
+    return c.unreadCount || c.mentionCount ? { ...c, unreadCount: 0, mentionCount: 0 } : c;
+  }), []);
 
   const loadChannels = useCallback(async (preferId?: string) => {
     try {
       const data = await api<ChannelRow[]>('/api/communication/channels');
-      setChannels(data ?? []);
+      setChannels(applyReadWatermark(data ?? []));
       setSelectedId(prev => {
         const target = preferId ?? prev;
         if (target && data?.some(c => c.channelId === target)) return target;
@@ -234,6 +294,56 @@ export default function CommunicationModule() {
     } finally {
       setChannelsLoading(false);
     }
+  }, [applyReadWatermark]);
+
+  /**
+   * Tell the server this conversation has been read, and tell the rest of the
+   * application.
+   *
+   * The second half is what was missing. The sidebar badge and the dashboard
+   * read `unreadByModule` in the store, which is composed by
+   * `/api/notifications` from the notification tray *and* the same per-channel
+   * unread counts — so reading a conversation moved this module's own numbers
+   * and left every badge outside it showing the old figure until the tray
+   * happened to poll. One call puts them back in step immediately.
+   */
+  const markChannelRead = useCallback(async (channelId: string, latestAt?: string | null) => {
+    const previous = readAt.current[channelId];
+    // Nothing has been said since the last time we marked this read, so there
+    // is nothing to mark. Without this the effect below would write on every
+    // render that touched the timeline.
+    if (previous && latestAt && latestAt <= previous) return;
+
+    setChannels(prev => prev.map(c =>
+      c.channelId === channelId && (c.unreadCount || c.mentionCount)
+        ? { ...c, unreadCount: 0, mentionCount: 0 }
+        : c));
+
+    try {
+      const row = await api<{ lastReadAt?: string | null }>(
+        `/api/communication/channels/${channelId}/members`,
+        { method: 'PATCH', body: JSON.stringify({ markRead: true }) },
+      );
+      /**
+       * The watermark is the server's timestamp, never this browser's.
+       *
+       * It is compared against `lastMessageAt`, which the server produced —
+       * and the two clocks are not the same clock. A laptop running a few
+       * minutes fast would set a watermark in the future and then suppress the
+       * badge on genuinely unread messages that arrived afterwards, which is
+       * this whole section's bug reintroduced by the fix for it. `last_read_at`
+       * comes back on the row that was just written; that is the only value
+       * comparable with the other.
+       *
+       * Nothing is recorded when the write fails — reading a channel you are
+       * not a member of answers 404, which is correct, and a watermark set on
+       * a claim the server refused would suppress a count it will keep sending.
+       */
+      if (row?.lastReadAt) readAt.current[channelId] = row.lastReadAt;
+    } catch {
+      return;
+    }
+    void useAppStore.getState().fetchNotifications();
   }, []);
 
   const loadMeetings = useCallback(async () => {
@@ -273,17 +383,95 @@ export default function CommunicationModule() {
   /**
    * The channel list itself is live.
    *
-   * `channels` covers one being created, renamed or archived; `channel_members`
+   * `channels` covers one being created, renamed or archived. `channel_members`
    * covers being added to or removed from one, which is what makes a channel
-   * appear in the sidebar without a reload. `meetings` is here because a
-   * meeting starting in a channel changes that channel's row — the sidebar
-   * shows it as live. Message arrival is handled by the per-channel
-   * subscription below; subscribing to `messages` here as well would refetch
-   * the whole channel list on every message sent anywhere in the organisation.
+   * appear in the sidebar without a reload — and is narrowed to two things on
+   * purpose.
+   *
+   * ── Why the filter and the event list are not optional ───────────────────
+   *
+   * It was the whole table, every operation. `last_read_at` lives on it, and
+   * this module now advances that marker for as long as a conversation is
+   * open — so every message anybody read anywhere in the organisation became a
+   * row change delivered to every open tab, each of which answered it by
+   * refetching its entire channel list. Ten people in one conversation is a
+   * hundred `channel_overview()` calls a minute for a marker that concerns
+   * exactly one of them.
+   *
+   * Narrowed to the caller's own memberships, appearing and disappearing:
+   * being added to a channel and being removed from one are the only changes
+   * to this table that alter what the sidebar should show. `REPLICA IDENTITY
+   * FULL` (0020) is what makes the filtered DELETE arrive at all — without it
+   * the event carries only the primary key and matches no filter.
    */
-  useModuleRealtime('channels', ['channels', 'channel_members', 'meetings'], () => {
-    void loadChannels();
+  const conversationsLive = useRealtime({
+    name: 'module:conversations',
+    debounceMs: 400,
+    onChange: () => { void loadChannels(); },
+    tables: [
+      { table: 'channels' },
+      ...(currentMemberId
+        ? ([
+            { table: 'channel_members', event: 'INSERT', filter: `member_id=eq.${currentMemberId}` },
+            { table: 'channel_members', event: 'DELETE', filter: `member_id=eq.${currentMemberId}` },
+          ] as const)
+        : []),
+    ],
+  });
+
+  /**
+   * A meeting called, started, ended or cancelled.
+   *
+   * This is what makes "User A creates a meeting while User B is in the module
+   * and B sees it appear" true without a reload. `loadChannels` runs alongside
+   * because starting or ending one changes the *channel* row too —
+   * `live_meeting_id` is what puts the red dot in the sidebar and the Join
+   * button in the conversation header.
+   */
+  useModuleRealtime('meetings', ['meetings'], () => {
     void loadMeetings();
+    void loadChannels();
+  });
+
+  /**
+   * Somebody knocking, arriving or leaving.
+   *
+   * Separate, and slower, on purpose. `meeting_overview()` computes the waiting
+   * and present counts from `meeting_participants`, so a host watching the list
+   * from outside a room needs this or the "3 waiting" badge never appears. But
+   * it is also the table a running meeting writes to constantly — every camera
+   * toggle, every raised hand — and each of those events reaches every tab in
+   * the organisation, where all but a handful are about a meeting nobody is
+   * looking at. A second and a half collapses a room's chatter into one
+   * refetch, and it does not touch the channel list, which none of it changes.
+   *
+   * The room itself subscribes to the same table filtered to its own meeting,
+   * at 150ms, because in there the detail is the point.
+   */
+  useRealtime({
+    name: 'module:meeting-people',
+    debounceMs: 1500,
+    tables: [{ table: 'meeting_participants' }],
+    onChange: () => { void loadMeetings(); },
+  });
+
+  /**
+   * A message posted anywhere the caller can see.
+   *
+   * This was deliberately left out before, on the grounds that refetching the
+   * whole channel list per message is expensive — and it is. But it is also the
+   * only thing that can move an unread badge on a conversation that is *not*
+   * open, and a chat sidebar whose counts do not move until something else
+   * happens to refresh it is not a chat sidebar. The compromise is the
+   * debounce: a burst of traffic across the organisation collapses into one
+   * `channel_overview()` call a second, which is one query, and RLS has already
+   * confined the events to conversations this person can actually see.
+   */
+  useRealtime({
+    name: 'module:messages',
+    debounceMs: 1000,
+    tables: [{ table: 'messages' }],
+    onChange: () => { void loadChannels(); },
   });
 
   /**
@@ -361,14 +549,10 @@ export default function CommunicationModule() {
       const mine = (mem ?? []).find(m => m.memberId === currentMemberId);
       setUnreadFrom(mine?.lastReadAt ?? null);
 
-      await fetch(`/api/communication/channels/${channelId}/members`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markRead: true }),
-      }).catch(() => undefined);
-
-      setChannels(prev => prev.map(c =>
-        c.channelId === channelId ? { ...c, unreadCount: 0, mentionCount: 0 } : c));
+      // Opening is the first act of reading; the effect further down carries on
+      // from here for as long as the conversation stays open and in front of
+      // somebody.
+      void markChannelRead(channelId);
     } catch (err: any) {
       toast.error(err.message || 'Could not open that conversation');
       setMessages([]);
@@ -376,7 +560,7 @@ export default function CommunicationModule() {
     } finally {
       setMessagesLoading(false);
     }
-  }, [currentMemberId]);
+  }, [currentMemberId, markChannelRead]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -482,7 +666,7 @@ export default function CommunicationModule() {
    * neither carries a `channel_id` to filter on, so each is subscribed
    * unfiltered and costs a discarded event.
    */
-  useRealtime({
+  const channelLive = useRealtime({
     name: `channel:${selectedId ?? 'none'}`,
     enabled: !!selectedId,
     debounceMs: 200,
@@ -495,6 +679,79 @@ export default function CommunicationModule() {
       : [],
     onChange: () => { if (selectedId) void refreshMessages(selectedId); },
   });
+
+  /**
+   * ═════════════════════════════════════════════════════════════════════════
+   *  When the websocket never connects
+   * ═════════════════════════════════════════════════════════════════════════
+   *
+   * A good number of corporate proxies block websockets outright — which is
+   * common in exactly the organisations this product is for — and the failure
+   * is silent: the subscription reports an error nobody watches, the callback
+   * simply never fires, and a quiet channel looks identical to a broken one.
+   * Before this, that tab showed whatever was true when it was opened, for the
+   * rest of the day, with no indication that it had stopped.
+   *
+   * So the status is read rather than discarded, and the two intervals are the
+   * fallback: eight seconds for the conversation somebody is actually reading,
+   * twenty for the lists. Both are far more traffic than the socket would be,
+   * which is why they only run when there is no socket — and the footer says
+   * so, because a person who knows updates are delayed behaves differently
+   * from one who thinks nothing has happened.
+   */
+  const degraded = conversationsLive === 'unavailable'
+    || (!!selectedId && channelLive === 'unavailable');
+
+  useEffect(() => {
+    if (conversationsLive !== 'unavailable') return;
+    const timer = setInterval(() => { void loadChannels(); void loadMeetings(); }, 20_000);
+    return () => clearInterval(timer);
+  }, [conversationsLive, loadChannels, loadMeetings]);
+
+  useEffect(() => {
+    if (!selectedId || channelLive !== 'unavailable') return;
+    const timer = setInterval(() => { void refreshMessages(selectedId); }, 8000);
+    return () => clearInterval(timer);
+  }, [selectedId, channelLive, refreshMessages]);
+
+  /**
+   * Reading, as it happens.
+   *
+   * A conversation that is open and in front of somebody is being read, so the
+   * marker keeps up with it instead of stopping at the moment it was opened.
+   * `document.hidden` is the one condition that has to be honoured: a
+   * background tab is not somebody reading, and marking its messages read would
+   * lose them — the badge is the only thing that would ever have brought the
+   * reader back.
+   */
+  const newestAt = messages.length ? messages[messages.length - 1].createdAt : null;
+
+  useEffect(() => {
+    if (!selectedId || !newestAt || messagesLoading) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
+    void markChannelRead(selectedId, newestAt);
+  }, [selectedId, newestAt, messagesLoading, markChannelRead]);
+
+  /**
+   * Coming back to the tab counts as reading too.
+   *
+   * Everything that arrived while it was in the background is on screen the
+   * moment it is looked at, and a badge that survives that is the stale badge
+   * this whole section exists to prevent.
+   */
+  useEffect(() => {
+    if (!selectedId) return;
+    const seen = () => {
+      if (document.hidden) return;
+      void markChannelRead(selectedId);
+    };
+    document.addEventListener('visibilitychange', seen);
+    window.addEventListener('focus', seen);
+    return () => {
+      document.removeEventListener('visibilitychange', seen);
+      window.removeEventListener('focus', seen);
+    };
+  }, [selectedId, markChannelRead]);
 
   /**
    * Follow the conversation, unless the reader has gone looking for something.
@@ -532,10 +789,59 @@ export default function CommunicationModule() {
     if (type === 'channel') { setView('messages'); setSelectedId(id); }
     if (type === 'meeting') {
       setView('meetings');
-      const found = meetings.find(m => m.meetingId === id);
-      if (found) setActiveMeeting(found);
+      /**
+       * The id is enough, and it used to not be.
+       *
+       * This looked the meeting up in whatever `meetings` happened to hold and
+       * did nothing at all if it was not there — which is the ordinary case
+       * when the module has just mounted to serve the request. Now the room
+       * opens on the row as soon as the list carries it, and the refetch is
+       * asked for rather than hoped for.
+       */
+      setActiveMeetingId(id);
+      void loadMeetings();
     }
   });
+
+  /**
+   * A meeting that was open and is no longer there.
+   *
+   * Cancelling a scheduled meeting deletes the row outright, so anybody with
+   * its room open is looking at something that does not exist.
+   *
+   * The ref is what separates that from the other reason the row can be
+   * missing — it has not arrived yet, because the room was opened from an id a
+   * channel row or another module supplied before the list was fetched. Only a
+   * room that had genuinely resolved is closed; one that never has is still
+   * opening, and the shell below says so.
+   */
+  const roomResolved = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeMeetingId) { roomResolved.current = null; return; }
+    if (meetings.some(m => m.meetingId === activeMeetingId)) {
+      roomResolved.current = activeMeetingId;
+      return;
+    }
+    if (roomResolved.current !== activeMeetingId) return;
+    setActiveMeetingId(null);
+    toast('That meeting was cancelled.');
+  }, [activeMeetingId, meetings]);
+
+  /**
+   * Stable handles for the room.
+   *
+   * Written inline they were a new function on every render of this module —
+   * which is often — and the room holds both in effect dependency lists. That
+   * turned "join this meeting" into a POST several times a second and the host
+   * starting a scheduled meeting into a PATCH storm.
+   */
+  const closeMeeting = useCallback(() => setActiveMeetingId(null), []);
+  const openMeetingRoom = useCallback(
+    (meeting: MeetingRow) => setActiveMeetingId(meeting.meetingId), []);
+  const refreshMeetings = useCallback(() => {
+    void loadMeetings();
+    void loadChannels();
+  }, [loadMeetings, loadChannels]);
 
   // ─── Actions ─────────────────────────────────────────────────────────────
 
@@ -829,20 +1135,56 @@ export default function CommunicationModule() {
    * The highlight is what makes a jump legible — landing in the middle of a
    * conversation with nothing marked is disorienting.
    */
+  /**
+   * How far back a jump will page in pursuit of one message.
+   *
+   * Search reaches the whole history; the timeline loads forty messages. So a
+   * hit from three months ago opened its conversation, scrolled to the bottom
+   * and highlighted nothing — the reader was left in the right room with no
+   * idea where the thing they searched for had gone, which is the worst of
+   * both: it looked like it had worked. `hunted` counts the pages walked back,
+   * because "keep loading until you find it" on a busy channel is an
+   * unbounded loop of requests.
+   */
+  const hunted = useRef(0);
+  const gaveUpOn = useRef<string | null>(null);
+
   const jumpTo = useCallback((hit: SearchHit) => {
     setView('messages');
+    hunted.current = 0;
+    gaveUpOn.current = null;
     setHighlightId(hit.messageId);
     setSelectedId(hit.channelId);
-    // Cleared after the animation so a message does not stay marked for the
-    // rest of the session.
-    setTimeout(() => setHighlightId(null), 2600);
   }, []);
 
   useEffect(() => {
     if (!highlightId || messagesLoading) return;
+
     const el = document.getElementById(`message-${highlightId}`);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [highlightId, messagesLoading, messages]);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Cleared after the animation, so a message does not stay marked for the
+      // rest of the session — and only once it has actually been shown.
+      const timer = setTimeout(() => setHighlightId(null), 2600);
+      return () => clearTimeout(timer);
+    }
+
+    if (loadingOlder || gaveUpOn.current === highlightId) return;
+
+    if (olderCursor && hunted.current < 5) {
+      hunted.current += 1;
+      void loadOlder();
+      return;
+    }
+
+    // Beyond reach: said out loud rather than left as a jump that silently
+    // did nothing. The marker is deliberately left armed — if the reader keeps
+    // scrolling back and reaches it, it still lights up.
+    gaveUpOn.current = highlightId;
+    toast.message('That message is further back than this conversation has loaded.', {
+      description: 'Keep scrolling up and it will be marked when it appears.',
+    });
+  }, [highlightId, messagesLoading, messages, olderCursor, loadingOlder, loadOlder]);
 
   /**
    * Start a call in the open conversation.
@@ -871,8 +1213,7 @@ export default function CommunicationModule() {
       });
       const rows = await api<MeetingRow[]>('/api/communication/meetings');
       setMeetings(rows);
-      const row = rows.find(m => m.meetingId === created.id);
-      if (row) setActiveMeeting(row);
+      if (rows.some(m => m.meetingId === created.id)) setActiveMeetingId(created.id);
       else toast.error('The call was started but could not be opened. It is in Meetings.');
     } catch (err: any) {
       toast.error(err.message || 'Could not start the call');
@@ -903,8 +1244,17 @@ export default function CommunicationModule() {
     direct: visible.filter(c => c.type === 'direct'),
   }), [visible]);
 
+  /**
+   * The same sentence the two endpoints use.
+   *
+   * `/api/communication/channels` returns this in `meta.unreadTotal` and
+   * `/api/notifications` composes the sidebar badge from it. Three copies of
+   * a rule is three badges that eventually disagree in front of somebody, so
+   * the rule is written the same way in all three: muting silences a
+   * conversation's count, and never silences being named in it.
+   */
   const unreadTotal = channels.reduce(
-    (sum, c) => sum + (c.isMuted ? 0 : c.unreadCount), 0);
+    (sum, c) => sum + (c.isMuted ? c.mentionCount : c.unreadCount), 0);
   const mentionTotal = channels.reduce((sum, c) => sum + c.mentionCount, 0);
   const liveMeetings = meetings.filter(m => m.status === 'live').length;
 
@@ -1079,6 +1429,15 @@ export default function CommunicationModule() {
             onlineCount > 0 ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
           {onlineCount} online
         </p>
+        {/* Said plainly rather than hidden. Somebody who knows updates are on
+            a timer waits differently from somebody who believes nothing has
+            been said. */}
+        {degraded && (
+          <p className="mt-1 flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+            <Radio className="size-3 shrink-0" />
+            Live updates are blocked here — checking every few seconds instead.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -1108,8 +1467,8 @@ export default function CommunicationModule() {
             directory={directory}
             loading={meetingsLoading}
             currentMemberId={currentMemberId}
-            onRefresh={loadMeetings}
-            onOpenRoom={setActiveMeeting}
+            onRefresh={refreshMeetings}
+            onOpenRoom={openMeetingRoom}
             onOpenChannel={(id) => { setView('messages'); setSelectedId(id); }}
           />
         ) : !selected ? (
@@ -1197,9 +1556,12 @@ export default function CommunicationModule() {
                     size="sm"
                     className="gap-1.5 bg-rose-600 text-white hover:bg-rose-700"
                     onClick={() => {
-                      const found = meetings.find(m => m.meetingId === selected.liveMeetingId);
-                      if (found) setActiveMeeting(found);
-                      else { setView('meetings'); void loadMeetings(); }
+                      // The channel row can know about a meeting before the
+                      // list has caught up with it, so the id is taken on trust
+                      // and the list is asked to catch up — the click is never
+                      // dropped, which is what the old `if (found)` did.
+                      setActiveMeetingId(selected.liveMeetingId);
+                      void loadMeetings();
                     }}
                   >
                     <Radio className="size-3.5" /> Join call
@@ -1536,14 +1898,28 @@ export default function CommunicationModule() {
         isLoading={busy}
       />
 
-      {activeMeeting && (
+      {activeMeeting ? (
         <MeetingRoom
+          // Keyed by the meeting, so leaving one and joining another is a fresh
+          // room rather than the previous room's state re-labelled.
+          key={activeMeeting.meetingId}
           meeting={activeMeeting}
           currentMemberId={currentMemberId}
-          onClose={() => setActiveMeeting(null)}
-          onRefresh={() => { void loadMeetings(); void loadChannels(); }}
+          directory={directory}
+          onClose={closeMeeting}
+          onRefresh={refreshMeetings}
         />
-      )}
+      ) : activeMeetingId ? (
+        /*
+          The room was asked for by id and the list has not carried it yet.
+
+          Previously this click simply did nothing — no room, no message, no
+          way to tell whether it had registered. A shell that says what it is
+          waiting for and can be dismissed is the difference between a slow
+          open and a broken button.
+        */
+        <OpeningRoom onCancel={closeMeeting} />
+      ) : null}
     </div>
   );
 }
@@ -1551,6 +1927,49 @@ export default function CommunicationModule() {
 // ═══════════════════════════════════════════════════════════════════════════
 //  Sidebar
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * The gap between asking for a room and having one.
+ *
+ * It exists because a meeting can be opened by id from anywhere — a channel
+ * header, a record reference in a message, another module's focus request —
+ * and the list that carries the row may still be in flight. Ten seconds is
+ * generous for one query; past that something is wrong and saying so is far
+ * better than a spinner nobody can leave, which is the exact failure this
+ * module was asked to make impossible.
+ */
+function OpeningRoom({ onCancel }: { onCancel: () => void }) {
+  const [gaveUp, setGaveUp] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setGaveUp(true), 10_000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-slate-950 px-6 text-center">
+      {gaveUp ? (
+        <>
+          <div className="flex size-16 items-center justify-center rounded-full bg-rose-500/15">
+            <X className="size-7 text-rose-300" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">That meeting could not be opened</h3>
+            <p className="mt-1 max-w-sm text-sm text-white/60">
+              It may have ended, been cancelled, or it is not one you have been invited to.
+            </p>
+          </div>
+        </>
+      ) : (
+        <>
+          <Loader2 className="size-6 animate-spin text-white/60" />
+          <p className="text-xs text-white/40">Opening the meeting…</p>
+        </>
+      )}
+      <Button variant="secondary" onClick={onCancel}>Close</Button>
+    </div>
+  );
+}
 
 function ChannelTypeIcon({ type, className }: { type: string; className?: string }) {
   const cls = cn('size-4 shrink-0', className);

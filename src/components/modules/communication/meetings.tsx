@@ -5,7 +5,8 @@ import { toast } from 'sonner';
 import {
   Video, VideoOff, Mic, MicOff, MonitorUp, PhoneOff, Hand, Users, Lock, Unlock,
   Calendar, Plus, Loader2, DoorOpen, ShieldCheck, NotebookPen, UserX, Radio,
-  Clock, MoreHorizontal, Link2, X, CheckCheck,
+  Clock, MoreHorizontal, Link2, X, CheckCheck, RefreshCw, TriangleAlert,
+  UserCheck, FileText, UserPlus,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { EmptyState } from '@/components/shared/empty-state';
+import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { formatDateTime, formatRelativeTime, initialsOf } from '@/lib/format';
 import { useMeeting } from '@/hooks/use-meeting';
 import { useRealtime } from '@/hooks/use-realtime';
@@ -236,8 +238,10 @@ function MeetingCard({
   onRefresh: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const live = meeting.status === 'live';
   const ended = meeting.status === 'ended';
+  const hasNotes = !!(meeting.notes ?? '').trim();
 
   const act = async (body: Record<string, unknown>) => {
     setBusy(true);
@@ -305,7 +309,7 @@ function MeetingCard({
           {meeting.hostName && <><span>·</span><span>Hosted by {meeting.hostName}</span></>}
         </p>
 
-        {(meeting.channelLabel || meeting.projectName) && (
+        {(meeting.channelLabel || meeting.projectName || hasNotes) && (
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {meeting.channelLabel && meeting.channelId && (
               <button
@@ -319,6 +323,16 @@ function MeetingCard({
               <span className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground">
                 {meeting.projectName}
               </span>
+            )}
+            {/* Whether this meeting produced a record is worth knowing from the
+                list — it is the difference between opening it and not. */}
+            {hasNotes && (
+              <button
+                onClick={() => setNotesOpen(true)}
+                className="inline-flex items-center gap-1 rounded border border-emerald-400/50 bg-emerald-500/5 px-1.5 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-400"
+              >
+                <FileText className="size-2.5" /> Notes
+              </button>
             )}
           </div>
         )}
@@ -337,6 +351,36 @@ function MeetingCard({
             <Video className="size-3.5" /> {live ? 'Join' : 'Start'}
           </Button>
         )}
+
+        {/*
+          Notes, on every card, whatever the meeting's state.
+
+          They used to live only inside the room, and the room could only be
+          opened while the meeting was still running — so the moment a meeting
+          ended, everything written in it became unreachable. That is the dead
+          end this button removes: a meeting that has happened is exactly when
+          somebody goes looking for what was decided.
+        */}
+        <TooltipProvider delayDuration={400}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="sm"
+                variant={ended || hasNotes ? 'outline' : 'ghost'}
+                className="gap-1.5"
+                onClick={() => setNotesOpen(true)}
+              >
+                <NotebookPen className="size-3.5" />
+                <span className={cn(!ended && !hasNotes && 'sr-only')}>Notes</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {hasNotes ? 'Read the meeting notes'
+                : meeting.amHost ? 'Write up this meeting'
+                : 'No notes yet'}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
 
         {meeting.amHost && !ended && (
           <DropdownMenu>
@@ -383,7 +427,170 @@ function MeetingCard({
           </DropdownMenu>
         )}
       </div>
+
+      {/* Deliberately not keyed to `notesOpen`: remounting on close would
+          discard a draft somebody had typed, and the notes of a meeting are
+          usually written once. The draft lives until it is saved. */}
+      <MeetingNotesDialog
+        meeting={meeting}
+        open={notesOpen}
+        onOpenChange={setNotesOpen}
+        onOpenChannel={onOpenChannel}
+        onSaved={onRefresh}
+      />
     </div>
+  );
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  What was decided
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * ── Why the notes needed a home outside the room ──────────────────────────
+ *
+ * `meetings.notes` has been written since 0023 and could only ever be read
+ * from the side panel of a running meeting. A meeting that ended took its own
+ * record with it: the card no longer offered a way in, and there was no other
+ * screen that showed the column at all. Everything that had been typed was
+ * still in the database and nothing could reach it — the same shape of defect
+ * as `is_muted` and `department_id` before it.
+ *
+ * So this is the reading surface, and it carries the context that makes a note
+ * mean something a month later: when the meeting ran, who hosted it, and the
+ * conversation and project it belongs to — each of which opens.
+ *
+ * Editing is offered to the host and co-hosts, which is what `meetings_update`
+ * permits; for everybody else it is the record, read-only, rather than a box
+ * whose Save button returns 403.
+ */
+function MeetingNotesDialog({
+  meeting, open, onOpenChange, onOpenChannel, onSaved,
+}: {
+  meeting: MeetingRow;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onOpenChannel: (id: string) => void;
+  onSaved: () => void;
+}) {
+  const saved = meeting.notes ?? '';
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const notes = draft ?? saved;
+  const canEdit = meeting.amHost && meeting.status !== 'cancelled';
+  const dirty = draft !== null && draft !== saved;
+
+  const when = meeting.startedAt ?? meeting.scheduledAt;
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await api(`/api/communication/meetings/${meeting.meetingId}`, {
+        method: 'PATCH', body: JSON.stringify({ notes }),
+      });
+      setDraft(null);
+      toast.success('Notes saved');
+      onSaved();
+      onOpenChange(false);
+    } catch (err: any) {
+      toast.error(err.message || 'Could not save the notes');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <NotebookPen className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">{meeting.title}</span>
+          </DialogTitle>
+          <DialogDescription>
+            {[
+              when ? formatDateTime(when) : 'Not scheduled',
+              meeting.hostName ? `Hosted by ${meeting.hostName}` : null,
+              meeting.status === 'ended' ? 'Ended'
+                : meeting.status === 'live' ? 'Happening now'
+                : meeting.status === 'cancelled' ? 'Cancelled' : 'Upcoming',
+            ].filter(Boolean).join(' · ')}
+          </DialogDescription>
+        </DialogHeader>
+
+        {(meeting.channelLabel || meeting.projectName) && (
+          <div className="flex flex-wrap gap-1.5">
+            {meeting.channelLabel && meeting.channelId && (
+              <button
+                onClick={() => { onOpenChannel(meeting.channelId!); onOpenChange(false); }}
+                className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs transition-colors hover:border-emerald-400 hover:bg-emerald-500/5"
+              >
+                <Link2 className="size-3" /> {meeting.channelLabel}
+              </button>
+            )}
+            {meeting.projectName && (
+              <span className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
+                {meeting.projectName}
+              </span>
+            )}
+          </div>
+        )}
+
+        {meeting.agenda?.trim() && (
+          <div className="rounded-md border bg-muted/40 p-3">
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Agenda
+            </p>
+            <p className="whitespace-pre-wrap text-sm">{meeting.agenda}</p>
+          </div>
+        )}
+
+        {canEdit ? (
+          <div className="space-y-2">
+            <Label htmlFor="meeting-notes">Notes</Label>
+            <Textarea
+              id="meeting-notes"
+              rows={12}
+              value={notes}
+              onChange={(e) => setDraft(e.target.value)}
+              placeholder="Decisions, actions, who is doing what…"
+              className="resize-none"
+            />
+          </div>
+        ) : notes.trim() ? (
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Notes</p>
+            <p className="whitespace-pre-wrap rounded-md border p-3 text-sm">{notes}</p>
+          </div>
+        ) : (
+          <div className="rounded-md border border-dashed p-6 text-center">
+            <p className="text-sm text-muted-foreground">Nothing was written up for this meeting.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              The host and co-hosts can add notes during or after it.
+            </p>
+          </div>
+        )}
+
+        <DialogFooter className="sm:items-center">
+          {dirty && (
+            <span className="mr-auto text-xs text-amber-600 dark:text-amber-400">
+              Unsaved changes — they are kept until you save.
+            </span>
+          )}
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+          {canEdit && (
+            <Button
+              className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+              disabled={saving || !dirty}
+              onClick={() => void save()}
+            >
+              {saving ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCheck className="size-3.5" />}
+              Save notes
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -489,8 +696,18 @@ export function ScheduleMeetingDialog({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="meeting-at">Date and time</Label>
+                {/* `min` is the local clock, not UTC: `toISOString()` here
+                    would offer a picker refusing times the user considers
+                    perfectly future. Scheduling a meeting into the past puts
+                    an appointment on everybody's calendar that has already
+                    been missed. */}
                 <Input id="meeting-at" type="datetime-local" value={scheduledAt}
+                  min={new Date(Date.now() - new Date().getTimezoneOffset() * 60_000)
+                    .toISOString().slice(0, 16)}
                   onChange={(e) => setScheduledAt(e.target.value)} />
+                {when === 'later' && scheduledAt && new Date(scheduledAt) < new Date() && (
+                  <p className="text-xs text-destructive">That time has already passed.</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="meeting-len">Length</Label>
@@ -583,7 +800,10 @@ export function ScheduleMeetingDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             className="bg-emerald-600 text-white hover:bg-emerald-700"
-            disabled={!title.trim() || saving || (when === 'later' && !scheduledAt)}
+            disabled={
+              !title.trim() || saving
+              || (when === 'later' && (!scheduledAt || new Date(scheduledAt) < new Date()))
+            }
             onClick={() => void submit()}
           >
             {saving && <Loader2 className="mr-1.5 size-4 animate-spin" />}
@@ -608,26 +828,107 @@ export function ScheduleMeetingDialog({
  * offered only to the membership ids the participant list says are in the
  * room, so a client that lied about being admitted is still connected to
  * nobody: every other browser is consulting the same list.
+ *
+ * ── Why it keeps asking ──────────────────────────────────────────────────
+ *
+ * The answer to "am I in?" changes while the room is open, and it changes on
+ * the *server* — the host admits somebody, refuses somebody, ends the meeting,
+ * turns the waiting room off. The component used to ask once, on mount, and
+ * treat the reply as settled, which meant every one of those decisions reached
+ * a browser that had stopped listening: an admitted guest waiting at a door
+ * that had been opened for them, a refused one waiting at a door that never
+ * would be, and everybody else holding a room open on a meeting that had
+ * finished.
+ *
+ * So `seat` below is the last answer received rather than the only one, and
+ * the participant row — delivered by the subscription, or polled when the
+ * socket cannot connect — is what moves it. Every transition ends somewhere a
+ * person can act from: in the room, told why they are not, or offered a retry.
+ * There is no state in which this renders a spinner and waits for something
+ * that will not come.
+ *
+ * `meeting` is a live row, not a snapshot. See the note on `activeMeetingId`
+ * in the module shell for why holding a copy of it was the source of half of
+ * the above.
  */
 export function MeetingRoom({
-  meeting, currentMemberId, onClose, onRefresh,
+  meeting, currentMemberId, directory, onClose, onRefresh,
 }: {
   meeting: MeetingRow;
   currentMemberId: string | null;
+  /** Colleagues who can be pulled into a meeting that has already started. */
+  directory: DirectoryMember[];
   onClose: () => void;
   onRefresh: () => void;
 }) {
   const [participants, setParticipants] = useState<MeetingParticipant[]>([]);
-  const [state, setState] = useState<MeetingParticipant['state'] | null>(null);
-  const [joining, setJoining] = useState(true);
+  /**
+   * Where the caller stands at the door, as the server last answered.
+   *
+   * ── Why this is a small machine and not one nullable enum ────────────────
+   *
+   * It used to be `MeetingParticipant['state'] | null`, set once from the join
+   * response and never touched again, and that produced three dead ends that
+   * no amount of realtime could clear:
+   *
+   *   · The host admits somebody. The endpoint writes `admitted`, which is a
+   *     *permission*, not a seat — a second POST is what turns it into
+   *     `joined`. Nothing sent one, so the admitted guest sat on "Waiting to
+   *     be let in" for the length of the meeting while everybody else could
+   *     see them in the list.
+   *   · The host refuses somebody. The row goes to `removed` and the browser
+   *     was never told, so the refusal looked identical to being ignored.
+   *   · The host ends the meeting. Every row goes to `left` and every other
+   *     participant kept a room open on a meeting that no longer existed.
+   *
+   * The cure is that this is derived from the participant row from here on,
+   * and the row arrives over the subscription below.
+   */
+  const [seat, setSeat] = useState<'joining' | 'knocking' | 'in' | 'refused' | 'failed'>('joining');
+  const [joinError, setJoinError] = useState<string | null>(null);
   const [showPeople, setShowPeople] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
-  const [notes, setNotes] = useState(meeting.notes ?? '');
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [endOpen, setEndOpen] = useState(false);
+  const [ending, setEnding] = useState(false);
+  /**
+   * The notes being typed, or `null` for "whatever the server has".
+   *
+   * Holding the draft as an override rather than as a copy is what lets the
+   * live row flow through without an effect to sync it: with nothing typed the
+   * panel shows what was last saved — including a save by somebody else in the
+   * same meeting — and once there is a draft, the draft wins until it is saved.
+   */
+  const [draft, setDraft] = useState<string | null>(null);
   const [savingNotes, setSavingNotes] = useState(false);
-  const [handUp, setHandUp] = useState(false);
+
+  const saved = meeting.notes ?? '';
+  const notes = draft ?? saved;
 
   const me = participants.find(p => p.memberId === currentMemberId) ?? null;
   const amHost = meeting.amHost || ['host', 'cohost'].includes(me?.role ?? '');
+  /**
+   * The hand is the row's, not the browser's.
+   *
+   * It was local state, so a host lowering somebody's hand changed the roster
+   * for everybody and left the owner's own button still lit.
+   */
+  const handUp = !!me?.handRaisedAt;
+
+  /**
+   * The parent's callbacks, in refs.
+   *
+   * Both are written inline at the call site — `onClose={() => setActiveMeeting(null)}`
+   * — so they are a new function on every render of the module, and the module
+   * renders on every presence beat, every keystroke in the composer and every
+   * realtime event. Held in the dependency list of the join effect that meant a
+   * fresh POST to `/participants` several times a second; in the one that starts
+   * a scheduled meeting it meant a PATCH storm. Neither is anything a caller
+   * should have to know, so the refs are here rather than a rule for callers.
+   */
+  const refresh = useRef(onRefresh);
+  const close = useRef(onClose);
+  useEffect(() => { refresh.current = onRefresh; close.current = onClose; });
 
   const loadParticipants = useCallback(async () => {
     try {
@@ -641,46 +942,60 @@ export function MeetingRoom({
   }, [meeting.meetingId]);
 
   /**
+   * Ask for a seat: the join button, and the retry.
+   *
+   * Also what turns an admission into a seat — the server reads `admitted` and
+   * answers `joined`, which is why the same call serves the knock and the entry
+   * that follows it.
+   */
+  const requestSeat = useCallback(async () => {
+    setSeat('joining');
+    setJoinError(null);
+    try {
+      const res = await fetch(
+        `/api/communication/meetings/${meeting.meetingId}/participants`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+      );
+      const json = await res.json().catch(() => ({
+        error: { message: 'The server did not answer. Check your connection and try again.' },
+      }));
+      if (json.error) throw new Error(json.error.message || 'Could not join that meeting.');
+      const waiting = json.meta?.waiting === true || json.data?.state === 'knocking';
+      setSeat(waiting ? 'knocking' : 'in');
+      void loadParticipants();
+    } catch (err: any) {
+      /**
+       * A failed join used to close the room outright, which threw away the
+       * only screen that could explain what happened or offer another go — and
+       * a meeting is exactly the moment somebody cannot afford to guess.
+       */
+      setJoinError(err?.message || 'Could not join that meeting.');
+      setSeat('failed');
+    }
+  }, [meeting.meetingId, loadParticipants]);
+
+  useEffect(() => { void requestSeat(); }, [requestSeat]);
+  useEffect(() => { void loadParticipants(); }, [loadParticipants]);
+
+  /**
    * The host opening a scheduled meeting is what starts it.
    *
    * Not a separate button. "Start" and "join" are the same gesture from the
    * host's side, and a meeting that had to be started and then joined would
    * leave everybody else looking at a room the host is standing outside.
+   *
+   * Guarded by a ref as well as by the status, because the status arrives from
+   * a refetch: between the PATCH and the list coming back this component
+   * renders several times still believing the meeting is scheduled.
    */
+  const started = useRef(false);
   useEffect(() => {
-    if (!meeting.amHost || meeting.status !== 'scheduled') return;
+    if (!meeting.amHost || meeting.status !== 'scheduled' || started.current) return;
+    started.current = true;
     void api(`/api/communication/meetings/${meeting.meetingId}`, {
       method: 'PATCH', body: JSON.stringify({ status: 'live' }),
-    }).then(onRefresh).catch(() => undefined);
-  }, [meeting.amHost, meeting.status, meeting.meetingId, onRefresh]);
-
-  // Knock, or walk in.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const { data, meta } = await (async () => {
-          const res = await fetch(
-            `/api/communication/meetings/${meeting.meetingId}/participants`,
-            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
-          );
-          const json = await res.json();
-          if (json.error) throw new Error(json.error.message);
-          return { data: json.data, meta: json.meta ?? {} };
-        })();
-        if (cancelled) return;
-        setState(meta.waiting ? 'knocking' : (data?.state ?? 'joined'));
-      } catch (err: any) {
-        toast.error(err.message || 'Could not join that meeting');
-        onClose();
-      } finally {
-        if (!cancelled) setJoining(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [meeting.meetingId, onClose]);
-
-  useEffect(() => { void loadParticipants(); }, [loadParticipants]);
+    }).then(() => refresh.current()).catch(() => { started.current = false; });
+  }, [meeting.amHost, meeting.status, meeting.meetingId]);
 
   /**
    * The room is live.
@@ -690,15 +1005,68 @@ export function MeetingRoom({
    * were added to the realtime publication in 0023 with REPLICA IDENTITY FULL
    * so a filtered UPDATE is actually delivered.
    */
-  useRealtime({
+  const live = useRealtime({
     name: `meeting-room:${meeting.meetingId}`,
     debounceMs: 150,
     tables: [
       { table: 'meeting_participants', filter: `meeting_id=eq.${meeting.meetingId}` },
       { table: 'meetings', filter: `id=eq.${meeting.meetingId}` },
     ],
-    onChange: () => { void loadParticipants(); onRefresh(); },
+    onChange: () => { void loadParticipants(); refresh.current(); },
   });
+
+  /**
+   * The fallback for a room whose subscription could not connect.
+   *
+   * Websockets are blocked by a good number of corporate proxies, and every
+   * consequence of that here is one people cannot work around: a knock nobody
+   * hears, an admission that never arrives, a meeting that ended half an hour
+   * ago. Five seconds is far more traffic than the socket would be and is the
+   * right trade for the few minutes a meeting lasts.
+   */
+  useEffect(() => {
+    if (live === 'subscribed') return;
+    const timer = setInterval(() => { void loadParticipants(); refresh.current(); }, 5000);
+    return () => clearInterval(timer);
+  }, [live, loadParticipants]);
+
+  const myState = me?.state ?? null;
+
+  /**
+   * The door, opened or shut.
+   *
+   * `admitted` is the host saying yes; the seat itself is taken by asking
+   * again, which is the same call the join button makes.
+   */
+  useEffect(() => {
+    if (seat !== 'knocking') return;
+    if (myState === 'admitted') { void requestSeat(); return; }
+    if (myState === 'removed') { setSeat('refused'); return; }
+    // The host turned the waiting room off while somebody was standing in it.
+    // There is no door left to wait at, and nothing else would ever have moved
+    // this row — so ask again, and the server lets them straight in.
+    if (!meeting.waitingRoom) void requestSeat();
+  }, [seat, myState, meeting.waitingRoom, requestSeat]);
+
+  /** Shown out mid-meeting. */
+  useEffect(() => {
+    if (seat !== 'in' || myState !== 'removed') return;
+    toast.error('The host removed you from the meeting.');
+    close.current();
+  }, [seat, myState]);
+
+  /**
+   * The meeting is over.
+   *
+   * For everybody, including the host who ended it — a room left open on an
+   * ended meeting is the state where the grid is frozen, the controls do
+   * nothing and there is no explanation on screen.
+   */
+  useEffect(() => {
+    if (meeting.status !== 'ended' && meeting.status !== 'cancelled') return;
+    toast(meeting.status === 'ended' ? 'The meeting has ended.' : 'That meeting was cancelled.');
+    close.current();
+  }, [meeting.status]);
 
   /** Who is actually in the room, as the server sees it. */
   const inRoom = useMemo(
@@ -715,7 +1083,7 @@ export function MeetingRoom({
     // Nothing is captured, and no connection is offered, until the server has
     // said this person is in the room. A waiting room that still turned your
     // camera on would not be a waiting room.
-    enabled: state === 'joined',
+    enabled: seat === 'in',
   });
 
   /**
@@ -736,35 +1104,165 @@ export function MeetingRoom({
         method: 'PATCH', body: JSON.stringify(body),
       });
       void loadParticipants();
+      return true;
     } catch (err: any) {
       toast.error(err.message || 'That did not work');
+      return false;
     }
   }, [meeting.meetingId, loadParticipants]);
+
+  /**
+   * Your camera and your share, on the row everybody else reads.
+   *
+   * `meeting_participants.camera_on` and `is_sharing` have been columns since
+   * 0023 and the grid has always rendered them — but nothing ever wrote them,
+   * so every tile claimed the camera was off and the green ring around a shared
+   * screen was unreachable. This is the write that was missing.
+   */
+  const cameraOn = media.camOn;
+  const isSharing = media.sharing;
+  useEffect(() => {
+    if (seat !== 'in') return;
+    void patch({ cameraOn, isSharing });
+  }, [seat, cameraOn, isSharing, patch]);
 
   const leave = useCallback(async () => {
     try {
       await fetch(`/api/communication/meetings/${meeting.meetingId}/participants`, { method: 'DELETE' });
     } catch { /* leaving should never fail in front of somebody */ }
-    onRefresh();
-    onClose();
-  }, [meeting.meetingId, onClose, onRefresh]);
+    refresh.current();
+    close.current();
+  }, [meeting.meetingId]);
 
-  const knocking = participants.filter(p => p.state === 'knocking');
-  const present = participants.filter(p => p.state === 'joined');
+  const knocking = useMemo(
+    () => participants.filter(p => p.state === 'knocking'),
+    [participants],
+  );
+  const present = useMemo(
+    () => participants.filter(p => p.state === 'joined'),
+    [participants],
+  );
 
-  // ── Waiting room ──
-  if (state === 'knocking') {
+  /**
+   * Running the meeting, from inside it.
+   *
+   * These existed only on the card in the meetings list, which meant a host who
+   * was actually in the room had to leave it to lock the door, open or close
+   * the waiting room, or end the call — and leaving is the one thing a host
+   * cannot casually do. The endpoint and the permissions are the same; this is
+   * the control being where the person using it already is.
+   */
+  const runMeeting = useCallback(async (body: Record<string, unknown>) => {
+    try {
+      await api(`/api/communication/meetings/${meeting.meetingId}`, {
+        method: 'PATCH', body: JSON.stringify(body),
+      });
+      refresh.current();
+      return true;
+    } catch (err: any) {
+      toast.error(err.message || 'Could not change the meeting');
+      return false;
+    }
+  }, [meeting.meetingId]);
+
+  const admit = useCallback(async (memberIds: string[]) => {
+    if (!memberIds.length) return;
+    const results = await Promise.all(
+      memberIds.map(id => patch({ memberId: id, state: 'admitted' })),
+    );
+    const done = results.filter(Boolean).length;
+    if (done) toast.success(done === 1 ? 'Admitted' : `${done} people admitted`);
+  }, [patch]);
+
+  /**
+   * A knock is an event, not a number to be noticed.
+   *
+   * The badge on the participants button was the only sign, which meant a host
+   * mid-sentence with the panel closed left somebody at the door indefinitely.
+   * The banner below is unmissable and the toast reaches a host looking at the
+   * grid; the set is what keeps a redelivered row from announcing the same
+   * person twice.
+   */
+  const announced = useRef(new Set<string>());
+  useEffect(() => {
+    if (!amHost) {
+      announced.current.clear();
+      return;
+    }
+    const here = new Set(knocking.map(p => p.memberId));
+    for (const p of knocking) {
+      if (announced.current.has(p.memberId)) continue;
+      announced.current.add(p.memberId);
+      toast(`${p.fullName} is waiting to be let in`, {
+        action: { label: 'Admit', onClick: () => void admit([p.memberId]) },
+      });
+    }
+    for (const id of [...announced.current]) if (!here.has(id)) announced.current.delete(id);
+  }, [knocking, amHost, admit]);
+
+  // ── The door ──
+
+  if (seat === 'failed') {
+    return (
+      <RoomShell title={meeting.title} onClose={() => close.current()}>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+          <div className="flex size-16 items-center justify-center rounded-full bg-rose-500/15">
+            <TriangleAlert className="size-7 text-rose-300" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">Could not join</h3>
+            <p className="mt-1 max-w-sm text-sm text-white/60">{joinError}</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => close.current()}>Close</Button>
+            <Button className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+              onClick={() => void requestSeat()}>
+              <RefreshCw className="size-3.5" /> Try again
+            </Button>
+          </div>
+        </div>
+      </RoomShell>
+    );
+  }
+
+  if (seat === 'refused') {
+    return (
+      <RoomShell title={meeting.title} onClose={() => close.current()}>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+          <div className="flex size-16 items-center justify-center rounded-full bg-white/10">
+            <UserX className="size-7 text-white/70" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">You were not admitted</h3>
+            <p className="mt-1 max-w-sm text-sm text-white/60">
+              {meeting.hostName
+                ? `${meeting.hostName} did not let you in to this meeting.`
+                : 'The host did not let you in to this meeting.'}
+            </p>
+          </div>
+          <Button variant="secondary" onClick={() => close.current()}>Close</Button>
+        </div>
+      </RoomShell>
+    );
+  }
+
+  if (seat === 'knocking') {
     return (
       <RoomShell title={meeting.title} onClose={() => void leave()}>
         <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
           <div className="flex size-16 items-center justify-center rounded-full bg-white/10">
-            <DoorOpen className="size-7 text-white/80" />
+            <DoorOpen className="size-7 animate-pulse text-white/80" />
           </div>
           <div>
             <h3 className="text-lg font-semibold text-white">Waiting to be let in</h3>
             <p className="mt-1 max-w-sm text-sm text-white/60">
-              {meeting.hostName ? `${meeting.hostName} will admit you shortly.` : 'The host will admit you shortly.'}
+              {meeting.hostName ? `${meeting.hostName} has been told you are here.` : 'The host has been told you are here.'}
               {' '}Your camera and microphone are off until then.
+            </p>
+            <p className="mt-3 text-xs text-white/40">
+              {present.length > 0
+                ? `${present.length} ${present.length === 1 ? 'person is' : 'people are'} already in the room.`
+                : 'Nobody is in the room yet.'}
             </p>
           </div>
           <Button variant="secondary" onClick={() => void leave()}>Cancel</Button>
@@ -773,11 +1271,14 @@ export function MeetingRoom({
     );
   }
 
-  if (joining || state === null) {
+  if (seat === 'joining') {
     return (
-      <RoomShell title={meeting.title} onClose={onClose}>
-        <div className="flex flex-1 items-center justify-center">
+      // Closable while it waits: a spinner with no way out is the state this
+      // whole component exists to make impossible.
+      <RoomShell title={meeting.title} onClose={() => close.current()}>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3">
           <Loader2 className="size-6 animate-spin text-white/60" />
+          <p className="text-xs text-white/40">Joining the meeting…</p>
         </div>
       </RoomShell>
     );
@@ -795,8 +1296,104 @@ export function MeetingRoom({
         {/* ── The grid ── */}
         <div className="flex min-w-0 flex-1 flex-col">
           {media.mediaError && (
-            <div className="mx-4 mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-              {media.mediaError}
+            <div className="mx-4 mt-3 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              <span className="flex-1">{media.mediaError}</span>
+              {/*
+                The message said what to do — allow it in the address bar — and
+                then offered no way to act on it, so somebody who fixed the
+                permission had to leave the meeting and come back. Asking for a
+                seat again is the full restart: it takes the microphone and
+                camera from scratch and rebuilds every connection.
+              */}
+              <Button size="sm" variant="secondary" className="h-6 shrink-0 gap-1 px-2 text-[11px]"
+                onClick={() => void requestSeat()}>
+                <RefreshCw className="size-3" /> Try again
+              </Button>
+            </div>
+          )}
+
+          {/*
+            The connection, said out loud.
+
+            A mesh that cannot get through — no TURN, so a symmetric NAT ends
+            here — used to present as a grid of avatars that never became
+            faces, which is indistinguishable from colleagues who have their
+            cameras off. Naming it is the difference between a broken meeting
+            and a meeting somebody can do something about.
+          */}
+          {media.status === 'failed' && (
+            <div className="mx-4 mt-3 flex items-center gap-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+              <TriangleAlert className="size-3.5 shrink-0" />
+              <span className="flex-1">
+                The connection to this room dropped. Your network may be blocking direct
+                calls — leaving and joining again is usually enough.
+              </span>
+              <Button size="sm" variant="secondary" className="h-6 gap-1 px-2 text-[11px]"
+                onClick={() => void requestSeat()}>
+                <RefreshCw className="size-3" /> Reconnect
+              </Button>
+            </div>
+          )}
+
+          {/*
+            Somebody at the door, where the host is already looking.
+
+            The requirement this answers is that a host never has to leave the
+            meeting to manage the waiting room — so the whole exchange happens
+            here, with who it is and how long they have been there, and the
+            panel stays an option rather than a detour.
+          */}
+          {amHost && knocking.length > 0 && (
+            <div className="mx-4 mt-3 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <DoorOpen className="size-4 shrink-0 text-amber-300" />
+                <p className="flex-1 text-xs font-medium text-amber-100">
+                  {knocking.length === 1
+                    ? `${knocking[0].fullName} is waiting to be let in`
+                    : `${knocking.length} people are waiting to be let in`}
+                </p>
+                {knocking.length > 1 && (
+                  <Button size="sm" className="h-7 gap-1 bg-emerald-600 px-2 text-[11px] text-white hover:bg-emerald-700"
+                    onClick={() => void admit(knocking.map(p => p.memberId))}>
+                    <UserCheck className="size-3" /> Admit all
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" className="h-7 px-2 text-[11px] text-amber-100 hover:text-white"
+                  onClick={() => { setShowPeople(true); setShowNotes(false); }}>
+                  Review
+                </Button>
+              </div>
+              <div className="mt-2 space-y-1">
+                {knocking.slice(0, 3).map(p => (
+                  <div key={p.id} className="flex items-center gap-2">
+                    <Avatar className="size-6">
+                      <AvatarFallback className={cn('text-[10px] text-white', avatarColor(p.memberId))}>
+                        {initialsOf(p.fullName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="min-w-0 flex-1 truncate text-xs text-white">{p.fullName}</span>
+                    {p.knockedAt && (
+                      <span className="shrink-0 text-[10px] text-white/40">
+                        {formatRelativeTime(p.knockedAt)}
+                      </span>
+                    )}
+                    <Button size="sm" className="h-6 bg-emerald-600 px-2 text-[11px] text-white hover:bg-emerald-700"
+                      onClick={() => void admit([p.memberId])}>
+                      Admit
+                    </Button>
+                    <Button size="icon" variant="ghost" className="size-6 text-white/50 hover:text-white"
+                      onClick={() => void patch({ memberId: p.memberId, state: 'removed' })}
+                      aria-label={`Refuse ${p.fullName}`}>
+                      <X className="size-3" />
+                    </Button>
+                  </div>
+                ))}
+                {knocking.length > 3 && (
+                  <p className="pl-8 text-[10px] text-white/40">
+                    and {knocking.length - 3} more — open Participants to see them all.
+                  </p>
+                )}
+              </div>
             </div>
           )}
 
@@ -858,6 +1455,7 @@ export function MeetingRoom({
             <TooltipProvider delayDuration={300}>
               <ControlButton
                 active={media.micOn}
+                warnWhenOff
                 disabled={!!me?.isMuted}
                 onClick={media.toggleMic}
                 on={<Mic className="size-4" />}
@@ -867,6 +1465,7 @@ export function MeetingRoom({
               {meeting.mode !== 'audio' && (
                 <ControlButton
                   active={media.camOn}
+                  warnWhenOff
                   onClick={media.toggleCam}
                   on={<Video className="size-4" />}
                   off={<VideoOff className="size-4" />}
@@ -884,7 +1483,7 @@ export function MeetingRoom({
               <ControlButton
                 active={handUp}
                 activeClass="bg-amber-500 hover:bg-amber-600"
-                onClick={() => { setHandUp(v => !v); void patch({ handRaised: !handUp }); }}
+                onClick={() => void patch({ handRaised: !handUp })}
                 on={<Hand className="size-4" />}
                 off={<Hand className="size-4" />}
                 label={handUp ? 'Lower your hand' : 'Raise your hand'}
@@ -908,6 +1507,44 @@ export function MeetingRoom({
                 label="Meeting notes"
               />
 
+              {amHost && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="icon" className="size-10 rounded-full bg-white/15 text-white hover:bg-white/25"
+                      aria-label="Host controls">
+                      <ShieldCheck className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="center" side="top" className="w-60">
+                    <DropdownMenuLabel className="text-xs">Host</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => setInviteOpen(true)}>
+                      <UserPlus className="mr-2 size-4" /> Invite people
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => void runMeeting({ isLocked: !meeting.isLocked })}>
+                      {meeting.isLocked
+                        ? <><Unlock className="mr-2 size-4" /> Unlock the room</>
+                        : <><Lock className="mr-2 size-4" /> Lock the room</>}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => void runMeeting({ waitingRoom: !meeting.waitingRoom })}>
+                      <DoorOpen className="mr-2 size-4" />
+                      {meeting.waitingRoom ? 'Turn off the waiting room' : 'Turn on the waiting room'}
+                    </DropdownMenuItem>
+                    {knocking.length > 0 && (
+                      <DropdownMenuItem onClick={() => void admit(knocking.map(p => p.memberId))}>
+                        <UserCheck className="mr-2 size-4" /> Admit everyone waiting ({knocking.length})
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => setEndOpen(true)}
+                    >
+                      <PhoneOff className="mr-2 size-4" /> End for everyone
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+
               <Separator orientation="vertical" className="mx-1 h-8 bg-white/15" />
 
               <Tooltip>
@@ -920,7 +1557,11 @@ export function MeetingRoom({
                     <PhoneOff className="size-4" /> Leave
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent>Leave the meeting</TooltipContent>
+                <TooltipContent>
+                  {amHost
+                    ? 'Leave — the meeting carries on without you'
+                    : 'Leave the meeting'}
+                </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </div>
@@ -940,51 +1581,202 @@ export function MeetingRoom({
                 knocking={knocking}
                 amHost={amHost}
                 currentMemberId={currentMemberId}
-                meetingId={meeting.meetingId}
-                onChanged={loadParticipants}
+                onAct={patch}
+                onAdmit={admit}
               />
             )}
             {showNotes && (
               <div className="flex flex-1 flex-col p-4">
                 <h4 className="mb-2 text-sm font-semibold text-white">Meeting notes</h4>
                 <p className="mb-3 text-xs text-white/50">
-                  Kept with the meeting, visible to everyone who was in it.
+                  Kept with the meeting. Everyone who was in it can read them
+                  afterwards, from Meetings.
                 </p>
                 <Textarea
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  onChange={(e) => setDraft(e.target.value)}
                   rows={14}
                   placeholder="Decisions, actions, who is doing what…"
                   className="flex-1 resize-none border-white/15 bg-white/5 text-sm text-white placeholder:text-white/30"
                 />
-                <Button
-                  size="sm"
-                  className="mt-3 gap-1.5"
-                  disabled={savingNotes || notes === meeting.notes}
-                  onClick={async () => {
-                    setSavingNotes(true);
-                    try {
-                      await api(`/api/communication/meetings/${meeting.meetingId}`, {
-                        method: 'PATCH', body: JSON.stringify({ notes }),
-                      });
-                      toast.success('Notes saved');
-                      onRefresh();
-                    } catch (err: any) {
-                      toast.error(err.message || 'Could not save the notes');
-                    } finally {
-                      setSavingNotes(false);
-                    }
-                  }}
-                >
-                  {savingNotes ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCheck className="size-3.5" />}
-                  Save notes
-                </Button>
+                <div className="mt-3 flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={savingNotes || draft === null || draft === saved}
+                    onClick={async () => {
+                      setSavingNotes(true);
+                      try {
+                        await api(`/api/communication/meetings/${meeting.meetingId}`, {
+                          method: 'PATCH', body: JSON.stringify({ notes }),
+                        });
+                        // Back to following the server. The refetch below brings
+                        // the saved text down, and until it lands the draft that
+                        // was just accepted is still what is on screen.
+                        setDraft(null);
+                        toast.success('Notes saved');
+                        refresh.current();
+                      } catch (err: any) {
+                        toast.error(err.message || 'Could not save the notes');
+                      } finally {
+                        setSavingNotes(false);
+                      }
+                    }}
+                  >
+                    {savingNotes ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCheck className="size-3.5" />}
+                    Save notes
+                  </Button>
+                  {draft !== null && draft !== saved && (
+                    <span className="text-[11px] text-amber-300">Unsaved</span>
+                  )}
+                </div>
               </div>
             )}
           </aside>
         )}
       </div>
+
+      <InviteToMeetingDialog
+        key={inviteOpen ? 'invite-open' : 'invite-closed'}
+        open={inviteOpen}
+        onOpenChange={setInviteOpen}
+        meetingId={meeting.meetingId}
+        directory={directory.filter(d =>
+          !participants.some(p => p.memberId === d.memberId
+            && !['left', 'removed', 'declined'].includes(p.state)))}
+        onInvited={() => { setInviteOpen(false); void loadParticipants(); refresh.current(); }}
+      />
+
+      <ConfirmDialog
+        open={endOpen}
+        onOpenChange={setEndOpen}
+        title="End the meeting"
+        description={
+          present.length > 1
+            ? `Everyone still in the room — ${present.length} people — will be disconnected. `
+              + 'The notes and the participant list are kept.'
+            : 'The meeting will be closed. The notes and the participant list are kept.'
+        }
+        confirmLabel="End for everyone"
+        variant="destructive"
+        isLoading={ending}
+        onConfirm={async () => {
+          setEnding(true);
+          // The room closes itself when the status arrives as `ended` — through
+          // the same effect that closes it for everybody else, rather than a
+          // second path that only the host takes.
+          const ok = await runMeeting({ status: 'ended' });
+          setEnding(false);
+          if (ok) setEndOpen(false);
+        }}
+      />
     </RoomShell>
+  );
+}
+
+/**
+ * Bringing somebody into a meeting that has already started.
+ *
+ * The endpoint has accepted a list of member ids from a host since 0023 and
+ * nothing in the room ever sent one — inviting was possible only at the moment
+ * a meeting was created, which is the one moment you do not yet know who you
+ * need. People already in the room, waiting at the door or invited and yet to
+ * arrive are filtered out by the caller, so the list is only people it would
+ * make sense to ask.
+ */
+function InviteToMeetingDialog({
+  open, onOpenChange, meetingId, directory, onInvited,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  meetingId: string;
+  directory: DirectoryMember[];
+  onInvited: () => void;
+}) {
+  const [picked, setPicked] = useState<string[]>([]);
+  const [filter, setFilter] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const shown = directory.filter(d =>
+    d.fullName.toLowerCase().includes(filter.trim().toLowerCase()));
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      await api(`/api/communication/meetings/${meetingId}/participants`, {
+        method: 'POST', body: JSON.stringify({ memberIds: picked }),
+      });
+      toast.success(picked.length === 1
+        ? 'Invited — they have been notified'
+        : `${picked.length} people invited`);
+      onInvited();
+    } catch (err: any) {
+      toast.error(err.message || 'Could not invite them');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Invite people</DialogTitle>
+          <DialogDescription>
+            They are notified straight away and can join from Communication.
+          </DialogDescription>
+        </DialogHeader>
+
+        <Input placeholder="Filter colleagues…" value={filter} autoFocus
+          onChange={(e) => setFilter(e.target.value)} className="h-9" />
+
+        <ScrollArea className="h-64 rounded-md border">
+          <div className="divide-y">
+            {shown.map(person => (
+              <label key={person.memberId}
+                className="flex cursor-pointer items-center gap-2.5 p-2.5 hover:bg-accent/40">
+                <Checkbox
+                  checked={picked.includes(person.memberId)}
+                  onCheckedChange={(checked) => setPicked(prev => checked
+                    ? [...prev, person.memberId]
+                    : prev.filter(id => id !== person.memberId))}
+                />
+                <Avatar className="size-7">
+                  <AvatarFallback className={cn('text-[10px] text-white', avatarColor(person.memberId))}>
+                    {initialsOf(person.fullName)}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm">{person.fullName}</span>
+                  {person.jobTitle && (
+                    <span className="block truncate text-xs text-muted-foreground">{person.jobTitle}</span>
+                  )}
+                </span>
+              </label>
+            ))}
+            {shown.length === 0 && (
+              <p className="p-6 text-center text-xs text-muted-foreground">
+                {filter
+                  ? 'No colleagues match that.'
+                  : 'Everybody who could be invited already has been.'}
+              </p>
+            )}
+          </div>
+        </ScrollArea>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            className="bg-emerald-600 text-white hover:bg-emerald-700"
+            disabled={!picked.length || saving}
+            onClick={() => void submit()}
+          >
+            {saving && <Loader2 className="mr-1.5 size-4 animate-spin" />}
+            Invite {picked.length || ''}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1021,11 +1813,29 @@ function RoomShell({
   );
 }
 
+/**
+ * One round control in the meeting bar.
+ *
+ * ── Why "off" is not always red ──────────────────────────────────────────
+ *
+ * It was: every control in this bar went rose the moment it was inactive, so a
+ * room at rest showed four red buttons — share, raise hand, participants,
+ * notes — none of which was wrong with anything. Red in a meeting means
+ * something specific and worth reserving: nobody can hear you, nobody can see
+ * you. A panel that happens to be closed is not that, and a bar that says
+ * everything is an alarm says nothing.
+ *
+ * So the alarming state is opt-in. `warnWhenOff` is set on the microphone and
+ * the camera, where "off" is a fact about you other people are experiencing,
+ * and nowhere else.
+ */
 function ControlButton({
-  active, activeClass, disabled, onClick, on, off, label, badge,
+  active, activeClass, warnWhenOff, disabled, onClick, on, off, label, badge,
 }: {
   active: boolean;
   activeClass?: string;
+  /** Render the inactive state as a warning. For the microphone and camera. */
+  warnWhenOff?: boolean;
   disabled?: boolean;
   onClick: () => void;
   on: React.ReactNode;
@@ -1041,12 +1851,15 @@ function ControlButton({
           disabled={disabled}
           onClick={onClick}
           className={cn(
-            'relative size-10 rounded-full',
+            'relative size-10 rounded-full transition-colors',
             active
               ? (activeClass ?? 'bg-white/15 text-white hover:bg-white/25')
-              : 'bg-rose-600/90 text-white hover:bg-rose-600',
+              : warnWhenOff
+                ? 'bg-rose-600/90 text-white hover:bg-rose-600'
+                : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white',
           )}
           aria-label={label}
+          aria-pressed={active}
         >
           {active ? on : off}
           {!!badge && (
@@ -1135,25 +1948,23 @@ function VideoTile({
 }
 
 function ParticipantPanel({
-  participants, knocking, amHost, currentMemberId, meetingId, onChanged,
+  participants, knocking, amHost, currentMemberId, onAct, onAdmit,
 }: {
   participants: MeetingParticipant[];
   knocking: MeetingParticipant[];
   amHost: boolean;
   currentMemberId: string | null;
-  meetingId: string;
-  onChanged: () => void;
+  /**
+   * The room's own writer, passed down rather than rebuilt here.
+   *
+   * The panel used to hold a second copy that refreshed the list on its own,
+   * so admitting from the banner and admitting from the panel were two code
+   * paths doing the same thing — and only one of them reported success.
+   */
+  onAct: (body: Record<string, unknown>) => Promise<boolean>;
+  onAdmit: (memberIds: string[]) => Promise<void>;
 }) {
-  const act = async (body: Record<string, unknown>) => {
-    try {
-      await api(`/api/communication/meetings/${meetingId}/participants`, {
-        method: 'PATCH', body: JSON.stringify(body),
-      });
-      onChanged();
-    } catch (err: any) {
-      toast.error(err.message || 'That did not work');
-    }
-  };
+  const act = onAct;
 
   const inRoom = participants.filter(p => p.state === 'joined');
   const invited = participants.filter(p => ['invited', 'admitted'].includes(p.state));
@@ -1163,9 +1974,17 @@ function ParticipantPanel({
       <div className="space-y-5 p-4">
         {amHost && knocking.length > 0 && (
           <section>
-            <h4 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300">
-              <DoorOpen className="size-3.5" /> Waiting ({knocking.length})
-            </h4>
+            <div className="mb-2 flex items-center gap-2">
+              <h4 className="flex flex-1 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-300">
+                <DoorOpen className="size-3.5" /> Waiting ({knocking.length})
+              </h4>
+              {knocking.length > 1 && (
+                <Button size="sm" className="h-6 gap-1 bg-emerald-600 px-2 text-[11px] text-white hover:bg-emerald-700"
+                  onClick={() => void onAdmit(knocking.map(p => p.memberId))}>
+                  <UserCheck className="size-3" /> Admit all
+                </Button>
+              )}
+            </div>
             <div className="space-y-1.5">
               {knocking.map(p => (
                 <div key={p.id} className="flex items-center gap-2 rounded-lg bg-white/5 p-2">
@@ -1174,9 +1993,16 @@ function ParticipantPanel({
                       {initialsOf(p.fullName)}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="min-w-0 flex-1 truncate text-sm text-white">{p.fullName}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-white">{p.fullName}</span>
+                    {/* How long somebody has been at the door is the fact that
+                        decides whether this is urgent. */}
+                    <span className="block truncate text-[10px] text-white/40">
+                      {p.knockedAt ? `Asked ${formatRelativeTime(p.knockedAt)}` : 'Waiting'}
+                    </span>
+                  </span>
                   <Button size="sm" className="h-7 bg-emerald-600 px-2 text-xs text-white hover:bg-emerald-700"
-                    onClick={() => void act({ memberId: p.memberId, state: 'admitted' })}>
+                    onClick={() => void onAdmit([p.memberId])}>
                     Admit
                   </Button>
                   <Button size="icon" variant="ghost" className="size-7 text-white/60 hover:text-white"
