@@ -16,10 +16,11 @@
     "db:setup": "npm run db:check && npm run db:apply && npm run db:verify",
     "app:verify": "node scripts/app-verify.mjs",
     "contract:check": "node scripts/contract-check.mjs",
-    "verify:all": "npm run db:verify && npm run schema:check && npm run security:check && npm run app:verify && npm run contract:check && npm run realtime:verify",
+    "verify:all": "npm run db:verify && npm run schema:check && npm run security:check && npm run test:layout && npm run app:verify && npm run contract:check && npm run realtime:verify",
     "schema:check": "tsx scripts/schema-contract.mts",
     "realtime:verify": "node scripts/realtime-verify.mjs",
-    "security:check": "node scripts/security-check.mjs"
+    "security:check": "node scripts/security-check.mjs",
+    "test:layout": "tsx scripts/stage-layout.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

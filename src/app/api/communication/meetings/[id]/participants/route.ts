@@ -81,11 +81,29 @@ export async function POST(req: Request, { params }: Params) {
      * Where a knock lands.
      *
      * A host walks straight in — a waiting room the host waits in is a room
-     * nobody can be let out of. Somebody already admitted stays admitted, so
-     * a page reload does not put them back at the door. Everybody else knocks
-     * if there is a waiting room, and joins if there is not.
+     * nobody can be let out of.
+     *
+     * ── Coming back is not arriving ──────────────────────────────────────
+     *
+     * The other three cases are all one person: somebody who is already in
+     * this meeting and whose browser has asked again. `admitted` is the
+     * moment between the host saying yes and the seat being taken.
+     * `admitted_at` is that same yes, remembered — so leaving to take a call
+     * and coming back does not put you at the door the host already opened.
+     * `joined` means the row still says they are here, which is what a tab
+     * that crashed or a laptop that slept looks like.
+     *
+     * Without these, refreshing the page during a meeting sent you back to
+     * the waiting room and the host had to admit you a second time — which
+     * is the same interruption twice, for the crime of pressing reload. A
+     * host who does not want somebody back has `removed`, and that is checked
+     * above and is the one state that is not a way-station.
      */
-    const state = isHost || mine?.state === 'admitted'
+    const returning = mine?.state === 'admitted'
+      || mine?.state === 'joined'
+      || !!mine?.admitted_at;
+
+    const state = isHost || returning
       ? 'joined'
       : meeting.waiting_room ? 'knocking' : 'joined';
 

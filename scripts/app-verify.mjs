@@ -4505,6 +4505,126 @@ try {
   check(!(hostTray.body?.data ?? []).some(n => n.title === startedTitle),
     'while the host is not notified of their own act');
 
+  // ─────────────────────────────────────────────────────────────────────────
+  section('77. A meeting is a room, not a window somebody has open');
+  /**
+   * The room has to outlive every browser in it. A host who steps out to take
+   * a call, a laptop that sleeps, a tab closed by accident, a reload — none of
+   * those is the meeting ending, and all of them were being treated as
+   * something close to it.
+   *
+   * The two that were actually wrong on the server: a participant who had been
+   * admitted was sent back to the waiting room by a page reload, so the host
+   * had to admit them a second time for pressing refresh; and there was
+   * nothing asserting that the meeting survives its host leaving at all.
+   */
+  const persistent = await A.json('/api/communication/meetings', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: `Long call ${run}`,
+      waitingRoom: true,
+      memberIds: [memberIdC, memberIdD],
+    }),
+  });
+  const persistentId = persistent.body?.data?.id;
+  check(persistent.status === 201, `a meeting with a host and two guests (${persistent.status})`,
+    persistent.body?.error?.message);
+
+  const roomOf = async (client) => (await client.json('/api/communication/meetings'))
+    .body?.data?.find(m => m.meetingId === persistentId);
+  const seatOf = async (memberId) =>
+    (await A.json(`/api/communication/meetings/${persistentId}/participants`))
+      .body?.data?.find(p => p.memberId === memberId);
+
+  // Both guests knock; the host lets them in; both take their seats.
+  for (const guest of [C, D]) {
+    await guest.json(`/api/communication/meetings/${persistentId}/participants`, {
+      method: 'POST', body: JSON.stringify({}),
+    });
+  }
+  for (const memberId of [memberIdC, memberIdD]) {
+    await A.json(`/api/communication/meetings/${persistentId}/participants`, {
+      method: 'PATCH', body: JSON.stringify({ memberId, state: 'admitted' }),
+    });
+  }
+  for (const guest of [C, D]) {
+    await guest.json(`/api/communication/meetings/${persistentId}/participants`, {
+      method: 'POST', body: JSON.stringify({}),
+    });
+  }
+  check((await roomOf(A))?.presentCount === 2,
+    `two guests are in the room (${(await roomOf(A))?.presentCount})`);
+
+  /** A reload is a leave and a join in quick succession. */
+  await C.json(`/api/communication/meetings/${persistentId}/participants`, { method: 'DELETE' });
+  const reloaded = await C.json(`/api/communication/meetings/${persistentId}/participants`, {
+    method: 'POST', body: JSON.stringify({}),
+  });
+  check(reloaded.body?.data?.state === 'joined' && reloaded.body?.meta?.waiting !== true,
+    'somebody the host already admitted walks straight back in after a reload');
+  check((await seatOf(memberIdC))?.state === 'joined',
+    'and the room agrees they are back');
+
+  /** The host steps out. */
+  const hostLeaves = await A.json(`/api/communication/meetings/${persistentId}/participants`, {
+    method: 'DELETE',
+  });
+  check(hostLeaves.status === 200, `the host leaves (${hostLeaves.status})`);
+
+  const stillRunning = await roomOf(D);
+  check(stillRunning?.status === 'live',
+    `the meeting is still running without them (${stillRunning?.status})`);
+  check(stillRunning?.presentCount === 2,
+    `and nobody was turned out with them (${stillRunning?.presentCount} still in the room)`);
+  check((await seatOf(memberIdD))?.state === 'joined',
+    'a guest who never moved is still exactly where they were');
+
+  /** And comes back. */
+  const hostReturns = await A.json(`/api/communication/meetings/${persistentId}/participants`, {
+    method: 'POST', body: JSON.stringify({}),
+  });
+  check(hostReturns.body?.data?.state === 'joined' && hostReturns.body?.meta?.waiting !== true,
+    'the host rejoins their own meeting without knocking at their own door');
+  check(hostReturns.body?.data?.role === 'host', 'and is still the host');
+
+  const hostBack = await roomOf(A);
+  check(hostBack?.amHost === true, 'with the controls that go with it');
+  check(hostBack?.presentCount === 3,
+    `everyone is in the room (${hostBack?.presentCount})`);
+
+  const hostRuns = await A.json(`/api/communication/meetings/${persistentId}`, {
+    method: 'PATCH', body: JSON.stringify({ isLocked: true }),
+  });
+  check(hostRuns.status === 200,
+    `and can still run it after having been away (${hostRuns.status})`);
+
+  /** A guest the host removed does not get back in by reloading. */
+  await A.json(`/api/communication/meetings/${persistentId}/participants`, {
+    method: 'PATCH', body: JSON.stringify({ memberId: memberIdD, state: 'removed' }),
+  });
+  const removedRetries = await D.json(`/api/communication/meetings/${persistentId}/participants`, {
+    method: 'POST', body: JSON.stringify({}),
+  });
+  check(removedRetries.status === 403,
+    `— which is not a licence for somebody who was removed (${removedRetries.status})`);
+
+  /** The room asks for its own row, and only a real absence closes it. */
+  const oneRow = await A.json(`/api/communication/meetings?id=${persistentId}`);
+  check(oneRow.status === 200 && (oneRow.body?.data ?? []).length === 1,
+    `a meeting can be fetched on its own, in the shape the room reads (${oneRow.status})`);
+  check(oneRow.body?.data?.[0]?.meetingId === persistentId
+    && typeof oneRow.body?.data?.[0]?.amHost === 'boolean',
+    'with the host flag and the counts the room needs, not the bare table row');
+
+  const foreignRow = await B.json(`/api/communication/meetings?id=${persistentId}`);
+  check((foreignRow.body?.data ?? []).length === 0,
+    'and somebody in another organisation is told nothing at all');
+
+  const missingRow = await A.json(
+    `/api/communication/meetings?id=00000000-0000-0000-0000-000000000000`);
+  check(missingRow.status === 200 && (missingRow.body?.data ?? []).length === 0,
+    'a meeting that does not exist is an empty answer, which is what closes the room');
+
 } catch (e) {
   fail++; failed.push('harness error');
   console.error(`\n  HARNESS ERROR: ${e.message}`);

@@ -804,30 +804,6 @@ export default function CommunicationModule() {
   });
 
   /**
-   * A meeting that was open and is no longer there.
-   *
-   * Cancelling a scheduled meeting deletes the row outright, so anybody with
-   * its room open is looking at something that does not exist.
-   *
-   * The ref is what separates that from the other reason the row can be
-   * missing — it has not arrived yet, because the room was opened from an id a
-   * channel row or another module supplied before the list was fetched. Only a
-   * room that had genuinely resolved is closed; one that never has is still
-   * opening, and the shell below says so.
-   */
-  const roomResolved = useRef<string | null>(null);
-  useEffect(() => {
-    if (!activeMeetingId) { roomResolved.current = null; return; }
-    if (meetings.some(m => m.meetingId === activeMeetingId)) {
-      roomResolved.current = activeMeetingId;
-      return;
-    }
-    if (roomResolved.current !== activeMeetingId) return;
-    setActiveMeetingId(null);
-    toast('That meeting was cancelled.');
-  }, [activeMeetingId, meetings]);
-
-  /**
    * Stable handles for the room.
    *
    * Written inline they were a new function on every render of this module —
@@ -1898,28 +1874,28 @@ export default function CommunicationModule() {
         isLoading={busy}
       />
 
-      {activeMeeting ? (
+      {/*
+        The room takes an id, not a row.
+
+        It used to be rendered only while `meetings` happened to contain the
+        row, which made every background refetch of that list able to unmount a
+        meeting somebody was sitting in — closing their peer connections and
+        stopping their camera. The room fetches its own row now; the one below
+        is a seed so that opening from the list is instant.
+      */}
+      {activeMeetingId && (
         <MeetingRoom
           // Keyed by the meeting, so leaving one and joining another is a fresh
           // room rather than the previous room's state re-labelled.
-          key={activeMeeting.meetingId}
-          meeting={activeMeeting}
+          key={activeMeetingId}
+          meetingId={activeMeetingId}
+          initial={activeMeeting ?? undefined}
           currentMemberId={currentMemberId}
           directory={directory}
           onClose={closeMeeting}
           onRefresh={refreshMeetings}
         />
-      ) : activeMeetingId ? (
-        /*
-          The room was asked for by id and the list has not carried it yet.
-
-          Previously this click simply did nothing — no room, no message, no
-          way to tell whether it had registered. A shell that says what it is
-          waiting for and can be dismissed is the difference between a slow
-          open and a broken button.
-        */
-        <OpeningRoom onCancel={closeMeeting} />
-      ) : null}
+      )}
     </div>
   );
 }
@@ -1927,49 +1903,6 @@ export default function CommunicationModule() {
 // ═══════════════════════════════════════════════════════════════════════════
 //  Sidebar
 // ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * The gap between asking for a room and having one.
- *
- * It exists because a meeting can be opened by id from anywhere — a channel
- * header, a record reference in a message, another module's focus request —
- * and the list that carries the row may still be in flight. Ten seconds is
- * generous for one query; past that something is wrong and saying so is far
- * better than a spinner nobody can leave, which is the exact failure this
- * module was asked to make impossible.
- */
-function OpeningRoom({ onCancel }: { onCancel: () => void }) {
-  const [gaveUp, setGaveUp] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setGaveUp(true), 10_000);
-    return () => clearTimeout(timer);
-  }, []);
-
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-slate-950 px-6 text-center">
-      {gaveUp ? (
-        <>
-          <div className="flex size-16 items-center justify-center rounded-full bg-rose-500/15">
-            <X className="size-7 text-rose-300" />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-white">That meeting could not be opened</h3>
-            <p className="mt-1 max-w-sm text-sm text-white/60">
-              It may have ended, been cancelled, or it is not one you have been invited to.
-            </p>
-          </div>
-        </>
-      ) : (
-        <>
-          <Loader2 className="size-6 animate-spin text-white/60" />
-          <p className="text-xs text-white/40">Opening the meeting…</p>
-        </>
-      )}
-      <Button variant="secondary" onClick={onCancel}>Close</Button>
-    </div>
-  );
-}
 
 function ChannelTypeIcon({ type, className }: { type: string; className?: string }) {
   const cls = cn('size-4 shrink-0', className);

@@ -41,8 +41,25 @@ export async function GET(req: Request) {
 
   const channelId = searchParams.get('channelId') ?? searchParams.get('channel_id');
   const status = searchParams.get('status');
+  /**
+   * One meeting, in the shape the list uses.
+   *
+   * `GET /meetings/{id}` already exists and answers with the raw `meetings`
+   * row, which is a narrower and differently shaped thing — no host name, no
+   * channel label, no counts, no `amHost`. The meeting room needs the overview
+   * row, and needs to be able to ask for its own without depending on a list
+   * fetched by somebody else: a room that reads its meeting out of the module's
+   * list closes itself the moment that list has a bad second.
+   *
+   * A filter rather than a second endpoint, because it is the same query with
+   * the same permissions — `meeting_overview()` returns only meetings the
+   * caller can see, so an id nobody may see comes back as an empty list, which
+   * is exactly what "gone" and "not yours" should both look like.
+   */
+  const id = searchParams.get('id');
 
   let filtered = rows;
+  if (id) filtered = filtered.filter(r => r.meeting_id === id);
   if (channelId) filtered = filtered.filter(r => r.channel_id === channelId);
   if (status && status !== 'all') filtered = filtered.filter(r => r.status === status);
 

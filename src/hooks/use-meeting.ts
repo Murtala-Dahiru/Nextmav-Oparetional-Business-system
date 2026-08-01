@@ -75,6 +75,45 @@ const ICE_SERVERS: RTCIceServer[] = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
 ];
 
+/**
+ * How often the roster and the connections are compared.
+ *
+ * ── Why a sweep exists at all ────────────────────────────────────────────
+ *
+ * Connections used to be created by exactly one thing: the `hello` broadcast a
+ * browser sends the moment it subscribes. Everybody who receives it and already
+ * has that person on their roster opens a connection; everybody who does not,
+ * ignores it — and the roster arrives separately, over a different subscription,
+ * on its own schedule.
+ *
+ * So the two racing was the whole bug. A host who leaves and comes back
+ * announces themselves to a room whose participant lists still say they are
+ * gone, every one of those browsers discards the announcement, and nothing ever
+ * says it again. The rejoining host sits looking at a grid of spinners that
+ * will never resolve, and so does everybody else. That is the "meeting is stuck
+ * loading after the host rejoins" report, and no amount of retrying the *join*
+ * fixes it, because the join worked.
+ *
+ * The cure is to stop treating a broadcast as the source of truth. The server's
+ * participant list already says who is in the room; this compares that list
+ * with the connections that exist and fixes the difference — so a missed
+ * announcement costs a couple of seconds instead of the rest of the meeting.
+ * `hello` is kept as the fast path.
+ */
+const SWEEP_MS = 2500;
+
+/**
+ * How long a connection may sit not-connected before it is rebuilt.
+ *
+ * Long enough for ICE on a slow network with a couple of candidate pairs to
+ * try; short enough that somebody does not sit watching a placeholder wondering
+ * whether it is them.
+ */
+const STALL_MS = 12_000;
+
+/** How many times one peer is rebuilt before it is called unreachable. */
+const MAX_REBUILDS = 3;
+
 export function useMeeting({
   meetingId, memberId, admitted, audioOnly, enabled,
 }: UseMeetingOptions) {
@@ -87,6 +126,17 @@ export function useMeeting({
   const [mediaError, setMediaError] = useState<string | null>(null);
   /** A connection to rebuild after a failure. See the effect below `connect`. */
   const [rebuild, setRebuild] = useState<{ peerId: string; at: number } | null>(null);
+  /** Whether the signalling channel is actually carrying anything yet. */
+  const [linked, setLinked] = useState(false);
+  /**
+   * People the server says are in the room that this browser could not reach.
+   *
+   * Rendered as a state rather than left as a spinner. A tile that spins for
+   * ever is the single most common way a mesh fails in front of somebody, and
+   * it is indistinguishable from a slow network right up until the meeting is
+   * over.
+   */
+  const [unreachable, setUnreachable] = useState<string[]>([]);
 
   const connections = useRef(new Map<string, RTCPeerConnection>());
   /**
@@ -110,6 +160,15 @@ export function useMeeting({
    * with no TURN server — and retrying that for ever is a loop, not a recovery.
    */
   const rebuilds = useRef(new Map<string, number>());
+  /**
+   * When each connection was opened, for the stall check in the sweep below.
+   *
+   * `RTCPeerConnection` reaches `failed` only after ICE has exhausted its own
+   * timers, which is tens of seconds — and never at all for the case that
+   * matters most here, an offer sent to a browser that was not yet listening.
+   * That connection sits in `new` indefinitely with nothing to report.
+   */
+  const openedAt = useRef(new Map<string, number>());
   const localRef = useRef<MediaStream | null>(null);
   /** The camera track, kept aside while a screen share is standing in for it. */
   const cameraTrack = useRef<MediaStreamTrack | null>(null);
@@ -127,6 +186,7 @@ export function useMeeting({
     connections.current.get(peerId)?.close();
     connections.current.delete(peerId);
     pendingIce.current.delete(peerId);
+    openedAt.current.delete(peerId);
     setPeers(prev => prev.filter(p => p.memberId !== peerId));
   }, []);
 
@@ -146,6 +206,7 @@ export function useMeeting({
 
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     connections.current.set(peerId, pc);
+    openedAt.current.set(peerId, Date.now());
 
     for (const track of localRef.current?.getTracks() ?? []) {
       pc.addTrack(track, localRef.current!);
@@ -179,6 +240,7 @@ export function useMeeting({
         // It came back, so the budget for rebuilding it is restored — a call
         // that survives four separate blips over an hour is a call that worked.
         rebuilds.current.delete(peerId);
+        setUnreachable(prev => (prev.includes(peerId) ? prev.filter(id => id !== peerId) : prev));
       }
       /**
        * `failed` is terminal for *this* connection — it will not recover on its
@@ -194,7 +256,10 @@ export function useMeeting({
       if (pc.connectionState === 'failed') {
         const used = rebuilds.current.get(peerId) ?? 0;
         dropPeer(peerId);
-        if (used >= 3 || !admittedRef.current.includes(peerId)) return;
+        if (used >= MAX_REBUILDS || !admittedRef.current.includes(peerId)) {
+          setUnreachable(prev => (prev.includes(peerId) ? prev : [...prev, peerId]));
+          return;
+        }
         rebuilds.current.set(peerId, used + 1);
         post('reset', { from: memberId, to: peerId });
         // Asked for rather than done here: this is the function that would be
@@ -236,6 +301,97 @@ export function useMeeting({
     }, 400);
     return () => clearTimeout(timer);
   }, [rebuild, enabled, memberId, connect]);
+
+  /**
+   * The roster and the connections, compared.
+   *
+   * See the note on `SWEEP_MS`. Three jobs, in the order they matter:
+   *
+   *   1. Anybody the server says is in the room that this browser has no
+   *      connection to gets one. This is what makes a missed `hello` — the
+   *      rejoining host, the participant whose tab was asleep, the browser that
+   *      subscribed a second after the announcement went out — cost two seconds
+   *      instead of the rest of the meeting.
+   *   2. A connection that has sat not-connected past `STALL_MS` is torn down
+   *      and rebuilt. `RTCPeerConnection` will not report this itself: an offer
+   *      sent to a browser that was not listening leaves a connection in `new`
+   *      for ever, with no event and nothing to observe.
+   *   3. Anybody who has left keeps nothing open.
+   *
+   * Gated on `linked`, because every one of those actions sends something, and
+   * something sent before the channel has subscribed is discarded — which would
+   * make the first sweep of every meeting a wasted round of offers that then
+   * have to time out.
+   */
+  const rosterKey = admitted.join('|');
+
+  useEffect(() => {
+    if (!enabled || !memberId || !linked) return;
+
+    const sweep = () => {
+      const now = Date.now();
+      const roster = admittedRef.current;
+
+      for (const peerId of roster) {
+        if (connections.current.has(peerId)) continue;
+        if ((rebuilds.current.get(peerId) ?? 0) >= MAX_REBUILDS) continue;
+
+        const initiate = memberId < peerId;
+        connect(peerId, initiate);
+
+        /**
+         * The waiting side says hello; the offering side does not.
+         *
+         * `welcome` tells the far end to throw away a half-negotiated
+         * connection and start again, which is exactly what is needed when this
+         * browser is the one that waits: the other end's roster was ahead of
+         * ours, it already sent an offer we discarded, and nothing would ever
+         * make it send another.
+         *
+         * Sending it from the *offering* side as well would be symmetrical and
+         * wrong. Both browsers sweep at the same moment on a first join, so
+         * both would ask the other to reset — and the reset would land on the
+         * offer that had just been made, discarding it. One direction only, and
+         * which direction is decided by the same id ordering that decides who
+         * offers, so the two can never disagree.
+         */
+        if (!initiate) post('welcome', { from: memberId, to: peerId });
+      }
+
+      for (const [peerId, pc] of [...connections.current]) {
+        if (pc.connectionState === 'connected') continue;
+        if (now - (openedAt.current.get(peerId) ?? now) < STALL_MS) continue;
+
+        const used = rebuilds.current.get(peerId) ?? 0;
+        dropPeer(peerId);
+        if (used >= MAX_REBUILDS || !roster.includes(peerId)) {
+          setUnreachable(prev => (prev.includes(peerId) ? prev : [...prev, peerId]));
+          continue;
+        }
+        rebuilds.current.set(peerId, used + 1);
+        // Both halves have to let go, or the offer that follows arrives at a
+        // connection the far end still believes in and is discarded.
+        post('reset', { from: memberId, to: peerId });
+        setRebuild({ peerId, at: now });
+      }
+
+      for (const peerId of [...connections.current.keys()]) {
+        if (!roster.includes(peerId)) dropPeer(peerId);
+      }
+
+      setUnreachable(prev => {
+        const kept = prev.filter(id => roster.includes(id));
+        return kept.length === prev.length ? prev : kept;
+      });
+    };
+
+    sweep();
+    const timer = setInterval(sweep, SWEEP_MS);
+    return () => clearInterval(timer);
+    // `rosterKey` rather than `admitted`: the list is rebuilt on every refetch,
+    // so depending on the array itself would restart this interval a few times
+    // a second while nothing about who is here had changed.
+  }, [enabled, memberId, linked, rosterKey, connect, dropPeer, post]);
 
   const flushIce = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
     const queued = pendingIce.current.get(peerId);
@@ -315,6 +471,23 @@ export function useMeeting({
       if (cancelled) return;
 
       chan
+        /**
+         * Somebody has started listening.
+         *
+         * Both handlers throw away a connection to that person that has not
+         * reached `connected`, and start again. It is not tidiness: an offer
+         * sent to a browser that was not yet subscribed went nowhere, and the
+         * `RTCPeerConnection` left behind is in `new` with a local description
+         * set — so the far end's next attempt finds a connection this side
+         * believes is already negotiated, and nothing more is ever sent. That
+         * is a permanent spinner, cleared here in one round trip instead of
+         * waiting `STALL_MS` for the sweep to notice.
+         *
+         * The roster is still the gate. A browser that merely *says* it is in
+         * the meeting is offered nothing — the participant row is what decides,
+         * and if it has not arrived yet the sweep will connect within a couple
+         * of seconds once it has.
+         */
         .on('broadcast', { event: 'hello' }, ({ payload }: any) => {
           const from = payload?.from;
           if (!from || from === memberId) return;
@@ -322,12 +495,16 @@ export function useMeeting({
           // Answer so the newcomer learns who is already here, then let the id
           // ordering decide which of the two makes the offer.
           post('welcome', { from: memberId, to: from });
+          const existing = connections.current.get(from);
+          if (existing && existing.connectionState !== 'connected') dropPeer(from);
           connect(from, memberId < from);
         })
         .on('broadcast', { event: 'welcome' }, ({ payload }: any) => {
           const from = payload?.from;
           if (!from || payload?.to !== memberId) return;
           if (!admittedRef.current.includes(from)) return;
+          const existing = connections.current.get(from);
+          if (existing && existing.connectionState !== 'connected') dropPeer(from);
           connect(from, memberId < from);
         })
         .on('broadcast', { event: 'offer' }, ({ payload }: any) => {
@@ -391,9 +568,14 @@ export function useMeeting({
         });
 
       chan.subscribe((state) => {
-        if (state === 'SUBSCRIBED' && !cancelled) {
+        if (cancelled) return;
+        if (state === 'SUBSCRIBED') {
+          // The sweep is gated on this: everything it does is a message, and a
+          // message sent before the channel has joined is simply dropped.
+          setLinked(true);
           post('hello', { from: memberId });
-        } else if (state === 'CHANNEL_ERROR' || state === 'TIMED_OUT') {
+        } else if (state === 'CHANNEL_ERROR' || state === 'TIMED_OUT' || state === 'CLOSED') {
+          setLinked(false);
           setStatus('failed');
         }
       });
@@ -411,6 +593,9 @@ export function useMeeting({
       connections.current.clear();
       pendingIce.current.clear();
       rebuilds.current.clear();
+      openedAt.current.clear();
+      setLinked(false);
+      setUnreachable([]);
       localRef.current?.getTracks().forEach(t => t.stop());
       localRef.current = null;
       cameraTrack.current = null;
@@ -539,6 +724,15 @@ export function useMeeting({
     camOn,
     sharing,
     mediaError,
+    /**
+     * People the room says are here that this browser has given up reaching.
+     *
+     * The grid renders them as a stated failure rather than a spinner. Without
+     * a TURN server a symmetric NAT genuinely cannot be traversed, and the
+     * honest thing is to say so — the alternative is an animation that promises
+     * something is still happening when nothing is.
+     */
+    unreachable,
     toggleMic,
     toggleCam,
     toggleShare,

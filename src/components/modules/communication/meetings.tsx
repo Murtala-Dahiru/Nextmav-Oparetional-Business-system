@@ -1,12 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Video, VideoOff, Mic, MicOff, MonitorUp, PhoneOff, Hand, Users, Lock, Unlock,
   Calendar, Plus, Loader2, DoorOpen, ShieldCheck, NotebookPen, UserX, Radio,
   Clock, MoreHorizontal, Link2, X, CheckCheck, RefreshCw, TriangleAlert,
-  UserCheck, FileText, UserPlus,
+  UserCheck, FileText, UserPlus, WifiOff,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -40,6 +40,7 @@ import {
   type ChannelRow, type DirectoryMember, type MeetingParticipant, type MeetingRow,
   api, avatarColor, channelLabel,
 } from './types';
+import { SOLO_MAX, TILE_GAP, TILE_MIN, fitTiles } from './stage-layout';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  The list
@@ -851,15 +852,155 @@ export function ScheduleMeetingDialog({
  * in the module shell for why holding a copy of it was the source of half of
  * the above.
  */
+/**
+ * The room, holding its own meeting.
+ *
+ * ── Why this is not the module's row any more ────────────────────────────
+ *
+ * It used to take `meeting: MeetingRow` from the module's list, and be rendered
+ * only while that list happened to contain it. Which made every refetch of that
+ * list a hazard: one request that failed, raced, or came back a moment stale
+ * and the row was gone for a render — the room unmounted, the peer connections
+ * closed, the camera stopped, and everybody in the meeting was dropped by
+ * somebody else's background fetch. Saving the notes triggered exactly that
+ * refetch, which is why writing them up could put people out of the call.
+ *
+ * A meeting is not a view of a list. It fetches its own row, by id, and keeps
+ * the last one it had if a refresh fails. The only thing that closes it is the
+ * server saying the meeting has ended, or that it no longer exists.
+ */
 export function MeetingRoom({
-  meeting, currentMemberId, directory, onClose, onRefresh,
+  meetingId, initial, currentMemberId, directory, onClose, onRefresh,
 }: {
-  meeting: MeetingRow;
+  meetingId: string;
+  /**
+   * The row the module already had, if it had one.
+   *
+   * Only a seed for the first paint — the room refetches immediately either
+   * way. Passing it means opening a meeting from the list is instant rather
+   * than a spinner over a request that was already answered a second ago.
+   */
+  initial?: MeetingRow;
   currentMemberId: string | null;
   /** Colleagues who can be pulled into a meeting that has already started. */
   directory: DirectoryMember[];
   onClose: () => void;
   onRefresh: () => void;
+}) {
+  const [meeting, setMeeting] = useState<MeetingRow | null>(initial ?? null);
+  const [gone, setGone] = useState(false);
+  const [slow, setSlow] = useState(false);
+
+  /**
+   * Asking again is a counter, and the fetch lives in the effect.
+   *
+   * The obvious shape — an async `useCallback` the effect calls — is what
+   * `react-hooks/set-state-in-effect` objects to, and the objection has a point
+   * here: the request has to be abandoned when the room closes or the meeting
+   * changes, and a callback that owns its own setState has nowhere to put that.
+   * A tick the effect reads is one place to express both.
+   */
+  const [reloadTick, setReloadTick] = useState(0);
+  const loadMeeting = useCallback(() => setReloadTick(t => t + 1), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await api<MeetingRow[]>(
+          `/api/communication/meetings?id=${encodeURIComponent(meetingId)}`);
+        if (cancelled) return;
+        if (rows?.length) { setMeeting(rows[0]); setGone(false); }
+        // An empty answer is the server saying this meeting is not there — for
+        // this caller, which is the same thing. `meeting_overview()` returns
+        // only what the caller may see, so "deleted" and "never yours" arrive
+        // alike, and both mean the room should close.
+        else setGone(true);
+      } catch {
+        // A failed refresh keeps the last known row. Half a second of network
+        // trouble is not a reason to end somebody's meeting.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [meetingId, reloadTick]);
+
+  /** No loading state without a way out of it. */
+  useEffect(() => {
+    if (meeting || gone) return;
+    const timer = setTimeout(() => setSlow(true), 10_000);
+    return () => clearTimeout(timer);
+  }, [meeting, gone]);
+
+  if (gone) {
+    return (
+      <RoomShell title="Meeting" onClose={onClose}>
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
+          <div className="flex size-16 items-center justify-center rounded-full bg-white/10">
+            <Video className="size-7 text-white/60" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">This meeting is no longer available</h3>
+            <p className="mt-1 max-w-sm text-sm text-white/60">
+              It was cancelled, or it is not one you have been invited to.
+            </p>
+          </div>
+          <Button variant="secondary" onClick={onClose}>Close</Button>
+        </div>
+      </RoomShell>
+    );
+  }
+
+  if (!meeting) {
+    return (
+      <RoomShell title="Meeting" onClose={onClose}>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+          {slow ? (
+            <>
+              <TriangleAlert className="size-6 text-amber-300" />
+              <p className="max-w-sm text-sm text-white/70">
+                This is taking longer than it should. The meeting could not be loaded.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={onClose}>Close</Button>
+                <Button className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+                  onClick={() => { setSlow(false); void loadMeeting(); }}>
+                  <RefreshCw className="size-3.5" /> Try again
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <Loader2 className="size-6 animate-spin text-white/60" />
+              <p className="text-xs text-white/40">Opening the meeting…</p>
+            </>
+          )}
+        </div>
+      </RoomShell>
+    );
+  }
+
+  return (
+    <Room
+      meeting={meeting}
+      currentMemberId={currentMemberId}
+      directory={directory}
+      onClose={onClose}
+      onRefresh={onRefresh}
+      onMeetingChanged={loadMeeting}
+    />
+  );
+}
+
+function Room({
+  meeting, currentMemberId, directory, onClose, onRefresh, onMeetingChanged,
+}: {
+  meeting: MeetingRow;
+  currentMemberId: string | null;
+  directory: DirectoryMember[];
+  onClose: () => void;
+  onRefresh: () => void;
+  /** Refetch this room's own meeting row. */
+  onMeetingChanged: () => void;
 }) {
   const [participants, setParticipants] = useState<MeetingParticipant[]>([]);
   /**
@@ -928,7 +1069,25 @@ export function MeetingRoom({
    */
   const refresh = useRef(onRefresh);
   const close = useRef(onClose);
-  useEffect(() => { refresh.current = onRefresh; close.current = onClose; });
+  const reload = useRef(onMeetingChanged);
+  useEffect(() => {
+    refresh.current = onRefresh;
+    close.current = onClose;
+    reload.current = onMeetingChanged;
+  });
+
+  /**
+   * Everything that changes this meeting refreshes both.
+   *
+   * `reload` is this room's own row and is what the screen reads; `refresh` is
+   * the module's list behind it, so the card, the sidebar dot and the Join
+   * button outside agree. The room does not *depend* on the second — that
+   * dependency is what used to drop people out of a call.
+   */
+  const changed = useCallback(() => {
+    reload.current();
+    refresh.current();
+  }, []);
 
   const loadParticipants = useCallback(async () => {
     try {
@@ -994,7 +1153,7 @@ export function MeetingRoom({
     started.current = true;
     void api(`/api/communication/meetings/${meeting.meetingId}`, {
       method: 'PATCH', body: JSON.stringify({ status: 'live' }),
-    }).then(() => refresh.current()).catch(() => { started.current = false; });
+    }).then(changed).catch(() => { started.current = false; });
   }, [meeting.amHost, meeting.status, meeting.meetingId]);
 
   /**
@@ -1012,7 +1171,7 @@ export function MeetingRoom({
       { table: 'meeting_participants', filter: `meeting_id=eq.${meeting.meetingId}` },
       { table: 'meetings', filter: `id=eq.${meeting.meetingId}` },
     ],
-    onChange: () => { void loadParticipants(); refresh.current(); },
+    onChange: () => { void loadParticipants(); changed(); },
   });
 
   /**
@@ -1026,7 +1185,7 @@ export function MeetingRoom({
    */
   useEffect(() => {
     if (live === 'subscribed') return;
-    const timer = setInterval(() => { void loadParticipants(); refresh.current(); }, 5000);
+    const timer = setInterval(() => { void loadParticipants(); changed(); }, 5000);
     return () => clearInterval(timer);
   }, [live, loadParticipants]);
 
@@ -1054,6 +1213,24 @@ export function MeetingRoom({
     toast.error('The host removed you from the meeting.');
     close.current();
   }, [seat, myState]);
+
+  /**
+   * The room says we are not here, and we are.
+   *
+   * Two ways that happens, both ordinary. A phone puts a backgrounded tab into
+   * the back/forward cache, which fires `pagehide` — so the tab politely
+   * announced it was leaving and was then restored intact. And a `left` written
+   * by a request that raced a rejoin leaves the same disagreement.
+   *
+   * Either way this browser is sitting in a meeting nobody else can see it in:
+   * no tile in their grid, no connection offered, because the roster is what
+   * every other browser consults. Taking the seat back is silent and is what
+   * the person plainly meant.
+   */
+  useEffect(() => {
+    if (seat !== 'in' || myState !== 'left') return;
+    void requestSeat();
+  }, [seat, myState, requestSeat]);
 
   /**
    * The meeting is over.
@@ -1134,6 +1311,35 @@ export function MeetingRoom({
     close.current();
   }, [meeting.meetingId]);
 
+  /**
+   * A tab that is closed still leaves the meeting.
+   *
+   * Without this, closing the window or quitting the browser left the
+   * participant row saying `joined` for ever: a name in the list, a tile in
+   * everybody's grid, and a connection every other browser kept trying to
+   * make. `keepalive` is what lets the request outlive the page — an ordinary
+   * `fetch` is cancelled the moment the document goes.
+   *
+   * `pagehide` rather than `beforeunload`, because the latter is not fired at
+   * all on mobile Safari and is what the bfcache was built to avoid. It is
+   * best-effort by nature: a crash or a lost battery still leaves a row, which
+   * is why the grid can say "could not connect to them" rather than spinning.
+   */
+  const meetingId = meeting.meetingId;
+  useEffect(() => {
+    if (seat !== 'in') return;
+    const bail = () => {
+      try {
+        void fetch(`/api/communication/meetings/${meetingId}/participants`, {
+          method: 'DELETE',
+          keepalive: true,
+        });
+      } catch { /* the page is going; there is nobody left to tell */ }
+    };
+    window.addEventListener('pagehide', bail);
+    return () => window.removeEventListener('pagehide', bail);
+  }, [seat, meetingId]);
+
   const knocking = useMemo(
     () => participants.filter(p => p.state === 'knocking'),
     [participants],
@@ -1142,6 +1348,108 @@ export function MeetingRoom({
     () => participants.filter(p => p.state === 'joined'),
     [participants],
   );
+
+  /**
+   * Everything the grid shows, as one list.
+   *
+   * Assembled before it is rendered because the layout has to be sized to the
+   * *count* — you cannot fit tiles to a stage while still discovering how many
+   * there are halfway down the JSX. It also puts the three sources in one
+   * place: you, the people whose media has arrived, and the people the server
+   * says are here whose media has not.
+   */
+  const tiles = useMemo(() => {
+    const list: {
+      id: string;
+      stream: MediaStream | null;
+      label: string;
+      memberId: string;
+      muted?: boolean;
+      mirrored?: boolean;
+      cameraOff?: boolean;
+      micOff?: boolean;
+      handUp?: boolean;
+      sharing?: boolean;
+      connecting?: boolean;
+      unreachable?: boolean;
+    }[] = [{
+      id: 'self',
+      stream: media.localStream,
+      label: 'You',
+      memberId: currentMemberId ?? 'me',
+      muted: true,
+      mirrored: !media.sharing,
+      cameraOff: !media.camOn,
+      micOff: !media.micOn,
+      sharing: media.sharing,
+    }];
+
+    for (const peer of media.peers) {
+      const person = participants.find(p => p.memberId === peer.memberId);
+      list.push({
+        id: peer.memberId,
+        stream: peer.stream,
+        label: person?.fullName ?? 'Someone',
+        memberId: peer.memberId,
+        cameraOff: !person?.cameraOn && !peer.hasVideo,
+        micOff: !!person?.isMuted,
+        handUp: !!person?.handRaisedAt,
+        sharing: !!person?.isSharing,
+      });
+    }
+
+    /**
+     * Somebody the room says is here whose media has not arrived.
+     *
+     * They get a tile rather than being missing — "is Ada here?" should be
+     * answerable from the grid. What changed is that the tile now distinguishes
+     * "still connecting" from "this browser could not reach them", which used
+     * to be the same eternal spinner.
+     */
+    for (const p of present) {
+      if (p.memberId === currentMemberId) continue;
+      if (media.peers.some(peer => peer.memberId === p.memberId)) continue;
+      const lost = media.unreachable.includes(p.memberId);
+      list.push({
+        id: p.memberId,
+        stream: null,
+        label: p.fullName,
+        memberId: p.memberId,
+        cameraOff: true,
+        micOff: p.isMuted,
+        handUp: !!p.handRaisedAt,
+        connecting: !lost,
+        unreachable: lost,
+      });
+    }
+
+    return list;
+  }, [
+    media.localStream, media.camOn, media.micOn, media.sharing,
+    media.peers, media.unreachable, participants, present, currentMemberId,
+  ]);
+
+  /**
+   * Whether this browser can share a screen at all.
+   *
+   * Read once, after mount rather than during render: `navigator` does not
+   * exist while the module is rendered on the server, and a value that differs
+   * between the server's HTML and the client's first render is a hydration
+   * mismatch.
+   */
+  const [canShareScreen, setCanShareScreen] = useState(false);
+  useEffect(() => {
+    setCanShareScreen(typeof navigator !== 'undefined'
+      && typeof navigator.mediaDevices?.getDisplayMedia === 'function');
+  }, []);
+
+  const stage = useStageLayout(tiles.length, TILE_GAP);
+  const cramped = stage.width > 0 && stage.width < TILE_MIN;
+  const tileWidth = cramped
+    ? TILE_MIN
+    : tiles.length === 1
+      ? Math.min(stage.width, SOLO_MAX)
+      : stage.width;
 
   /**
    * Running the meeting, from inside it.
@@ -1157,7 +1465,7 @@ export function MeetingRoom({
       await api(`/api/communication/meetings/${meeting.meetingId}`, {
         method: 'PATCH', body: JSON.stringify(body),
       });
-      refresh.current();
+      changed();
       return true;
     } catch (err: any) {
       toast.error(err.message || 'Could not change the meeting');
@@ -1296,7 +1604,7 @@ export function MeetingRoom({
         {/* ── The grid ── */}
         <div className="flex min-w-0 flex-1 flex-col">
           {media.mediaError && (
-            <div className="mx-4 mt-3 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            <div className="mx-3 mt-3 flex shrink-0 items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 sm:mx-4">
               <span className="flex-1">{media.mediaError}</span>
               {/*
                 The message said what to do — allow it in the address bar — and
@@ -1322,7 +1630,7 @@ export function MeetingRoom({
             and a meeting somebody can do something about.
           */}
           {media.status === 'failed' && (
-            <div className="mx-4 mt-3 flex items-center gap-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+            <div className="mx-3 mt-3 flex shrink-0 items-center gap-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 sm:mx-4">
               <TriangleAlert className="size-3.5 shrink-0" />
               <span className="flex-1">
                 The connection to this room dropped. Your network may be blocking direct
@@ -1344,7 +1652,7 @@ export function MeetingRoom({
             panel stays an option rather than a detour.
           */}
           {amHost && knocking.length > 0 && (
-            <div className="mx-4 mt-3 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2.5">
+            <div className="mx-3 mt-3 shrink-0 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2.5 sm:mx-4">
               <div className="flex items-center gap-2">
                 <DoorOpen className="size-4 shrink-0 text-amber-300" />
                 <p className="flex-1 text-xs font-medium text-amber-100">
@@ -1397,61 +1705,56 @@ export function MeetingRoom({
             </div>
           )}
 
-          <div className={cn(
-            'grid flex-1 content-center gap-3 p-4',
-            media.peers.length === 0 ? 'grid-cols-1'
-              : media.peers.length <= 1 ? 'grid-cols-1 sm:grid-cols-2'
-              : media.peers.length <= 3 ? 'grid-cols-2'
-              : 'grid-cols-2 lg:grid-cols-3',
-          )}>
-            <VideoTile
-              stream={media.localStream}
-              label="You"
-              muted
-              mirrored={!media.sharing}
-              cameraOff={!media.camOn}
-              micOff={!media.micOn}
-              sharing={media.sharing}
-              memberId={currentMemberId ?? 'me'}
-            />
-            {media.peers.map(peer => {
-              const person = participants.find(p => p.memberId === peer.memberId);
-              return (
+          <div
+            ref={stage.ref}
+            className={cn(
+              'flex min-h-0 flex-1 justify-center p-2.5 sm:p-4',
+              // Below a readable tile size the stage stops shrinking and starts
+              // scrolling: twenty people at 40px each is not a smaller version
+              // of the layout, it is an unusable one.
+              cramped ? 'items-start overflow-y-auto' : 'items-center overflow-hidden',
+            )}
+          >
+            <div
+              className="grid"
+              style={
+                stage.width > 0
+                  ? { gap: TILE_GAP, gridTemplateColumns: `repeat(${stage.cols}, ${tileWidth}px)` }
+                  // Before the first measurement — one frame — a sensible CSS
+                  // grid, so the room does not open on an empty stage.
+                  : {
+                      gap: TILE_GAP,
+                      width: '100%',
+                      gridTemplateColumns: `repeat(${Math.min(tiles.length, 2)}, minmax(0, 1fr))`,
+                    }
+              }
+            >
+              {tiles.map(tile => (
                 <VideoTile
-                  key={peer.memberId}
-                  stream={peer.stream}
-                  label={person?.fullName ?? 'Someone'}
-                  cameraOff={!person?.cameraOn && !peer.hasVideo}
-                  micOff={!!person?.isMuted}
-                  handUp={!!person?.handRaisedAt}
-                  sharing={!!person?.isSharing}
-                  memberId={peer.memberId}
-                />
-              );
-            })}
-
-            {/* Somebody who has joined but has not connected yet gets a tile
-                rather than being missing: "is Ada here?" should be answerable
-                from the grid, not from the participant panel. */}
-            {present
-              .filter(p => p.memberId !== currentMemberId
-                && !media.peers.some(peer => peer.memberId === p.memberId))
-              .map(p => (
-                <VideoTile
-                  key={p.memberId}
-                  stream={null}
-                  label={p.fullName}
-                  connecting
-                  cameraOff
-                  micOff={p.isMuted}
-                  handUp={!!p.handRaisedAt}
-                  memberId={p.memberId}
+                  key={tile.id}
+                  stream={tile.stream}
+                  label={tile.label}
+                  memberId={tile.memberId}
+                  muted={tile.muted}
+                  mirrored={tile.mirrored}
+                  cameraOff={tile.cameraOff}
+                  micOff={tile.micOff}
+                  handUp={tile.handUp}
+                  sharing={tile.sharing}
+                  connecting={tile.connecting}
+                  unreachable={tile.unreachable}
+                  compact={tileWidth > 0 && tileWidth < 220}
                 />
               ))}
+            </div>
           </div>
 
-          {/* ── Controls ── */}
-          <div className="flex flex-wrap items-center justify-center gap-2 border-t border-white/10 px-4 py-3">
+          {/* ── Controls ──
+              `shrink-0`, without exception. These are the buttons that mute a
+              microphone and leave a call; a layout that can push them off the
+              bottom of the screen under pressure from a video tile is the
+              layout that made this whole section necessary. */}
+          <div className="flex shrink-0 flex-wrap items-center justify-center gap-1.5 border-t border-white/10 px-2 py-2.5 sm:gap-2 sm:px-4 sm:py-3">
             <TooltipProvider delayDuration={300}>
               <ControlButton
                 active={media.micOn}
@@ -1472,14 +1775,19 @@ export function MeetingRoom({
                   label={media.camOn ? 'Turn camera off' : 'Turn camera on'}
                 />
               )}
-              <ControlButton
-                active={media.sharing}
-                activeClass="bg-emerald-600 hover:bg-emerald-700"
-                onClick={() => void media.toggleShare()}
-                on={<MonitorUp className="size-4" />}
-                off={<MonitorUp className="size-4" />}
-                label={media.sharing ? 'Stop sharing' : 'Share your screen'}
-              />
+              {/* Hidden where the browser cannot do it at all — iOS Safari has
+                  no `getDisplayMedia`, and a button whose only possible outcome
+                  is nothing happening is worse than no button. */}
+              {canShareScreen && (
+                <ControlButton
+                  active={media.sharing}
+                  activeClass="bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => void media.toggleShare()}
+                  on={<MonitorUp className="size-4" />}
+                  off={<MonitorUp className="size-4" />}
+                  label={media.sharing ? 'Stop sharing' : 'Share your screen'}
+                />
+              )}
               <ControlButton
                 active={handUp}
                 activeClass="bg-amber-500 hover:bg-amber-600"
@@ -1615,7 +1923,7 @@ export function MeetingRoom({
                         // was just accepted is still what is on screen.
                         setDraft(null);
                         toast.success('Notes saved');
-                        refresh.current();
+                        changed();
                       } catch (err: any) {
                         toast.error(err.message || 'Could not save the notes');
                       } finally {
@@ -1644,7 +1952,7 @@ export function MeetingRoom({
         directory={directory.filter(d =>
           !participants.some(p => p.memberId === d.memberId
             && !['left', 'removed', 'declined'].includes(p.state)))}
-        onInvited={() => { setInviteOpen(false); void loadParticipants(); refresh.current(); }}
+        onInvited={() => { setInviteOpen(false); void loadParticipants(); changed(); }}
       />
 
       <ConfirmDialog
@@ -1780,6 +2088,63 @@ function InviteToMeetingDialog({
   );
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  How the tiles are laid out
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * ── Why this is measured rather than a set of breakpoints ────────────────
+ *
+ * It was `grid-cols-1` for one person, `sm:grid-cols-2` for two, and so on.
+ * Tailwind columns divide the *width*; the tiles are 16:9, so their height
+ * follows from that width and nothing bounds it. One participant on a desktop
+ * therefore got a tile as wide as the room and 56% of that tall — taller than
+ * the space available — which pushed the control bar off the bottom of the
+ * screen. The mute button was unreachable in a one-to-one call, which is the
+ * most common call there is.
+ *
+ * Columns cannot fix that, because the constraint is the *height* and CSS
+ * columns do not know it. So the stage is measured and the tile size is chosen
+ * to fit both dimensions: for each possible column count, the width a tile
+ * would get, the height that implies for the rows it needs, and whichever
+ * arrangement yields the largest tile that still fits. That is the same
+ * calculation every video product does, and it is the only one that behaves on
+ * a phone in portrait, a laptop, and a wide monitor with the participant panel
+ * open — without a breakpoint for each.
+ *
+ * It also means the layout responds to the panel opening and to the window
+ * resizing, both of which change the stage and neither of which a media query
+ * on the viewport can see.
+ */
+function useStageLayout(count: number, gap: number) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new ResizeObserver(entries => {
+      const rect = entries[0]?.contentRect;
+      if (!rect) return;
+      // Rounded, so a sub-pixel reflow does not re-render the grid for ever.
+      setBox(prev => {
+        const w = Math.round(rect.width);
+        const h = Math.round(rect.height);
+        return prev.w === w && prev.h === h ? prev : { w, h };
+      });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const layout = useMemo(
+    () => fitTiles(count, box.w, box.h, gap),
+    [count, box.w, box.h, gap],
+  );
+
+  return { ref, ...layout };
+}
+
 function RoomShell({
   title, subtitle, badge, children, onClose,
 }: {
@@ -1790,7 +2155,19 @@ function RoomShell({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-950">
+    /*
+      The room is a full-screen overlay, so it owns the whole device — including
+      the parts of it a phone reserves. Without the safe-area insets the title
+      sits under the notch and the control bar under the home indicator, which
+      is where the Leave button ends up on an iPhone.
+    */
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-slate-950"
+      style={{
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
+    >
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold text-white">{title}</h2>
@@ -1883,8 +2260,9 @@ function ControlButton({
  * playing your own microphone back through your own speakers is a feedback
  * loop, and every call that has ever howled has done it for this reason.
  */
-function VideoTile({
-  stream, label, muted, mirrored, cameraOff, micOff, handUp, sharing, connecting, memberId,
+const VideoTile = memo(function VideoTile({
+  stream, label, muted, mirrored, cameraOff, micOff, handUp, sharing,
+  connecting, unreachable, compact, memberId,
 }: {
   stream: MediaStream | null;
   label: string;
@@ -1895,6 +2273,10 @@ function VideoTile({
   handUp?: boolean;
   sharing?: boolean;
   connecting?: boolean;
+  /** The server says they are here and this browser could not reach them. */
+  unreachable?: boolean;
+  /** The tile is small enough that the avatar and the labels must come down. */
+  compact?: boolean;
   memberId: string;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -1907,9 +2289,10 @@ function VideoTile({
 
   return (
     <div className={cn(
-      'relative aspect-video overflow-hidden rounded-xl bg-slate-900 ring-1 ring-white/10',
+      'relative aspect-video overflow-hidden rounded-xl bg-slate-900 ring-1 ring-white/10 transition-shadow',
       handUp && 'ring-2 ring-amber-400',
       sharing && 'ring-2 ring-emerald-400',
+      unreachable && 'ring-1 ring-rose-500/40',
     )}>
       <video
         ref={ref}
@@ -1924,12 +2307,37 @@ function VideoTile({
       />
 
       {!showVideo && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          {connecting ? (
-            <Loader2 className="size-6 animate-spin text-white/40" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-2 text-center">
+          {/*
+            Three distinct states, where there used to be two.
+
+            A spinner meant both "their video is on its way" and "this will
+            never happen", and the second is the one people needed to be told
+            about: without a TURN server a symmetric NAT cannot be traversed,
+            and the meeting is not going to fix itself. Saying so is what lets
+            somebody move to a phone call instead of waiting.
+          */}
+          {unreachable ? (
+            <>
+              <WifiOff className={cn('text-rose-400/80', compact ? 'size-5' : 'size-6')} />
+              {!compact && (
+                <span className="text-[11px] leading-tight text-white/50">
+                  Could not connect to them
+                </span>
+              )}
+            </>
+          ) : connecting ? (
+            <>
+              <Loader2 className={cn('animate-spin text-white/40', compact ? 'size-5' : 'size-6')} />
+              {!compact && <span className="text-[11px] text-white/35">Connecting…</span>}
+            </>
           ) : (
-            <Avatar className="size-16">
-              <AvatarFallback className={cn('text-lg font-medium text-white', avatarColor(memberId))}>
+            <Avatar className={compact ? 'size-10' : 'size-16'}>
+              <AvatarFallback className={cn(
+                'font-medium text-white',
+                compact ? 'text-sm' : 'text-lg',
+                avatarColor(memberId),
+              )}>
                 {initialsOf(label)}
               </AvatarFallback>
             </Avatar>
@@ -1937,15 +2345,23 @@ function VideoTile({
         </div>
       )}
 
-      <div className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/70 to-transparent px-2.5 pb-1.5 pt-6">
-        <span className="truncate text-xs font-medium text-white">{label}</span>
+      <div className={cn(
+        'absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/75 to-transparent',
+        compact ? 'px-1.5 pb-1 pt-4' : 'px-2.5 pb-1.5 pt-6',
+      )}>
+        <span className={cn(
+          'truncate font-medium text-white',
+          compact ? 'text-[10px]' : 'text-xs',
+        )}>
+          {label}
+        </span>
         {micOff && <MicOff className="size-3 shrink-0 text-rose-400" />}
         {handUp && <Hand className="size-3 shrink-0 text-amber-400" />}
         {sharing && <MonitorUp className="size-3 shrink-0 text-emerald-400" />}
       </div>
     </div>
   );
-}
+});
 
 function ParticipantPanel({
   participants, knocking, amHost, currentMemberId, onAct, onAdmit,
