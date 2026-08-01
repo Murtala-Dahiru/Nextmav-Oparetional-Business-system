@@ -117,10 +117,36 @@ export default function CommunicationModule() {
    * Rendering only. Every one of these is enforced again server-side, which is
    * the decision that counts; this is so the module does not present a control
    * that will be turned down.
+   *
+   * ── Why the raw slice is selected and the merge happens outside ──────────
+   *
+   * The obvious version of this deriving the policy *inside* the selector —
+   * `useAppStore(s => settingsOf(s.organization?.policies, …))` — crashes the
+   * module, and it took a reproduction to see why.
+   *
+   * zustand v5's `useStore` hands `() => selector(getState())` straight to
+   * React's `useSyncExternalStore`, which calls it on every render and
+   * compares the result with `Object.is`. `settingsOf` merges defaults under
+   * the stored document, so it returns a *new object every call* — React reads
+   * that as "the external store changed", renders again, gets another new
+   * object, and never settles:
+   *
+   *     The result of getSnapshot should be cached to avoid an infinite loop
+   *     Maximum update depth exceeded
+   *
+   * The subtlety worth remembering: it only bites once a session has loaded.
+   * With no `policies` on the organisation, `settingsOf` returns the defaults
+   * object itself — one stable reference, no loop — so the module renders
+   * perfectly until the moment there is something to read.
+   *
+   * `s.organization?.policies` is a stable reference between renders, so the
+   * snapshot settles, and the merge is memoised on it.
    */
-  const policy = useAppStore(
-    s => settingsOf<CommunicationPolicy>(
-      s.organization?.policies, 'communication_policy', DEFAULT_COMMUNICATION_POLICY),
+  const storedPolicies = useAppStore(s => s.organization?.policies);
+  const policy = useMemo(
+    () => settingsOf<CommunicationPolicy>(
+      storedPolicies, 'communication_policy', DEFAULT_COMMUNICATION_POLICY),
+    [storedPolicies],
   );
 
   const [view, setView] = useState<View>('messages');

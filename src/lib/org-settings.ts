@@ -503,6 +503,25 @@ export const DEFAULT_COMMUNICATION_POLICY: CommunicationPolicy = {
  * Used by the modules that consume a policy rather than edit it, so a missing
  * key produces the documented behaviour instead of `undefined` reaching a
  * comparison.
+ *
+ * ── Never call this inside a zustand selector ────────────────────────────
+ *
+ * It merges, so it returns a **new object every call**. zustand v5 passes the
+ * selector straight to `useSyncExternalStore`, which compares consecutive
+ * results with `Object.is` — a fresh object each time reads as "the store
+ * changed" and the component re-renders for ever:
+ *
+ *     The result of getSnapshot should be cached to avoid an infinite loop
+ *     Maximum update depth exceeded
+ *
+ * Select the raw slice and merge outside:
+ *
+ *     const stored = useAppStore(s => s.organization?.policies);
+ *     const policy = useMemo(() => settingsOf(stored, key, DEFAULTS), [stored]);
+ *
+ * This crashed the Communication module on 2026-08-01, and only once a session
+ * had loaded — with nothing stored it returns `camelDefaults` itself, which is
+ * one stable reference and perfectly well behaved.
  */
 export function settingsOf<T>(
   settings: Record<string, unknown> | null | undefined,
