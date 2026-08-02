@@ -73,11 +73,31 @@ export function Field({
    * everywhere carry no information — the exception is what is worth saying.
    */
   optional?: boolean;
-  children: ReactNode;
+  /**
+   * The control.
+   *
+   * Pass it directly when it is a bare input — the description is injected for
+   * you. Pass a **function** when the control is wrapped in anything (a
+   * `relative` div holding a show/hide button, say) and spread the argument
+   * onto the input itself:
+   *
+   *     <Field id="pw" label="Password" error={err}>
+   *       {(a11y) => (
+   *         <div className="relative">
+   *           <Input id="pw" {...a11y} />
+   *           <button …/>
+   *         </div>
+   *       )}
+   *     </Field>
+   *
+   * See the note below for why the wrapped case cannot be handled implicitly.
+   */
+  children: ReactNode | ((a11y: { 'aria-describedby': string | undefined }) => ReactNode);
   className?: string;
 }) {
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
+  const describedBy = error ? errorId : hint ? hintId : undefined;
 
   return (
     <div className={cn('space-y-2', className)}>
@@ -101,16 +121,31 @@ export function Field({
         how signup's password rule ended up visible on screen and absent from
         the accessibility tree. A caller that sets its own `aria-describedby`
         keeps it; theirs wins.
+
+        ── The case cloneElement cannot reach ──────────────────────────────
+
+        It clones the *direct child*. A password field wraps its input in a
+        `relative` div so the show/hide button can be positioned against it —
+        so the clone lands on the div, and a div carrying `aria-describedby`
+        is exactly as useless as the wrapper this component was written to
+        avoid. That was not hypothetical: it shipped, and browser inspection
+        found `aria-describedby="login-password-error"` sitting on
+        `DIV.relative` with the input beside it announcing nothing.
+
+        Descending through the tree to find the first form control would fix
+        it invisibly and break the moment a field holds two inputs. Instead the
+        wrapped case is explicit: pass a function and spread the argument onto
+        the control. It cannot be got subtly wrong, only obviously.
       */}
-      {Children.map(children, (child) =>
-        isValidElement<{ 'aria-describedby'?: string }>(child)
-          ? cloneElement(child, {
-              'aria-describedby':
-                child.props['aria-describedby'] ??
-                (error ? errorId : hint ? hintId : undefined),
-            })
-          : child,
-      )}
+      {typeof children === 'function'
+        ? children({ 'aria-describedby': describedBy })
+        : Children.map(children, (child) =>
+            isValidElement<{ 'aria-describedby'?: string }>(child)
+              ? cloneElement(child, {
+                  'aria-describedby': child.props['aria-describedby'] ?? describedBy,
+                })
+              : child,
+          )}
 
       {error ? (
         <p
