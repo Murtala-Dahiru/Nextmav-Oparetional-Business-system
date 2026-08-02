@@ -4,6 +4,7 @@ import { error } from '@/lib/api-response';
 import type { ModuleId, RoleId } from '@/lib/constants';
 import { normalizeRole, can, canAccessModule, type Action } from '@/lib/permissions';
 import { currencyOf } from '@/lib/locale';
+import { accessStateFor, describeState } from '@/lib/account-state';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -82,16 +83,31 @@ export async function getContext(
   // provisioning failed rather than that the user is unauthenticated.
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, email, first_name, last_name, full_name, avatar_url, job_title, force_password_change')
+    .select('id, email, first_name, last_name, full_name, avatar_url, job_title, force_password_change, is_active, auth_deleted_at')
     .eq('id', user.id)
     .maybeSingle();
+
+  /**
+   * The platform-level gate, checked before any membership is looked at.
+   *
+   * `profiles.is_active` existed from 0001 and nothing had ever read it, so a
+   * disabled person was disabled in the schema and signed in everywhere else.
+   * A tombstone reaches here only in the window between the profile being
+   * marked and the auth user being deleted, and must resolve nothing.
+   */
+  if (profile && (profile.is_active === false || profile.auth_deleted_at)) return null;
 
   // Memberships this user can see. RLS already restricts this to their own.
   const { data: memberships } = await supabase
     .from('organization_members')
     .select('id, organization_id, role, department_id, organizations(id, name, slug, currency, timezone, settings)')
     .eq('user_id', user.id)
-    .eq('is_active', true);
+    .eq('is_active', true)
+    // A permanently deleted membership is retained only so that history
+    // resolves. It is never a way in, and `is_active` alone would already
+    // exclude it — this is belt and braces on the one query that decides
+    // whether somebody is in the building.
+    .is('deleted_at', null);
 
   if (!memberships?.length) return null;
 
@@ -135,6 +151,25 @@ export async function getContext(
 }
 
 /**
+ * Turn "no context" into the right refusal.
+ *
+ * `getContext()` returns null for four unrelated situations — no session, a
+ * session whose account has been suspended, one whose employment has ended,
+ * and one that has simply not joined anywhere yet — and every guard used to
+ * answer all four with 401 UNAUTHENTICATED. That is wrong twice over: it tells
+ * a suspended employee their credentials failed when they did not, and it
+ * tells the client to bounce them to the login form, where they sign in
+ * successfully and arrive back at the same 401.
+ *
+ * One extra round trip, on a path that has already decided to refuse.
+ */
+async function refuse(supabase: SupabaseClient): Promise<Response> {
+  const access = await accessStateFor(supabase);
+  const { code, message, status } = describeState(access.state);
+  return error(message, status, code);
+}
+
+/**
  * Guard a route handler that needs a signed-in user but no particular module.
  *
  *     const ctx = await authenticate();
@@ -154,7 +189,7 @@ export async function authenticate(
   opts: { organizationId?: string } = {},
 ): Promise<RequestContext | Response> {
   const ctx = await getContext(opts.organizationId);
-  if (!ctx) return error('Authentication required', 401, 'UNAUTHENTICATED');
+  if (!ctx) return refuse(await supabaseServer());
 
   if (ctx.user.mustChangePassword) {
     return error(
@@ -183,7 +218,7 @@ export async function authorize(
   opts: { organizationId?: string } = {},
 ): Promise<RequestContext | Response> {
   const ctx = await getContext(opts.organizationId);
-  if (!ctx) return error('Authentication required', 401, 'UNAUTHENTICATED');
+  if (!ctx) return refuse(await supabaseServer());
 
   /**
    * An account still holding the password an administrator typed for it can

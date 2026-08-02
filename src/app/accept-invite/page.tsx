@@ -130,8 +130,20 @@ function AcceptInvite() {
                 <Button asChild className="h-11 w-full bg-emerald-500 hover:bg-emerald-600 text-white">
                   <Link href={signInHref}><LogIn className="size-4" /> Sign in</Link>
                 </Button>
+                {/*
+                  The token travels with them.
+
+                  Without it, signup asks for an organization name and creates
+                  one — so an invitee had to found a workspace of their own
+                  before they could join the one that invited them, and then
+                  owned it for ever. With it, signup recognises the invitation,
+                  skips that question, and the confirmation email lands back on
+                  this page.
+                */}
                 <Button asChild variant="outline" className="h-11 w-full">
-                  <Link href="/signup">Create an account</Link>
+                  <Link href={`/signup?invite=${encodeURIComponent(token ?? '')}`}>
+                    Create an account
+                  </Link>
                 </Button>
               </CardContent>
             </>

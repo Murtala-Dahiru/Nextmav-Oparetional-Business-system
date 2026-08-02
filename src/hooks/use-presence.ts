@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { BACKGROUND_HEADER } from '@/lib/session-policy';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -85,7 +86,19 @@ export function usePresence(enabled: boolean) {
       try {
         await fetch('/api/presence', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            /**
+             * The beat must not keep the session alive.
+             *
+             * It fires every forty-five seconds whether or not anybody is
+             * there — that is the entire point of it — so if it counted as
+             * activity the idle timeout would never elapse for any open tab
+             * and the whole policy would be decoration. The status it reports
+             * is already `away` when nobody is touching anything.
+             */
+            [BACKGROUND_HEADER]: '1',
+          },
           body: JSON.stringify({ status, active }),
           // A heartbeat must never hold up navigation or retry noisily.
           keepalive: true,

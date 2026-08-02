@@ -1054,8 +1054,25 @@ try {
   const meta = register.body?.meta ?? {};
   check(typeof meta.attendanceRate === 'number' && typeof meta.punctualityRate === 'number',
     'the summary reaches meta — it was computed and then discarded');
-  check(typeof meta.expectedDays === 'number' && meta.expectedDays > 0,
+  /**
+   * Reported, and asked over a range that definitely contains working days.
+   *
+   * This used to assert `> 0` against the default range, which is month-to-date
+   * — so on the 1st and 2nd of a month beginning at a weekend the honest answer
+   * is zero and the harness failed for reasons that had nothing to do with the
+   * code. (2 August 2026: Saturday and Sunday.) A test that fails on certain
+   * calendar dates is one people learn to re-run rather than read.
+   *
+   * The default range still has to *report* the figure — that is the defect the
+   * check exists for, the summary being computed and then discarded — so both
+   * halves are asserted, each against a range where its claim is meaningful.
+   */
+  check(typeof meta.expectedDays === 'number',
     `expected working days are reported (${meta.expectedDays})`);
+
+  const workWeek = await A.json('/api/hr/attendance?pageSize=1&from=2026-03-02&to=2026-03-06');
+  check((workWeek.body?.meta?.expectedDays ?? 0) > 0,
+    `and counted from the organization's own calendar (${workWeek.body?.meta?.expectedDays} for one Mon–Fri)`);
 
   // ─────────────────────────────────────────────────────────────────────────
   section('28. No placeholder identifiers reach the database');

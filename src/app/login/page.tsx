@@ -37,6 +37,26 @@ function LoginForm() {
   // with no hint that the link they just followed failed.
   const linkError = searchParams.get('error');
 
+  /**
+   * Why they are back at this form.
+   *
+   * `proxy.ts` ends expired sessions with a redirect, and without a reason the
+   * arrival is indistinguishable from having been signed out by someone else
+   * or from a bug — the page they were working on simply becomes a login form.
+   * Saying which clock ran out is the difference between "that is the policy"
+   * and "something went wrong".
+   *
+   * Not a toast: they may have been away from the screen when it happened, and
+   * a toast that timed out while nobody was looking explains nothing.
+   */
+  const endedReason = searchParams.get('reason');
+  const sessionEnded =
+    endedReason === 'timeout'
+      ? 'You were signed out after a period of inactivity.'
+      : endedReason === 'session-limit'
+        ? 'Your session reached its maximum length and ended.'
+        : null;
+
   async function resendConfirmation() {
     setResending(true);
     try {
@@ -126,6 +146,15 @@ function LoginForm() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {sessionEnded && !linkError && !needsConfirmation && (
+              <div
+                role="status"
+                className="mb-4 rounded-md border border-slate-300 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300"
+              >
+                {sessionEnded} Sign in to pick up where you left off.
+              </div>
+            )}
+
             {linkError && !needsConfirmation && (
               <div
                 role="alert"

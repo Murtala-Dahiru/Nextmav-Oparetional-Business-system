@@ -51,7 +51,11 @@ export async function GET(req: Request) {
     const safe = search.replace(/[,()*]/g, ' ').trim();
     if (safe) q = q.or(['full_name','email','job_title'].map(c => c + '.ilike.%' + safe + '%').join(','));
   }
-  for (const k of ['role','department_id','is_active']) {
+  // `status` joins the list in 0025: `is_active` cannot express the difference
+  // between someone suspended and someone whose employment ended, so filtering
+  // on it returned both under one heading on the screen that most needs them
+  // apart.
+  for (const k of ['role','department_id','is_active','status']) {
     const v = searchParams.get(k);
     if (isFilterValue(v)) q = q.eq(k, v === 'true' ? true : v === 'false' ? false : v);
   }
@@ -186,7 +190,20 @@ export async function POST(req: Request) {
         // the proof here, and there is no inbox round trip to complete.
         email_confirm: true,
         password: temporaryPassword!,
-        user_metadata: { first_name: firstName, last_name: lastName },
+        user_metadata: {
+          first_name: firstName,
+          last_name: lastName,
+          /**
+           * Read by `handle_new_user()` into `profiles.account_origin`.
+           *
+           * A provisioned account exists because an employer created it. It has
+           * no independent relationship with the platform, so when that
+           * employer ends the relationship it is over — this is the value that
+           * stops a terminated employee signing in with credentials that still
+           * work and founding a workspace of their own.
+           */
+          account_origin: 'provisioned',
+        },
       });
       if (authErr || !authUser?.user) {
         const msg = /already been registered|already exists/i.test(authErr?.message ?? '')

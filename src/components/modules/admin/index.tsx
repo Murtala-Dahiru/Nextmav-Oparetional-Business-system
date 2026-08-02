@@ -7,17 +7,21 @@ import {
   Users, Plus, Pencil, Trash2, MoreHorizontal, Settings, Shield,
   ClipboardList, Loader2, Save, ShieldCheck, Briefcase, DollarSign, CalendarOff, Megaphone,
   Clock, FolderKanban, MessageSquare,
+  KeyRound, UserCheck, UserMinus, PauseCircle,
 } from 'lucide-react';
 
 import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
 import { EmptyState } from '@/components/shared/empty-state';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
-import { formatDateTime, formatRelativeTime, initialsOf } from '@/lib/format';
+import { formatDate, formatDateTime, formatRelativeTime, initialsOf } from '@/lib/format';
 import { normalizeRole, roleLabel } from '@/lib/permissions';
 import { CURRENCIES, COUNTRIES, NIGERIAN_STATES, DEFAULT_COUNTRY, DEFAULT_CURRENCY } from '@/lib/locale';
 import { useAppStore } from '@/store/app-store';
 import { HolidaysTab, AnnouncementsTab } from '@/components/modules/admin/workplace-tabs';
+import {
+  DeleteAccountDialog, type DeleteAccountTarget,
+} from '@/components/modules/admin/delete-account-dialog';
 import {
   WorkplacePanel, LeavePanel, ProjectsPanel, NotificationsPanel,
   BrandingPanel, DepartmentsPanel, type SettingsBundle,
@@ -43,7 +47,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
 // ═══════════════════════════════════════════════════════════════
@@ -81,7 +86,42 @@ interface UserRecord {
   terminatedOn: string | null;
   forcePasswordChange: boolean;
   passwordChangedAt: string | null;
+  /**
+   * Added in 0025. How this account came to exist — which decides whether it
+   * may create a workspace of its own once it belongs to none, and is the
+   * difference between an employee whose access ends with their employment and
+   * a customer of the platform who happens to work here.
+   */
+  accountOrigin: 'self_signup' | 'invited' | 'provisioned';
+  joinedAt: string | null;
 }
+
+/**
+ * The lifecycle, as the administration screen presents it.
+ *
+ * `is_active` remains the access gate in the database; this is the vocabulary
+ * people manage in. The status column used to read "Active / Inactive", which
+ * collapsed suspension and termination into one word and made the difference
+ * between "they are on leave" and "they have left" invisible on the screen
+ * where it matters most.
+ */
+const LIFECYCLE: Record<
+  UserRecord['status'],
+  { label: string; className: string }
+> = {
+  active: {
+    label: 'Active',
+    className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  },
+  suspended: {
+    label: 'Suspended',
+    className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  },
+  terminated: {
+    label: 'Employment ended',
+    className: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+  },
+};
 
 interface RoleRecord {
   id: string; name: string; description: string; isSystem: boolean; permissions: string;
@@ -473,6 +513,11 @@ export default function AdminModule() {
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'user' | 'role'; id: string; name: string; isSystem?: boolean } | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  /** The account-deletion review. Separate from `deleteTarget`, which suspends. */
+  const [accountToDelete, setAccountToDelete] = useState<DeleteAccountTarget | null>(null);
+  /** Which member a lifecycle action is in flight for, so the row can wait. */
+  const [lifecycleBusy, setLifecycleBusy] = useState<string | null>(null);
+
   // ════════════════════════════════════════════════════════════
   //  Fetch: Users
   // ════════════════════════════════════════════════════════════
@@ -681,6 +726,74 @@ export default function AdminModule() {
   };
 
   // ════════════════════════════════════════════════════════════
+  //  Lifecycle
+  // ════════════════════════════════════════════════════════════
+  /**
+   * Move a member between the lifecycle states.
+   *
+   * Suspension and termination are the same access decision and a different
+   * fact — "they may be back" against "they have left" — and reporting needs
+   * to tell them apart. Both revoke every session the person holds; the
+   * response says whether that actually succeeded, and it is surfaced rather
+   * than assumed, because an administrator who clicks Suspend is entitled to
+   * believe the person is out of the building.
+   */
+  const setLifecycle = async (u: UserRecord, status: UserRecord['status']) => {
+    if (u.memberId === currentMemberId) {
+      toast.error('You cannot change your own access from here.');
+      return;
+    }
+    setLifecycleBusy(u.memberId);
+    try {
+      const res = await apiFetch<{ data: { sessionsRevoked?: boolean; warning?: string } }>(
+        `/api/admin/users/${u.memberId}`,
+        { method: 'PUT', body: JSON.stringify({ status }) },
+      );
+      toast.success(
+        status === 'active'
+          ? `${u.fullName || u.email} can sign in again.`
+          : status === 'suspended'
+            ? `${u.fullName || u.email} is suspended and has been signed out.`
+            : `${u.fullName || u.email}'s employment is recorded as ended.`,
+      );
+      if (res.data?.warning) toast.warning(res.data.warning);
+      fetchUsers();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setLifecycleBusy(null);
+    }
+  };
+
+  /**
+   * Issue a new temporary password.
+   *
+   * The endpoint has existed since 0012 and nothing ever called it, so an
+   * administrator faced with a locked-out colleague and no working email had
+   * no route at all. It is shown once and never retrievable, which is the
+   * property that makes "administrators cannot see passwords" true rather than
+   * merely claimed — so it goes in a toast that does not auto-dismiss.
+   */
+  const resetPassword = async (u: UserRecord) => {
+    setLifecycleBusy(u.memberId);
+    try {
+      const res = await apiFetch<{ data: { temporaryPassword: string } }>(
+        `/api/admin/users/${u.memberId}/reset-password`, { method: 'POST' },
+      );
+      toast.success(`Temporary password for ${u.email}`, {
+        description: res.data.temporaryPassword,
+        duration: Infinity,
+        closeButton: true,
+      });
+      fetchUsers();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setLifecycleBusy(null);
+    }
+  };
+
+  // ════════════════════════════════════════════════════════════
   //  Save Settings
   // ════════════════════════════════════════════════════════════
   /**
@@ -769,13 +882,35 @@ export default function AdminModule() {
       ),
     },
     {
-      accessorKey: 'isActive', header: 'Status', size: 90,
-      cell: ({ row }) => (
-        <Badge variant={row.original.isActive ? 'default' : 'secondary'}
-          className={row.original.isActive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : ''}>
-          {row.original.isActive ? 'Active' : 'Inactive'}
-        </Badge>
-      ),
+      /**
+       * The lifecycle, not a boolean.
+       *
+       * This read "Active / Inactive", which is the shape of `is_active` rather
+       * than the shape of the decision behind it — so a suspended colleague and
+       * one who left the company six months ago were the same word on the one
+       * screen where somebody has to tell them apart.
+       */
+      accessorKey: 'status', header: 'Status', size: 130,
+      cell: ({ row }) => {
+        const u = row.original;
+        const state = LIFECYCLE[u.status] ?? LIFECYCLE.active;
+        return (
+          <div className="flex flex-col gap-0.5">
+            <Badge variant="secondary" className={state.className}>{state.label}</Badge>
+            {/*
+              Someone provisioned who has never replaced the password they were
+              issued has not really started yet, and there is no other way to
+              see that — the flag is on the profile and nothing surfaced it.
+            */}
+            {u.status === 'active' && u.forcePasswordChange && (
+              <span className="text-[11px] text-muted-foreground">Not signed in yet</span>
+            )}
+            {u.status === 'terminated' && u.terminatedOn && (
+              <span className="text-[11px] text-muted-foreground">{formatDate(u.terminatedOn)}</span>
+            )}
+          </div>
+        );
+      },
     },
     {
       accessorKey: 'lastSeenAt', header: 'Last Seen', size: 120,
@@ -786,25 +921,85 @@ export default function AdminModule() {
       ),
     },
     {
+      /**
+       * The whole lifecycle, from one menu.
+       *
+       * Previously two items: Edit, and a "Deactivate" that suspended. There
+       * was no way to record a termination, no way to bring someone back, no
+       * way to reissue a password — the endpoint for which had existed unused
+       * since 0012 — and no way to delete an account at all.
+       */
       id: 'actions', size: 60,
-      cell: ({ row }) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="size-8"><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => { setEditingUser(row.original); setUserDialogOpen(true); }}><Pencil className="size-4 mr-2" /> Edit</DropdownMenuItem>
-            <DropdownMenuItem className="text-red-600" onClick={() => setDeleteTarget({ type: 'user', id: row.original.memberId, name: row.original.fullName || row.original.email })}>
-              <Trash2 className="size-4 mr-2" /> Deactivate
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
+      cell: ({ row }) => {
+        const u = row.original;
+        const isSelf = u.memberId === currentMemberId;
+        const busy = lifecycleBusy === u.memberId;
+        const name = u.fullName || u.email;
+
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8" disabled={busy}>
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <MoreHorizontal className="size-4" />}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => { setEditingUser(u); setUserDialogOpen(true); }}>
+                <Pencil className="size-4 mr-2" /> Edit
+              </DropdownMenuItem>
+
+              {!isSelf && (
+                <DropdownMenuItem onClick={() => resetPassword(u)}>
+                  <KeyRound className="size-4 mr-2" /> Issue temporary password
+                </DropdownMenuItem>
+              )}
+
+              {!isSelf && <DropdownMenuSeparator />}
+
+              {!isSelf && u.status !== 'active' && (
+                <DropdownMenuItem onClick={() => setLifecycle(u, 'active')}>
+                  <UserCheck className="size-4 mr-2" /> Restore access
+                </DropdownMenuItem>
+              )}
+              {!isSelf && u.status === 'active' && (
+                <DropdownMenuItem onClick={() => setLifecycle(u, 'suspended')}>
+                  <PauseCircle className="size-4 mr-2" /> Suspend
+                </DropdownMenuItem>
+              )}
+              {!isSelf && u.status !== 'terminated' && (
+                <DropdownMenuItem className="text-amber-700 dark:text-amber-400" onClick={() => setLifecycle(u, 'terminated')}>
+                  <UserMinus className="size-4 mr-2" /> End employment
+                </DropdownMenuItem>
+              )}
+
+              {!isSelf && <DropdownMenuSeparator />}
+
+              {!isSelf && (
+                <DropdownMenuItem
+                  className="text-red-600"
+                  onClick={() => setAccountToDelete({ memberId: u.memberId, name, email: u.email })}
+                >
+                  <Trash2 className="size-4 mr-2" /> Delete account…
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
     },
   ];
 
   // ── User filters ──
   const userFilterDefs: DataTableFilter[] = [
     { key: 'department', label: 'Department', options: DEPARTMENTS.map((d) => ({ value: d, label: d })) },
-    { key: 'isActive', label: 'Status', options: [{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }] },
+    // Filters on the lifecycle rather than the boolean behind it, for the same
+    // reason the column does: "Inactive" covered both a colleague on
+    // suspension and one who left the company.
+    { key: 'status', label: 'Status', options: [
+      { value: 'active', label: 'Active' },
+      { value: 'suspended', label: 'Suspended' },
+      { value: 'terminated', label: 'Employment ended' },
+    ] },
     { key: 'roleId', label: 'Role', options: roles.map((r) => ({ value: r.id, label: r.name })) },
   ];
 
@@ -1254,6 +1449,22 @@ export default function AdminModule() {
           ? 'This is a system role and cannot be deleted.'
           : `Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
         confirmLabel="Delete" variant="destructive" onConfirm={handleDelete} isLoading={deleting}
+      />
+
+      {/*
+        Permanent deletion, which the confirm dialog above is deliberately not
+        used for. That one asks a yes/no question; this one has to show what
+        the answer would destroy, and take a decision about who inherits the
+        work, before it is willing to accept one.
+      */}
+      <DeleteAccountDialog
+        target={accountToDelete}
+        open={!!accountToDelete}
+        onOpenChange={(v) => !v && setAccountToDelete(null)}
+        onDeleted={fetchUsers}
+        candidates={users
+          .filter(u => u.isActive && u.memberId !== accountToDelete?.memberId)
+          .map(u => ({ memberId: u.memberId, fullName: u.fullName, email: u.email }))}
       />
     </div>
   );

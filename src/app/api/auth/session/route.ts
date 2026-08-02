@@ -2,6 +2,47 @@ import { getContext } from '@/lib/auth-context';
 import { supabaseServer } from '@/lib/supabase/server';
 import { success } from '@/lib/api-response';
 import { capabilitySummary } from '@/lib/permissions';
+import { accessStateFor, describeState, isBlocked } from '@/lib/account-state';
+import { cookies } from 'next/headers';
+import {
+  SESSION_COOKIES, SESSION_POLICY_SUMMARY, expiryOf, millisUntilExpiry,
+} from '@/lib/session-policy';
+
+/**
+ * How long this session has left, and on which clock.
+ *
+ * Read here rather than pushed to the browser as a timestamp it could adjust:
+ * the cookies are httpOnly and the proxy is the only thing that moves them, so
+ * this is a report of server state rather than a negotiation. The countdown in
+ * the UI is a courtesy — expiry announced rather than discovered — and it is
+ * never the control.
+ *
+ * `/api/auth/session` is deliberately exempt from advancing the idle clock, so
+ * asking how much time is left does not itself buy more of it.
+ */
+async function sessionClock() {
+  const store = await cookies();
+  const started = Number(store.get(SESSION_COOKIES.started)?.value);
+  const seen = Number(store.get(SESSION_COOKIES.seen)?.value);
+  const now = Date.now();
+
+  // No clocks yet means the proxy has not seen a request from this session —
+  // it was established by an emailed link, or this is the response to the sign
+  // in itself. A full window is the honest answer, and the next navigation
+  // writes the real values.
+  const clock = {
+    startedAt: Number.isFinite(started) && started > 0 ? started : now,
+    lastSeenAt: Number.isFinite(seen) && seen > 0 ? seen : now,
+  };
+
+  return {
+    ...SESSION_POLICY_SUMMARY,
+    startedAt: clock.startedAt,
+    lastSeenAt: clock.lastSeenAt,
+    expiresInMs: millisUntilExpiry(clock, now),
+    expired: expiryOf(clock, now),
+  };
+}
 
 /**
  * Current session.
@@ -113,13 +154,38 @@ export async function GET() {
         policies,
       },
       needsOrganization: false,
+      accessState: 'active',
+      session: await sessionClock(),
     });
   }
 
   // Authenticated but without a membership.
   const supabase = await supabaseServer();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return success({ user: null, needsOrganization: false });
+  if (!user) return success({ user: null, needsOrganization: false, accessState: 'anonymous' });
+
+  /**
+   * Which of the several "no organization" situations this actually is.
+   *
+   * The branch below used to answer `needsOrganization: true` for all of them,
+   * and the dashboard reads that as "send them to the create-a-workspace
+   * screen". For a suspended or terminated employee that screen is a way back
+   * onto the platform as the owner of a tenant of their own, which is the
+   * defect this whole pass exists to close. For someone holding an invitation
+   * it is simply the wrong screen — the workspace they want already exists.
+   */
+  const access = await accessStateFor(supabase);
+
+  if (isBlocked(access.state)) {
+    const { code, message } = describeState(access.state);
+    return success({
+      user: null,
+      needsOrganization: false,
+      accessState: access.state,
+      accessCode: code,
+      accessMessage: message,
+    });
+  }
 
   const { data: profile } = await supabase
     .from('profiles')
@@ -144,5 +210,10 @@ export async function GET() {
       pendingOrganizationName: user.user_metadata?.pending_organization_name ?? null,
     },
     needsOrganization: true,
+    accessState: access.state,
+    // What onboarding is allowed to offer. An invited person gets the
+    // invitation; only someone who may actually found one gets the form.
+    mayCreateOrganization: access.mayCreateOrganization,
+    pendingInvitations: access.pendingInvitations,
   });
 }

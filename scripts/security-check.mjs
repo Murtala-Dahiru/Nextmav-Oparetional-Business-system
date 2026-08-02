@@ -68,6 +68,40 @@ const PUBLIC_ROUTES = new Set([
 ]);
 
 /**
+ * The same list, as `proxy.ts` writes it.
+ *
+ * Two hand-maintained lists of "what is reachable without a session" is one
+ * list too many, and the failure is silent in the dangerous direction: a route
+ * exempted in the proxy but not here passes both checks while being reachable
+ * by anybody. They are compared below rather than merged, because the proxy's
+ * runs on the edge and importing TypeScript into this script is not worth it.
+ */
+const PROXY_PUBLIC_PATHS = [
+  '/api',
+  '/api/auth/login',
+  '/api/auth/signup',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/resend-confirmation',
+  '/api/auth/logout',
+  '/api/auth/session',
+  '/api/auth/accept-invite',
+];
+
+/**
+ * Reachable without a session in the proxy, but guarded in the handler.
+ *
+ * Both are correct. Sign-out has to work when the session is already broken —
+ * that is the whole point of it — and the session endpoint reports "nobody is
+ * signed in" as an ordinary answer rather than a 401. Neither returns tenant
+ * data, and both establish a context before they return anything at all.
+ */
+const PROXY_PUBLIC_BUT_GUARDED = new Set([
+  '/api/auth/logout',
+  '/api/auth/session',
+]);
+
+/**
  * Anything that resolves who is calling, or issues its queries as them.
  *
  * Three tiers, all acceptable:
@@ -119,6 +153,37 @@ check(missingPublic.length === 0,
   'the pre-authentication exemption list has no stale entries',
   missingPublic.join(', '));
 
+/**
+ * And the proxy's list says the same thing this one does.
+ *
+ * The proxy protects everything under /api except a named few; this file
+ * requires a guard in everything except a named few. If the first list grows
+ * an entry the second does not have, a route becomes reachable without a
+ * session *and* passes the guard check, and nothing anywhere says so.
+ */
+const proxySrc = readFileSync('src/proxy.ts', 'utf8');
+const proxyDeclared = [...proxySrc.matchAll(/^\s*'(\/api[^']*)',/gm)].map(m => m[1]);
+
+const proxyDrift = [
+  ...PROXY_PUBLIC_PATHS.filter(p => !proxyDeclared.includes(p))
+    .map(p => `${p} is expected in proxy.ts and missing`),
+  ...proxyDeclared.filter(p => !PROXY_PUBLIC_PATHS.includes(p))
+    .map(p => `${p} is exempt in proxy.ts and unknown here`),
+];
+check(proxyDrift.length === 0,
+  'proxy.ts and this file agree on which routes are pre-authentication',
+  proxyDrift.join(', '));
+
+/** Every proxy exemption is either handler-guarded or explicitly accounted for. */
+const unaccounted = PROXY_PUBLIC_PATHS.filter(p => {
+  if (p === '/api') return false;
+  if (PROXY_PUBLIC_BUT_GUARDED.has(p)) return false;
+  return !PUBLIC_ROUTES.has(`${p.replace(/^\//, '')}/route.ts`);
+});
+check(unaccounted.length === 0,
+  'every route the proxy lets through unauthenticated is one that must be',
+  unaccounted.join(', '));
+
 // ───────────────────────────────────────────────────────────────────────────
 section('2. The service-role client stays out of request handlers');
 /**
@@ -135,6 +200,12 @@ const ADMIN_ALLOWED = new Set([
   'api/auth/resend-confirmation/route.ts',
   'api/admin/users/route.ts',              // provisions a real account
   'api/admin/users/[id]/reset-password/route.ts',
+  /**
+   * Deletes the auth user, which only the service role can do. Everything it
+   * reads or writes about the organization goes through the caller's own
+   * client and `delete_member_account()`, which checks `is_org_admin()` itself.
+   */
+  'api/admin/users/[id]/account/route.ts',
   'api/organizations/route.ts',            // the very first row for a tenant
   /**
    * Clears `force_password_change` once the caller has proved the current
@@ -350,6 +421,104 @@ check(
   crud.includes("delete payload.organization_id") && crud.includes("delete payload.id"),
   'and refuse to let a client move a record between tenants',
 );
+
+// ───────────────────────────────────────────────────────────────────────────
+section('6. The identity lifecycle cannot be walked around');
+/**
+ * These four are the shape of the defect this pass existed to close, and each
+ * one is invisible at runtime: the application works perfectly with all of
+ * them broken. It simply lets the wrong people in.
+ */
+
+/**
+ * A membership row is never deleted.
+ *
+ * Seventeen columns cascade from it, sixteen NOT NULL — messages, comments,
+ * meetings, attendance, leave, time entries. `members_delete` used to let an
+ * owner do this from a menu item labelled "remove from organization".
+ */
+const liveDeletePolicy = /CREATE POLICY members_delete ON/.test(
+  /**
+   * Only migrations after 0025 matter: that is where the policy is dropped, so
+   * a re-added one can only appear later in file order.
+   *
+   * Compared on the basename rather than the joined path — `join()` produces
+   * backslashes on Windows, and `'supabase\\migrations\\0026…' > 'supabase/…'`
+   * is false, so every file passed the filter and the check failed against
+   * 0005's original definition.
+   */
+  migrations
+    .filter(f => (f.split(/[\\/]/).pop() ?? '') > '0025')
+    .map(f => readFileSync(f, 'utf8'))
+    .join('\n'),
+);
+check(!liveDeletePolicy,
+  'no DELETE policy on organization_members — deletion goes through the RPC');
+
+/**
+ * The onboarding entry point checks standing.
+ *
+ * Without this clause, a suspended or terminated employee resolves no
+ * organization — exactly like a new signup — and is handed the
+ * create-a-workspace form, which makes them the owner of a tenant of their own.
+ */
+check(joined.includes("access := public.account_access_state()")
+  && /mayCreateOrganization/.test(joined),
+  'create_organization() refuses accounts whose access has been withdrawn');
+
+/**
+ * Withdrawing access ends the sessions it was granting.
+ *
+ * Setting `is_active = false` stops the next request resolving an
+ * organization; the refresh token in the browser is renewed indefinitely
+ * regardless. Every route that can take access away has to revoke.
+ */
+const LIFECYCLE_ROUTES = [
+  'src/app/api/admin/users/[id]/route.ts',
+  'src/app/api/hr/employees/[id]/route.ts',
+];
+const withoutRevocation = LIFECYCLE_ROUTES.filter(
+  f => !readFileSync(f, 'utf8').includes('endMemberSessions'),
+);
+check(withoutRevocation.length === 0,
+  'every route that withdraws access also revokes the sessions',
+  withoutRevocation.join(', '));
+
+/**
+ * The idle clock is not kept alive by the machine.
+ *
+ * The tray polls every thirty seconds and presence beats every forty-five. If
+ * either counted as activity the session timeout would never elapse on an open
+ * tab, and the whole policy would be decoration.
+ */
+const POLLERS = [
+  ['src/store/app-store.ts', 'the notification poll'],
+  ['src/hooks/use-presence.ts', 'the presence heartbeat'],
+];
+const countedAsActivity = POLLERS
+  .filter(([f]) => !readFileSync(f, 'utf8').includes('BACKGROUND_HEADER'))
+  .map(([f, what]) => `${what} (${f})`);
+check(countedAsActivity.length === 0,
+  'background polling does not hold the idle timeout open',
+  countedAsActivity.join(', '));
+
+// ───────────────────────────────────────────────────────────────────────────
+section('7. Security headers are set');
+/**
+ * There were none. Framing in particular matters here: every destructive
+ * control in the product — suspend, terminate, delete an account — is one
+ * click inside an authenticated page.
+ */
+const nextConfig = readFileSync('next.config.ts', 'utf8');
+const REQUIRED_HEADERS = [
+  'X-Frame-Options', 'X-Content-Type-Options', 'Referrer-Policy', 'frame-ancestors',
+];
+const missingHeaders = REQUIRED_HEADERS.filter(h => !nextConfig.includes(h));
+check(missingHeaders.length === 0,
+  'the response headers that cost nothing are all present',
+  missingHeaders.join(', '));
+check(/source:\s*'\/api\/:path\*'[\s\S]{0,200}no-store/.test(nextConfig),
+  'authenticated API responses are marked no-store');
 
 // ───────────────────────────────────────────────────────────────────────────
 console.log('');

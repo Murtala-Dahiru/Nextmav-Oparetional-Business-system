@@ -2,12 +2,18 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Hexagon, ShieldAlert } from 'lucide-react';
+import { PLATFORM } from '@/lib/platform';
+import { Button } from '@/components/ui/button';
+import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAppStore } from '@/store/app-store';
 import { AppShell } from '@/components/layout/app-shell';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { isAuthenticated, needsOrganization, mustChangePassword, fetchUser } = useAppStore();
+  const {
+    isAuthenticated, needsOrganization, mustChangePassword, accessMessage, logout, fetchUser,
+  } = useAppStore();
   const [profileLoaded, setProfileLoaded] = useState(false);
   const fetchStarted = useRef(false);
 
@@ -23,6 +29,10 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!profileLoaded) return;
+    // A withdrawn account is handled in place, below. Redirecting it to /login
+    // would send someone whose password still works back to a form that lets
+    // them straight in again, to be refused a second time with no explanation.
+    if (accessMessage) return;
     if (!isAuthenticated) {
       router.replace('/login');
     } else if (mustChangePassword) {
@@ -37,13 +47,51 @@ export default function DashboardPage() {
       // succeed, so send them to the step that actually unblocks them.
       router.replace('/onboarding');
     }
-  }, [profileLoaded, isAuthenticated, mustChangePassword, needsOrganization, router]);
+  }, [profileLoaded, isAuthenticated, mustChangePassword, needsOrganization, accessMessage, router]);
 
   if (!profileLoaded) {
     return (
       <div className="bg-background flex h-screen flex-col items-center justify-center gap-3">
         <div className="size-8 animate-spin rounded-full border-b-2 border-emerald-500" />
         <p className="text-muted-foreground text-sm">Loading your workspace…</p>
+      </div>
+    );
+  }
+
+  /**
+   * Suspended, terminated, removed or disabled.
+   *
+   * Said out loud rather than expressed as a redirect. Every one of these used
+   * to arrive at /onboarding — the same screen a new signup sees — where the
+   * create-a-workspace form let a terminated employee back onto the platform as
+   * the owner of a tenant of their own. The screen now names what happened and
+   * offers the only action that is any use.
+   */
+  if (accessMessage) {
+    return (
+      <div className="bg-background flex h-screen items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="mb-8 flex flex-col items-center">
+            <div className="mb-2 flex items-center gap-2">
+              <Hexagon className="size-8 text-emerald-500" />
+              <span className="text-2xl font-bold tracking-tight">{PLATFORM.name}</span>
+            </div>
+          </div>
+          <Card className="shadow-lg">
+            <CardHeader className="space-y-1">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="size-5 text-amber-500" />
+                <CardTitle className="text-xl">Access unavailable</CardTitle>
+              </div>
+              <CardDescription>{accessMessage}</CardDescription>
+            </CardHeader>
+            <CardFooter>
+              <Button variant="outline" className="h-10 w-full" onClick={() => logout()}>
+                Sign out
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
       </div>
     );
   }

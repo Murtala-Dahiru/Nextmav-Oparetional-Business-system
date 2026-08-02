@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  SESSION_COOKIES, BACKGROUND_HEADER, expiryOf,
+  ABSOLUTE_TIMEOUT_MS, type ExpiryReason,
+} from '@/lib/session-policy';
 
 /**
- * Server-side route protection (Next.js `proxy` convention, formerly `middleware`).
+ * Server-side route protection and session lifetime (Next.js `proxy`
+ * convention, formerly `middleware`).
  *
  * Auth used to be enforced only inside client components, which meant the
  * dashboard HTML was served to anyone and the redirect happened after hydration
@@ -36,14 +41,33 @@ const PROTECTED_PAGES = ['/dashboard', '/onboarding', '/change-password', '/sett
 const AUTH_PAGES = ['/login', '/signup', '/forgot-password'];
 
 /**
- * API namespaces that serve business data. `/api/auth/*` is intentionally
- * excluded — signing in has to work while signed out.
+ * API namespaces that serve business data.
+ *
+ * ── Why this is now a deny-list turned inside out ─────────────────────────
+ *
+ * It used to be a hand-maintained list of eighteen prefixes, and six live
+ * namespaces were missing from it: /api/todos, /api/notifications,
+ * /api/presence, /api/directory, /api/portal and /api/organizations. Each one
+ * guards itself properly, so nothing leaked — but the list was the thing that
+ * was supposed to make a *forgotten* guard survivable, and a list that has to
+ * be remembered cannot do that job. The next route added would have been the
+ * nineteenth omission.
+ *
+ * Everything under /api is protected unless it is named here as
+ * pre-authentication. That list is short, closed, and each entry has a reason
+ * it cannot require a session.
  */
-const PROTECTED_API_PREFIXES = [
-  '/api/crm', '/api/projects', '/api/hr', '/api/finance', '/api/inventory',
-  '/api/support', '/api/workspace', '/api/communication', '/api/calendar',
-  '/api/admin', '/api/dashboard', '/api/activity-log', '/api/search', '/api/export',
-];
+const PUBLIC_API = new Set([
+  '/api',                            // health check; returns a version string
+  '/api/auth/login',
+  '/api/auth/signup',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/resend-confirmation',
+  '/api/auth/logout',                // must work with a broken or absent session
+  '/api/auth/session',               // reports "no session" as a normal answer
+  '/api/auth/accept-invite',         // authenticates by invitation token
+]);
 
 /**
  * Detect a session from cookies alone.
@@ -65,19 +89,146 @@ function startsWithAny(pathname: string, prefixes: string[]): boolean {
   return prefixes.some(p => pathname === p || pathname.startsWith(`${p}/`));
 }
 
+function isPublicApi(pathname: string): boolean {
+  return [...PUBLIC_API].some(p => pathname === p || pathname === `${p}/`);
+}
+
+// ── Session lifetime ────────────────────────────────────────────────────────
+
+/**
+ * Read the two clocks.
+ *
+ * A session cookie with no clocks beside it is one that began before this
+ * existed, or one Supabase established through a path that does not run
+ * through here — an emailed confirmation link, say. Treated as starting now
+ * rather than as already expired: signing everybody out on deploy, and
+ * bouncing every freshly confirmed account straight back to the login form, is
+ * a worse failure than one session running slightly long.
+ */
+function readClock(req: NextRequest, now: number) {
+  const started = Number(req.cookies.get(SESSION_COOKIES.started)?.value);
+  const seen = Number(req.cookies.get(SESSION_COOKIES.seen)?.value);
+  return {
+    startedAt: Number.isFinite(started) && started > 0 ? started : now,
+    lastSeenAt: Number.isFinite(seen) && seen > 0 ? seen : now,
+  };
+}
+
+const COOKIE_BASE = {
+  httpOnly: true,
+  sameSite: 'lax' as const,
+  path: '/',
+  // localhost is not https, and a Secure cookie there is simply never sent —
+  // which would expire every session on the first navigation in development.
+  secure: process.env.NODE_ENV === 'production',
+};
+
+function writeClock(res: NextResponse, startedAt: number, lastSeenAt: number) {
+  // maxAge matches the absolute ceiling: past that the session is over anyway,
+  // and a cookie that outlives the thing it describes is just litter.
+  const maxAge = Math.ceil(ABSOLUTE_TIMEOUT_MS / 1000);
+  res.cookies.set(SESSION_COOKIES.started, String(startedAt), { ...COOKIE_BASE, maxAge });
+  res.cookies.set(SESSION_COOKIES.seen, String(lastSeenAt), { ...COOKIE_BASE, maxAge });
+}
+
+/**
+ * Clear everything that says "signed in".
+ *
+ * The Supabase cookies go too, not just the clocks. Leaving them would make
+ * `hasSession()` keep returning true, and the browser would loop between
+ * /login (redirected away because a cookie is present) and /dashboard
+ * (redirected away because the session expired) with no way out but clearing
+ * site data by hand.
+ */
+function clearSession(req: NextRequest, res: NextResponse) {
+  for (const { name } of req.cookies.getAll()) {
+    if (name.startsWith('sb-') && name.includes('auth-token')) res.cookies.delete(name);
+  }
+  res.cookies.delete(SESSION_COOKIES.started);
+  res.cookies.delete(SESSION_COOKIES.seen);
+}
+
+function expiredApi(req: NextRequest, reason: ExpiryReason): NextResponse {
+  const res = NextResponse.json(
+    {
+      error: {
+        message: reason === 'idle'
+          ? 'Your session ended after a period of inactivity. Sign in to continue.'
+          : 'Your session reached its maximum length and ended. Sign in to continue.',
+        code: 'SESSION_EXPIRED',
+        reason,
+      },
+    },
+    { status: 401 },
+  );
+  clearSession(req, res);
+  return res;
+}
+
+function expiredPage(req: NextRequest, reason: ExpiryReason): NextResponse {
+  const { pathname, search } = req.nextUrl;
+  const url = req.nextUrl.clone();
+  url.pathname = '/login';
+  url.search = '';
+  url.searchParams.set('reason', reason === 'idle' ? 'timeout' : 'session-limit');
+  // Where they were, so signing in again returns them to it rather than to a
+  // generic dashboard. Losing your place is a small thing that feels like
+  // losing your work.
+  url.searchParams.set('next', `${pathname}${search}`);
+  const res = NextResponse.redirect(url);
+  clearSession(req, res);
+  return res;
+}
+
 export default function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const authed = hasSession(req);
+  const isApi = pathname === '/api' || pathname.startsWith('/api/');
+  const now = Date.now();
 
-  // ── Protected data APIs ────────────────────────────────────────────────
-  if (startsWithAny(pathname, PROTECTED_API_PREFIXES)) {
+  /**
+   * Does this request move the idle clock?
+   *
+   * Background work does not, or the tray's thirty-second poll would keep
+   * every abandoned tab signed in for ever and the timeout would be theatre.
+   *
+   * `/api/auth/session` is exempt for a different reason and by a different
+   * mechanism: it is listed as pre-authentication, so it returns early below
+   * without ever reaching `advance()`. The countdown calls it to ask how much
+   * time is left, and that question must not be its own answer.
+   */
+  const isBackground = req.headers.get(BACKGROUND_HEADER) === '1';
+
+  // ── Session lifetime, before anything else ─────────────────────────────
+  //
+  // Checked ahead of the route rules so that an expired session cannot reach a
+  // protected page or an API, and so the /login redirect below is not competing
+  // with the "already signed in, go to the dashboard" rule.
+  if (authed && !isPublicApi(pathname)) {
+    const clock = readClock(req, now);
+    const expiry = expiryOf(clock, now);
+    if (expiry) {
+      return isApi ? expiredApi(req, expiry) : expiredPage(req, expiry);
+    }
+  }
+
+  const advance = (res: NextResponse): NextResponse => {
+    if (!authed) return res;
+    const clock = readClock(req, now);
+    writeClock(res, clock.startedAt, isBackground ? clock.lastSeenAt : now);
+    return res;
+  };
+
+  // ── APIs ───────────────────────────────────────────────────────────────
+  if (isApi) {
+    if (isPublicApi(pathname)) return NextResponse.next();
     if (!authed) {
       return NextResponse.json(
         { error: { message: 'Authentication required', code: 'UNAUTHENTICATED' } },
         { status: 401 },
       );
     }
-    return NextResponse.next();
+    return advance(NextResponse.next());
   }
 
   // ── Protected pages ────────────────────────────────────────────────────
@@ -108,7 +259,7 @@ export default function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  return advance(NextResponse.next());
 }
 
 export const config = {

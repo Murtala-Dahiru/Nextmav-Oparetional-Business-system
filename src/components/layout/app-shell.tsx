@@ -4,6 +4,7 @@ import { Header } from './header';
 import { ModuleContent } from './module-content';
 import { CommandPalette } from './command-palette';
 import { usePresence } from '@/hooks/use-presence';
+import { SessionGuard } from './session-guard';
 import { useAppStore } from '@/store/app-store';
 
 export function AppShell() {
@@ -28,6 +29,13 @@ export function AppShell() {
         <Header />
         <ModuleContent />
         <CommandPalette />
+        {/*
+          Mounted beside the palette, at the shell level, for the same reason
+          the heartbeat is: a session belongs to the application rather than to
+          whichever module happens to be open, and a warning that unmounted on
+          navigation would be a warning nobody sees.
+        */}
+        <SessionGuard />
       </div>
     </div>
   );

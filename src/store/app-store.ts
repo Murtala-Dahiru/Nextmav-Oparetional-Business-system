@@ -5,6 +5,8 @@ import {
   type CapabilitySummary, type Action,
 } from '@/lib/permissions';
 import { configureFormatting } from '@/lib/format';
+import { BACKGROUND_HEADER } from '@/lib/session-policy';
+import type { AccountState } from '@/lib/account-state';
 
 export interface CurrentUser {
   id: string;
@@ -102,6 +104,34 @@ interface AppState {
    * change-password screen.
    */
   mustChangePassword: boolean;
+
+  /**
+   * Where this account stands with the platform, as the server resolved it.
+   *
+   * `needsOrganization` used to carry four unrelated situations at once — new
+   * signup, invited, suspended, terminated — because all four resolve no
+   * membership. The dashboard read it as "offer them the create-a-workspace
+   * screen", which for the last two was a way back in as the owner of a tenant
+   * of their own. Routing now happens on the reason, not on the absence.
+   */
+  accessState: AccountState;
+  /** What to tell someone whose access has been withdrawn. */
+  accessMessage: string | null;
+  /** Whether this account may found a workspace, when it belongs to none. */
+  mayCreateOrganization: boolean;
+  /** Invitations waiting for this address, so onboarding can offer them. */
+  pendingInvitations: number;
+
+  /**
+   * When the current session ends, as an absolute timestamp.
+   *
+   * Null before the first session fetch and for anyone signed out. The value
+   * is the server's; the browser only counts down towards it. Enforcement is
+   * in `proxy.ts` and this is a courtesy — expiry announced rather than
+   * discovered halfway through typing something.
+   */
+  sessionExpiresAt: number | null;
+  setSessionExpiresAt: (t: number | null) => void;
 
   /** This workspace's presentation settings, as the server resolved them. */
   organization: OrganizationContext | null;
@@ -205,6 +235,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   isLoading: true,
   needsOrganization: false,
   mustChangePassword: false,
+  accessState: 'anonymous',
+  accessMessage: null,
+  mayCreateOrganization: false,
+  pendingInvitations: 0,
+  sessionExpiresAt: null,
+  setSessionExpiresAt: (t) => set({ sessionExpiresAt: t }),
   organization: null,
 
   // RBAC — starts at the least-privileged role and is raised only by the
@@ -247,7 +283,17 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     set({ notificationsLoading: true });
     try {
-      const res = await fetch('/api/notifications?pageSize=20');
+      const res = await fetch('/api/notifications?pageSize=20', {
+        /**
+         * A poll is not the user doing something.
+         *
+         * The tray refreshes every thirty seconds for as long as a tab is
+         * open. Counting that as activity would hold the idle timeout open
+         * indefinitely on an abandoned screen, which is the one situation the
+         * timeout exists for.
+         */
+        headers: { [BACKGROUND_HEADER]: '1' },
+      });
       const json = await res.json();
       if (json?.error) throw new Error(json.error.message);
 
@@ -402,7 +448,32 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const res = await fetch('/api/auth/session');
       const json = await res.json();
-      const userData = json?.data?.user ?? json?.user;
+      const payload = json?.data ?? json ?? {};
+      const userData = payload.user;
+
+      /**
+       * Where this account stands, recorded before anything else is decided.
+       *
+       * The session endpoint returns `user: null` for a suspended or
+       * terminated account — there is no organization to describe — which is
+       * indistinguishable from being signed out unless the reason comes with
+       * it. Without this the branch below signs them out silently and the
+       * login form tells them nothing, so they try the password again, and it
+       * works, and they end up back where they started.
+       */
+      const accessState: AccountState = payload.accessState ?? 'anonymous';
+      const session = payload.session;
+
+      set({
+        accessState,
+        accessMessage: payload.accessMessage ?? null,
+        mayCreateOrganization: payload.mayCreateOrganization === true,
+        pendingInvitations: Number(payload.pendingInvitations ?? 0),
+        sessionExpiresAt: session?.expiresInMs != null
+          ? Date.now() + Number(session.expiresInMs)
+          : null,
+      });
+
       if (userData) {
         const role = normalizeRole(userData.capabilities?.role ?? userData.role);
         const { activeModule } = get();
@@ -432,6 +503,26 @@ export const useAppStore = create<AppState>((set, get) => ({
             ? activeModule
             : defaultModuleFor(role),
         });
+      } else if (payload.accessMessage) {
+        /**
+         * A valid session whose access has been withdrawn.
+         *
+         * Deliberately *not* signed out here. The branch below exists to break
+         * a redirect loop caused by a stale cookie, and applying it to this
+         * case produces a different and worse loop: the person is bounced to
+         * /login, signs in with a password that is perfectly correct, and
+         * arrives back at the same blank refusal having been told nothing. Six
+         * times, and then they call somebody.
+         *
+         * Keeping the session lets the screen say what happened and offer the
+         * one useful action. Nothing is readable either way — every endpoint
+         * refuses this account.
+         */
+        set({
+          user: null, isAuthenticated: false, needsOrganization: false,
+          mustChangePassword: false, isLoading: false, activeRole: 'employee',
+          sessionExpiresAt: null,
+        });
       } else {
         /**
          * Cookies say there is a session; the server says there is not.
@@ -446,14 +537,20 @@ export const useAppStore = create<AppState>((set, get) => ({
          *
          * Signing out breaks the cycle: it clears the cookie, so the redirect
          * that follows finally reaches the login form.
+         *
+         * `scope=local` because this is housekeeping in one browser after a
+         * token went stale, not a deliberate "sign me out everywhere". Using
+         * the global default here would end the person's session on their
+         * phone because a tab on their laptop happened to expire.
          */
-        await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {
+        await fetch('/api/auth/logout?scope=local', { method: 'POST' }).catch(() => {
           // Best effort. If it fails the redirect still happens; the user is
           // no worse off than before.
         });
         set({
           user: null, isAuthenticated: false, needsOrganization: false,
           mustChangePassword: false, isLoading: false, activeRole: 'employee',
+          sessionExpiresAt: null,
         });
       }
     } catch (e) {

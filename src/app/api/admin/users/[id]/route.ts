@@ -1,6 +1,17 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
+/**
+ * Withdrawing access ends the sessions that access was granting.
+ *
+ * Suspending someone stops the *next* request resolving an organization for
+ * them. It does nothing to the refresh token sitting in their browser, which
+ * Supabase renews indefinitely — so the account stays authenticated and the
+ * only thing between it and the platform is that its queries come back empty.
+ * That was the whole of "deactivating a user": a filter over their data, not a
+ * revocation of their access.
+ */
+import { endMemberSessions } from '@/lib/account-state';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -127,11 +138,44 @@ export async function PATCH(req: Request, { params }: Params) {
     }
     if (!Object.keys(update).length) return error('Nothing to update', 422, 'VALIDATION_ERROR');
 
+    /**
+     * A tombstone is not editable, and the reason is worth stating rather than
+     * leaving to the trigger that silently pins the row.
+     *
+     * Its auth identity no longer exists, so anything this endpoint could do to
+     * it produces a directory entry nobody can sign in as.
+     */
+    const { data: before } = await ctx.supabase
+      .from('organization_members').select('deleted_at, is_active, status')
+      .eq('organization_id', ctx.org.organizationId).eq('id', id).maybeSingle();
+    if (before?.deleted_at) {
+      return error(
+        'This account was permanently deleted and cannot be changed.',
+        409, 'ACCOUNT_DELETED',
+      );
+    }
+
     const { data, error: e } = await ctx.supabase.from('organization_members').update(update)
       .eq('organization_id', ctx.org.organizationId).eq('id', id).select('*').maybeSingle();
     if (e) return pgError(e);
     if (!data) return error('Not found', 404, 'NOT_FOUND');
-    return success(data);
+
+    /**
+     * Losing access ends the sessions that access was granting.
+     *
+     * Only on the transition, not on every save: re-sending `status:
+     * 'suspended'` for someone already suspended should not be a second
+     * revocation, and a role change while someone is signed in deliberately
+     * does *not* sign them out — the next request re-resolves their role from
+     * the database, so the new permissions apply immediately without throwing
+     * away whatever they were in the middle of.
+     */
+    let sessions: { revoked: boolean; warning?: string } = { revoked: false };
+    if (before?.is_active && data.is_active === false) {
+      sessions = await endMemberSessions(ctx.supabase, ctx.org.organizationId, id);
+    }
+
+    return success({ ...data, sessionsRevoked: sessions.revoked, warning: sessions.warning });
   } catch (e: any) { return error(e.message || 'Update failed', 500); }
 }
 
@@ -140,8 +184,28 @@ export async function PATCH(req: Request, { params }: Params) {
 // hr/leave/[id] and inventory/purchase-orders/[id], which already do the same.
 export { PATCH as PUT };
 
-/** Deactivate rather than delete: the audit trail must keep pointing at a real row. */
-export async function DELETE(_r: Request, { params }: Params) {
+/**
+ * Withdraw access. Not deletion — that is `DELETE …/[id]/account`.
+ *
+ * Sixteen NOT NULL columns cascade from a membership row, so removing it would
+ * take the person's messages, comments, meetings, attendance, leave and time
+ * entries with them. The row stays and the access goes.
+ *
+ * `?mode=terminate` records that employment ended rather than that access was
+ * paused. The two are the same access decision and a different fact, and
+ * reporting needs to tell them apart.
+ *
+ * ── Why the default writes `is_active` and not `status` ───────────────────
+ *
+ * Without a mode this must behave exactly as it always has, and "suspend" is
+ * not the same instruction as "close access". 0012's trigger only downgrades
+ * to suspended *from active*, precisely so that calling this endpoint on
+ * someone already terminated does not quietly rewrite their departure as a
+ * suspension. Sending `status: 'suspended'` outright bypasses that reasoning
+ * and does the rewrite — which an earlier draft of this route did, and
+ * `app:verify` caught.
+ */
+export async function DELETE(req: Request, { params }: Params) {
   const ctx = await authorize('admin', 'manage');
   if (ctx instanceof Response) return ctx;
   const { id } = await params;
@@ -149,10 +213,23 @@ export async function DELETE(_r: Request, { params }: Params) {
   if (id === ctx.org.memberId) {
     return error('You cannot remove yourself from the organization.', 409, 'SELF_REMOVAL');
   }
+
+  const terminating = new URL(req.url).searchParams.get('mode') === 'terminate';
+
   const { data, error: e } = await ctx.supabase.from('organization_members')
-    .update({ is_active: false })
-    .eq('organization_id', ctx.org.organizationId).eq('id', id).select('id').maybeSingle();
+    .update(terminating ? { status: 'terminated' } : { is_active: false })
+    .eq('organization_id', ctx.org.organizationId).eq('id', id)
+    .is('deleted_at', null)
+    .select('id, status').maybeSingle();
   if (e) return pgError(e);
   if (!data) return error('Not found', 404, 'NOT_FOUND');
-  return success({ deactivated: true });
+
+  const sessions = await endMemberSessions(ctx.supabase, ctx.org.organizationId, id);
+
+  return success({
+    deactivated: true,
+    status: data.status,
+    sessionsRevoked: sessions.revoked,
+    warning: sessions.warning,
+  });
 }

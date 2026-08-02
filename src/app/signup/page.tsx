@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { Suspense, useState, type FormEvent } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Hexagon, Loader2, Eye, EyeOff, MailCheck } from 'lucide-react';
 import { PLATFORM } from '@/lib/platform';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,19 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 
-export default function SignupPage() {
+function SignupForm() {
+  /**
+   * Arriving from an invitation.
+   *
+   * The acceptance screen sends the token along when someone has to register
+   * first. With it, the server resolves the invitation and stops requiring an
+   * organization name — which is what an invitee had to invent before they
+   * could join the company that invited them, ending up as the owner of a
+   * workspace nobody asked for. Without it this page behaves exactly as before.
+   */
+  const inviteToken = useSearchParams().get('invite');
+  const joining = !!inviteToken;
+
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -39,7 +52,8 @@ export default function SignupPage() {
           lastName: formData.lastName,
           email: formData.email,
           password: formData.password,
-          organizationName: formData.organization,
+          organizationName: joining ? undefined : formData.organization,
+          inviteToken,
         }),
       });
 
@@ -61,7 +75,13 @@ export default function SignupPage() {
       toast.success('Account created successfully!');
       // Full document navigation so middleware re-evaluates the httpOnly
       // session cookie set by the response above (see login page for detail).
-      window.location.assign('/dashboard');
+      //
+      // An invitee goes back to the invitation rather than to the dashboard:
+      // they have an account and still belong nowhere, so the dashboard would
+      // bounce them to onboarding — the screen they were sent here to avoid.
+      window.location.assign(
+        joining ? `/accept-invite?token=${encodeURIComponent(inviteToken!)}` : '/dashboard',
+      );
     } catch {
       toast.error('Network error. Please try again.');
     } finally {
@@ -88,8 +108,14 @@ export default function SignupPage() {
               <CardDescription>
                 We sent a confirmation link to{' '}
                 <span className="font-medium text-foreground">{formData.email}</span>.
-                Open it, then sign in to finish setting up{' '}
-                <span className="font-medium text-foreground">{formData.organization}</span>.
+                {joining ? (
+                  <> Opening it brings you straight back to your invitation.</>
+                ) : (
+                  <>
+                    {' '}Open it, then sign in to finish setting up{' '}
+                    <span className="font-medium text-foreground">{formData.organization}</span>.
+                  </>
+                )}
               </CardDescription>
             </CardHeader>
             <CardFooter className="flex flex-col gap-3">
@@ -124,7 +150,9 @@ export default function SignupPage() {
           <CardHeader className="space-y-1">
             <CardTitle className="text-xl">Get started</CardTitle>
             <CardDescription>
-              Fill in your details to create a new workspace
+              {joining
+                ? 'Create your account to accept the invitation. Use the email address it was sent to.'
+                : 'Fill in your details to create a new workspace'}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -197,19 +225,26 @@ export default function SignupPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">Must be at least 8 characters</p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="organization">Organization name</Label>
-                <Input
-                  id="organization"
-                  placeholder="Your company name"
-                  value={formData.organization}
-                  onChange={(e) => updateField('organization', e.target.value)}
-                  required
-                  autoComplete="organization"
-                  disabled={isLoading}
-                  className="h-11"
-                />
-              </div>
+              {/*
+                Not asked of an invitee. The workspace they are joining already
+                exists — this field is how they used to end up owning a second
+                one, which then followed them around for ever.
+              */}
+              {!joining && (
+                <div className="space-y-2">
+                  <Label htmlFor="organization">Organization name</Label>
+                  <Input
+                    id="organization"
+                    placeholder="Your company name"
+                    value={formData.organization}
+                    onChange={(e) => updateField('organization', e.target.value)}
+                    required
+                    autoComplete="organization"
+                    disabled={isLoading}
+                    className="h-11"
+                  />
+                </div>
+              )}
               <Button
                 type="submit"
                 className="w-full h-11 bg-emerald-500 hover:bg-emerald-600 text-white"
@@ -240,5 +275,22 @@ export default function SignupPage() {
         </Card>
       </div>
     </div>
+  );
+}
+/**
+ * `useSearchParams` needs a Suspense boundary to keep this route
+ * prerenderable — the same shape `/accept-invite` and `/login` already use.
+ */
+export default function SignupPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="bg-background flex min-h-screen items-center justify-center">
+          <Loader2 className="size-6 animate-spin text-emerald-500" />
+        </div>
+      }
+    >
+      <SignupForm />
+    </Suspense>
   );
 }

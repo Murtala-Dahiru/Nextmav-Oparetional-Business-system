@@ -1,18 +1,31 @@
 import { NextRequest } from 'next/server';
-import { supabaseServer } from '@/lib/supabase/server';
+import { supabaseServer, supabaseAdmin } from '@/lib/supabase/server';
 import { success, error } from '@/lib/api-response';
 
 /**
- * Sign up and create an organization.
+ * Sign up.
  *
- * These are one workflow, not two: a user with no organization has nowhere to
- * land and no rows they are permitted to read, so splitting them leaves a real
- * account in a dead end whenever the second call fails. `create_organization()`
- * is SECURITY DEFINER and writes the organization and the owner membership
- * atomically.
+ * ── Two arrivals, one account ─────────────────────────────────────────────
  *
- * Joining an existing company goes through the invitation flow instead, which
- * is why an organization name is required here.
+ * Founding a workspace and joining one are one workflow here, not two: a user
+ * with no organization has nowhere to land and no rows they are permitted to
+ * read, so splitting them leaves a real account in a dead end whenever the
+ * second call fails. `create_organization()` is SECURITY DEFINER and writes
+ * the organization and the owner membership atomically.
+ *
+ * That reasoning is right for a founder and was quietly wrong for everybody
+ * else. An invited person with no account was sent here by the acceptance
+ * screen, and this endpoint required an organization name — so before they
+ * could join the company that invited them they had to found one of their own,
+ * which they then owned for ever. Two organizations, one of them meaningless,
+ * and a person whose identity on the platform began with a workspace nobody
+ * asked for.
+ *
+ * Passing `inviteToken` resolves the invitation server-side and turns off the
+ * organization requirement. The token is not trusted for anything else: it is
+ * only checked to establish that an invitation exists for the address being
+ * registered, and `accept_invitation()` still validates it properly when the
+ * new account redeems it.
  */
 /**
  * Turn a GoTrue message into something a person can act on.
@@ -49,10 +62,38 @@ function describeSignUpError(message: string): [string, number, string] {
   return [message, 400, 'AUTH_ERROR'];
 }
 
+/**
+ * Is there a live invitation for this address?
+ *
+ * Read with the service role because the caller has no session yet — they are
+ * registering — and `invitations` is quite rightly closed to anonymous readers.
+ * Nothing about the invitation is returned to them: the answer is used only to
+ * decide whether to insist on an organization name, so this cannot become a way
+ * to ask which addresses have been invited where.
+ */
+async function invitationAwaits(email: string, token: string | null): Promise<boolean> {
+  try {
+    const admin = supabaseAdmin();
+    let q = admin
+      .from('invitations')
+      .select('id')
+      .eq('email', email)
+      .eq('status', 'pending')
+      .gt('expires_at', new Date().toISOString());
+    if (token) q = q.eq('token', token);
+    const { data } = await q.maybeSingle();
+    return !!data;
+  } catch {
+    // No service-role key. Fall back to requiring an organization name, which
+    // is the behaviour that existed before and is merely inconvenient.
+    return false;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password, firstName, lastName, organizationName } = body ?? {};
+    const { email, password, firstName, lastName, organizationName, inviteToken } = body ?? {};
 
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       return error('A valid email address is required', 422, 'VALIDATION_ERROR');
@@ -60,7 +101,14 @@ export async function POST(request: NextRequest) {
     if (!password || typeof password !== 'string' || password.length < 8) {
       return error('Password must be at least 8 characters', 422, 'VALIDATION_ERROR');
     }
-    if (!organizationName || !String(organizationName).trim()) {
+
+    const normalisedEmail = email.trim().toLowerCase();
+    const joiningByInvitation = await invitationAwaits(
+      normalisedEmail,
+      typeof inviteToken === 'string' && inviteToken ? inviteToken : null,
+    );
+
+    if (!joiningByInvitation && (!organizationName || !String(organizationName).trim())) {
       return error('Organization name is required', 422, 'VALIDATION_ERROR');
     }
 
@@ -81,7 +129,12 @@ export async function POST(request: NextRequest) {
          * It must also be listed under Redirect URLs in the Supabase
          * dashboard, or Supabase falls back to the Site URL and ignores this.
          */
-        emailRedirectTo: `${origin}/auth/callback?next=/onboarding`,
+        emailRedirectTo: joiningByInvitation && inviteToken
+          // Straight back to the invitation, so confirming the address and
+          // joining the workspace are one continuous act rather than a
+          // confirmation that lands on an onboarding form they must not use.
+          ? `${origin}/auth/callback?next=${encodeURIComponent(`/accept-invite?token=${inviteToken}`)}`
+          : `${origin}/auth/callback?next=/onboarding`,
         // Read by the handle_new_user trigger to populate the profile row.
         data: {
           first_name: String(firstName ?? '').trim(),
@@ -90,7 +143,17 @@ export async function POST(request: NextRequest) {
           // through the inbox. Confirmation means this request cannot create
           // the organization itself, and without carrying it the user is asked
           // for it a second time on the onboarding screen.
-          pending_organization_name: String(organizationName).trim(),
+          pending_organization_name: joiningByInvitation ? null : String(organizationName).trim(),
+          /**
+           * Read by `handle_new_user()` into `profiles.account_origin`, which
+           * decides whether this account may ever create an organization once
+           * it belongs to none.
+           *
+           * An invited account may not. That is what stops a terminated
+           * employee — invited originally, and now holding a perfectly valid
+           * password — from signing in and founding a workspace of their own.
+           */
+          account_origin: joiningByInvitation ? 'invited' : 'self_signup',
         },
       },
     });
@@ -126,8 +189,31 @@ export async function POST(request: NextRequest) {
           user: { id: signUp.user.id, email: signUp.user.email },
           organization: null,
           requiresEmailConfirmation: true,
-          message:
-            'Check your email to confirm your address, then sign in to finish setting up your organization.',
+          joiningByInvitation,
+          message: joiningByInvitation
+            ? 'Check your email to confirm your address. The link brings you straight back to your invitation.'
+            : 'Check your email to confirm your address, then sign in to finish setting up your organization.',
+        },
+        undefined,
+        201,
+      );
+    }
+
+    // An invitee founds nothing. They have a session and an account; the
+    // organization is the one that invited them, and they join it by redeeming
+    // the token on the acceptance screen.
+    if (joiningByInvitation) {
+      return success(
+        {
+          user: {
+            id: signUp.user.id,
+            email: signUp.user.email,
+            firstName: String(firstName ?? '').trim(),
+            lastName: String(lastName ?? '').trim(),
+          },
+          organization: null,
+          requiresEmailConfirmation: false,
+          joiningByInvitation: true,
         },
         undefined,
         201,

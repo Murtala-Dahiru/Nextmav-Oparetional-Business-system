@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
 import { success, error } from '@/lib/api-response';
 import { normalizeRole, capabilitySummary } from '@/lib/permissions';
+import { accessStateFor, describeState, isBlocked } from '@/lib/account-state';
 
 /**
  * Sign in.
@@ -66,6 +67,28 @@ export async function POST(request: NextRequest) {
     }
     if (!data.user) return error('Invalid email or password', 401, 'AUTH_ERROR');
 
+    /**
+     * The credentials are right. Whether the account may still be used is a
+     * separate question, and this is where it has to be asked.
+     *
+     * Before this, a suspended or terminated employee signed in successfully,
+     * resolved no membership — because `is_active = false` filters it out —
+     * and was reported as `needsOrganization: true`, which is the same answer a
+     * brand-new signup gets. The dashboard duly sent them to /onboarding, and
+     * the create-a-workspace form made them the owner of a new tenant. The
+     * termination had removed their colleagues' data from view and nothing else.
+     *
+     * The session is torn down rather than left in place: signing in and then
+     * being refused should not leave a working cookie behind, and `signOut`
+     * here revokes the tokens the sign-in just minted.
+     */
+    const access = await accessStateFor(supabase);
+    if (isBlocked(access.state)) {
+      const { code, message, status } = describeState(access.state);
+      await supabase.auth.signOut().catch(() => {});
+      return error(message, status, code);
+    }
+
     const { data: profile } = await supabase
       .from('profiles')
       .select('id, email, first_name, last_name, full_name, avatar_url, job_title')
@@ -104,6 +127,17 @@ export async function POST(request: NextRequest) {
       // created or joined an organization. The client needs to route them to
       // onboarding rather than to an empty dashboard.
       needsOrganization: !membership,
+      /**
+       * Named, so the client routes on the reason rather than on the absence.
+       *
+       * `invited` in particular has nowhere sensible to go without this: the
+       * person belongs to no organization *and* must not be offered the
+       * create-a-workspace form, because the workspace they want already
+       * exists and is waiting for them to accept.
+       */
+      accessState: access.state,
+      mayCreateOrganization: access.mayCreateOrganization,
+      pendingInvitations: access.pendingInvitations,
     });
   } catch (e: any) {
     return error(e.message || 'Login failed', 500, 'INTERNAL_ERROR');

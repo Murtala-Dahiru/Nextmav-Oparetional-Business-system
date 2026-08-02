@@ -96,6 +96,9 @@ no policy and silently see nothing.
 | `npm run db:verify` | Prove schema, RLS, storage, realtime and tenant isolation |
 | `npm run db:setup` | All three, in order |
 | `npm run app:verify` | 78 end-to-end checks against the running app |
+| `npm run identity:verify` | 82 checks over the identity lifecycle and sessions |
+| `npm run security:check` | Static checks over the API surface (no database needed) |
+| `npm run verify:all` | Every harness above, in order |
 
 ---
 
@@ -108,6 +111,8 @@ src/
   lib/
     permissions.ts    Capability model — the only source of access truth
     auth-context.ts   Request identity, authorize() guard, error mapping
+    account-state.ts  Where an account stands: active, suspended, terminated…
+    session-policy.ts Idle and absolute session windows, enforced in proxy.ts
     supabase/crud.ts  Generic list/create/update/delete handlers
     case.ts           snake_case ↔ camelCase at the API boundary
   proxy.ts            Route protection (Next.js middleware convention)
@@ -121,10 +126,42 @@ scripts/              Migration and verification tooling
 
 Nothing here is asserted without being run:
 
-- `db:check` — 8 migrations parsed against the real PostgreSQL grammar
-- `db:verify` — 43 checks including two-tenant isolation
+- `db:check` — every migration parsed against the real PostgreSQL grammar
+- `db:verify` — 45 checks including two-tenant isolation
 - `app:verify` — 78 checks through the HTTP API as two users
+- `identity:verify` — 82 checks over the whole identity lifecycle
+- `security:check` — static checks over every route, policy and header
 - `npm test` — 30 unit tests over the attendance rules
+
+---
+
+## Identity and sessions
+
+A person is one `profile` (1:1 with `auth.users`). Organizations grant that
+identity access through `organization_members`; role and department live on the
+membership, never on the person, because the same individual can be an owner of
+one company and an employee of another.
+
+**Lifecycle.** `pending invitation → active → suspended → employment ended →
+permanently deleted`. `account_access_state()` resolves which of those an
+account is in, and every entry point — sign-in, the request guards, onboarding,
+`create_organization()` — reads that one answer. Withdrawing access revokes the
+person's sessions rather than merely filtering their queries.
+
+**Deletion removes the identity, not the record.** Seventeen columns cascade
+from a membership row, sixteen of them NOT NULL, so deleting one would erase
+that person's messages, comments and meetings along with their login. Instead
+live responsibilities are reassigned to a named colleague, rosters are revoked,
+history keeps pointing at a retained membership row, and the auth user is
+deleted — which ends access and frees the email address for reuse. `GET
+/api/admin/users/[id]/account` reports what a deletion would touch before it
+happens.
+
+**Sessions** have two clocks, both enforced in `proxy.ts` from httpOnly cookies:
+30 minutes idle and 12 hours absolute, configurable through
+`NEXT_PUBLIC_SESSION_IDLE_MINUTES` and `NEXT_PUBLIC_SESSION_ABSOLUTE_MINUTES`.
+Background polling carries `x-nm-background: 1` and does not hold the idle
+window open; the browser warns two minutes before expiry.
 
 ---
 
@@ -144,3 +181,11 @@ Honest list of what is not built, as distinct from broken:
   returns the link; sending the email is not wired up.
 - **Public signup** is blocked until email confirmation is disabled or custom
   SMTP is configured. See DEPLOYMENT.md.
+- **No Content-Security-Policy.** The other security headers are set. A useful
+  `script-src` needs per-request nonces threaded through `proxy.ts`, because
+  Next's app router inlines hydration and bootstrap scripts; a policy written
+  without them either breaks the application or is loosened with
+  `unsafe-inline` until it states nothing. That is a piece of work rather than
+  a header, and the loosened version would look like protection and not be it.
+- **No multi-factor authentication.** Supabase supports TOTP enrolment; nothing
+  in this application offers it, and no policy can require it.
