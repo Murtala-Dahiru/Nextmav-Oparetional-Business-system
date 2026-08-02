@@ -32,7 +32,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { EmptyState } from '@/components/shared/empty-state';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { formatDateTime, formatRelativeTime, initialsOf } from '@/lib/format';
-import { useMeeting } from '@/hooks/use-meeting';
+import { useMeeting, type PeerHealth } from '@/hooks/use-meeting';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useRealtime } from '@/hooks/use-realtime';
 import { cn } from '@/lib/utils';
 
@@ -870,7 +871,7 @@ export function ScheduleMeetingDialog({
  * server saying the meeting has ended, or that it no longer exists.
  */
 export function MeetingRoom({
-  meetingId, initial, currentMemberId, directory, onClose, onRefresh,
+  meetingId, initial, currentMemberId, directory, onClose,
 }: {
   meetingId: string;
   /**
@@ -884,8 +885,12 @@ export function MeetingRoom({
   currentMemberId: string | null;
   /** Colleagues who can be pulled into a meeting that has already started. */
   directory: DirectoryMember[];
+  /**
+   * Closing is also what refreshes the module behind the room — the list is
+   * caught up once, on the way out, rather than on every event inside a
+   * meeting. See `closeMeeting` in the module shell.
+   */
   onClose: () => void;
-  onRefresh: () => void;
 }) {
   const [meeting, setMeeting] = useState<MeetingRow | null>(initial ?? null);
   const [gone, setGone] = useState(false);
@@ -985,23 +990,22 @@ export function MeetingRoom({
       currentMemberId={currentMemberId}
       directory={directory}
       onClose={onClose}
-      onRefresh={onRefresh}
       onMeetingChanged={loadMeeting}
     />
   );
 }
 
 function Room({
-  meeting, currentMemberId, directory, onClose, onRefresh, onMeetingChanged,
+  meeting, currentMemberId, directory, onClose, onMeetingChanged,
 }: {
   meeting: MeetingRow;
   currentMemberId: string | null;
   directory: DirectoryMember[];
   onClose: () => void;
-  onRefresh: () => void;
   /** Refetch this room's own meeting row. */
   onMeetingChanged: () => void;
 }) {
+  const isMobile = useIsMobile();
   const [participants, setParticipants] = useState<MeetingParticipant[]>([]);
   /**
    * Where the caller stands at the door, as the server last answered.
@@ -1059,7 +1063,7 @@ function Room({
   /**
    * The parent's callbacks, in refs.
    *
-   * Both are written inline at the call site — `onClose={() => setActiveMeeting(null)}`
+   * Both are written inline at the call site — `onClose={() => setActiveMeetingId(null)}`
    * — so they are a new function on every render of the module, and the module
    * renders on every presence beat, every keystroke in the composer and every
    * realtime event. Held in the dependency list of the join effect that meant a
@@ -1067,27 +1071,30 @@ function Room({
    * a scheduled meeting it meant a PATCH storm. Neither is anything a caller
    * should have to know, so the refs are here rather than a rule for callers.
    */
-  const refresh = useRef(onRefresh);
   const close = useRef(onClose);
   const reload = useRef(onMeetingChanged);
   useEffect(() => {
-    refresh.current = onRefresh;
     close.current = onClose;
     reload.current = onMeetingChanged;
   });
 
   /**
-   * Everything that changes this meeting refreshes both.
+   * Something about this meeting changed: read this room's own row again.
    *
-   * `reload` is this room's own row and is what the screen reads; `refresh` is
-   * the module's list behind it, so the card, the sidebar dot and the Join
-   * button outside agree. The room does not *depend* on the second — that
-   * dependency is what used to drop people out of a call.
+   * ── Why the module's list is deliberately *not* refreshed here ───────────
+   *
+   * It used to be, and it is the most expensive thing the room could do. This
+   * fires on every realtime event in the meeting — a hand going up, a camera
+   * toggled, somebody admitted — and each one was answering with a
+   * `meeting_overview()` *and* a `channel_overview()` for a sidebar that is
+   * entirely hidden behind a full-screen room. Six people fidgeting with their
+   * cameras was a few hundred rows of aggregate SQL a minute, on the device
+   * least able to spare it, for a list nobody could see.
+   *
+   * The list is caught up once, when the room closes — which is the moment
+   * before it is looked at again. See `closeMeeting` in the module shell.
    */
-  const changed = useCallback(() => {
-    reload.current();
-    refresh.current();
-  }, []);
+  const changed = useCallback(() => { reload.current(); }, []);
 
   const loadParticipants = useCallback(async () => {
     try {
@@ -1133,8 +1140,16 @@ function Room({
     }
   }, [meeting.meetingId, loadParticipants]);
 
+  /**
+   * Asking for a seat is the only thing that happens on mount.
+   *
+   * There was a second effect fetching the participant list alongside it, which
+   * `requestSeat` already does the moment the server answers — two requests for
+   * the same rows, racing, at the one moment in a meeting where latency is
+   * actually felt. The roster is worth nothing before the seat is granted
+   * anyway: until then there is no room to be in.
+   */
   useEffect(() => { void requestSeat(); }, [requestSeat]);
-  useEffect(() => { void loadParticipants(); }, [loadParticipants]);
 
   /**
    * The host opening a scheduled meeting is what starts it.
@@ -1307,7 +1322,8 @@ function Room({
     try {
       await fetch(`/api/communication/meetings/${meeting.meetingId}/participants`, { method: 'DELETE' });
     } catch { /* leaving should never fail in front of somebody */ }
-    refresh.current();
+    // Closing is what refreshes the module behind — see `closeMeeting`. Asking
+    // for it here as well was the same two queries twice.
     close.current();
   }, [meeting.meetingId]);
 
@@ -1370,8 +1386,8 @@ function Room({
       micOff?: boolean;
       handUp?: boolean;
       sharing?: boolean;
-      connecting?: boolean;
-      unreachable?: boolean;
+      /** Absent for your own tile, which is never "connecting" to itself. */
+      health?: PeerHealth;
     }[] = [{
       id: 'self',
       stream: media.localStream,
@@ -1395,6 +1411,10 @@ function Room({
         micOff: !!person?.isMuted,
         handUp: !!person?.handRaisedAt,
         sharing: !!person?.isSharing,
+        // Media is arriving, so it is live unless the connection has since
+        // gone quiet — which is precisely the case a frozen picture needs a
+        // word for.
+        health: media.health[peer.memberId] === 'reconnecting' ? 'reconnecting' : 'live',
       });
     }
 
@@ -1409,7 +1429,6 @@ function Room({
     for (const p of present) {
       if (p.memberId === currentMemberId) continue;
       if (media.peers.some(peer => peer.memberId === p.memberId)) continue;
-      const lost = media.unreachable.includes(p.memberId);
       list.push({
         id: p.memberId,
         stream: null,
@@ -1418,15 +1437,14 @@ function Room({
         cameraOff: true,
         micOff: p.isMuted,
         handUp: !!p.handRaisedAt,
-        connecting: !lost,
-        unreachable: lost,
+        health: media.health[p.memberId] ?? 'connecting',
       });
     }
 
     return list;
   }, [
     media.localStream, media.camOn, media.micOn, media.sharing,
-    media.peers, media.unreachable, participants, present, currentMemberId,
+    media.peers, media.health, participants, present, currentMemberId,
   ]);
 
   /**
@@ -1443,13 +1461,21 @@ function Room({
       && typeof navigator.mediaDevices?.getDisplayMedia === 'function');
   }, []);
 
-  const stage = useStageLayout(tiles.length, TILE_GAP);
-  const cramped = stage.width > 0 && stage.width < TILE_MIN;
+  const stage = useStageLayout(tiles.length, TILE_GAP, !isMobile);
+  const cramped = !isMobile && stage.width > 0 && stage.width < TILE_MIN;
   const tileWidth = cramped
     ? TILE_MIN
     : tiles.length === 1
       ? Math.min(stage.width, SOLO_MAX)
       : stage.width;
+  /**
+   * When a tile is too small to carry its furniture.
+   *
+   * On a desktop that is a measured width; on a phone it is simply whether the
+   * grid has gone to two columns, which is the same judgement without needing
+   * the measurement the phone does not take.
+   */
+  const compactTiles = isMobile ? tiles.length > 2 : tileWidth > 0 && tileWidth < 220;
 
   /**
    * Running the meeting, from inside it.
@@ -1708,26 +1734,65 @@ function Room({
           <div
             ref={stage.ref}
             className={cn(
-              'flex min-h-0 flex-1 justify-center p-2.5 sm:p-4',
+              'flex min-h-0 flex-1 justify-center p-4',
               // Below a readable tile size the stage stops shrinking and starts
               // scrolling: twenty people at 40px each is not a smaller version
-              // of the layout, it is an unusable one.
+              // of the layout, it is an unusable one. On a phone the same is
+              // true a good deal sooner, so the column rules below hand over to
+              // scrolling rather than to ever-smaller tiles.
               cramped ? 'items-start overflow-y-auto' : 'items-center overflow-hidden',
+              /**
+               * `items-start` and not `items-center`, with `my-auto` on the grid
+               * below.
+               *
+               * A centred flex child that is taller than its container has its
+               * overflow split above and below, and the half above cannot be
+               * scrolled to — the first row of faces is simply gone. Automatic
+               * margins centre exactly the same way when there is room and do
+               * not do that when there is not, which is the whole difference
+               * between a crowded meeting on a phone working and not.
+               */
+              isMobile && 'items-start overflow-y-auto',
             )}
           >
             <div
-              className="grid"
-              style={
-                stage.width > 0
-                  ? { gap: TILE_GAP, gridTemplateColumns: `repeat(${stage.cols}, ${tileWidth}px)` }
+              className={cn(
+                'grid w-full gap-3',
+                isMobile && 'my-auto',
+                /**
+                 * ── Two layouts, because they are two different problems ────
+                 *
+                 * A phone is narrow and tall, and the width is the whole of it:
+                 * a tile takes the full column and its height follows, which is
+                 * what the module did before this phase and what it should keep
+                 * doing. Fitting tiles to the height there produces something
+                 * technically optimal and worse to use — a letterboxed strip
+                 * with margins on a screen that has none to spare.
+                 *
+                 * A desktop is the opposite: wide, short, and the height is what
+                 * runs out first. That is where column classes put a tile taller
+                 * than the room and pushed the controls off the bottom, and
+                 * where the measured fit below belongs.
+                 *
+                 * So the phone keeps its columns and the desktop gets the
+                 * measurement. `isMobile` is the same 768px breakpoint the rest
+                 * of the module uses, so the two agree about what a phone is.
+                 *
+                 * One column up to two tiles, two columns beyond — which is
+                 * what the column classes resolved to on a small screen before
+                 * this phase, restored exactly. The only thing added is that
+                 * the stage scrolls once the rows outgrow it, so a crowded
+                 * meeting cannot push the controls off the bottom.
+                 */
+                isMobile && (tiles.length <= 2 ? 'grid-cols-1' : 'grid-cols-2'),
+              )}
+              style={isMobile
+                ? undefined
+                : stage.width > 0
+                  ? { gridTemplateColumns: `repeat(${stage.cols}, ${tileWidth}px)`, width: 'auto' }
                   // Before the first measurement — one frame — a sensible CSS
                   // grid, so the room does not open on an empty stage.
-                  : {
-                      gap: TILE_GAP,
-                      width: '100%',
-                      gridTemplateColumns: `repeat(${Math.min(tiles.length, 2)}, minmax(0, 1fr))`,
-                    }
-              }
+                  : { gridTemplateColumns: `repeat(${Math.min(tiles.length, 2)}, minmax(0, 1fr))` }}
             >
               {tiles.map(tile => (
                 <VideoTile
@@ -1741,9 +1806,8 @@ function Room({
                   micOff={tile.micOff}
                   handUp={tile.handUp}
                   sharing={tile.sharing}
-                  connecting={tile.connecting}
-                  unreachable={tile.unreachable}
-                  compact={tileWidth > 0 && tileWidth < 220}
+                  health={tile.health}
+                  compact={compactTiles}
                 />
               ))}
             </div>
@@ -2116,13 +2180,16 @@ function InviteToMeetingDialog({
  * resizing, both of which change the stage and neither of which a media query
  * on the viewport can see.
  */
-function useStageLayout(count: number, gap: number) {
+function useStageLayout(count: number, gap: number, enabled: boolean) {
   const ref = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
 
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    // A phone lays out by column class and never reads this, so there is no
+    // reason to observe it — and every soft keyboard opening would otherwise
+    // re-render the whole room for a number nobody uses.
+    if (!el || !enabled) return;
     const observer = new ResizeObserver(entries => {
       const rect = entries[0]?.contentRect;
       if (!rect) return;
@@ -2135,7 +2202,7 @@ function useStageLayout(count: number, gap: number) {
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [enabled]);
 
   const layout = useMemo(
     () => fitTiles(count, box.w, box.h, gap),
@@ -2262,7 +2329,7 @@ function ControlButton({
  */
 const VideoTile = memo(function VideoTile({
   stream, label, muted, mirrored, cameraOff, micOff, handUp, sharing,
-  connecting, unreachable, compact, memberId,
+  health, compact, memberId,
 }: {
   stream: MediaStream | null;
   label: string;
@@ -2272,9 +2339,8 @@ const VideoTile = memo(function VideoTile({
   micOff?: boolean;
   handUp?: boolean;
   sharing?: boolean;
-  connecting?: boolean;
-  /** The server says they are here and this browser could not reach them. */
-  unreachable?: boolean;
+  /** How the connection to this person is doing. Absent on your own tile. */
+  health?: PeerHealth;
   /** The tile is small enough that the avatar and the labels must come down. */
   compact?: boolean;
   memberId: string;
@@ -2292,7 +2358,7 @@ const VideoTile = memo(function VideoTile({
       'relative aspect-video overflow-hidden rounded-xl bg-slate-900 ring-1 ring-white/10 transition-shadow',
       handUp && 'ring-2 ring-amber-400',
       sharing && 'ring-2 ring-emerald-400',
-      unreachable && 'ring-1 ring-rose-500/40',
+      health === 'lost' && 'ring-1 ring-rose-500/40',
     )}>
       <video
         ref={ref}
@@ -2309,15 +2375,16 @@ const VideoTile = memo(function VideoTile({
       {!showVideo && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-2 text-center">
           {/*
-            Three distinct states, where there used to be two.
+            Four states, where there used to be one spinner.
 
-            A spinner meant both "their video is on its way" and "this will
-            never happen", and the second is the one people needed to be told
-            about: without a TURN server a symmetric NAT cannot be traversed,
-            and the meeting is not going to fix itself. Saying so is what lets
-            somebody move to a phone call instead of waiting.
+            "Their video is on its way", "it was working and is being rebuilt"
+            and "this will never happen" were all the same animation, and they
+            ask completely different things of the person watching. The last is
+            the one that mattered most: without a TURN server a symmetric NAT
+            cannot be traversed, the meeting is not going to fix itself, and
+            saying so is what lets somebody pick up a phone instead of waiting.
           */}
-          {unreachable ? (
+          {health === 'lost' ? (
             <>
               <WifiOff className={cn('text-rose-400/80', compact ? 'size-5' : 'size-6')} />
               {!compact && (
@@ -2326,7 +2393,12 @@ const VideoTile = memo(function VideoTile({
                 </span>
               )}
             </>
-          ) : connecting ? (
+          ) : health === 'reconnecting' ? (
+            <>
+              <RefreshCw className={cn('animate-spin text-amber-300/80', compact ? 'size-5' : 'size-6')} />
+              {!compact && <span className="text-[11px] text-amber-200/60">Reconnecting…</span>}
+            </>
+          ) : health === 'connecting' ? (
             <>
               <Loader2 className={cn('animate-spin text-white/40', compact ? 'size-5' : 'size-6')} />
               {!compact && <span className="text-[11px] text-white/35">Connecting…</span>}
@@ -2343,6 +2415,12 @@ const VideoTile = memo(function VideoTile({
             </Avatar>
           )}
         </div>
+      )}
+
+      {showVideo && health === 'reconnecting' && (
+        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-amber-200">
+          <RefreshCw className="size-2.5 animate-spin" /> Reconnecting
+        </span>
       )}
 
       <div className={cn(

@@ -52,6 +52,21 @@ export interface PeerStream {
   hasVideo: boolean;
 }
 
+/**
+ * What the room can honestly say about one connection.
+ *
+ *   · `connecting`   — being set up for the first time.
+ *   · `live`         — media is flowing.
+ *   · `reconnecting` — it was working, or nearly, and is being rebuilt. This is
+ *                      the state a wobbling network spends its time in, and the
+ *                      one that used to be indistinguishable from `connecting`.
+ *   · `lost`         — rebuilt as often as it is worth rebuilding. Without a
+ *                      TURN server a symmetric NAT genuinely cannot be
+ *                      traversed, and saying so lets somebody pick up a phone
+ *                      instead of watching an animation.
+ */
+export type PeerHealth = 'connecting' | 'live' | 'reconnecting' | 'lost';
+
 export interface UseMeetingOptions {
   meetingId: string | null;
   /** The caller's membership id — the identity every signalling message carries. */
@@ -74,6 +89,82 @@ export interface UseMeetingOptions {
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
 ];
+
+/**
+ * The connection settings, and why each one is set.
+ *
+ *   · `iceCandidatePoolSize` starts gathering candidates as soon as the
+ *     connection object exists rather than when the offer is created. On a
+ *     slow network gathering is most of the time to first frame, and this is
+ *     the single cheapest thing that shortens it.
+ *   · `bundlePolicy: 'max-bundle'` puts audio and video on one transport, so
+ *     there is one ICE negotiation per peer instead of two. Fewer ports, fewer
+ *     chances for one of them to be the one a firewall drops.
+ *   · `rtcpMuxPolicy: 'require'` is the same economy for the control channel.
+ *
+ * All three are defaults in some browsers and not in others; stating them
+ * means the meeting behaves the same way everywhere.
+ */
+const RTC_CONFIG: RTCConfiguration = {
+  iceServers: ICE_SERVERS,
+  iceCandidatePoolSize: 4,
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require',
+};
+
+/**
+ * How much video to send per person, given how many people there are.
+ *
+ * A mesh sends one copy of your camera to every participant, so the upstream
+ * cost is the bitrate *times* the number of peers — and upstream is what
+ * domestic and mobile connections have least of. Left alone, browsers aim for
+ * something like 2Mbps a stream, which four peers turns into 8Mbps up and a
+ * meeting that stutters for everybody at once.
+ *
+ * These figures keep the total under roughly 1.5Mbps up, which is within reach
+ * of a poor connection, and are per-stream ceilings rather than targets: a good
+ * network still gets a clean picture at the smaller sizes because the encoder
+ * is free to use less.
+ */
+function videoBitrateFor(peers: number): number {
+  if (peers <= 1) return 1_200_000;
+  if (peers <= 3) return 600_000;
+  if (peers <= 6) return 350_000;
+  return 200_000;
+}
+
+/** A shared screen is text far more often than it is motion. */
+const SHARE_BITRATE = 1_500_000;
+
+/**
+ * Shape one video sender.
+ *
+ * `degradationPreference` is the interesting half. Under pressure a browser
+ * must give up either resolution or framerate, and the right answer depends
+ * entirely on what is being sent: a face stays legible at a lower resolution
+ * and becomes a slideshow if the framerate goes, while a shared spreadsheet is
+ * unreadable the moment it is scaled down and perfectly usable at eight frames
+ * a second.
+ */
+async function shapeSender(
+  sender: RTCRtpSender,
+  bitrate: number,
+  preference: 'maintain-framerate' | 'maintain-resolution',
+) {
+  if (!sender.track || sender.track.kind !== 'video') return;
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings?.length) params.encodings = [{}];
+    params.encodings[0].maxBitrate = bitrate;
+    // Not in every lib.dom yet, and harmless where it is unrecognised.
+    (params as { degradationPreference?: string }).degradationPreference = preference;
+    await sender.setParameters(params);
+  } catch {
+    // Some browsers refuse `setParameters` on a sender that has not negotiated
+    // yet. The connection is fine without it; the picture is merely less
+    // considerate of the network.
+  }
+}
 
 /**
  * How often the roster and the connections are compared.
@@ -114,6 +205,29 @@ const STALL_MS = 12_000;
 /** How many times one peer is rebuilt before it is called unreachable. */
 const MAX_REBUILDS = 3;
 
+/**
+ * How long a connection may sit `disconnected` before it is rebuilt.
+ *
+ * Most disconnections are a second of packet loss and heal themselves, so
+ * tearing down immediately would turn every hiccup into a full renegotiation —
+ * which is slower and looks worse than the hiccup. Six seconds is comfortably
+ * past the ones that recover and comfortably before anybody decides the meeting
+ * is broken.
+ */
+const DROP_GRACE_MS = 6000;
+
+/**
+ * How long before somebody given up on is offered another chance.
+ *
+ * `MAX_REBUILDS` stops a connection that cannot succeed from retrying for
+ * ever — but "cannot succeed" is a judgement about a network, and networks
+ * change. A VPN reconnects, a phone finds wifi, a router is restarted. Without
+ * this the meeting would stay permanently broken for a pair whose obstacle had
+ * gone away half an hour ago, and the only cure would be for one of them to
+ * leave and rejoin.
+ */
+const RETRY_LOST_MS = 60_000;
+
 export function useMeeting({
   meetingId, memberId, admitted, audioOnly, enabled,
 }: UseMeetingOptions) {
@@ -129,14 +243,20 @@ export function useMeeting({
   /** Whether the signalling channel is actually carrying anything yet. */
   const [linked, setLinked] = useState(false);
   /**
-   * People the server says are in the room that this browser could not reach.
+   * How the connection to each person is actually doing.
    *
-   * Rendered as a state rather than left as a spinner. A tile that spins for
-   * ever is the single most common way a mesh fails in front of somebody, and
-   * it is indistinguishable from a slow network right up until the meeting is
-   * over.
+   * Rendered rather than left as a spinner. A tile that spins for ever is the
+   * single most common way a mesh fails in front of somebody, and it is
+   * indistinguishable from a slow network right up until the meeting is over —
+   * which is exactly the "appears frozen" complaint. Four states, because they
+   * call for four different things from the person watching: wait, nothing,
+   * wait a bit longer, and stop waiting.
    */
-  const [unreachable, setUnreachable] = useState<string[]>([]);
+  const [health, setHealth] = useState<Record<string, PeerHealth>>({});
+
+  const mark = useCallback((peerId: string, state: PeerHealth) => {
+    setHealth(prev => (prev[peerId] === state ? prev : { ...prev, [peerId]: state }));
+  }, []);
 
   const connections = useRef(new Map<string, RTCPeerConnection>());
   /**
@@ -169,6 +289,14 @@ export function useMeeting({
    * That connection sits in `new` indefinitely with nothing to report.
    */
   const openedAt = useRef(new Map<string, number>());
+  /** When a connection went quiet, for the grace period in the sweep. */
+  const droppedAt = useRef(new Map<string, number>());
+  /** When a peer was given up on, for the occasional fresh attempt. */
+  const lostAt = useRef(new Map<string, number>());
+  /** The bitrate ceiling currently applied, so it is only re-applied on change. */
+  const shapedFor = useRef(0);
+  /** Whether a screen is being shared, readable from callbacks that are not re-made. */
+  const sharingRef = useRef(false);
   const localRef = useRef<MediaStream | null>(null);
   /** The camera track, kept aside while a screen share is standing in for it. */
   const cameraTrack = useRef<MediaStreamTrack | null>(null);
@@ -187,6 +315,7 @@ export function useMeeting({
     connections.current.delete(peerId);
     pendingIce.current.delete(peerId);
     openedAt.current.delete(peerId);
+    droppedAt.current.delete(peerId);
     setPeers(prev => prev.filter(p => p.memberId !== peerId));
   }, []);
 
@@ -204,12 +333,23 @@ export function useMeeting({
   const connect = useCallback((peerId: string, initiate: boolean) => {
     if (!memberId || connections.current.has(peerId)) return connections.current.get(peerId)!;
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection(RTC_CONFIG);
     connections.current.set(peerId, pc);
     openedAt.current.set(peerId, Date.now());
+    // A rebuild is not a first attempt, and the difference is the whole point
+    // of the distinction: one asks somebody to wait, the other tells them it is
+    // already going wrong.
+    mark(peerId, (rebuilds.current.get(peerId) ?? 0) > 0 ? 'reconnecting' : 'connecting');
 
     for (const track of localRef.current?.getTracks() ?? []) {
-      pc.addTrack(track, localRef.current!);
+      const sender = pc.addTrack(track, localRef.current!);
+      if (track.kind === 'video') {
+        void shapeSender(
+          sender,
+          sharingRef.current ? SHARE_BITRATE : videoBitrateFor(admittedRef.current.length),
+          sharingRef.current ? 'maintain-resolution' : 'maintain-framerate',
+        );
+      }
     }
 
     pc.onicecandidate = (e) => {
@@ -240,7 +380,26 @@ export function useMeeting({
         // It came back, so the budget for rebuilding it is restored — a call
         // that survives four separate blips over an hour is a call that worked.
         rebuilds.current.delete(peerId);
-        setUnreachable(prev => (prev.includes(peerId) ? prev.filter(id => id !== peerId) : prev));
+        droppedAt.current.delete(peerId);
+        lostAt.current.delete(peerId);
+        mark(peerId, 'live');
+      }
+
+      /**
+       * `disconnected` is not `failed`, and waiting for `failed` is the wrong
+       * thing to do about it.
+       *
+       * It means the far end has gone quiet: a phone changing cell, a laptop
+       * moving between access points, a moment of packet loss. Most of them
+       * heal on their own within a second or two, which is why this does not
+       * tear the connection down. But some never do, and ICE takes tens of
+       * seconds to conclude that — during which the picture is frozen and
+       * nothing on screen says why. Stamped here and rebuilt by the sweep if it
+       * is still quiet a few seconds later; said out loud immediately.
+       */
+      if (pc.connectionState === 'disconnected') {
+        if (!droppedAt.current.has(peerId)) droppedAt.current.set(peerId, Date.now());
+        mark(peerId, 'reconnecting');
       }
       /**
        * `failed` is terminal for *this* connection — it will not recover on its
@@ -257,10 +416,12 @@ export function useMeeting({
         const used = rebuilds.current.get(peerId) ?? 0;
         dropPeer(peerId);
         if (used >= MAX_REBUILDS || !admittedRef.current.includes(peerId)) {
-          setUnreachable(prev => (prev.includes(peerId) ? prev : [...prev, peerId]));
+          lostAt.current.set(peerId, Date.now());
+          mark(peerId, 'lost');
           return;
         }
         rebuilds.current.set(peerId, used + 1);
+        mark(peerId, 'reconnecting');
         post('reset', { from: memberId, to: peerId });
         // Asked for rather than done here: this is the function that would be
         // doing the calling, and a `useCallback` that names itself is not
@@ -282,7 +443,7 @@ export function useMeeting({
     }
 
     return pc;
-  }, [memberId, post, dropPeer]);
+  }, [memberId, post, dropPeer, mark]);
 
   /**
    * Rebuild one connection, shortly.
@@ -334,6 +495,15 @@ export function useMeeting({
 
       for (const peerId of roster) {
         if (connections.current.has(peerId)) continue;
+
+        // Somebody written off a while ago gets the budget back, once, so a
+        // network that has since recovered is not ignored for the rest of the
+        // meeting.
+        const wrote = lostAt.current.get(peerId);
+        if (wrote && now - wrote >= RETRY_LOST_MS) {
+          rebuilds.current.delete(peerId);
+          lostAt.current.delete(peerId);
+        }
         if ((rebuilds.current.get(peerId) ?? 0) >= MAX_REBUILDS) continue;
 
         const initiate = memberId < peerId;
@@ -359,16 +529,32 @@ export function useMeeting({
       }
 
       for (const [peerId, pc] of [...connections.current]) {
-        if (pc.connectionState === 'connected') continue;
-        if (now - (openedAt.current.get(peerId) ?? now) < STALL_MS) continue;
+        const state = pc.connectionState;
+
+        /**
+         * Two ways a connection needs rebuilding, with different clocks.
+         *
+         * One never arrived — `new` or `connecting` past `STALL_MS`, which is
+         * the offer that went to a browser that was not listening. The other
+         * arrived and went quiet: `disconnected` heals by itself far more often
+         * than not, so it is given `DROP_GRACE_MS` to do so before anything is
+         * torn down, and only the ones that do not are rebuilt.
+         */
+        if (state === 'connected') continue;
+        const stale = state === 'disconnected'
+          ? now - (droppedAt.current.get(peerId) ?? now) >= DROP_GRACE_MS
+          : now - (openedAt.current.get(peerId) ?? now) >= STALL_MS;
+        if (!stale) continue;
 
         const used = rebuilds.current.get(peerId) ?? 0;
         dropPeer(peerId);
         if (used >= MAX_REBUILDS || !roster.includes(peerId)) {
-          setUnreachable(prev => (prev.includes(peerId) ? prev : [...prev, peerId]));
+          lostAt.current.set(peerId, now);
+          mark(peerId, 'lost');
           continue;
         }
         rebuilds.current.set(peerId, used + 1);
+        mark(peerId, 'reconnecting');
         // Both halves have to let go, or the offer that follows arrives at a
         // connection the far end still believes in and is discarded.
         post('reset', { from: memberId, to: peerId });
@@ -379,9 +565,40 @@ export function useMeeting({
         if (!roster.includes(peerId)) dropPeer(peerId);
       }
 
-      setUnreachable(prev => {
-        const kept = prev.filter(id => roster.includes(id));
-        return kept.length === prev.length ? prev : kept;
+      // Somebody who left and came back is a fresh start, not a continuation of
+      // whatever went wrong last time — otherwise a rejoin inherits a spent
+      // retry budget and is written off before it has tried.
+      for (const id of [...rebuilds.current.keys()]) {
+        if (!roster.includes(id)) { rebuilds.current.delete(id); lostAt.current.delete(id); }
+      }
+
+      /**
+       * The bitrate ceiling follows the size of the room.
+       *
+       * A mesh sends one copy of your camera per person, so the fifth arrival
+       * changes what every existing connection can afford — and none of them
+       * would otherwise be told. Cheap: `setParameters` on an established
+       * sender needs no renegotiation.
+       */
+      const bitrate = sharingRef.current ? SHARE_BITRATE : videoBitrateFor(roster.length);
+      if (bitrate !== shapedFor.current) {
+        shapedFor.current = bitrate;
+        for (const pc of connections.current.values()) {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) {
+            void shapeSender(sender, bitrate,
+              sharingRef.current ? 'maintain-resolution' : 'maintain-framerate');
+          }
+        }
+      }
+
+      // Nobody who has left keeps a status on a tile that is no longer drawn.
+      setHealth(prev => {
+        const next: Record<string, PeerHealth> = {};
+        for (const id of roster) if (prev[id]) next[id] = prev[id];
+        const same = Object.keys(next).length === Object.keys(prev).length
+          && roster.every(id => next[id] === prev[id]);
+        return same ? prev : next;
       });
     };
 
@@ -391,7 +608,7 @@ export function useMeeting({
     // `rosterKey` rather than `admitted`: the list is rebuilt on every refetch,
     // so depending on the array itself would restart this interval a few times
     // a second while nothing about who is here had changed.
-  }, [enabled, memberId, linked, rosterKey, connect, dropPeer, post]);
+  }, [enabled, memberId, linked, rosterKey, connect, dropPeer, post, mark]);
 
   const flushIce = useCallback(async (peerId: string, pc: RTCPeerConnection) => {
     const queued = pendingIce.current.get(peerId);
@@ -431,6 +648,11 @@ export function useMeeting({
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
         localRef.current = stream;
         cameraTrack.current = stream.getVideoTracks()[0] ?? null;
+        // The counterpart of the 'detail' hint on a shared screen: a face is
+        // motion, and should lose pixels before it loses smoothness.
+        try {
+          if (cameraTrack.current) cameraTrack.current.contentHint = 'motion';
+        } catch { /* not everywhere */ }
         setLocalStream(stream);
         setMediaError(null);
       } catch (err: any) {
@@ -594,8 +816,12 @@ export function useMeeting({
       pendingIce.current.clear();
       rebuilds.current.clear();
       openedAt.current.clear();
+      droppedAt.current.clear();
+      lostAt.current.clear();
+      shapedFor.current = 0;
+      sharingRef.current = false;
       setLinked(false);
-      setUnreachable([]);
+      setHealth({});
       localRef.current?.getTracks().forEach(t => t.stop());
       localRef.current = null;
       cameraTrack.current = null;
@@ -670,9 +896,16 @@ export function useMeeting({
    */
   const stopShare = useCallback(async () => {
     const track = cameraTrack.current;
+    sharingRef.current = false;
+    // Back to a face, which wants its framerate kept and needs far less of the
+    // network than a screenful of text did.
+    const bitrate = videoBitrateFor(admittedRef.current.length);
+    shapedFor.current = bitrate;
     for (const pc of connections.current.values()) {
       const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-      if (sender) await sender.replaceTrack(track ?? null);
+      if (!sender) continue;
+      await sender.replaceTrack(track ?? null);
+      void shapeSender(sender, bitrate, 'maintain-framerate');
     }
     localRef.current?.getVideoTracks()
       .filter(t => t !== track)
@@ -701,9 +934,23 @@ export function useMeeting({
        */
       screenTrack.onended = () => { void stopShare(); };
 
+      /**
+       * Tell the encoder what it is looking at.
+       *
+       * `contentHint` is the difference between a shared document that stays
+       * sharp and one that turns to mush the moment somebody scrolls: 'detail'
+       * asks for spatial fidelity over temporal, which is the opposite of what
+       * a camera wants and exactly right for a screen.
+       */
+      try { screenTrack.contentHint = 'detail'; } catch { /* not everywhere */ }
+
+      sharingRef.current = true;
+      shapedFor.current = SHARE_BITRATE;
       for (const pc of connections.current.values()) {
         const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-        if (sender) await sender.replaceTrack(screenTrack);
+        if (!sender) continue;
+        await sender.replaceTrack(screenTrack);
+        void shapeSender(sender, SHARE_BITRATE, 'maintain-resolution');
       }
 
       const camera = localRef.current?.getVideoTracks()[0] ?? null;
@@ -725,14 +972,13 @@ export function useMeeting({
     sharing,
     mediaError,
     /**
-     * People the room says are here that this browser has given up reaching.
+     * How each connection is doing, by membership id.
      *
-     * The grid renders them as a stated failure rather than a spinner. Without
-     * a TURN server a symmetric NAT genuinely cannot be traversed, and the
-     * honest thing is to say so — the alternative is an animation that promises
-     * something is still happening when nothing is.
+     * The grid renders it rather than spinning: "connecting", "reconnecting"
+     * and "could not connect" ask different things of the person watching, and
+     * they were all one animation.
      */
-    unreachable,
+    health,
     toggleMic,
     toggleCam,
     toggleShare,

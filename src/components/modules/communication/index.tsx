@@ -407,7 +407,7 @@ export default function CommunicationModule() {
   const conversationsLive = useRealtime({
     name: 'module:conversations',
     debounceMs: 400,
-    onChange: () => { void loadChannels(); },
+    onChange: () => { if (!roomOpen.current) void loadChannels(); },
     tables: [
       { table: 'channels' },
       ...(currentMemberId
@@ -429,6 +429,7 @@ export default function CommunicationModule() {
    * button in the conversation header.
    */
   useModuleRealtime('meetings', ['meetings'], () => {
+    if (roomOpen.current) return;
     void loadMeetings();
     void loadChannels();
   });
@@ -452,7 +453,7 @@ export default function CommunicationModule() {
     name: 'module:meeting-people',
     debounceMs: 1500,
     tables: [{ table: 'meeting_participants' }],
-    onChange: () => { void loadMeetings(); },
+    onChange: () => { if (!roomOpen.current) void loadMeetings(); },
   });
 
   /**
@@ -471,7 +472,7 @@ export default function CommunicationModule() {
     name: 'module:messages',
     debounceMs: 1000,
     tables: [{ table: 'messages' }],
-    onChange: () => { void loadChannels(); },
+    onChange: () => { if (!roomOpen.current) void loadChannels(); },
   });
 
   /**
@@ -482,6 +483,21 @@ export default function CommunicationModule() {
    * in a company of any size the heartbeats are constant, and a refetch per
    * beat would be a request every second or two for a set of coloured dots.
    */
+  /**
+   * Whether a meeting room is covering the module.
+   *
+   * A ref rather than a dependency: the subscriptions below read it at the
+   * moment an event arrives, and putting it in their dependency lists would
+   * tear every channel down and rebuild it each time somebody opened a room.
+   *
+   * Everything it gates is work whose only product is pixels behind a
+   * full-screen overlay — the sidebar's unread counts, the meeting cards, the
+   * presence dots. `closeMeeting` catches all of it up on the way out, which
+   * is the moment before any of it is visible again.
+   */
+  const roomOpen = useRef(false);
+  useEffect(() => { roomOpen.current = !!activeMeetingId; }, [activeMeetingId]);
+
   const readPresence = useCallback(() => {
     void fetch('/api/presence')
       .then(r => r.json())
@@ -506,7 +522,9 @@ export default function CommunicationModule() {
     // The fallback for a tab whose subscription could not connect — corporate
     // proxies block websockets, and a presence panel that silently stops
     // updating looks exactly like an office where nobody is at their desk.
-    const timer = setInterval(readPresence, 60_000);
+    // Paused behind a meeting: a panel of coloured dots nobody can see is not
+    // worth a request a minute on a device that is encoding video.
+    const timer = setInterval(() => { if (!roomOpen.current) readPresence(); }, 60_000);
     return () => clearInterval(timer);
   }, [readPresence]);
 
@@ -677,7 +695,7 @@ export default function CommunicationModule() {
           { table: 'files' },
         ]
       : [],
-    onChange: () => { if (selectedId) void refreshMessages(selectedId); },
+    onChange: () => { if (selectedId && !roomOpen.current) void refreshMessages(selectedId); },
   });
 
   /**
@@ -811,7 +829,19 @@ export default function CommunicationModule() {
    * turned "join this meeting" into a POST several times a second and the host
    * starting a scheduled meeting into a PATCH storm.
    */
-  const closeMeeting = useCallback(() => setActiveMeetingId(null), []);
+  /**
+   * Leaving the room is when the list behind it is caught up.
+   *
+   * The room used to refresh this module on every event inside a meeting — a
+   * raised hand, a camera toggled — each one an aggregate query for a sidebar
+   * hidden behind a full-screen overlay. Once, here, is the same information at
+   * a fraction of the cost, and it lands before anybody can look at it.
+   */
+  const closeMeeting = useCallback(() => {
+    setActiveMeetingId(null);
+    void loadMeetings();
+    void loadChannels();
+  }, [loadMeetings, loadChannels]);
   const openMeetingRoom = useCallback(
     (meeting: MeetingRow) => setActiveMeetingId(meeting.meetingId), []);
   const refreshMeetings = useCallback(() => {
@@ -1893,7 +1923,6 @@ export default function CommunicationModule() {
           currentMemberId={currentMemberId}
           directory={directory}
           onClose={closeMeeting}
-          onRefresh={refreshMeetings}
         />
       )}
     </div>
