@@ -3,13 +3,47 @@
 import { Suspense, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Hexagon, Loader2, Eye, EyeOff, MailCheck } from 'lucide-react';
-import { PLATFORM } from '@/lib/platform';
+import { Loader2, Eye, EyeOff, MailCheck, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { AuthShell } from '@/components/auth/auth-shell';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+
+/**
+ * The password requirement, acknowledged as it is met.
+ *
+ * ── Why this replaced "Must be at least 8 characters" ────────────────────
+ *
+ * That line sat under the field permanently, in muted grey, saying the same
+ * thing before you typed, while you typed, and after you had satisfied it. A
+ * rule that never acknowledges being met is a rule the reader stops reading.
+ *
+ * ── Why there is only one item in this list ──────────────────────────────
+ *
+ * Because the server applies exactly one rule. `api/auth/signup` checks
+ * `password.length < 8` and nothing else, and `validations.ts` agrees:
+ * `z.string().min(8)`.
+ *
+ * The obvious thing to do here was add the familiar row of ticks — a capital,
+ * a number, a symbol. It would have been a lie told by the interface: three
+ * requirements that no part of the system enforces, refusing a password the
+ * API would have accepted. A client-side checklist is a claim about the
+ * server, and it is only worth showing while it is true of the server. If the
+ * policy tightens, it tightens in `validations.ts` first and this follows.
+ *
+ * The advisory line below is separate, and worded as advice, for exactly that
+ * reason: it never blocks the button.
+ */
+function meetsRequirement(pw: string) {
+  return pw.length >= 8;
+}
+
+/** Advice, not a rule. Shown only once the actual requirement is satisfied. */
+function isWeak(pw: string) {
+  return pw.length < 12 && !(/[a-z]/i.test(pw) && /\d/.test(pw));
+}
 
 function SignupForm() {
   /**
@@ -89,194 +123,246 @@ function SignupForm() {
     }
   }
 
+  /**
+   * ── Email verification ──────────────────────────────────────────────────
+   *
+   * A state, not a route. It is reachable only as the result of a submission
+   * that just happened, so it has no URL of its own to be linked, bookmarked
+   * or refreshed into — and giving it one would produce a page that says "we
+   * sent a link to " with nothing after it.
+   *
+   * What it now does that it did not: name the inbox, say what the link does
+   * when opened, and offer the two things somebody in this state actually
+   * wants — a way back to the form when they mistyped the address, and the
+   * spam-folder hint they will otherwise email support about.
+   */
   if (confirmationSent) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4 py-12">
-        <div className="w-full max-w-md">
-          <div className="flex flex-col items-center mb-8">
-            <div className="flex items-center gap-2 mb-2">
-              <Hexagon className="size-8 text-emerald-500" />
-              <span className="text-2xl font-bold tracking-tight">{PLATFORM.name}</span>
-            </div>
-            <p className="text-sm text-muted-foreground">Almost there</p>
+      <AuthShell
+        eyebrow="One step left"
+        title="Confirm your email address"
+        description={
+          <>
+            We sent a link to{' '}
+            <span className="text-foreground font-medium">{formData.email}</span>.
+            {joining
+              ? ' Opening it brings you straight back to your invitation.'
+              : ' Open it to activate the account, then sign in to finish setting up your workspace.'}
+          </>
+        }
+        footer={
+          <p>
+            Wrong address?{' '}
+            <button
+              type="button"
+              onClick={() => setConfirmationSent(false)}
+              className="text-foreground font-medium underline decoration-[1.5px] underline-offset-[3px] hover:no-underline"
+            >
+              Go back and change it
+            </button>
+          </p>
+        }
+      >
+        <div className="border-hairline bg-surface flex gap-4 rounded-xl border p-5">
+          <MailCheck
+            className="text-brand mt-0.5 size-5 shrink-0"
+            strokeWidth={1.9}
+            aria-hidden="true"
+          />
+          <div className="space-y-1.5 text-[0.875rem] leading-relaxed">
+            <p className="font-medium">The link is valid for one use.</p>
+            <p className="text-muted-foreground">
+              If nothing arrives within a few minutes, check the spam folder —
+              confirmation mail from a new domain is filtered more often than
+              anything else we send.
+            </p>
           </div>
-
-          <Card className="border-gray-200 dark:border-gray-800 shadow-lg">
-            <CardHeader className="space-y-1 items-center text-center">
-              <MailCheck className="size-10 text-emerald-500 mb-2" />
-              <CardTitle className="text-xl">Confirm your email</CardTitle>
-              <CardDescription>
-                We sent a confirmation link to{' '}
-                <span className="font-medium text-foreground">{formData.email}</span>.
-                {joining ? (
-                  <> Opening it brings you straight back to your invitation.</>
-                ) : (
-                  <>
-                    {' '}Open it, then sign in to finish setting up{' '}
-                    <span className="font-medium text-foreground">{formData.organization}</span>.
-                  </>
-                )}
-              </CardDescription>
-            </CardHeader>
-            <CardFooter className="flex flex-col gap-3">
-              <Button
-                asChild
-                className="w-full h-11 bg-emerald-500 hover:bg-emerald-600 text-white"
-              >
-                <Link href="/login">Go to sign in</Link>
-              </Button>
-              <p className="text-xs text-center text-muted-foreground">
-                No email after a few minutes? Check your spam folder.
-              </p>
-            </CardFooter>
-          </Card>
         </div>
-      </div>
+
+        <Button asChild variant="cta" size="xl" className="mt-6 w-full">
+          <Link href="/login">Go to sign in</Link>
+        </Button>
+      </AuthShell>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4 py-12">
-      <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center gap-2 mb-2">
-            <Hexagon className="size-8 text-emerald-500" />
-            <span className="text-2xl font-bold tracking-tight">{PLATFORM.name}</span>
+    <AuthShell
+      title={joining ? 'Accept your invitation' : 'Create your workspace'}
+      description={
+        joining
+          ? 'Create an account to join. Use the email address the invitation was sent to.'
+          : 'Free for 14 days. Every module included, and no card required.'
+      }
+      footer={
+        <p>
+          Already have an account?{' '}
+          <Link
+            href="/login"
+            className="text-foreground font-medium underline decoration-[1.5px] underline-offset-[3px] hover:no-underline"
+          >
+            Sign in
+          </Link>
+        </p>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label htmlFor="firstName">First name</Label>
+            <Input
+              id="firstName"
+              placeholder="Alex"
+              value={formData.firstName}
+              onChange={(e) => updateField('firstName', e.target.value)}
+              required
+              autoComplete="given-name"
+              autoFocus
+              disabled={isLoading}
+              className="h-11"
+            />
           </div>
-          <p className="text-sm text-muted-foreground">Create your free account</p>
+          <div className="space-y-2">
+            <Label htmlFor="lastName">Last name</Label>
+            <Input
+              id="lastName"
+              placeholder="Morgan"
+              value={formData.lastName}
+              onChange={(e) => updateField('lastName', e.target.value)}
+              required
+              autoComplete="family-name"
+              disabled={isLoading}
+              className="h-11"
+            />
+          </div>
         </div>
 
-        <Card className="border-gray-200 dark:border-gray-800 shadow-lg">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-xl">Get started</CardTitle>
-            <CardDescription>
-              {joining
-                ? 'Create your account to accept the invitation. Use the email address it was sent to.'
-                : 'Fill in your details to create a new workspace'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First name</Label>
-                  <Input
-                    id="firstName"
-                    placeholder="Alex"
-                    value={formData.firstName}
-                    onChange={(e) => updateField('firstName', e.target.value)}
-                    required
-                    autoComplete="given-name"
-                    disabled={isLoading}
-                    className="h-11"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Last name</Label>
-                  <Input
-                    id="lastName"
-                    placeholder="Morgan"
-                    value={formData.lastName}
-                    onChange={(e) => updateField('lastName', e.target.value)}
-                    required
-                    autoComplete="family-name"
-                    disabled={isLoading}
-                    className="h-11"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="signup-email">Email address</Label>
-                <Input
-                  id="signup-email"
-                  type="email"
-                  placeholder="you@company.com"
-                  value={formData.email}
-                  onChange={(e) => updateField('email', e.target.value)}
-                  required
-                  autoComplete="email"
-                  disabled={isLoading}
-                  className="h-11"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="signup-password">Password</Label>
-                <div className="relative">
-                  <Input
-                    id="signup-password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Create a strong password"
-                    value={formData.password}
-                    onChange={(e) => updateField('password', e.target.value)}
-                    required
-                    minLength={8}
-                    autoComplete="new-password"
-                    disabled={isLoading}
-                    className="h-11 pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground">Must be at least 8 characters</p>
-              </div>
-              {/*
-                Not asked of an invitee. The workspace they are joining already
-                exists — this field is how they used to end up owning a second
-                one, which then followed them around for ever.
-              */}
-              {!joining && (
-                <div className="space-y-2">
-                  <Label htmlFor="organization">Organization name</Label>
-                  <Input
-                    id="organization"
-                    placeholder="Your company name"
-                    value={formData.organization}
-                    onChange={(e) => updateField('organization', e.target.value)}
-                    required
-                    autoComplete="organization"
-                    disabled={isLoading}
-                    className="h-11"
-                  />
-                </div>
+        <div className="space-y-2">
+          <Label htmlFor="signup-email">Work email</Label>
+          <Input
+            id="signup-email"
+            type="email"
+            placeholder="you@company.com"
+            value={formData.email}
+            onChange={(e) => updateField('email', e.target.value)}
+            required
+            autoComplete="email"
+            disabled={isLoading}
+            className="h-11"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="signup-password">Password</Label>
+          <div className="relative">
+            <Input
+              id="signup-password"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Create a strong password"
+              value={formData.password}
+              onChange={(e) => updateField('password', e.target.value)}
+              required
+              minLength={8}
+              autoComplete="new-password"
+              disabled={isLoading}
+              className="h-11 pr-11"
+              aria-describedby="password-requirements"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-1.5 transition-colors"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
+
+          <div id="password-requirements" className="space-y-1 pt-0.5">
+            <p
+              className={cn(
+                'flex items-center gap-1.5 text-[0.75rem] transition-colors',
+                meetsRequirement(formData.password) ? 'text-brand' : 'text-muted-foreground',
               )}
-              <Button
-                type="submit"
-                className="w-full h-11 bg-emerald-500 hover:bg-emerald-600 text-white"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" />
-                    Creating account...
-                  </>
-                ) : (
-                  'Create account'
+            >
+              <Check
+                className={cn(
+                  'size-3 transition-opacity',
+                  meetsRequirement(formData.password) ? 'opacity-100' : 'opacity-30',
                 )}
-              </Button>
-            </form>
-          </CardContent>
-          <CardFooter>
-            <div className="text-sm text-center text-muted-foreground w-full">
-              Already have an account?{' '}
-              <Link
-                href="/login"
-                className="text-emerald-500 hover:text-emerald-600 font-medium"
-              >
-                Sign in
-              </Link>
-            </div>
-          </CardFooter>
-        </Card>
-      </div>
-    </div>
+                strokeWidth={3}
+                aria-hidden="true"
+              />
+              At least 8 characters
+            </p>
+            {meetsRequirement(formData.password) && isWeak(formData.password) && (
+              <p className="text-muted-foreground text-[0.75rem]">
+                Accepted — though a longer passphrase, or a number in the mix,
+                would be considerably harder to guess.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/*
+          Not asked of an invitee. The workspace they are joining already
+          exists — this field is how they used to end up owning a second
+          one, which then followed them around for ever.
+        */}
+        {!joining && (
+          <div className="space-y-2">
+            <Label htmlFor="organization">Company name</Label>
+            <Input
+              id="organization"
+              placeholder="Harlow Manufacturing"
+              value={formData.organization}
+              onChange={(e) => updateField('organization', e.target.value)}
+              required
+              autoComplete="organization"
+              disabled={isLoading}
+              className="h-11"
+            />
+            <p className="text-muted-foreground text-[0.75rem]">
+              This names your workspace. You can change it later.
+            </p>
+          </div>
+        )}
+
+        <Button
+          type="submit"
+          variant="cta"
+          size="xl"
+          className="w-full"
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Creating account…
+            </>
+          ) : joining ? (
+            'Create account and join'
+          ) : (
+            'Create account'
+          )}
+        </Button>
+
+        <p className="text-muted-foreground text-center text-[0.75rem] leading-relaxed">
+          By creating an account you agree to our{' '}
+          <Link href="/terms" className="hover:text-foreground underline underline-offset-2">
+            Terms
+          </Link>{' '}
+          and{' '}
+          <Link href="/privacy" className="hover:text-foreground underline underline-offset-2">
+            Privacy Policy
+          </Link>
+          .
+        </p>
+      </form>
+    </AuthShell>
   );
 }
+
 /**
  * `useSearchParams` needs a Suspense boundary to keep this route
  * prerenderable — the same shape `/accept-invite` and `/login` already use.
@@ -286,7 +372,7 @@ export default function SignupPage() {
     <Suspense
       fallback={
         <div className="bg-background flex min-h-screen items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-emerald-500" />
+          <Loader2 className="text-muted-foreground size-5 animate-spin" />
         </div>
       }
     >

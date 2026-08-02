@@ -2,12 +2,11 @@
 
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { Hexagon, Loader2, ArrowLeft, Mail } from 'lucide-react';
-import { PLATFORM } from '@/lib/platform';
+import { Loader2, ArrowLeft, MailCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { AuthShell } from '@/components/auth/auth-shell';
 import { toast } from 'sonner';
 
 export default function ForgotPasswordPage() {
@@ -34,7 +33,12 @@ export default function ForgotPasswordPage() {
       }
 
       setIsSubmitted(true);
-      toast.success('Password reset link sent to your email');
+      // The toast said "Password reset link sent to your email", which is a
+      // claim the response deliberately does not make: this endpoint answers
+      // identically whether or not the address has an account, so that the
+      // form cannot be used to discover who has one. Announcing a send that
+      // may not have happened undoes that in the interface.
+      toast.success('If that address has an account, a link is on its way.');
     } catch {
       toast.error('Network error. Please try again.');
     } finally {
@@ -42,98 +46,115 @@ export default function ForgotPasswordPage() {
     }
   }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4">
-      <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center gap-2 mb-2">
-            <Hexagon className="size-8 text-emerald-500" />
-            <span className="text-2xl font-bold tracking-tight">{PLATFORM.name}</span>
-          </div>
+  /**
+   * ── The confirmation state ────────────────────────────────────────────
+   *
+   * Worded carefully. The old copy — "We've sent a password reset link to
+   * alex@acme.com" — asserts that an account exists at that address to anyone
+   * who types one in, which is precisely the enumeration the API is written to
+   * prevent. The screen was quietly leaking what the endpoint refused to.
+   */
+  if (isSubmitted) {
+    return (
+      <AuthShell
+        eyebrow="Check your inbox"
+        title="If that address has an account, the link is on its way"
+        description={
+          <>
+            {/* No expiry stated. The lifetime is Supabase's setting, not this
+                application's, so any duration printed here would be a number
+                the page cannot actually know. */}
+            We sent it to{' '}
+            <span className="text-foreground font-medium">{email}</span>. The
+            link can be used once.
+          </>
+        }
+        footer={
+          <Link
+            href="/login"
+            className="hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
+          >
+            <ArrowLeft className="size-3.5" />
+            Back to sign in
+          </Link>
+        }
+      >
+        <div className="border-hairline bg-surface flex gap-4 rounded-xl border p-5">
+          <MailCheck
+            className="text-brand mt-0.5 size-5 shrink-0"
+            strokeWidth={1.9}
+            aria-hidden="true"
+          />
+          <p className="text-muted-foreground text-[0.875rem] leading-relaxed">
+            Nothing after a few minutes? Check the spam folder, then confirm the
+            address is the one you signed up with — a typo produces exactly this
+            screen.
+          </p>
         </div>
 
-        <Card className="border-gray-200 dark:border-gray-800 shadow-lg">
-          <CardHeader className="space-y-1 text-center">
-            <CardTitle className="text-xl">Reset your password</CardTitle>
-            <CardDescription>
-              {!isSubmitted
-                ? "Enter your email and we'll send you a reset link"
-                : 'Check your email for the reset link'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {isSubmitted ? (
-              <div className="space-y-4">
-                <div className="flex justify-center mb-4">
-                  <div className="rounded-full bg-emerald-500/10 p-3">
-                    <Mail className="size-6 text-emerald-500" />
-                  </div>
-                </div>
-                <p className="text-sm text-center text-muted-foreground">
-                  We&apos;ve sent a password reset link to{' '}
-                  <span className="font-medium text-foreground">{email}</span>. Please check
-                  your inbox and follow the instructions.
-                </p>
-                <div className="pt-4 space-y-3">
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => {
-                      setIsSubmitted(false);
-                      setEmail('');
-                    }}
-                  >
-                    Try a different email
-                  </Button>
-                  <Link href="/login" className="block">
-                    <Button variant="ghost" className="w-full">
-                      <ArrowLeft className="size-4" />
-                      Back to sign in
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="reset-email">Email address</Label>
-                  <Input
-                    id="reset-email"
-                    type="email"
-                    placeholder="you@company.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    autoComplete="email"
-                    disabled={isLoading}
-                    className="h-11"
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full h-11 bg-emerald-500 hover:bg-emerald-600 text-white"
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" />
-                      Sending...
-                    </>
-                  ) : (
-                    'Send reset link'
-                  )}
-                </Button>
-                <Link href="/login" className="block">
-                  <Button variant="ghost" className="w-full">
-                    <ArrowLeft className="size-4" />
-                    Back to sign in
-                  </Button>
-                </Link>
-              </form>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+        <Button
+          variant="ctaOutline"
+          size="xl"
+          className="mt-6 w-full"
+          onClick={() => {
+            setIsSubmitted(false);
+            setEmail('');
+          }}
+        >
+          Try a different address
+        </Button>
+      </AuthShell>
+    );
+  }
+
+  return (
+    <AuthShell
+      title="Reset your password"
+      description="Enter the address you sign in with and we'll send a link to set a new password."
+      footer={
+        <Link
+          href="/login"
+          className="hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
+        >
+          <ArrowLeft className="size-3.5" />
+          Back to sign in
+        </Link>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="space-y-2">
+          <Label htmlFor="reset-email">Email address</Label>
+          <Input
+            id="reset-email"
+            type="email"
+            placeholder="you@company.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="email"
+            autoFocus
+            disabled={isLoading}
+            className="h-11"
+          />
+        </div>
+
+        <Button
+          type="submit"
+          variant="cta"
+          size="xl"
+          className="w-full"
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Sending…
+            </>
+          ) : (
+            'Send reset link'
+          )}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

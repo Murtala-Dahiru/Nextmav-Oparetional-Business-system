@@ -1,190 +1,417 @@
-'use client';
-
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import type { Metadata } from 'next';
 import {
   ArrowRight,
-  Sparkles,
   Users,
   FolderKanban,
   UserCog,
-  DollarSign,
-  Package,
-  Calendar,
-  MessageSquare,
-  Shield,
-  Zap,
+  Wallet,
+  Boxes,
+  MessagesSquare,
+  LifeBuoy,
+  CalendarDays,
+  ShieldCheck,
+  ScrollText,
+  KeyRound,
+  Radio,
+  DownloadCloud,
+  TimerReset,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Section, Container, SectionHeading, Eyebrow } from '@/components/marketing/section';
+import { Reveal, RevealGroup } from '@/components/marketing/reveal';
+import { ProductSurface } from '@/components/marketing/product-surface';
+
+export const metadata: Metadata = {
+  title: 'NextMav — one system of record for the whole company',
+  description:
+    'CRM, projects, people, finance, inventory and communication in a single application, on one permission model and one audit trail.',
+};
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  Landing page
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  ── What the previous page argued ────────────────────────────────────────
+ *
+ *  Nothing, in order. It opened with a pulsing badge announcing a version
+ *  number, made a generic claim ("the all-in-one operating system for modern
+ *  business"), showed a grey wireframe, listed eight modules as eight
+ *  identical cards, asserted four unverifiable numbers, and asked for the
+ *  sale. Between the headline and the call to action the reader learned one
+ *  fact: the product has modules.
+ *
+ *  That is the shape of a template. The sections could be reordered or deleted
+ *  without changing the meaning of the page, which is the test — a page that
+ *  survives shuffling was never making an argument.
+ *
+ *  ── What this page argues ────────────────────────────────────────────────
+ *
+ *    1. The problem is not that you have many tools. It is that they disagree.
+ *    2. Here is the product, actually rendered, in the first screen.
+ *    3. Here is what it holds.
+ *    4. Here is why it can be trusted with it — six specific, checkable
+ *       engineering facts, in place of "SOC-2" and "10,000+ teams".
+ *    5. Here is the one thing a suite of separate apps structurally cannot do.
+ *
+ *  Each section depends on the one before it. None of the claims require the
+ *  reader to take our word for anything they could not verify in a trial.
+ */
+
+const modules = [
+  {
+    icon: Users,
+    name: 'CRM',
+    line: 'Leads, contacts, companies, deals and the activity behind them.',
+  },
+  {
+    icon: FolderKanban,
+    name: 'Projects',
+    line: 'Boards, tasks, comments, time and the people assigned to them.',
+  },
+  {
+    icon: UserCog,
+    name: 'People',
+    line: 'The employee record, leave, attendance, departments and holidays.',
+  },
+  {
+    icon: Wallet,
+    name: 'Finance',
+    line: 'Invoices and expenses, tied to the customer and project that caused them.',
+  },
+  {
+    icon: Boxes,
+    name: 'Inventory',
+    line: 'Products, warehouses, stock movements, suppliers and purchase orders.',
+  },
+  {
+    icon: MessagesSquare,
+    name: 'Communication',
+    line: 'Channels, direct messages, files and meetings, beside the work.',
+  },
+  {
+    icon: LifeBuoy,
+    name: 'Support',
+    line: 'Tickets with owners and response times, and a portal for clients.',
+  },
+  {
+    icon: CalendarDays,
+    name: 'Calendar',
+    line: 'One schedule drawn from projects, leave, meetings and deadlines.',
+  },
+];
+
+/**
+ * The trust section.
+ *
+ * ── Why these six, and not badges ────────────────────────────────────────
+ *
+ * The page this replaces claimed "10,000+ Active Teams", "$1.2B+ Processed",
+ * "99.99% Uptime SLA" and "SOC-2 Certified" in 4xl type. Every one of those is
+ * a statement about the company rather than the software, none can be checked
+ * from outside, and the last is a certification with a named auditor and a
+ * report you can be asked for — which makes asserting it casually the most
+ * expensive sentence on the site.
+ *
+ * The buyer this page is written for does not believe round numbers. They ask
+ * what happens when someone leaves, who can see the finance module, and
+ * whether they can get their data back out. Every item below answers a
+ * question of that kind, and every one is demonstrable in a trial account in
+ * under a minute — which is the only kind of proof worth printing.
+ */
+const foundations = [
+  {
+    icon: KeyRound,
+    title: 'One permission model',
+    body: 'Roles are defined once and enforced in the route, not in the interface. Hiding a menu item is not access control; a request that should not succeed does not succeed.',
+  },
+  {
+    icon: ScrollText,
+    title: 'An audit trail you can read',
+    body: 'Who changed which record, when, and what it said before. Administrators can read it in the product rather than requesting an export from us.',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Isolation at the database',
+    body: 'Every table carries row-level security, so a workspace boundary is enforced beneath the application rather than by it. A bug in a query cannot cross tenants.',
+  },
+  {
+    icon: TimerReset,
+    title: 'Sessions that end',
+    body: 'Idle and absolute timeouts, and an administrator can revoke every session a person holds — immediately, not at the next token refresh.',
+  },
+  {
+    icon: Radio,
+    title: 'Live by default',
+    body: 'Changes arrive in other people’s screens as they happen. No refresh button, and no stale record being edited by two people at once.',
+  },
+  {
+    icon: DownloadCloud,
+    title: 'Your data, on request',
+    body: 'Structured export from every module, at any time, without a support ticket. Software you cannot leave is not software you should adopt.',
+  },
+];
 
 export default function LandingPage() {
   // No client-side auth gate here: middleware redirects signed-in visitors to
   // /dashboard before this renders. Unauthenticated visitors get the landing
   // page immediately, with no loading spinner in front of it.
   return (
-    <div className="relative overflow-hidden">
-      {/* Background Gradients */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-7xl h-[600px] bg-gradient-to-b from-emerald-500/10 via-transparent to-transparent blur-3xl pointer-events-none -z-10" />
+    <>
+      {/* ── Hero ───────────────────────────────────────────────────────────
+          Left-aligned, not centred. A centred hero is a poster; this one has a
+          reading order — eyebrow, claim, explanation, action — and left
+          alignment is what makes that order a line rather than a shape. */}
+      <section className="relative overflow-hidden">
+        <div
+          aria-hidden="true"
+          className="grid-substrate pointer-events-none absolute inset-x-0 top-0 h-[38rem] opacity-70"
+        />
 
-      {/* Hero Section */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16 text-center lg:pt-32">
-        <Badge variant="outline" className="mb-6 px-3 py-1 bg-emerald-500/5 border-emerald-500/20 text-emerald-600 dark:text-emerald-400 gap-1.5 animate-pulse">
-          <Sparkles className="size-3.5 fill-emerald-500/20" />
-          Introducing NexusCorp Business OS v2.0
-        </Badge>
-        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-gray-900 dark:text-white max-w-4xl mx-auto leading-tight">
-          The all-in-one operating system for{' '}
-          <span className="bg-gradient-to-r from-emerald-500 to-teal-600 bg-clip-text text-transparent">
-            modern business
-          </span>
-        </h1>
-        <p className="mt-6 text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto">
-          Unify your CRM, projects, HR, finance, inventory, and team communication in a single, lightning-fast platform. Stop switching tabs and start growing.
-        </p>
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          <Link href="/signup">
-            <Button size="lg" className="h-12 px-8 bg-emerald-500 hover:bg-emerald-600 text-white gap-2 font-medium shadow-lg shadow-emerald-500/20">
-              Start Free Trial
-              <ArrowRight className="size-4" />
-            </Button>
-          </Link>
-          <Link href="/pricing">
-            <Button size="lg" variant="outline" className="h-12 px-8 border-gray-200 dark:border-gray-800">
-              View Pricing
-            </Button>
-          </Link>
-        </div>
+        <Container className="relative pt-16 pb-14 sm:pt-24 sm:pb-20">
+          <div className="max-w-[46rem]">
+            <Reveal>
+              <Eyebrow>Business operating system</Eyebrow>
+            </Reveal>
 
-        {/* Dashboard Mockup */}
-        <div className="mt-16 sm:mt-20 border border-gray-200/80 dark:border-gray-800/80 rounded-2xl p-2 bg-gray-50/50 dark:bg-gray-900/50 backdrop-blur-sm max-w-5xl mx-auto shadow-2xl relative">
-          <div className="absolute inset-0 bg-gradient-to-t from-white dark:from-gray-950 via-transparent to-transparent z-10 h-32 bottom-0 top-auto rounded-b-2xl" />
-          <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-950 aspect-[16/10] flex flex-col">
-            {/* Header Mock */}
-            <div className="h-10 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 flex items-center px-4 justify-between">
-              <div className="flex items-center gap-2">
-                <span className="size-2.5 rounded-full bg-red-450" style={{backgroundColor: '#ff5f56'}} />
-                <span className="size-2.5 rounded-full bg-yellow-450" style={{backgroundColor: '#ffbd2e'}} />
-                <span className="size-2.5 rounded-full bg-green-450" style={{backgroundColor: '#27c93f'}} />
+            <Reveal delay={0.05}>
+              <h1 className="text-display-1 text-balance-hero mt-5">
+                One system of record for the entire company.
+              </h1>
+            </Reveal>
+
+            <Reveal delay={0.1}>
+              <p className="text-muted-foreground text-lede text-pretty-body mt-6 max-w-[38rem]">
+                CRM, projects, people, finance, inventory and communication in a
+                single application — where a customer, the project you are
+                running for them and the invoice it produced are one record, not
+                three exports that disagree.
+              </p>
+            </Reveal>
+
+            <Reveal delay={0.15}>
+              <div className="mt-9 flex flex-wrap items-center gap-3">
+                <Button asChild variant="cta" size="xl">
+                  <Link href="/signup">
+                    Start free
+                    <ArrowRight className="size-4" />
+                  </Link>
+                </Button>
+                <Button asChild variant="ctaOutline" size="xl">
+                  <Link href="/features">Explore the product</Link>
+                </Button>
               </div>
-              <div className="w-1/3 h-5 bg-gray-200 dark:bg-gray-800 rounded-md" />
-              <div className="size-5 rounded-full bg-gray-200 dark:bg-gray-800" />
+            </Reveal>
+
+            <Reveal delay={0.2}>
+              {/*
+                Three specific promises rather than a row of logos we do not
+                have. Each one is a thing the product does, so none of them
+                becomes false the moment somebody checks.
+              */}
+              <ul className="text-muted-foreground mt-7 flex flex-wrap items-center gap-x-7 gap-y-2 text-[0.8125rem]">
+                {[
+                  '14 days, no card',
+                  'Every module during the trial',
+                  'Export your data whenever you like',
+                ].map((item) => (
+                  <li key={item} className="flex items-center gap-2">
+                    {/*
+                      A dot per item rather than a rule between items. Divider
+                      rules only work when the row does not wrap — the moment
+                      it does, the item that starts the second line begins with
+                      a separator separating it from nothing.
+                    */}
+                    <span
+                      aria-hidden="true"
+                      className="bg-brand/50 size-1 shrink-0 rounded-full"
+                    />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </Reveal>
+          </div>
+
+          <Reveal delay={0.25} className="mt-14 sm:mt-20">
+            <ProductSurface />
+          </Reveal>
+        </Container>
+      </section>
+
+      {/* ── The problem ────────────────────────────────────────────────────
+          One idea, given a whole band and almost no ornament. The old page had
+          no section like this at all: it went from a claim straight to a
+          feature list, so the features answered a question the reader had not
+          been asked yet. */}
+      <Section tone="surface" density="tight" aria-labelledby="problem">
+        <div className="grid gap-8 md:grid-cols-[1fr_1.15fr] md:gap-16">
+          <Reveal>
+            <h2 id="problem" className="text-display-3 text-balance-hero">
+              The tools aren’t the problem. The disagreement is.
+            </h2>
+          </Reveal>
+          <Reveal delay={0.05}>
+            <div className="text-muted-foreground space-y-4 text-[0.9375rem] leading-relaxed">
+              <p>
+                Sales knows a deal closed. Delivery finds out in a spreadsheet on
+                Monday. Finance invoices from a third list, and the customer’s
+                name is spelled differently in all three. Nobody made a mistake —
+                the systems were simply never told about each other.
+              </p>
+              <p className="text-foreground">
+                Integrations copy that disagreement around faster. The only thing
+                that removes it is a single place where the record lives, and
+                everything else reads from it.
+              </p>
             </div>
-            {/* Dashboard Content Mock */}
-            <div className="flex-1 flex bg-gray-50/50 dark:bg-gray-950">
-              {/* Sidebar Mock */}
-              <div className="w-44 border-r border-gray-100 dark:border-gray-800 p-3 space-y-2 bg-white dark:bg-gray-900/30 text-left">
-                <div className="h-6 bg-emerald-500/10 rounded w-2/3" />
-                <div className="space-y-1.5 pt-4">
-                  <div className="h-5 bg-gray-100 dark:bg-gray-800 rounded" />
-                  <div className="h-5 bg-gray-100 dark:bg-gray-800 rounded" />
-                  <div className="h-5 bg-emerald-500/10 rounded" />
-                  <div className="h-5 bg-gray-100 dark:bg-gray-800 rounded" />
-                </div>
-              </div>
-              {/* Main Content Mock */}
-              <div className="flex-1 p-6 space-y-6 text-left">
-                <div className="flex justify-between items-center">
-                  <div className="space-y-1">
-                    <div className="h-5 bg-gray-200 dark:bg-gray-800 rounded w-32" />
-                    <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-48" />
-                  </div>
-                  <div className="h-8 bg-emerald-500 rounded w-24" />
-                </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="border border-gray-100 dark:border-gray-800 rounded-lg p-4 bg-white dark:bg-gray-900/50 space-y-2">
-                    <div className="h-3 bg-gray-150 dark:bg-gray-800 rounded w-2/3" />
-                    <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/2" />
-                  </div>
-                  <div className="border border-gray-100 dark:border-gray-800 rounded-lg p-4 bg-white dark:bg-gray-900/50 space-y-2">
-                    <div className="h-3 bg-gray-155 dark:bg-gray-800 rounded w-2/3" />
-                    <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/2" />
-                  </div>
-                  <div className="border border-gray-100 dark:border-gray-800 rounded-lg p-4 bg-white dark:bg-gray-900/50 space-y-2">
-                    <div className="h-3 bg-gray-155 dark:bg-gray-800 rounded w-2/3" />
-                    <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/2" />
-                  </div>
-                </div>
-                <div className="border border-gray-100 dark:border-gray-800 rounded-lg p-4 bg-white dark:bg-gray-900/50 h-36 flex items-center justify-center">
-                  <div className="w-full space-y-3">
-                    <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-3/4" />
-                    <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-1/2" />
-                    <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-5/6" />
-                  </div>
-                </div>
-              </div>
+          </Reveal>
+        </div>
+      </Section>
+
+      {/* ── Modules ─────────────────────────────────────────────────────── */}
+      <Section aria-labelledby="modules">
+        <SectionHeading
+          id="modules"
+          eyebrow="What it holds"
+          title="Eight modules, one database, one permission model."
+          description="Not eight products behind a shared login. The same records, visible to the departments entitled to see them."
+        />
+
+        <RevealGroup
+          className="mt-12 grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-4"
+          step={0.04}
+        >
+          {modules.map(({ icon: Icon, name, line }) => (
+            <div key={name} className="border-hairline border-t pt-5">
+              <Icon className="text-brand size-[1.125rem]" strokeWidth={1.9} />
+              <h3 className="mt-3 text-[0.9375rem] font-semibold tracking-[-0.01em]">
+                {name}
+              </h3>
+              <p className="text-muted-foreground mt-1.5 text-[0.875rem] leading-relaxed">
+                {line}
+              </p>
             </div>
-          </div>
-        </div>
-      </section>
+          ))}
+        </RevealGroup>
+      </Section>
 
-      {/* Feature Section */}
-      <section className="py-20 bg-gray-50 dark:bg-gray-900/40 border-t border-b border-gray-150 dark:border-gray-900">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-3xl font-bold tracking-tight">Fully integrated modules</h2>
-            <p className="mt-4 text-muted-foreground">Every department in your company connected out-of-the-box. Fully responsive and customizable.</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              { title: 'CRM & Sales', icon: Users, desc: 'Manage leads, pipeline, and customer relationships.' },
-              { title: 'Projects', icon: FolderKanban, desc: 'Kanban, tasks, resource scheduling, and time logging.' },
-              { title: 'Human Resources', icon: UserCog, desc: 'Employee directory, leave requests, and performance.' },
-              { title: 'Finance', icon: DollarSign, desc: 'Invoices, expenses, and automated financial tracking.' },
-              { title: 'Inventory', icon: Package, desc: 'Real-time stock tracking and warehouse management.' },
-              { title: 'Communication', icon: MessageSquare, desc: 'Slack-style chat channels and direct messages.' },
-              { title: 'Support', icon: Shield, desc: 'Ticket management, help center, and client portals.' },
-              { title: 'Calendar', icon: Calendar, desc: 'Team schedules, meeting rooms, and task sync.' },
-            ].map((f) => {
-              const Icon = f.icon;
-              return (
-                <div key={f.title} className="bg-white dark:bg-gray-950 p-6 rounded-xl border border-gray-200 dark:border-gray-800/80 hover:border-emerald-500/50 transition-all hover:shadow-md hover:shadow-emerald-500/[0.02] group text-left">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center mb-4 group-hover:bg-emerald-500/20 transition-colors">
-                    <Icon className="size-5 text-emerald-500" />
-                  </div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white mb-2">{f.title}</h3>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{f.desc}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
+      {/* ── Foundations ─────────────────────────────────────────────────── */}
+      <Section tone="surface" aria-labelledby="foundations">
+        <SectionHeading
+          id="foundations"
+          eyebrow="Why you can put the company in it"
+          title="The parts nobody demos, which decide whether you can deploy it."
+          description="Six things worth checking in any system that will hold your customer list and your payroll. Each is demonstrable in a trial account."
+        />
 
-      {/* Metrics Section */}
-      <section className="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
-          <div>
-            <div className="text-4xl font-bold text-gray-900 dark:text-white">10,000+</div>
-            <div className="text-sm text-muted-foreground mt-1">Active Teams</div>
-          </div>
-          <div>
-            <div className="text-4xl font-bold text-gray-900 dark:text-white">99.99%</div>
-            <div className="text-sm text-muted-foreground mt-1">Uptime SLA</div>
-          </div>
-          <div>
-            <div className="text-4xl font-bold text-gray-900 dark:text-white">$1.2B+</div>
-            <div className="text-sm text-muted-foreground mt-1">Processed</div>
-          </div>
-          <div>
-            <div className="text-4xl font-bold text-emerald-500">SOC-2</div>
-            <div className="text-sm text-muted-foreground mt-1">Certified Security</div>
-          </div>
-        </div>
-      </section>
+        <RevealGroup
+          className="mt-12 grid gap-x-12 gap-y-10 md:grid-cols-2 lg:grid-cols-3"
+          step={0.04}
+        >
+          {foundations.map(({ icon: Icon, title, body }) => (
+            <div key={title}>
+              <div className="bg-brand-soft text-brand ring-brand-line flex size-9 items-center justify-center rounded-lg ring-1">
+                <Icon className="size-[1.0625rem]" strokeWidth={1.9} />
+              </div>
+              <h3 className="mt-4 text-[0.9375rem] font-semibold tracking-[-0.01em]">
+                {title}
+              </h3>
+              <p className="text-muted-foreground mt-2 text-[0.875rem] leading-relaxed">
+                {body}
+              </p>
+            </div>
+          ))}
+        </RevealGroup>
+      </Section>
 
-      {/* CTA Section */}
-      <section className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-        <div className="relative rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 p-10 sm:p-16 text-center text-white overflow-hidden shadow-xl">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15),transparent)]" />
-          <h2 className="text-3xl font-bold tracking-tight mb-4 relative z-10">Run your business like a machine</h2>
-          <p className="text-emerald-100 max-w-lg mx-auto mb-8 relative z-10">Start your 14-day free trial. No credit card required. Up and running in minutes.</p>
-          <Link href="/signup" className="relative z-10">
-            <Button size="lg" className="h-12 px-8 bg-white hover:bg-emerald-50 text-emerald-600 font-semibold shadow-md">
-              Get Started Now
+      {/* ── The structural argument ─────────────────────────────────────── */}
+      <Section aria-labelledby="one-record">
+        <div className="grid items-center gap-10 md:grid-cols-2 md:gap-16">
+          <Reveal>
+            <Eyebrow>The difference</Eyebrow>
+            <h2 id="one-record" className="text-display-2 text-balance-hero mt-5">
+              A suite can’t do this. Only one database can.
+            </h2>
+            <p className="text-muted-foreground text-pretty-body mt-5 text-[0.9375rem] leading-relaxed">
+              Open the invoice from the project. Open the project from the deal.
+              Open the deal from the message where somebody mentioned it. Nothing
+              is copied, nothing is synced, and nothing is waiting on a webhook —
+              it is the same row, reached from wherever you happened to be.
+            </p>
+            <p className="text-muted-foreground mt-4 text-[0.9375rem] leading-relaxed">
+              Permissions travel with it. Someone who cannot see finance does not
+              see the amount, from any direction they arrive.
+            </p>
+          </Reveal>
+
+          <Reveal delay={0.05}>
+            {/*
+              A chain, drawn plainly. This is the one place on the page where a
+              diagram earns its space, because the claim is about relationships
+              and a list of features cannot show a relationship.
+            */}
+            <ol className="border-hairline bg-surface divide-hairline divide-y rounded-xl border">
+              {[
+                { k: 'Contact', v: 'Priya Raman — Harlow Manufacturing' },
+                { k: 'Deal', v: 'Line 3 automation · $184,000' },
+                { k: 'Project', v: 'Harlow retrofit · 6 people · 31 tasks' },
+                { k: 'Invoice', v: 'INV-2043 · $61,300 · due in 14 days' },
+              ].map((row, i) => (
+                <li key={row.k} className="flex items-center gap-4 px-5 py-4">
+                  <span
+                    aria-hidden="true"
+                    className="text-muted-foreground/60 w-4 shrink-0 text-[0.75rem] tabular-nums"
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="w-[4.5rem] shrink-0 text-[0.8125rem] font-semibold">
+                    {row.k}
+                  </span>
+                  <span className="text-muted-foreground truncate text-[0.8125rem]">
+                    {row.v}
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <p className="text-muted-foreground mt-3 text-center text-[0.75rem]">
+              Four records. One customer. No export in between.
+            </p>
+          </Reveal>
+        </div>
+      </Section>
+
+      {/* ── Close ───────────────────────────────────────────────────────── */}
+      <Section tone="ink" density="tight" aria-labelledby="cta">
+        <div className="flex flex-col items-start gap-8 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 id="cta" className="text-display-3 text-balance-hero max-w-xl">
+              Put one department on it this week.
+            </h2>
+            <p className="mt-3 max-w-lg text-[0.9375rem] leading-relaxed opacity-70">
+              Start with the module that hurts most. The rest is already there
+              when you want it, and your data comes back out whenever you ask.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-3">
+            <Button asChild variant="onInk" size="xl">
+              <Link href="/signup">
+                Start free
+                <ArrowRight className="size-4" />
+              </Link>
             </Button>
-          </Link>
+            <Button
+              asChild
+              size="xl"
+              variant="ghost"
+              className="text-ink-fg hover:bg-ink-fg/10 hover:text-ink-fg"
+            >
+              <Link href="/contact">Talk to us</Link>
+            </Button>
+          </div>
         </div>
-      </section>
-    </div>
+      </Section>
+    </>
   );
 }

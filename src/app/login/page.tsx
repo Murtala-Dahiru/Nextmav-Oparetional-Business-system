@@ -3,12 +3,12 @@
 import { Suspense, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Hexagon, Loader2, Eye, EyeOff } from 'lucide-react';
-import { PLATFORM } from '@/lib/platform';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { AuthShell } from '@/components/auth/auth-shell';
+import { Notice } from '@/components/auth/notice';
 import { toast } from 'sonner';
 
 /**
@@ -119,157 +119,127 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4">
-      <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-8">
-          {/*
-            The platform's identity, from the one place that defines it.
+    <AuthShell
+      title="Sign in"
+      description="Welcome back. Enter your details to reach your workspace."
+      footer={
+        <p>
+          New here?{' '}
+          <Link
+            href="/signup"
+            className="text-foreground font-medium underline decoration-[1.5px] underline-offset-[3px] hover:no-underline"
+          >
+            Create an account
+          </Link>
+        </p>
+      }
+    >
+      {sessionEnded && !linkError && !needsConfirmation && (
+        <Notice tone="neutral">
+          {sessionEnded} Sign in to pick up where you left off.
+        </Notice>
+      )}
 
-            Necessarily so: this page is unauthenticated, so there is no session
-            and no way to know which workspace the person is about to sign in
-            to — a tenant logo here could only ever be a guess. The `branding`
-            settings carry a `login_message`, which is why it has never appeared
-            anywhere; see the note in `lib/org-settings`.
-          */}
-          <div className="flex items-center gap-2 mb-2">
-            <Hexagon className="size-8 text-emerald-500" />
-            <span className="text-2xl font-bold tracking-tight">{PLATFORM.name}</span>
-          </div>
-          <p className="text-sm text-muted-foreground">Sign in to your account</p>
+      {linkError && !needsConfirmation && <Notice tone="warning">{linkError}</Notice>}
+
+      {needsConfirmation && (
+        <Notice tone="warning" title="This account still needs confirming">
+          <p>Check your inbox for the link we sent when the account was created.</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={resendConfirmation}
+            disabled={resending || !email}
+          >
+            {resending ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" />
+                Sending…
+              </>
+            ) : (
+              'Send a new link'
+            )}
+          </Button>
+        </Notice>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="space-y-2">
+          <Label htmlFor="email">Email address</Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="you@company.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="email"
+            // The first field on a page whose only purpose is this form.
+            // Nobody arrives here to read.
+            autoFocus
+            disabled={isLoading}
+            className="h-11"
+          />
         </div>
 
-        <Card className="border-gray-200 dark:border-gray-800 shadow-lg">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-xl">Welcome back</CardTitle>
-            <CardDescription>
-              Enter your credentials to access your workspace
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {sessionEnded && !linkError && !needsConfirmation && (
-              <div
-                role="status"
-                className="mb-4 rounded-md border border-slate-300 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300"
-              >
-                {sessionEnded} Sign in to pick up where you left off.
-              </div>
-            )}
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <Label htmlFor="password">Password</Label>
+            {/*
+              Was `text-emerald-500` — 2.07:1 on white, well under the 4.5:1
+              that AA requires. The one link on this page a person needs when
+              they are already frustrated was the least legible thing on it.
+            */}
+            <Link
+              href="/forgot-password"
+              className="text-muted-foreground hover:text-foreground text-[0.8125rem] underline decoration-[1.5px] underline-offset-[3px] transition-colors"
+            >
+              Forgot password?
+            </Link>
+          </div>
+          <div className="relative">
+            <Input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+              disabled={isLoading}
+              className="h-11 pr-11"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-1.5 transition-colors"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
+        </div>
 
-            {linkError && !needsConfirmation && (
-              <div
-                role="alert"
-                className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200"
-              >
-                {linkError}
-              </div>
-            )}
-
-            {needsConfirmation && (
-              <div
-                role="alert"
-                className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200"
-              >
-                <p>
-                  This account still needs its email address confirmed. Check your
-                  inbox for the link we sent.
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
-                  onClick={resendConfirmation}
-                  disabled={resending || !email}
-                >
-                  {resending ? (
-                    <>
-                      <Loader2 className="size-3.5 animate-spin" />
-                      Sending…
-                    </>
-                  ) : (
-                    'Send a new link'
-                  )}
-                </Button>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoComplete="email"
-                  disabled={isLoading}
-                  className="h-11"
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Password</Label>
-                  <Link
-                    href="/forgot-password"
-                    className="text-xs text-emerald-500 hover:text-emerald-600 font-medium"
-                  >
-                    Forgot password?
-                  </Link>
-                </div>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    autoComplete="current-password"
-                    disabled={isLoading}
-                    className="h-11 pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                  </button>
-                </div>
-              </div>
-              <Button
-                type="submit"
-                className="w-full h-11 bg-emerald-500 hover:bg-emerald-600 text-white"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  'Sign in'
-                )}
-              </Button>
-            </form>
-          </CardContent>
-          <CardFooter>
-            <div className="text-sm text-center text-muted-foreground w-full">
-              Don&apos;t have an account?{' '}
-              <Link
-                href="/signup"
-                className="text-emerald-500 hover:text-emerald-600 font-medium"
-              >
-                Sign up
-              </Link>
-            </div>
-          </CardFooter>
-        </Card>
-      </div>
-    </div>
+        <Button
+          type="submit"
+          variant="cta"
+          size="xl"
+          className="w-full"
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Signing in…
+            </>
+          ) : (
+            'Sign in'
+          )}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }
 
@@ -279,8 +249,8 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-emerald-500" />
+        <div className="bg-background flex min-h-screen items-center justify-center">
+          <Loader2 className="text-muted-foreground size-5 animate-spin" />
         </div>
       }
     >

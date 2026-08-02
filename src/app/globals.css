@@ -41,6 +41,51 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* ── Brand surface ─────────────────────────────────────────────────────
+     Exposed to Tailwind so pages can say `bg-surface` / `border-hairline`
+     instead of `bg-gray-50 dark:bg-gray-900/50` — the literal pair that was
+     written out by hand in every marketing file and drifted between them. */
+  --color-ink: var(--ink);
+  --color-ink-hover: var(--ink-hover);
+  --color-ink-fg: var(--ink-fg);
+  --color-brand-fg: var(--brand-fg);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-line: var(--brand-line);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-hairline: var(--hairline);
+  --color-hairline-strong: var(--hairline-strong);
+
+  /* ── Display type ──────────────────────────────────────────────────────
+     Fluid, so a headline is never re-tuned per breakpoint. Tracking is
+     negative and tightens as size grows, which is what stops a large
+     heading reading as a shouted one. */
+  --text-display-1: clamp(2.75rem, 1.9rem + 3.4vw, 4.5rem);
+  --text-display-1--line-height: 1.02;
+  --text-display-1--letter-spacing: -0.035em;
+  --text-display-1--font-weight: 560;
+
+  --text-display-2: clamp(2rem, 1.5rem + 2vw, 3rem);
+  --text-display-2--line-height: 1.08;
+  --text-display-2--letter-spacing: -0.03em;
+  --text-display-2--font-weight: 560;
+
+  --text-display-3: clamp(1.5rem, 1.25rem + 1vw, 2rem);
+  --text-display-3--line-height: 1.15;
+  --text-display-3--letter-spacing: -0.022em;
+  --text-display-3--font-weight: 580;
+
+  --text-lede: clamp(1.0625rem, 1rem + 0.35vw, 1.25rem);
+  --text-lede--line-height: 1.6;
+  --text-lede--letter-spacing: -0.011em;
+
+  /* One curve for the whole product. Motion that decelerates the same way
+     everywhere is most of what "feels considered" actually is. */
+  --ease-brand: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-brand-in: cubic-bezier(0.55, 0, 0.35, 1);
 }
 
 :root {
@@ -76,6 +121,40 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* ── Brand ───────────────────────────────────────────────────────────────
+     The accent was `emerald-500` (#10b981), written as a Tailwind literal in
+     61 files. Two things were wrong with it beyond the duplication.
+
+     It fails contrast. #10b981 on white is 2.07:1 — so "Forgot password?",
+     the "Sign up" link, every blog timestamp and every inline emphasis was
+     below the 4.5:1 that AA requires for body text. It read as decoration
+     because it was too weak to read as anything else.
+
+     And it was used for *everything*: primary buttons, icon tiles, hover
+     borders, table highlights, the CTA panel, section headings. An accent
+     that appears in every region of the page stops being an accent and
+     becomes the background. Restraint is not an aesthetic preference here —
+     it is the only thing that lets emphasis mean "look at this".
+
+     So: the primary action is ink, the way a serious tool's primary action
+     usually is, and the accent is a teal deep enough to pass AA (5.4:1) that
+     appears on roughly one element per view. */
+  --ink: oklch(0.19 0.008 264);
+  --ink-hover: oklch(0.3 0.008 264);
+  --ink-fg: oklch(0.99 0 0);
+  --brand: oklch(0.505 0.085 177);
+  --brand-hover: oklch(0.44 0.08 177);
+  --brand-fg: oklch(0.99 0 0);
+  --brand-soft: oklch(0.965 0.018 177);
+  --brand-line: oklch(0.885 0.038 177);
+
+  /* Surfaces. Near-neutral with a trace of blue so white cards sitting on
+     them read as lifted rather than as a different shade of grey. */
+  --surface: oklch(0.987 0.0015 250);
+  --surface-2: oklch(0.968 0.003 250);
+  --hairline: oklch(0.917 0.004 250);
+  --hairline-strong: oklch(0.86 0.005 250);
 }
 
 .dark {
@@ -110,6 +189,25 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* Ink inverts: a black button on a black page is not a button. The token
+     means "the strongest available fill", not "dark", which is why the pages
+     that use it need no dark-mode branch of their own. */
+  --ink: oklch(0.97 0.002 250);
+  --ink-hover: oklch(0.88 0.002 250);
+  --ink-fg: oklch(0.16 0.008 264);
+  /* Lifted well above the light-mode teal: the same value that passes on
+     white is nearly invisible on near-black. */
+  --brand: oklch(0.735 0.105 177);
+  --brand-hover: oklch(0.81 0.1 177);
+  --brand-fg: oklch(0.17 0.025 177);
+  --brand-soft: oklch(0.27 0.035 177);
+  --brand-line: oklch(0.37 0.048 177);
+
+  --surface: oklch(0.178 0.004 264);
+  --surface-2: oklch(0.212 0.004 264);
+  --hairline: oklch(1 0 0 / 9%);
+  --hairline-strong: oklch(1 0 0 / 17%);
 }
 
 @layer base {
@@ -118,5 +216,89 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Proportional figures are wrong for a product that shows money and
+       counts. `tnum` keeps a column of amounts aligned; `cv11` gives Geist a
+       single-storey `l` that stops 1/l/I collapsing into each other in an
+       invoice number. */
+    font-feature-settings: 'tnum' 1, 'cv11' 1;
+    text-rendering: optimizeLegibility;
   }
+  /* Anchor navigation lands under the sticky header without it. */
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 6rem;
+  }
+  /* One visible focus treatment for the whole product. The default ring was
+     a near-invisible grey at 50% opacity, which is a keyboard user's only
+     way of knowing where they are. */
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: calc(var(--radius) - 4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* ── Scroll reveal ──────────────────────────────────────────────────────────
+   Deliberately small: 12px and 500ms. Entrance motion earns its place by
+   directing the eye down the page, and loses it the moment the reader has to
+   wait for content they can already see.
+
+   The initial hidden state is applied by script, not by CSS, so that content
+   is visible when JavaScript has not run — a CSS-only `opacity: 0` here would
+   mean an empty page for anyone whose bundle failed. See `Reveal`. */
+[data-reveal] {
+  transition:
+    opacity 0.5s var(--ease-brand),
+    transform 0.5s var(--ease-brand);
+}
+[data-reveal='hidden'] {
+  opacity: 0;
+  transform: translateY(12px);
+}
+[data-reveal='shown'] {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal],
+  [data-reveal='hidden'],
+  [data-reveal='shown'] {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Page substrate ─────────────────────────────────────────────────────────
+   A hairline grid, not a blurred colour blob. The gradient wash the hero used
+   is the single most common tell of a generated landing page; a drafting grid
+   reads as precision and costs one gradient. */
+.grid-substrate {
+  background-image:
+    linear-gradient(to right, var(--hairline) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--hairline) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 100% 60% at 50% 0%, #000 20%, transparent 75%);
+}
+
+/* Type set at display sizes needs its own optical correction. */
+.text-balance-hero {
+  text-wrap: balance;
+}
+.text-pretty-body {
+  text-wrap: pretty;
 }

@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect } from 'react';
-import { AlertTriangle, RotateCcw } from 'lucide-react';
+import Link from 'next/link';
+import { RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Logo } from '@/components/brand/logo';
 import { log, serializeError } from '@/lib/logger';
 
 export default function Error({
@@ -36,44 +38,64 @@ export default function Error({
     });
   }, [error]);
 
+  /**
+   * ── Why this looks calm ───────────────────────────────────────────────────
+   *
+   * The old screen led with a red triangle in a red circle and the words
+   * "Something went wrong". A failure the reader can do nothing about is not
+   * improved by alarming them about it — the destructive palette is for
+   * decisions with consequences, and this screen offers no decisions.
+   *
+   * It also offered "Go to Dashboard", pointing at `/`, on a screen that can
+   * render for a signed-out visitor. Same defect as the 404 had: a label that
+   * describes a destination the reader may have no access to.
+   *
+   * The error ID is now presented as something to quote to support rather than
+   * as grey debris at the bottom of the page — it is the only actionable thing
+   * here, so it is legible, selectable and labelled.
+   */
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4">
-      <div className="text-center space-y-6 max-w-md">
-        <div className="flex justify-center">
-          <div className="rounded-full bg-destructive/10 p-4">
-            <AlertTriangle className="size-10 text-destructive" />
-          </div>
-        </div>
+    <div className="flex min-h-screen flex-col px-5 py-8 sm:px-8">
+      <header>
+        <Link href="/" className="inline-flex rounded-md" aria-label="NextMav — home">
+          <Logo />
+        </Link>
+      </header>
 
-        <div className="space-y-2">
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Something went wrong</h1>
-          <p className="text-muted-foreground">
-            An unexpected error occurred. Please try again or contact support if the problem
-            persists.
-          </p>
-        </div>
+      <main className="mx-auto my-auto w-full max-w-[34rem] py-16">
+        <p className="text-muted-foreground font-mono text-[0.8125rem] tracking-[0.06em]">
+          Error
+        </p>
+        <h1 className="text-display-2 text-balance-hero mt-4">
+          This page didn’t load.
+        </h1>
+        <p className="text-muted-foreground mt-4 text-[0.9375rem] leading-relaxed">
+          The failure has been recorded on our side. Trying again often works —
+          most of what lands here is momentary.
+        </p>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <Button
-            onClick={reset}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white h-11 px-6"
-          >
+        <div className="mt-8 flex flex-wrap gap-3">
+          <Button onClick={reset} variant="cta" size="xl">
             <RotateCcw className="size-4" />
             Try again
           </Button>
-          <Button
-            variant="outline"
-            className="h-11 px-6"
-            onClick={() => (window.location.href = '/')}
-          >
-            Go to Dashboard
+          <Button asChild variant="ctaOutline" size="xl">
+            <Link href="/">Back to the home page</Link>
           </Button>
         </div>
 
         {error.digest && (
-          <p className="text-xs text-muted-foreground">Error ID: {error.digest}</p>
+          <div className="border-hairline bg-surface mt-10 rounded-lg border px-4 py-3.5">
+            <p className="text-muted-foreground text-[0.8125rem]">
+              Quote this if you contact us — it identifies the exact failure in
+              our logs.
+            </p>
+            <p className="mt-1.5 font-mono text-[0.8125rem] break-all select-all">
+              {error.digest}
+            </p>
+          </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

@@ -20,12 +20,35 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
         link: "text-primary underline-offset-4 hover:underline",
+
+        /* ── Marketing actions ────────────────────────────────────────────
+           Added rather than replacing anything: the product app's buttons
+           keep the variants they already use.
+
+           These exist because every call to action on the site was written as
+           `<Button className="bg-emerald-500 hover:bg-emerald-600 text-white
+           h-12 px-8">` — the same six utilities repeated across eleven files,
+           which is how the landing page's CTA and the pricing page's CTA came
+           to be two different heights. A named variant is the difference
+           between a design decision and a copied string.
+
+           The primary action is ink, not the accent colour. A saturated
+           button competing with a saturated heading and a saturated icon tile
+           is why the old pages had no focal point; when one element is filled
+           and everything else is quiet, the reader's eye has somewhere to go. */
+        cta: "bg-ink text-ink-fg shadow-sm hover:bg-ink-hover active:scale-[0.985]",
+        ctaOutline:
+          "border-hairline-strong text-foreground hover:bg-surface-2 border bg-transparent active:scale-[0.985]",
+        /** For use on `tone=\"ink\"` panels, where an ink fill would vanish. */
+        onInk: "bg-ink-fg text-ink shadow-sm hover:bg-ink-fg/90 active:scale-[0.985]",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",
         sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5",
         lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
         icon: "size-9",
+        /** Marketing scale. One height for every hero and CTA on the site. */
+        xl: "h-11 rounded-lg px-6 text-[0.9375rem] has-[>svg]:px-5",
       },
     },
     defaultVariants: {

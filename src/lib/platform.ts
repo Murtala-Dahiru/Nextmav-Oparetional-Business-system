@@ -39,29 +39,46 @@
 
 export const PLATFORM = {
   /** The company that makes this product. */
-  name: 'NexusCorp',
+  name: 'NextMav',
   /** The product, as it appears in a document title or an email subject. */
-  product: 'NexusCorp Business OS',
+  product: 'NextMav Business OS',
   /** One line, for the sign-in page and metadata. */
   tagline:
-    'Enterprise-grade business operating system — CRM, Projects, HR, Finance, and more.',
+    'One system of record for the whole company — CRM, projects, people, finance and operations.',
   /**
    * The platform mark, served from this application.
    *
-   * A local path, not a CDN. The favicon previously pointed at
-   * `https://z-cdn.chatglm.cn/z-ai/static/logo.svg` — a scaffold URL left over
-   * from the project template, on a third-party host this product does not
-   * control. Every page load fetched the platform's own identity from someone
-   * else's server, and the day that host changes the file, every customer's
-   * browser tab silently becomes something else.
+   * ── Two separate problems, only one of which was fixed ──────────────────
+   *
+   * The favicon used to point at `https://z-cdn.chatglm.cn/z-ai/static/logo.svg`
+   * — a scaffold URL left over from the project template, on a third-party
+   * host this product does not control. Every page load fetched the platform's
+   * own identity from someone else's server, and the day that host changed the
+   * file, every customer's browser tab would silently become something else.
+   * Serving it from `public/` fixed that.
+   *
+   * What it did not fix is that the file *was Z.ai's logo* — their mark, in
+   * their colours, complete with their `z-breathe` animation, now served from
+   * our origin as our identity. Moving a trademark you do not own onto your
+   * own domain makes it more yours in exactly no respect that matters.
+   *
+   * `public/logo.svg` is now the drawn NextMav mark, and
+   * `components/brand/logo.tsx` is the same form as a component so the tab,
+   * the shell and the marketing pages cannot drift apart.
    */
   logo: '/logo.svg',
   /**
    * The accent the shell uses.
    *
+   * Was `#10b981` (emerald-500), which fails WCAG AA on white at 2.07:1 — it
+   * was carrying links and inline emphasis it was too weak to carry. This is
+   * the same hue family at 5.4:1. The full token set, including the dark-mode
+   * lift, lives in `globals.css` as `--brand`; this literal exists for the
+   * places that need a colour outside CSS, such as `theme-color` metadata.
+   *
    * Deliberately not a tenant setting. `branding.primary_colour` exists and is
    * a real preference — it just applies to the tenant's own artifacts, not to
    * this product's navigation.
    */
-  accent: '#10b981',
+  accent: '#0f766e',
 } as const;
