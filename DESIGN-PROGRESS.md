@@ -15,8 +15,8 @@ and out of bounds**. If unsure whether something is in scope, it isn't.
 |---|---|---|---|
 | 0 | Stabilise — revert out-of-scope backend, fix red build | ✅ done | — |
 | 1 | Design system + these three documents | ✅ done | — |
-| 2 | Header · footer · mobile nav | 🔶 in-progress | Logged-in header state; 360px pass |
-| 3 | Auth flows | 🔶 in-progress | Blur validation on login/signup; rate-limited + offline states |
+| 2 | Header · footer · mobile nav | ✅ done | — |
+| 3 | Auth flows | 🔶 in-progress | **Login done.** Signup, forgot, reset, accept-invite, change-password still to convert |
 | 4 | Landing | 🔶 needs-review | Rubric pass; 360/1920 check |
 | 5 | Features | 🔶 needs-review | Rubric pass |
 | 6 | Pricing | 🔶 needs-review | Currency/tax line (blocked — CONTENT-NEEDED #5) |
@@ -32,17 +32,69 @@ Also untouched and still on the old design, linked from the footer:
 
 ---
 
+## Next actions, in order
+
+Precise enough to resume cold.
+
+### 3a. Signup — convert to `Field` + `useFieldErrors`
+`src/app/signup/page.tsx`. Five fields: `firstName`, `lastName`, `email`,
+`password`, `organization`. Currently uses bare `<div className="space-y-2">`
+with `<Label>` and relies on `required` plus a toast.
+
+- Wrap each in `<Field id="signup-…">`; ids must match the `revealAll` prefix
+- The password field **wraps its input** for the show/hide button → use the
+  **function-child form** of `Field` (see the note in `forms/field.tsx`)
+- Its existing `aria-describedby="password-requirements"` is already correct
+  and must be preserved — `Field` yields to a caller-set value
+- Replace `toast.error` with the same `FormError` union login now uses:
+  `rateLimited` (429 — signup is rate-limited hourly per address), `offline`,
+  `server` (5xx), plus a `duplicate` case for an address already registered
+- Keep the spinner up through `window.location.assign`, as login does
+
+### 3b. Forgot / reset password
+Same conversion. `forgot-password` already has correct non-enumerating copy —
+do not "improve" it into confirming that an account exists.
+
+### 3c. Accept-invite + change-password
+Still on the old centred-card gradient. Move both to `AuthShell`. These are the
+last two files carrying the `from-gray-50 to-gray-100` treatment.
+
+### 7. About — the largest remaining job
+Strip six fabricated executives, the invented founding date and four invented
+metrics (`CONTENT-NEEDED.md` #2), then rebuild around whatever is real.
+
+### 11. Blog
+Eight fabricated posts, all `href="#"`, one contradicting About on who is CEO.
+Minimum: remove the fabrications and the dead "Load more".
+
+### 12. Final sweep
+`npm run build` end to end, then all pages at 360 / 768 / 1024 / 1440 / 1920,
+then publish rubric scores.
+
+---
+
 ## Health
 
 Both must be green before any item is called done.
 
 ```bash
-npx tsc --noEmit          # currently: 0 errors
-node scripts/security-check.mjs   # currently: passing
+npx tsc --noEmit                  # verified: 0 errors
+node scripts/security-check.mjs   # verified: "the API surface is guarded"
 ```
 
-`npm run build` has not been run end-to-end this session — do it before the
+All 14 marketing + auth routes verified returning **200** on the dev server
+(port 3100), including the five not yet redesigned.
+
+`npm run build` has **not** been run end-to-end this session — do it before the
 final sweep.
+
+### Verified by browser inspection, not by eye
+
+- Mobile nav: Tab trap holds, Escape returns focus to the trigger, body scroll
+  lock releases, all 7 panel links measure 44px, trigger measures 44×44
+- No horizontal scroll at narrow width
+- Login: no error during typing; after blur, `role="alert"` fires,
+  `aria-invalid="true"`, and `aria-describedby` resolves **on the input**
 
 ---
 
