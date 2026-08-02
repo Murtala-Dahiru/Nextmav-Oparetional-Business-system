@@ -1,4 +1,4 @@
-import { authorize } from '@/lib/auth-context';
+import { authorize, pgError } from '@/lib/auth-context';
 import { error } from '@/lib/api-response';
 import { can } from '@/lib/permissions';
 import type { ModuleId } from '@/lib/constants';
@@ -141,7 +141,18 @@ export async function GET(req: Request) {
     .order(spec.order ?? 'created_at', { ascending: false })
     .limit(limit);
 
-  if (e) return error(e.message, 500, e.code);
+  /**
+   * Through `pgError` like every other database failure in the application.
+   *
+   * This was `error(e.message, 500, e.code)` — the one query in the codebase
+   * that reported a database fault by handing PostgreSQL's own text to the
+   * caller with a 500 attached. Two things were wrong with it. The message
+   * describes the schema, which is the disclosure the default branch of
+   * `pgError` now exists to prevent; and the status was 500 regardless, so a
+   * permission denial on an export was reported as a server fault rather than
+   * as a refusal.
+   */
+  if (e) return pgError(e);
 
   // The select string is dynamic, so supabase-js cannot infer a row shape.
   const rows = (data ?? []) as unknown as Record<string, unknown>[];

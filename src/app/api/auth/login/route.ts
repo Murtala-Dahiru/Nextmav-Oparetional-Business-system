@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { normalizeRole, capabilitySummary } from '@/lib/permissions';
 import { accessStateFor, describeState, isBlocked } from '@/lib/account-state';
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
@@ -155,6 +155,6 @@ export async function POST(request: NextRequest) {
       pendingInvitations: access.pendingInvitations,
     });
   } catch (e: any) {
-    return error(e.message || 'Login failed', 500, 'INTERNAL_ERROR');
+    return serverError(e, 'Login failed', 'INTERNAL_ERROR');
   }
 }

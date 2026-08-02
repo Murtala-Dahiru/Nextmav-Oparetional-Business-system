@@ -1,5 +1,5 @@
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 
 /**
@@ -138,6 +138,6 @@ export async function POST(req: Request) {
     if (e) return pgError(e);
     return success(data, undefined, 201);
   } catch (e: any) {
-    return error(e.message || 'Could not post the comment', 500);
+    return serverError(e, 'Could not post the comment');
   }
 }

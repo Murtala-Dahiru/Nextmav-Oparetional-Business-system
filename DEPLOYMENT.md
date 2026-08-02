@@ -67,7 +67,7 @@ That runs three steps, and you can run them individually:
 
 | Command | Does |
 |---|---|
-| `npm run db:check` | Parses all 8 migrations against the real PostgreSQL grammar, then checks cross-file consistency — undefined tables and functions, invalid enum members, broken foreign keys, views missing `security_invoker`, recursive policies, business tables missing `organization_id`. |
+| `npm run db:check` | Parses all 25 migrations against the real PostgreSQL grammar, then checks cross-file consistency — undefined tables and functions, invalid enum members, broken foreign keys, views missing `security_invoker`, recursive policies, business tables missing `organization_id`. |
 | `npm run db:apply` | Applies every migration in order, each in its own transaction, so a failure stops at the last complete one rather than leaving a half-built schema. |
 | `npm run db:verify` | Verifies the deployed result — see below. |
 
@@ -141,6 +141,54 @@ output is ignored and the platform handles it.
 **Rotate credentials** that have been shared during development — Settings →
 API → *Rotate* for the service-role key, Settings → Database → *Reset database
 password* for the connection strings.
+
+---
+
+## 5. Monitoring and health checks
+
+Two endpoints, and pointing the wrong monitor at the wrong one causes outages.
+
+| Endpoint | Use it for | Checks the database |
+|---|---|---|
+| `GET /api` | Load balancer, container liveness probe | **No** |
+| `GET /api/health` | Uptime monitor, readiness probe | Yes — 200 or **503** |
+
+`/api` deliberately checks nothing. A dependency probe there would fail on
+every instance simultaneously during a brief database wobble, pulling the whole
+fleet out of rotation — the monitoring turning a recoverable blip into a total
+outage. Use `/api/health` when you want to know about dependencies, because the
+correct response to *that* is to stop sending traffic, not to restart.
+
+`/api/health` is reachable without a session so a monitor can poll it. Its
+status code is honest for everybody; version, uptime, environment and
+dependency latency require `HEALTH_TOKEN`:
+
+```bash
+curl -H "Authorization: Bearer $HEALTH_TOKEN" https://your-app/api/health
+```
+
+Leave `HEALTH_TOKEN` unset and no detail is served at all.
+
+**Set `APP_VERSION` at build time** to the commit being deployed. Without it
+the health endpoint reports `unknown`, and correlating a log line with the
+release that produced it becomes guesswork.
+
+### Logs
+
+Structured JSON on stdout in production — your host already collects it. Every
+line carries a `requestId` matching the `x-request-id` response header, so a
+user's report maps to log lines directly.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `LOG_LEVEL` | `info` in production | `debug` is verbose and costs money at volume |
+| `LOG_FORMAT` | `json` in production | `pretty` for a terminal |
+| `HEALTH_TOKEN` | unset | Detail disabled while unset |
+| `RATE_LIMIT_DISABLED` | `0` | `1` switches rate limiting off with no deployment |
+
+Passwords, tokens, cookies and email addresses never reach a log line — see
+[`OPERATIONS.md`](OPERATIONS.md) for the redaction rules and the incident
+checklist.
 
 ---
 

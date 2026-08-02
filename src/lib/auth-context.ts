@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabaseServer } from '@/lib/supabase/server';
-import { error } from '@/lib/api-response';
+import { error, currentRequestId } from '@/lib/api-response';
+import { log, serializeError } from '@/lib/logger';
 import type { ModuleId, RoleId } from '@/lib/constants';
 import { normalizeRole, can, canAccessModule, type Action } from '@/lib/permissions';
 import { currencyOf } from '@/lib/locale';
@@ -298,7 +299,25 @@ function constraintMessage(raw: string | undefined): string | null {
   return m ? (CONSTRAINT_MESSAGES[m[1]] ?? null) : null;
 }
 
-export function pgError(e: { code?: string; message?: string; details?: string } | null) {
+export interface PgFailure {
+  message: string;
+  status: number;
+  code?: string;
+}
+
+/**
+ * The translation itself, separated from the response and from the logging.
+ *
+ * Pure and synchronous, so the mapping can be reasoned about — and tested —
+ * without a request, a logger or a framework. `pgError()` below is the thing
+ * routes call; this is the thing that decides what a database code means.
+ */
+export function translatePgError(
+  e: { code?: string; message?: string; details?: string } | null,
+): PgFailure {
+  const error = (message: string, status = 400, code?: string): PgFailure =>
+    ({ message, status, code });
+
   if (!e) return error('Unknown database error', 500);
 
   switch (e.code) {
@@ -384,6 +403,71 @@ export function pgError(e: { code?: string; message?: string; details?: string }
         500, 'SCHEMA_MISMATCH',
       );
     default:
-      return error(e.message ?? 'Database error', 500, e.code);
+      /**
+       * An unrecognised code is, by definition, not a case anyone anticipated —
+       * so its message has not been reviewed for what it discloses.
+       *
+       * It used to be returned verbatim with a 500. PostgreSQL writes its own
+       * error text in terms of its own schema: column names, constraint names,
+       * relation names, sometimes the offending value. That reply described the
+       * database to whoever managed to provoke it, and it was the *default*
+       * branch — the one reached by every failure nobody had thought about.
+       *
+       * The text is not lost. `pgError()` writes it to the log with the
+       * correlation id, which is where a diagnostic belongs; the caller gets
+       * the code, which is enough for support to search on and discloses
+       * nothing.
+       */
+      return error(
+        'The database could not complete this request. Please try again, and contact support if it persists.',
+        500,
+        e.code ?? 'DATABASE_ERROR',
+      );
   }
+}
+
+/**
+ * Translate a PostgREST error into an HTTP response, and record it.
+ *
+ * ── Why this is the highest-leverage place to log ─────────────────────────
+ *
+ * A hundred and seventy-eight call sites end in `return pgError(e)`, and every
+ * one of them was previously silent. Making this function the one that writes
+ * the log line covers all of them without any of them changing — every call
+ * site is already `return pgError(e)`, and returning a promise from an `async`
+ * handler is awaited by the language.
+ *
+ * ── Why the level differs by code ─────────────────────────────────────────
+ *
+ * Most of what arrives here is a user being told "no" by a rule that is
+ * working: a duplicate, a bad enum value, a missing row. Logging those at
+ * error level would mean an error log made almost entirely of the system
+ * behaving correctly, which is how alerting gets muted.
+ *
+ * Two exceptions get raised deliberately. A 42501 is RLS refusing a query,
+ * which is either a bug in a handler or somebody probing a boundary — never
+ * routine, always worth seeing. A schema mismatch means the deployed code and
+ * the deployed database disagree, which is an operational fault that will
+ * affect everyone who touches that route.
+ */
+export async function pgError(
+  e: { code?: string; message?: string; details?: string } | null,
+) {
+  const failure = translatePgError(e);
+  const requestId = await currentRequestId();
+
+  const level =
+    failure.status >= 500 ? 'error'
+      : failure.code === 'RLS_DENIED' ? 'warn'
+        : 'debug';
+
+  log[level]('database request failed', {
+    requestId,
+    status: failure.status,
+    code: failure.code,
+    // The raw diagnostic, kept out of the response and put here instead.
+    err: serializeError(e),
+  });
+
+  return error(failure.message, failure.status, failure.code, undefined, requestId);
 }

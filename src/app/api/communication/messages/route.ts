@@ -1,5 +1,5 @@
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error, paginated } from '@/lib/api-response';
+import { success, error, paginated, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 import { communicationPolicy } from '@/lib/communication';
 
@@ -230,7 +230,7 @@ export async function POST(req: Request) {
 
     return success(full ?? data, undefined, 201);
   } catch (e: any) {
-    return error(e.message || 'Failed to send the message', 500);
+    return serverError(e, 'Failed to send the message');
   }
 }
 

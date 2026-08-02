@@ -2,6 +2,7 @@ import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 import { isFilterValue } from '@/lib/filters';
+import { log, serializeError } from '@/lib/logger';
 
 /**
  * The workspace tree.
@@ -143,7 +144,7 @@ export async function POST(req: Request) {
     );
     // The sheet exists either way; a failed starter grid is a cosmetic loss,
     // not a reason to fail the create and leave nothing behind.
-    if (colError) console.error('sheet starter columns:', colError.message);
+    if (colError) log.warn('sheet starter columns were not created', { err: serializeError(colError) });
   }
 
   /**

@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError, currentRequestId } from '@/lib/api-response';
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
+import { log, serializeError } from '@/lib/logger';
 
 /**
  * Send the confirmation email again.
@@ -54,7 +55,10 @@ export async function POST(request: NextRequest) {
       // for an address that actually needs confirming, so a 429 for one input
       // and a 200 for another is a way to test which addresses are registered
       // — and unlike the login form, this endpoint asks for no password first.
-      console.error('resend-confirmation:', e.message);
+      log.warn('confirmation email was not sent', {
+        requestId: await currentRequestId(),
+        err: serializeError(e),
+      });
     }
 
     // Deliberately identical for every input: unknown address, already
@@ -66,6 +70,6 @@ export async function POST(request: NextRequest) {
         'the workspace may have reached its email sending limit.',
     });
   } catch (e: any) {
-    return error(e.message || 'Could not resend the confirmation email', 500);
+    return serverError(e, 'Could not resend the confirmation email');
   }
 }

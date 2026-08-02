@@ -1,5 +1,5 @@
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 import { isSupportedCurrency, CURRENCY_CODES } from '@/lib/locale';
 import {
@@ -232,7 +232,7 @@ export async function PATCH(req: Request) {
 
     return success({ organization: data });
   } catch (e: any) {
-    return error(e.message || 'Update failed', 500);
+    return serverError(e, 'Update failed');
   }
 }
 

@@ -40,6 +40,51 @@ const check = (ok, label, detail = '') => {
 };
 const section = t => console.log(`\n  ${t}\n  ${'─'.repeat(t.length)}`);
 
+/**
+ * Source with comments removed, line numbering preserved.
+ *
+ * Needed because this file's checks look for patterns that the codebase also
+ * *describes*. Section 9 below searches for `error(e.message, 500)`, which is
+ * exactly the string the comment above `serverError()` quotes when explaining
+ * why that shape was removed — so an unfiltered scan fails on its own
+ * documentation, and the fix somebody reaches for is deleting the check.
+ *
+ * Comment bodies become blank rather than disappearing, so a finding still
+ * reports the line the reader will find in their editor.
+ */
+function stripComments(src) {
+  let out = '';
+  let inBlock = false, inLine = false, quote = null;
+
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i], next = src[i + 1];
+
+    if (c === '\n') {
+      inLine = false;
+      quote = null;         // an unterminated string cannot span a line here
+      out += c;
+      continue;
+    }
+    if (inLine) { out += ' '; continue; }
+    if (inBlock) {
+      if (c === '*' && next === '/') { inBlock = false; out += '  '; i++; }
+      else out += ' ';
+      continue;
+    }
+    if (quote) {
+      out += c;
+      if (c === '\\') { out += src[++i] ?? ''; continue; }
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; out += c; continue; }
+    if (c === '/' && next === '*') { inBlock = true; out += '  '; i++; continue; }
+    if (c === '/' && next === '/') { inLine = true; out += '  '; i++; continue; }
+    out += c;
+  }
+  return out;
+}
+
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
@@ -58,7 +103,15 @@ section('1. Every route handler establishes a request context');
  * not be reachable anonymously.
  */
 const PUBLIC_ROUTES = new Set([
-  'api/route.ts',                          // health check, returns a version
+  'api/route.ts',                          // liveness; checks nothing by design
+  /**
+   * Readiness. Pre-authentication because a load balancer and an uptime
+   * monitor have no session — that is the whole point of them. It returns an
+   * honest status code to anyone and operational detail only to a caller
+   * holding `HEALTH_TOKEN`, so being reachable anonymously discloses nothing
+   * beyond "this instance is or is not serving".
+   */
+  'api/health/route.ts',
   'api/auth/login/route.ts',
   'api/auth/signup/route.ts',
   'api/auth/forgot-password/route.ts',
@@ -78,6 +131,7 @@ const PUBLIC_ROUTES = new Set([
  */
 const PROXY_PUBLIC_PATHS = [
   '/api',
+  '/api/health',
   '/api/auth/login',
   '/api/auth/signup',
   '/api/auth/forgot-password',
@@ -586,6 +640,77 @@ check(/catch\s*{[^}]*return null;/.test(limiterSrc),
   'a failing rate-limit store permits the request rather than refusing it');
 check(limiterSrc.includes('RATE_LIMIT_DISABLED'),
   'the limiter can be switched off by configuration, without a deployment');
+
+// ───────────────────────────────────────────────────────────────────────────
+section('9. Failures are recorded, and are not described to the caller');
+/**
+ * Three properties, all of which were false before this pass and all of which
+ * fail silently if they become false again.
+ *
+ * Forty-seven catch blocks read `error(e.message || '…', 500)`. In practice
+ * `e.message` is always present, so what the user received was the exception —
+ * a JavaScript stack message, or PostgreSQL naming its own columns and
+ * constraints — while the server kept no record of it at all. One line, wrong
+ * in both directions: the operator learned nothing and the caller learned too
+ * much.
+ */
+const srcFiles = walk('src').filter(f => f.endsWith('.ts') || f.endsWith('.tsx'));
+
+// (a) No handler hands an exception message to the client with a 5xx.
+const leaking = [];
+for (const file of srcFiles) {
+  const rel = file.replace(/\\/g, '/');
+  const src = stripComments(readFileSync(file, 'utf8'));
+  for (const [i, line] of src.split(/\r?\n/).entries()) {
+    if (/\berror\(\s*\w+\.message[^)]*,\s*5\d\d/.test(line)) {
+      leaking.push(`${rel}:${i + 1}`);
+    }
+  }
+}
+check(leaking.length === 0,
+  'no route returns an exception message to the caller with a 5xx',
+  leaking.join(', '));
+
+// (b) Logging goes through the logger, so it has a level, a shape and a sink.
+const adHoc = [];
+for (const file of srcFiles) {
+  const rel = file.replace(/\\/g, '/');
+  // The logger is the one place allowed to call console — it is the thing
+  // being centralised on. Marketing pages contain code samples as strings.
+  if (rel.endsWith('src/lib/logger.ts') || rel.includes('(marketing)')) continue;
+  const src = stripComments(readFileSync(file, 'utf8'));
+  for (const [i, line] of src.split(/\r?\n/).entries()) {
+    if (/(?:^|[^.\w])console\.(log|warn|error|info|debug)\s*\(/.test(line)) {
+      adHoc.push(`${rel}:${i + 1}`);
+    }
+  }
+}
+check(adHoc.length === 0,
+  'application code logs through the structured logger, not console',
+  adHoc.join(', '));
+
+// (c) The pieces that make a failure findable are all still wired up.
+const instrumentation = readFileSync('src/instrumentation.ts', 'utf8');
+check(instrumentation.includes('onRequestError'),
+  'unhandled server errors are captured framework-wide, without per-route opt-in');
+
+const proxySource = readFileSync('src/proxy.ts', 'utf8');
+check(proxySource.includes('resolveRequestId') && proxySource.includes('REQUEST_ID_HEADER'),
+  'every request is given a correlation id in the proxy');
+
+const errorPage = readFileSync('src/app/error.tsx', 'utf8');
+check(/log\.error\(/.test(errorPage),
+  'the application error boundary reports the error rather than discarding it');
+
+const liveness = stripComments(readFileSync('src/app/api/route.ts', 'utf8'));
+check(!/Hello, world/.test(liveness),
+  'the health endpoint is not the placeholder');
+check(!/supabase|from\(/i.test(liveness),
+  'and liveness checks no dependency, so a database blip cannot empty the fleet');
+
+const readiness = readFileSync('src/app/api/health/route.ts', 'utf8');
+check(readiness.includes('HEALTH_TOKEN'),
+  'readiness detail is gated, since the endpoint is pre-authentication');
 
 // ───────────────────────────────────────────────────────────────────────────
 console.log('');

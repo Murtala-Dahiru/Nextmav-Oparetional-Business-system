@@ -1,7 +1,8 @@
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 import { ROADMAP_STAGES } from '@/lib/constants';
+import { log, serializeError } from '@/lib/logger';
 
 const SELECT =
   '*, project:projects(id, name, status), ' +
@@ -118,7 +119,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
     return success(data);
   } catch (e: any) {
-    return error(e.message || 'Update failed', 500);
+    return serverError(e, 'Update failed');
   }
 }
 
@@ -167,7 +168,7 @@ async function notifyMilestoneCompleted(
       })),
     );
   } catch (e: any) {
-    console.error('milestone notification:', e?.message);
+    log.warn('milestone notification failed', { err: serializeError(e) });
   }
 }
 

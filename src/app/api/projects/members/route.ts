@@ -1,6 +1,7 @@
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
+import { log, serializeError } from '@/lib/logger';
 
 /**
  * Who is on a project.
@@ -138,11 +139,13 @@ export async function POST(req: Request) {
         body: `You are now a ${role} on this project.`,
         entity_type: 'project',
         entity_id: projectId,
-      }).then(undefined, (err: any) => console.error('project notification:', err?.message));
+      }).then(undefined, (err: unknown) => log.warn('project notification failed', {
+        projectId, err: serializeError(err),
+      }));
     }
 
     return success(data, undefined, 201);
   } catch (e: any) {
-    return error(e.message || 'Could not add the member', 500);
+    return serverError(e, 'Could not add the member');
   }
 }

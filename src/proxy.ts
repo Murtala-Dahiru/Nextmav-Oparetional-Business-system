@@ -3,6 +3,7 @@ import {
   SESSION_COOKIES, BACKGROUND_HEADER, expiryOf,
   ABSOLUTE_TIMEOUT_MS, type ExpiryReason,
 } from '@/lib/session-policy';
+import { REQUEST_ID_HEADER, resolveRequestId } from '@/lib/request-id';
 
 /**
  * Server-side route protection and session lifetime (Next.js `proxy`
@@ -58,7 +59,8 @@ const AUTH_PAGES = ['/login', '/signup', '/forgot-password'];
  * it cannot require a session.
  */
 const PUBLIC_API = new Set([
-  '/api',                            // health check; returns a version string
+  '/api',                            // liveness; no dependencies, no detail
+  '/api/health',                     // readiness; status code for anyone, detail for HEALTH_TOKEN
   '/api/auth/login',
   '/api/auth/signup',
   '/api/auth/forgot-password',
@@ -180,8 +182,45 @@ function expiredPage(req: NextRequest, reason: ExpiryReason): NextResponse {
   return res;
 }
 
+/**
+ * Mint the correlation id, and make sure it leaves on the response.
+ *
+ * ── Why the wrapper, rather than setting it in each branch ────────────────
+ *
+ * The decision logic below returns from eight different places — redirects,
+ * refusals, expiries and the ordinary pass-through — and an identifier that is
+ * attached in seven of them is worse than useless, because the one request
+ * that went wrong is the one with no id on it. Wrapping is the only shape that
+ * cannot be got wrong by adding a ninth branch later.
+ *
+ * The session logic itself is untouched: `handle` is the previous function,
+ * renamed, and it neither reads nor writes the identifier.
+ */
 export default function proxy(req: NextRequest) {
+  const requestId = resolveRequestId(req.headers.get(REQUEST_ID_HEADER));
+  const res = handle(req, requestId);
+  // On the response so the browser can quote it, the network panel shows it,
+  // and `error.tsx` has something to put in front of the user.
+  res.headers.set(REQUEST_ID_HEADER, requestId);
+  return res;
+}
+
+function handle(req: NextRequest, requestId: string) {
   const { pathname, search } = req.nextUrl;
+
+  /**
+   * Continue to the handler, with the identifier on the *request*.
+   *
+   * `NextResponse.next()` alone forwards the original headers, so a route
+   * handler would have no way to learn the id and every log line it wrote
+   * would be uncorrelated. Rebuilding the header bag is the documented way to
+   * pass a value from here into the handler.
+   */
+  const forward = () => {
+    const headers = new Headers(req.headers);
+    headers.set(REQUEST_ID_HEADER, requestId);
+    return NextResponse.next({ request: { headers } });
+  };
   const authed = hasSession(req);
   const isApi = pathname === '/api' || pathname.startsWith('/api/');
   const now = Date.now();
@@ -221,14 +260,14 @@ export default function proxy(req: NextRequest) {
 
   // ── APIs ───────────────────────────────────────────────────────────────
   if (isApi) {
-    if (isPublicApi(pathname)) return NextResponse.next();
+    if (isPublicApi(pathname)) return forward();
     if (!authed) {
       return NextResponse.json(
         { error: { message: 'Authentication required', code: 'UNAUTHENTICATED' } },
         { status: 401 },
       );
     }
-    return advance(NextResponse.next());
+    return advance(forward());
   }
 
   // ── Protected pages ────────────────────────────────────────────────────
@@ -259,7 +298,7 @@ export default function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return advance(NextResponse.next());
+  return advance(forward());
 }
 
 export const config = {

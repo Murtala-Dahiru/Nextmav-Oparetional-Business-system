@@ -98,6 +98,8 @@ no policy and silently see nothing.
 | `npm run app:verify` | 78 end-to-end checks against the running app |
 | `npm run identity:verify` | 82 checks over the identity lifecycle and sessions |
 | `npm run security:check` | Static checks over the API surface (no database needed) |
+| `npm run test:rate-limit` | Rate limiter behaviour and fail-open (no database needed) |
+| `npm run test:observability` | Logger, redaction and correlation ids (no database needed) |
 | `npm run verify:all` | Every harness above, in order |
 
 ---
@@ -114,9 +116,13 @@ src/
     account-state.ts  Where an account stands: active, suspended, terminated…
     session-policy.ts Idle and absolute session windows, enforced in proxy.ts
     supabase/crud.ts  Generic list/create/update/delete handlers
+    logger.ts         Structured logging, redaction, the external-provider seam
+    rate-limit.ts     Per-address and per-account limits on credential endpoints
+    request-id.ts     Correlation id, shared with the edge proxy
     case.ts           snake_case ↔ camelCase at the API boundary
-  proxy.ts            Route protection (Next.js middleware convention)
-supabase/migrations/  8 migrations that build the backend from empty
+  proxy.ts            Route protection, session clocks, correlation id
+  instrumentation.ts  Framework-wide capture of unhandled server errors
+supabase/migrations/  25 migrations that build the backend from empty
 scripts/              Migration and verification tooling
 ```
 
@@ -131,6 +137,8 @@ Nothing here is asserted without being run:
 - `app:verify` — 78 checks through the HTTP API as two users
 - `identity:verify` — 82 checks over the whole identity lifecycle
 - `security:check` — static checks over every route, policy and header
+- `test:rate-limit` — 28 assertions over the limiter, including fail-open
+- `test:observability` — 49 assertions over logging, redaction and tracing
 - `npm test` — 30 unit tests over the attendance rules
 
 ---
@@ -162,6 +170,24 @@ happens.
 `NEXT_PUBLIC_SESSION_IDLE_MINUTES` and `NEXT_PUBLIC_SESSION_ABSOLUTE_MINUTES`.
 Background polling carries `x-nm-background: 1` and does not hold the idle
 window open; the browser warns two minutes before expiry.
+
+---
+
+## Running it in production
+
+How the platform is observed, what happens when a request fails, and what to
+look at first when something is wrong: **[OPERATIONS.md](OPERATIONS.md)**.
+
+In short — every request carries an `x-request-id` that appears on the
+response, in any error body, and on every log line written while serving it.
+Logs are structured JSON on stdout with passwords, tokens, cookies and email
+addresses redacted before they are written. `/api` is liveness and checks
+nothing; `/api/health` is readiness and probes the database. Unhandled
+exceptions in any route are captured framework-wide by `src/instrumentation.ts`
+without the route opting in.
+
+Decisions that span files — and the options that were rejected — are recorded
+in **[docs/adr](docs/adr)**.
 
 ---
 

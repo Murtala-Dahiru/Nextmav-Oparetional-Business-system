@@ -2,7 +2,7 @@ import { isFilterValue } from '@/lib/filters';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ModuleId } from '@/lib/constants';
 import { authorize, pgError, type RequestContext } from '@/lib/auth-context';
-import { success, error, paginated } from '@/lib/api-response';
+import { success, error, paginated, serverError } from '@/lib/api-response';
 import { acceptBody, toCamel, toSnake } from '@/lib/case';
 import { recordActivity } from '@/lib/activity';
 
@@ -78,6 +78,49 @@ export interface ListOptions {
 const MAX_PAGE_SIZE = 100;
 
 /**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  The net under the shared handlers.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  ── What could throw here, given `pgError` exists ─────────────────────────
+ *
+ *  `supabase-js` reports database failures by *returning* an error object, and
+ *  every handler below already checks for that and calls `pgError()`. So the
+ *  ordinary failure is covered and always was.
+ *
+ *  What is not covered is everything that never reaches a returned error: the
+ *  socket to PostgREST dropping mid-flight, `await req.json()` meeting a
+ *  truncated body, a `prepare` callback dereferencing a relation that came back
+ *  null, `JSON.stringify` meeting a circular structure. Those throw, and until
+ *  now they left the handler entirely — the caller received Next's generic 500
+ *  and no line was written anywhere saying it had happened.
+ *
+ *  ── Why wrap here rather than in each route ───────────────────────────────
+ *
+ *  These five factories are the whole implementation of a large share of the
+ *  hundred and fifteen routes. One wrapper applied at the factory covers every
+ *  route built from them, including the ones added next year, and cannot be
+ *  omitted by a caller because callers never see it.
+ *
+ *  `instrumentation.ts` would catch these too, but only to log them — the user
+ *  would still get Next's blank 500. Catching here means they also get a
+ *  sentence and a reference number.
+ */
+function guarded<A extends unknown[]>(
+  message: string,
+  context: Record<string, unknown>,
+  handler: (...args: A) => Promise<Response>,
+): (...args: A) => Promise<Response> {
+  return async (...args: A) => {
+    try {
+      return await handler(...args);
+    } catch (e) {
+      return serverError(e, message, 'HANDLER_ERROR', context);
+    }
+  };
+}
+
+/**
  * Build a GET handler that lists rows with search, filter, sort and paging.
  */
 export function listHandler(opts: ListOptions) {
@@ -87,7 +130,8 @@ export function listHandler(opts: ListOptions) {
     filterable = [], softDelete = false, scope,
   } = opts;
 
-  return async function GET(req: Request) {
+  return guarded('Could not load this list.', { table, module, op: 'list' },
+    async function GET(req: Request) {
     const ctx = await authorize(module, 'view');
     if (ctx instanceof Response) return ctx;
 
@@ -158,7 +202,7 @@ export function listHandler(opts: ListOptions) {
 
     if (e) return pgError(e);
     return paginated(data ?? [], count ?? 0, page, pageSize);
-  };
+  });
 }
 
 export interface CreateOptions {
@@ -180,7 +224,8 @@ export interface CreateOptions {
 export function createHandler(opts: CreateOptions) {
   const { table, module, select = '*', prepare } = opts;
 
-  return async function POST(req: Request) {
+  return guarded('Could not create the record.', { table, module, op: 'create' },
+    async function POST(req: Request) {
     const ctx = await authorize(module, 'create');
     if (ctx instanceof Response) return ctx;
 
@@ -202,7 +247,7 @@ export function createHandler(opts: CreateOptions) {
     if (e) return pgError(e);
     recordActivity(ctx, { action: 'create', table, row: data as any });
     return success(data, undefined, 201);
-  };
+  });
 }
 
 // ─── single-record handlers ────────────────────────────────────────────────
@@ -248,7 +293,8 @@ type Params = { params: Promise<{ id: string }> };
 export function getOneHandler(opts: RecordOptions) {
   const { table, module, select = '*' } = opts;
 
-  return async function GET(_req: Request, { params }: Params) {
+  return guarded('Could not load this record.', { table, module, op: 'read' },
+    async function GET(_req: Request, { params }: Params) {
     const ctx = await authorize(module, 'view');
     if (ctx instanceof Response) return ctx;
     const { id } = await params;
@@ -264,13 +310,14 @@ export function getOneHandler(opts: RecordOptions) {
     // to the caller by design — confirming existence would leak across tenants.
     if (!data) return error('Not found', 404, 'NOT_FOUND');
     return success(data);
-  };
+  });
 }
 
 export function updateHandler(opts: RecordOptions) {
   const { table, module, select = '*', prepare, updateAction = 'edit', updateSchema } = opts;
 
-  return async function PATCH(req: Request, { params }: Params) {
+  return guarded('Could not save your changes.', { table, module, op: 'update' },
+    async function PATCH(req: Request, { params }: Params) {
     const ctx = await authorize(module, updateAction);
     if (ctx instanceof Response) return ctx;
     const { id } = await params;
@@ -328,7 +375,7 @@ export function updateHandler(opts: RecordOptions) {
     if (!data) return error('Not found', 404, 'NOT_FOUND');
     recordActivity(ctx, { action: 'update', table, row: data as any });
     return success(data);
-  };
+  });
 }
 
 /**
@@ -340,7 +387,8 @@ export function updateHandler(opts: RecordOptions) {
 export function deleteHandler(opts: RecordOptions) {
   const { table, module, softDelete = false } = opts;
 
-  return async function DELETE(_req: Request, { params }: Params) {
+  return guarded('Could not delete this record.', { table, module, op: 'delete' },
+    async function DELETE(_req: Request, { params }: Params) {
     const ctx = await authorize(module, 'delete');
     if (ctx instanceof Response) return ctx;
     const { id } = await params;
@@ -367,7 +415,7 @@ export function deleteHandler(opts: RecordOptions) {
     if (e) return pgError(e);
     recordActivity(ctx, { action: 'delete', table, row: data as any });
     return success({ deleted: true, soft: softDelete });
-  };
+  });
 }
 
 /** Convenience: everything a `[id]` route needs. */

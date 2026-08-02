@@ -1,5 +1,5 @@
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 import { endMemberSessions } from '@/lib/account-state';
 
@@ -112,7 +112,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
     return success({ ...data, sessionsRevoked });
   } catch (e: any) {
-    return error(e.message || 'Update failed', 500);
+    return serverError(e, 'Update failed');
   }
 }
 

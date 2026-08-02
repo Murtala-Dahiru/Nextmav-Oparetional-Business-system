@@ -1,6 +1,6 @@
 import { isFilterValue } from '@/lib/filters';
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error, paginated } from '@/lib/api-response';
+import { success, error, paginated, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 
 const SELECT =
@@ -120,6 +120,6 @@ export async function POST(req: Request) {
 
     return success(data, undefined, 201);
   } catch (e: any) {
-    return error(e.message || 'Failed to create invoice', 500);
+    return serverError(e, 'Failed to create invoice');
   }
 }

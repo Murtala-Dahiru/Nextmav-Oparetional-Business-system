@@ -7,6 +7,7 @@ import {
 import { configureFormatting } from '@/lib/format';
 import { BACKGROUND_HEADER } from '@/lib/session-policy';
 import type { AccountState } from '@/lib/account-state';
+import { log, serializeError } from '@/lib/logger';
 
 export interface CurrentUser {
   id: string;
@@ -309,7 +310,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       // Deliberately quiet. A failed poll is not worth a toast every thirty
       // seconds; the tray simply keeps showing what it last had.
-      console.error('Fetch notifications failed:', e);
+      log.warn('notification poll failed', { err: serializeError(e) });
       set({ notificationsLoading: false });
     }
   },
@@ -340,7 +341,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       // Put it back. Showing them as read when the server still has them
       // unread means they vanish from the tray and are never seen again.
-      console.error('Mark read failed:', e);
+      log.warn('marking notifications read failed', { err: serializeError(e) });
       set({ notifications: before, unreadTotal: beforeTotal });
     }
   },
@@ -360,7 +361,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const json = await res.json();
       if (json?.error) throw new Error(json.error.message);
     } catch (e) {
-      console.error('Dismiss failed:', e);
+      log.warn('dismissing a notification failed', { err: serializeError(e) });
       set({ notifications: before, unreadTotal: beforeTotal });
     }
   },
@@ -434,7 +435,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Even if the request fails we still clear local state and leave the
       // protected area — leaving someone on a dashboard they believe they
       // signed out of is worse than a redundant redirect.
-      console.error('Logout request failed:', e);
+      log.warn('sign-out request failed; clearing local session anyway', { err: serializeError(e) });
     } finally {
       set({ user: null, isAuthenticated: false, mustChangePassword: false });
       // Back to the public landing page, not the login form: signing out
@@ -554,7 +555,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
     } catch (e) {
-      console.error('Fetch user failed:', e);
+      log.warn('loading the signed-in user failed', { err: serializeError(e) });
       set({ user: null, isAuthenticated: false, needsOrganization: false, mustChangePassword: false, isLoading: false });
     }
   },

@@ -1,6 +1,6 @@
 import { isFilterValue } from '@/lib/filters';
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error, paginated } from '@/lib/api-response';
+import { success, error, paginated, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 import { todayIn } from '@/lib/org-time';
 
@@ -150,6 +150,6 @@ export async function POST(req: Request) {
     if (e) return pgError(e);
     return success(data, undefined, 201);
   } catch (e: any) {
-    return error(e.message || 'Failed to create leave request', 500);
+    return serverError(e, 'Failed to create leave request');
   }
 }

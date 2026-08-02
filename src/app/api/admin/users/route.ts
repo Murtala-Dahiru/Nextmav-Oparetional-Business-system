@@ -1,6 +1,6 @@
 import { isFilterValue } from '@/lib/filters';
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error, paginated } from '@/lib/api-response';
+import { success, error, paginated, serverError } from '@/lib/api-response';
 import { supabaseAdmin } from '@/lib/supabase/server';
 import { acceptBody } from '@/lib/case';
 import { ROLES } from '@/lib/constants';
@@ -290,6 +290,6 @@ export async function POST(req: Request) {
     );
   } catch (e: any) {
     if (created) await admin.auth.admin.deleteUser(created.id).catch(() => {});
-    return error(e.message || 'Could not add the member', 500);
+    return serverError(e, 'Could not add the member');
   }
 }

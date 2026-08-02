@@ -1,5 +1,5 @@
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { can } from '@/lib/permissions';
 import { acceptBody } from '@/lib/case';
 
@@ -104,7 +104,7 @@ export async function PATCH(req: Request, { params }: Params) {
     if (!data) return error('Not found', 404, 'NOT_FOUND');
     return success(data);
   } catch (e: any) {
-    return error(e.message || 'Update failed', 500);
+    return serverError(e, 'Update failed');
   }
 }
 

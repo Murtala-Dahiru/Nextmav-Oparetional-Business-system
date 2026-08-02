@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/store/app-store';
 import { MODULES, type ModuleId } from '@/lib/constants';
+import { log, serializeError } from '@/lib/logger';
 
 /* -------------------------------------------------------------------------- */
 /*  What a module shows when it crashes                                        */
@@ -193,7 +194,18 @@ class ErrorBoundary extends React.Component<EBProps, EBState> {
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error(`[${this.props.moduleLabel}] module crashed:`, error, info.componentStack);
+    /**
+     * The boundary was already doing the right thing and had nowhere to put
+     * it. Through the logger it acquires a level, a structure, and — the
+     * point of the exercise — a single place to attach an external provider,
+     * so a module crashing in a customer's browser becomes something that can
+     * be known about without the customer reporting it.
+     */
+    log.error('module crashed', {
+      module: this.props.moduleLabel,
+      componentStack: info.componentStack,
+      err: serializeError(error),
+    });
   }
 
   private retry = () => {

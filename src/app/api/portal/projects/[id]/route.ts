@@ -1,5 +1,5 @@
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { todayIn } from '@/lib/org-time';
 import { acceptBody } from '@/lib/case';
 
@@ -236,6 +236,6 @@ export async function POST(req: Request, { params }: Params) {
     if (e) return pgError(e);
     return success(data, undefined, 201);
   } catch (e: any) {
-    return error(e.message || 'Could not send the message', 500);
+    return serverError(e, 'Could not send the message');
   }
 }

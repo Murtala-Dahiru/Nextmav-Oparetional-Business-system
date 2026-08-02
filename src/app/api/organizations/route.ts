@@ -1,6 +1,6 @@
 import { supabaseServer } from '@/lib/supabase/server';
 import { getContext, pgError } from '@/lib/auth-context';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 import { accessStateFor, describeState, isBlocked } from '@/lib/account-state';
 
@@ -96,7 +96,7 @@ export async function POST(req: Request) {
     const org = Array.isArray(data) ? data[0] : data;
     return success(org, undefined, 201);
   } catch (e: any) {
-    return error(e.message || 'Could not create the organization', 500);
+    return serverError(e, 'Could not create the organization');
   }
 }
 
@@ -137,6 +137,6 @@ export async function PATCH(req: Request) {
     if (!data) return error('Not found', 404, 'NOT_FOUND');
     return success(data);
   } catch (e: any) {
-    return error(e.message || 'Update failed', 500);
+    return serverError(e, 'Update failed');
   }
 }

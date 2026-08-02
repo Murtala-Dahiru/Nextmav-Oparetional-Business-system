@@ -1,5 +1,5 @@
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 
 /**
@@ -69,6 +69,6 @@ export async function POST(req: Request) {
     }
     return success(data, undefined, 201);
   } catch (e: any) {
-    return error(e.message || 'Could not create the list', 500);
+    return serverError(e, 'Could not create the list');
   }
 }

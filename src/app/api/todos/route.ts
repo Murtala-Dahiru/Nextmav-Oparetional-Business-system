@@ -1,5 +1,5 @@
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { todayIn, startOfDayIn } from '@/lib/org-time';
 import { acceptBody } from '@/lib/case';
 import { readRecurrence } from '@/lib/todo-recurrence';
@@ -224,7 +224,7 @@ export async function POST(req: Request) {
     if (e) return pgError(e);
     return success(data, undefined, 201);
   } catch (e: any) {
-    return error(e.message || 'Could not add the to-do', 500);
+    return serverError(e, 'Could not add the to-do');
   }
 }
 
@@ -269,6 +269,6 @@ export async function PATCH(req: Request) {
 
     return success({ reordered: order.length });
   } catch (e: any) {
-    return error(e.message || 'Could not reorder', 500);
+    return serverError(e, 'Could not reorder');
   }
 }

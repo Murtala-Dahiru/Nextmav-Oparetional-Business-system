@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 /**
@@ -53,6 +53,6 @@ export async function POST(request: NextRequest) {
 
     return success({ organization: Array.isArray(data) ? data[0] : data });
   } catch (e: any) {
-    return error(e.message || 'Could not accept the invitation', 500);
+    return serverError(e, 'Could not accept the invitation');
   }
 }

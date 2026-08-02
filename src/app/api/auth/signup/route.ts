@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { supabaseServer, supabaseAdmin } from '@/lib/supabase/server';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 /**
@@ -190,7 +190,21 @@ export async function POST(request: NextRequest) {
       }
       return error(...describeSignUpError(signUpError.message));
     }
-    if (!signUp.user) return error('Could not create the account.', 500, 'AUTH_ERROR');
+    /**
+     * GoTrue reported neither an error nor a user, which should not happen.
+     *
+     * The message was already safe; what it lacked was a record. An
+     * "impossible" branch that fires in production and leaves no trace is the
+     * worst kind to debug, so it is reported like any other unexpected
+     * failure — the user sees the same sentence they always did.
+     */
+    if (!signUp.user) {
+      return serverError(
+        new Error('supabase.auth.signUp returned neither an error nor a user'),
+        'Could not create the account.',
+        'AUTH_ERROR',
+      );
+    }
 
     // With email confirmation enabled, signUp returns no session. The account
     // exists but cannot yet create an organization, so say so plainly rather
@@ -264,6 +278,6 @@ export async function POST(request: NextRequest) {
       201,
     );
   } catch (e: any) {
-    return error(e.message || 'Signup failed', 500, 'INTERNAL_ERROR');
+    return serverError(e, 'Signup failed', 'INTERNAL_ERROR');
   }
 }

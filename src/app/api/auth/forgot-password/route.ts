@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 /**
@@ -56,6 +56,6 @@ export async function POST(request: NextRequest) {
       message: 'If an account exists for that address, a reset link is on its way.',
     });
   } catch (e: any) {
-    return error(e.message || 'Could not send the reset email', 500);
+    return serverError(e, 'Could not send the reset email');
   }
 }

@@ -1,5 +1,5 @@
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 
 /**
@@ -148,7 +148,7 @@ export async function PATCH(req: Request, { params }: Params) {
 
     return success(data);
   } catch (e: any) {
-    return error(e.message || 'Could not record the decision', 500);
+    return serverError(e, 'Could not record the decision');
   }
 }
 

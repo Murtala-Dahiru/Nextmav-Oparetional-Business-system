@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 /**
@@ -44,6 +44,6 @@ export async function POST(request: NextRequest) {
 
     return success({ message: 'Password updated. You can now sign in.' });
   } catch (e: any) {
-    return error(e.message || 'Could not reset the password', 500);
+    return serverError(e, 'Could not reset the password');
   }
 }

@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
@@ -58,6 +58,6 @@ export async function POST(request: NextRequest) {
       emailSent: false,
     }, undefined, 201);
   } catch (e: any) {
-    return error(e.message || 'Could not create the invitation', 500);
+    return serverError(e, 'Could not create the invitation');
   }
 }

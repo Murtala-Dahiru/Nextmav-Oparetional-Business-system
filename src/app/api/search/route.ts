@@ -1,7 +1,8 @@
 import { authorize, pgError } from '@/lib/auth-context';
-import { success } from '@/lib/api-response';
+import { success, currentRequestId } from '@/lib/api-response';
 import { can } from '@/lib/permissions';
 import type { ModuleId } from '@/lib/constants';
+import { log } from '@/lib/logger';
 
 /**
  * Cross-module search, for the command palette.
@@ -167,7 +168,14 @@ export async function GET(req: Request) {
     .filter(([, r]) => (r as any).error)
     .map(([name, r]) => `${name}: ${(r as any).error.message}`);
 
-  if (failures.length) console.error('[search] partial results —', failures.join('; '));
+  // Partial results are returned rather than failed, so this line is the
+  // only sign that a source was missing from them.
+  if (failures.length) {
+    log.warn('search returned partial results', {
+      requestId: await currentRequestId(),
+      failures,
+    });
+  }
 
   return success({
     query: raw,

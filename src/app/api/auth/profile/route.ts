@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 import { pgError } from '@/lib/auth-context';
 
@@ -76,6 +76,6 @@ export async function PATCH(request: NextRequest) {
     if (!data) return error('Your profile could not be updated.', 404, 'NOT_FOUND');
     return success(data);
   } catch (e: any) {
-    return error(e.message || 'Could not update your profile', 500);
+    return serverError(e, 'Could not update your profile');
   }
 }
