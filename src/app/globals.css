@@ -126,7 +126,7 @@
      The accent was `emerald-500` (#10b981), written as a Tailwind literal in
      61 files. Two things were wrong with it beyond the duplication.
 
-     It fails contrast. #10b981 on white is 2.07:1 — so "Forgot password?",
+     It fails contrast. #10b981 on white is 2.54:1 — so "Forgot password?",
      the "Sign up" link, every blog timestamp and every inline emphasis was
      below the 4.5:1 that AA requires for body text. It read as decoration
      because it was too weak to read as anything else.

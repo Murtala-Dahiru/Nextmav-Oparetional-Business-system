@@ -70,7 +70,7 @@ export const PLATFORM = {
   /**
    * The accent the shell uses.
    *
-   * Was `#10b981` (emerald-500), which fails WCAG AA on white at 2.07:1 — it
+   * Was `#10b981` (emerald-500), which fails WCAG AA on white at 2.54:1 — it
    * was carrying links and inline emphasis it was too weak to carry. This is
    * the same hue family at 5.4:1. The full token set, including the dark-mode
    * lift, lives in `globals.css` as `--brand`; this literal exists for the

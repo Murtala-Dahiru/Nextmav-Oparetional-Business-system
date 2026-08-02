@@ -188,7 +188,7 @@ function LoginForm() {
           <div className="flex items-baseline justify-between">
             <Label htmlFor="password">Password</Label>
             {/*
-              Was `text-emerald-500` — 2.07:1 on white, well under the 4.5:1
+              Was `text-emerald-500` — 2.54:1 on white, well under the 4.5:1
               that AA requires. The one link on this page a person needs when
               they are already frustrated was the least legible thing on it.
             */}
