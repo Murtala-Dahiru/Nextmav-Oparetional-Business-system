@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
 import { success, error } from '@/lib/api-response';
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 /**
  * Send the confirmation email again.
@@ -21,6 +22,19 @@ import { success, error } from '@/lib/api-response';
 export async function POST(request: NextRequest) {
   try {
     const { email } = (await request.json()) ?? {};
+
+    /**
+     * Shares `emailDispatch` with the reset endpoint deliberately: both make
+     * this server send mail to an address the caller chose, and counting them
+     * separately would hand a script twice the budget for alternating between
+     * two forms that do the same thing to the same inbox.
+     */
+    const limited = await enforceRateLimit(
+      request, RATE_LIMITS.emailDispatch,
+      typeof email === 'string' ? email.trim().toLowerCase() : null,
+    );
+    if (limited) return limited;
+
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       return error('A valid email address is required', 422, 'VALIDATION_ERROR');
     }

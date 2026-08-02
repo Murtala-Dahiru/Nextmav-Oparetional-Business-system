@@ -3,6 +3,7 @@ import { supabaseServer } from '@/lib/supabase/server';
 import { success, error } from '@/lib/api-response';
 import { normalizeRole, capabilitySummary } from '@/lib/permissions';
 import { accessStateFor, describeState, isBlocked } from '@/lib/account-state';
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 /**
  * Sign in.
@@ -17,6 +18,20 @@ import { accessStateFor, describeState, isBlocked } from '@/lib/account-state';
 export async function POST(request: NextRequest) {
   try {
     const { email, password } = (await request.json()) ?? {};
+
+    /**
+     * Before the credentials are looked at, and before the shape of the body
+     * is judged.
+     *
+     * Checking after validation would let a guessing run spend nothing: send a
+     * malformed body, get a 422, never touch the counter. The address bucket
+     * has to see every attempt for it to mean anything.
+     */
+    const limited = await enforceRateLimit(
+      request, RATE_LIMITS.signIn,
+      typeof email === 'string' ? email.trim().toLowerCase() : null,
+    );
+    if (limited) return limited;
 
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       return error('A valid email address is required', 422, 'VALIDATION_ERROR');

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { supabaseServer, supabaseAdmin } from '@/lib/supabase/server';
 import { success, error } from '@/lib/api-response';
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 /**
  * Change your own password.
@@ -39,6 +40,20 @@ export async function POST(request: NextRequest) {
     if (!user?.email) {
       return error('Authentication required', 401, 'UNAUTHENTICATED');
     }
+
+    /**
+     * Placed after the session is resolved so the account itself is the
+     * subject, and before the re-authentication below — which is the thing
+     * being protected.
+     *
+     * Verifying the current password is correct and is also an online
+     * password-guessing oracle: anyone holding a stolen session cookie can ask
+     * this endpoint "is it hunter2?" as often as they like, and a correct
+     * answer lets them take the account over permanently by setting a new one.
+     * The session requirement bounds who can try; this bounds how fast.
+     */
+    const limited = await enforceRateLimit(request, RATE_LIMITS.credentialChange, user.id);
+    if (limited) return limited;
 
     /**
      * Proof that the person at the keyboard knows the current password.

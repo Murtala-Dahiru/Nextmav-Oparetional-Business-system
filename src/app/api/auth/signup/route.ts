@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { supabaseServer, supabaseAdmin } from '@/lib/supabase/server';
 import { success, error } from '@/lib/api-response';
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 /**
  * Sign up.
@@ -94,6 +95,17 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { email, password, firstName, lastName, organizationName, inviteToken } = body ?? {};
+
+    /**
+     * Ahead of `invitationAwaits()`, which is a service-role database read.
+     * An unauthenticated endpoint that queries on every call is worth
+     * protecting before the query, not after it.
+     */
+    const limited = await enforceRateLimit(
+      request, RATE_LIMITS.signUp,
+      typeof email === 'string' ? email.trim().toLowerCase() : null,
+    );
+    if (limited) return limited;
 
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       return error('A valid email address is required', 422, 'VALIDATION_ERROR');

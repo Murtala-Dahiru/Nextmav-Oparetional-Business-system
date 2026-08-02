@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 /**
  * Invite someone to the organization.
@@ -17,6 +18,18 @@ import { acceptBody } from '@/lib/case';
 export async function POST(request: NextRequest) {
   const ctx = await authorize('admin', 'manage');
   if (ctx instanceof Response) return ctx;
+
+  /**
+   * Authenticated and privileged, and limited anyway.
+   *
+   * Being an administrator is authority over this organization, not a budget
+   * for outbound mail from the platform's shared sending quota. The two cases
+   * this bounds are a compromised administrator account used to mail-bomb a
+   * list of addresses, and — far more likely — an honest integration looping
+   * over a spreadsheet with a bug in it.
+   */
+  const limited = await enforceRateLimit(request, RATE_LIMITS.invitation, ctx.user.id);
+  if (limited) return limited;
 
   try {
     const b = (acceptBody(await request.json())) ?? {};

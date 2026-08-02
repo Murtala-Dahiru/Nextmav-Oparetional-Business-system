@@ -521,6 +521,73 @@ check(/source:\s*'\/api\/:path\*'[\s\S]{0,200}no-store/.test(nextConfig),
   'authenticated API responses are marked no-store');
 
 // ───────────────────────────────────────────────────────────────────────────
+section('8. Endpoints that accept or issue credentials are rate limited');
+/**
+ * Guarding a route says who may call it. It says nothing about how often, and
+ * for the routes below "how often" is the whole control: an unauthenticated
+ * sign-in endpoint that answers correctly a thousand times a minute is doing
+ * exactly what it was written to do while an attacker walks a password list
+ * through it.
+ *
+ * Checked statically, and by route rather than by pattern, because the failure
+ * is an absence — the next auth route added will work perfectly without a
+ * limiter, and nothing at runtime will ever say so.
+ *
+ * `/api` is not here: it is the health check and holds no credential.
+ * `/api/auth/logout` and `/api/auth/session` are not here either — neither
+ * accepts a secret, and throttling sign-out is a way to keep somebody signed
+ * in against their wishes.
+ */
+const MUST_RATE_LIMIT = [
+  'api/auth/login/route.ts',               // password guessing
+  'api/auth/signup/route.ts',              // account creation, address enumeration
+  'api/auth/forgot-password/route.ts',     // mail to an address the caller chose
+  'api/auth/resend-confirmation/route.ts', // likewise
+  'api/auth/reset-password/route.ts',      // sets a password
+  'api/auth/change-password/route.ts',     // verifies the current password
+  'api/auth/accept-invite/route.ts',       // redeems a token
+  'api/auth/invite/route.ts',              // issues one, and sends mail
+];
+
+const unlimited = [];
+const staleLimits = [];
+
+for (const rel of MUST_RATE_LIMIT) {
+  const file = join('src/app', rel);
+  let src;
+  try {
+    src = readFileSync(file, 'utf8');
+  } catch {
+    // A path listed here that no longer exists means the list was copied
+    // rather than maintained — the same rot the exemption list is checked for.
+    staleLimits.push(rel);
+    continue;
+  }
+  if (!src.includes('enforceRateLimit(')) unlimited.push(rel);
+}
+
+check(unlimited.length === 0,
+  `all ${MUST_RATE_LIMIT.length} credential endpoints call enforceRateLimit()`,
+  unlimited.join(', '));
+check(staleLimits.length === 0,
+  'the rate-limit list has no stale entries',
+  staleLimits.join(', '));
+
+/**
+ * And the limiter still fails open.
+ *
+ * This is the property that makes the control safe to have at all, and it is
+ * one edit away from being lost — a `throw` added to the catch, or the catch
+ * removed as dead code, turns a broken counter into a platform-wide outage of
+ * the login page. Cheap to assert, expensive to discover.
+ */
+const limiterSrc = readFileSync('src/lib/rate-limit.ts', 'utf8');
+check(/catch\s*{[^}]*return null;/.test(limiterSrc),
+  'a failing rate-limit store permits the request rather than refusing it');
+check(limiterSrc.includes('RATE_LIMIT_DISABLED'),
+  'the limiter can be switched off by configuration, without a deployment');
+
+// ───────────────────────────────────────────────────────────────────────────
 console.log('');
 if (findings.length) {
   console.log('  Findings');

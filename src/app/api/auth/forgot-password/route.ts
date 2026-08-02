@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
 import { success, error } from '@/lib/api-response';
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 /**
  * Send a password reset email.
@@ -11,6 +12,25 @@ import { success, error } from '@/lib/api-response';
 export async function POST(request: NextRequest) {
   try {
     const { email } = (await request.json()) ?? {};
+
+    /**
+     * The subject is the address the mail would go *to*, so the limit protects
+     * whoever owns that inbox rather than whoever is asking — which is the
+     * right way round, because those are different people when this endpoint
+     * is being abused.
+     *
+     * A 429 here does say "this address has been asked about a lot", which the
+     * uniform success response above is otherwise careful not to reveal. That
+     * is accepted: the alternative is answering 200 while sending nothing,
+     * which lies to the real user who is now waiting for an email that will
+     * never arrive.
+     */
+    const limited = await enforceRateLimit(
+      request, RATE_LIMITS.emailDispatch,
+      typeof email === 'string' ? email.trim().toLowerCase() : null,
+    );
+    if (limited) return limited;
+
     if (!email || typeof email !== 'string' || !email.includes('@')) {
       return error('A valid email address is required', 422, 'VALIDATION_ERROR');
     }

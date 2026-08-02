@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
 import { success, error } from '@/lib/api-response';
+import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 /**
  * Accept an invitation.
@@ -15,6 +16,17 @@ import { success, error } from '@/lib/api-response';
 export async function POST(request: NextRequest) {
   try {
     const { token } = (await request.json()) ?? {};
+
+    /**
+     * A token is a credential, and this is the endpoint that tests one. The
+     * tokens are long enough that guessing is not a realistic attack, but
+     * "not realistic" is an argument about today's token format rather than a
+     * control, and an unbounded endpoint that runs a `SECURITY DEFINER`
+     * function on every call is worth a ceiling regardless.
+     */
+    const limited = await enforceRateLimit(request, RATE_LIMITS.invitation);
+    if (limited) return limited;
+
     if (!token || typeof token !== 'string') {
       return error('An invitation token is required', 422, 'VALIDATION_ERROR');
     }
