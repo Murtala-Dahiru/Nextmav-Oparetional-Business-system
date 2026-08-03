@@ -40,42 +40,36 @@ Still on the old design and linked from the footer: `/help`, `/docs`,
 
 Precise enough to resume cold.
 
-### 3a. ~~Signup~~ — DONE
+### 1 · Forgot-password and reset-password → `Field` + `useFieldErrors`
+Both already use `AuthShell`; they still hand-roll their field markup and
+validate on submit only.
 
-### 3b. Forgot / reset password — convert to `Field` + `useFieldErrors`
-`src/app/signup/page.tsx`. Five fields: `firstName`, `lastName`, `email`,
-`password`, `organization`. Currently uses bare `<div className="space-y-2">`
-with `<Label>` and relies on `required` plus a toast.
+- Wrap each input in `<Field id="…">`, ids matching the `revealAll` prefix
+- **reset-password's two password inputs are wrapped** for the show/hide
+  button → use the **function-child form** of `Field` and spread the argument
+  onto the `Input`. Passing them directly puts `aria-describedby` on the
+  wrapper div, where it does nothing. This already shipped once on login and
+  was caught by browser inspection, not by tsc — it will not fail the build.
+- Add the `FormError` union login uses: `rateLimited` (429 — the reset mailer
+  is rate-limited per recipient), `offline`, `server`
+- ⚠️ **forgot-password's copy must stay non-enumerating.** It deliberately says
+  "*if* that address has an account". Do not "improve" it into confirming one
+  exists — the endpoint answers identically either way on purpose, and the
+  screen is the last place that guarantee can be given away.
 
-- Wrap each in `<Field id="signup-…">`; ids must match the `revealAll` prefix
-- The password field **wraps its input** for the show/hide button → use the
-  **function-child form** of `Field` (see the note in `forms/field.tsx`)
-- Its existing `aria-describedby="password-requirements"` is already correct
-  and must be preserved — `Field` yields to a caller-set value
-- Replace `toast.error` with the same `FormError` union login now uses:
-  `rateLimited` (429 — signup is rate-limited hourly per address), `offline`,
-  `server` (5xx), plus a `duplicate` case for an address already registered
-- Keep the spinner up through `window.location.assign`, as login does
+### 2 · Legal + utility visual pass
+`privacy`, `terms`, `cookies` still use the old card/prose treatment. Content
+is already corrected (brand, addresses). This is layout and type only — do not
+touch a legal clause.
 
-### 3b. Forgot / reset password
-Same conversion. `forgot-password` already has correct non-enumerating copy —
-do not "improve" it into confirming that an account exists.
+### 3 · Consistency sweep
+Every in-scope page at 360 / 768 / 1024 / 1440 / 1920. Check spacing, type,
+radius, button usage and voice for drift. Then publish rubric scores (§11 of
+the brief), honestly, per criterion per page.
 
-### 3c. Accept-invite + change-password
-Still on the old centred-card gradient. Move both to `AuthShell`. These are the
-last two files carrying the `from-gray-50 to-gray-100` treatment.
-
-### 7. About — the largest remaining job
-Strip six fabricated executives, the invented founding date and four invented
-metrics (`CONTENT-NEEDED.md` #2), then rebuild around whatever is real.
-
-### 11. Blog
-Eight fabricated posts, all `href="#"`, one contradicting About on who is CEO.
-Minimum: remove the fabrications and the dead "Load more".
-
-### 12. Final sweep
-`npm run build` end to end, then all pages at 360 / 768 / 1024 / 1440 / 1920,
-then publish rubric scores.
+### 4 · Optional, out of the original scope
+`/help`, `/docs`, `/status` are linked from the footer and still carry the old
+emerald design. They read as a different site. Ask before starting.
 
 ---
 
