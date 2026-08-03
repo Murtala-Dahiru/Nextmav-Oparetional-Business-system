@@ -16,19 +16,23 @@ and out of bounds**. If unsure whether something is in scope, it isn't.
 | 0 | Stabilise — revert out-of-scope backend, fix red build | ✅ done | — |
 | 1 | Design system + these three documents | ✅ done | — |
 | 2 | Header · footer · mobile nav | ✅ done | — |
-| 3 | Auth flows | 🔶 in-progress | **Login done.** Signup, forgot, reset, accept-invite, change-password still to convert |
+| 3 | Auth flows | 🔶 in-progress | **forgot-password + reset-password** still need `Field` + blur validation (they already use `AuthShell`) |
 | 4 | Landing | 🔶 needs-review | Rubric pass; 360/1920 check |
 | 5 | Features | 🔶 needs-review | Rubric pass |
 | 6 | Pricing | 🔶 needs-review | Currency/tax line (blocked — CONTENT-NEEDED #5) |
-| 7 | About | ⬜ not-started | Full rebuild; fabricated content to strip |
+| 7 | About | ✅ done | Team section intentionally absent (CONTENT-NEEDED #2) |
 | 8 | Contact | ✅ done | Real address (blocked — CONTENT-NEEDED #1) |
 | 9 | Solutions | ✅ done | — |
-| 10 | Legal + utility visual sweep | ⬜ not-started | privacy, terms, cookies, 404, error |
-| 11 | Blog credibility fix | ⬜ not-started | Strip fabrications, kill dead links |
+| 10 | Legal + utility sweep | 🔶 in-progress | Fabricated address removed + brand fixed; **visual** pass on privacy/terms/cookies still to do |
+| 11 | Blog | ✅ done | Empty state; fabrications gone |
 | 12 | Consistency sweep + rubric scores | ⬜ not-started | 360/768/1024/1440/1920 |
 
-Also untouched and still on the old design, linked from the footer:
-`/help`, `/docs`, `/status`, `/accept-invite`, `/change-password`.
+Auth screens converted: login, signup, forgot, reset, accept-invite,
+change-password. **`onboarding` is the only file left carrying the old
+`from-gray-50 to-gray-100` shell — it is Phase 2 app surface. Leave it.**
+
+Still on the old design and linked from the footer: `/help`, `/docs`,
+`/status`. Not in the original in-scope list; they read as a different site.
 
 ---
 
@@ -36,7 +40,9 @@ Also untouched and still on the old design, linked from the footer:
 
 Precise enough to resume cold.
 
-### 3a. Signup — convert to `Field` + `useFieldErrors`
+### 3a. ~~Signup~~ — DONE
+
+### 3b. Forgot / reset password — convert to `Field` + `useFieldErrors`
 `src/app/signup/page.tsx`. Five fields: `firstName`, `lastName`, `email`,
 `password`, `organization`. Currently uses bare `<div className="space-y-2">`
 with `<Label>` and relies on `required` plus a toast.
@@ -85,8 +91,11 @@ node scripts/security-check.mjs   # verified: "the API surface is guarded"
 All 14 marketing + auth routes verified returning **200** on the dev server
 (port 3100), including the five not yet redesigned.
 
-`npm run build` has **not** been run end-to-end this session — do it before the
-final sweep.
+`npm run build` **passes end to end**, including the standalone copy step.
+Every marketing and auth route prerenders as **static (`○`)** — the payoff from
+taking `'use client'` off the marketing layout, which had been pulling the
+header, footer, link graph and every page inside it into the client bundle for
+the sake of one `useState`.
 
 ### Verified by browser inspection, not by eye
 
