@@ -10,7 +10,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="text-xl font-semibold mb-3">1. Introduction</h2>
             <p>
-              NexusCorp Inc. (&quot;NexusCorp,&quot; &quot;we,&quot; &quot;us,&quot; or
+              NextMav Inc. (&quot;NextMav,&quot; &quot;we,&quot; &quot;us,&quot; or
               &quot;our&quot;) is committed to protecting your privacy. This Privacy Policy
               explains how we collect, use, disclose, and safeguard your information when you use
               our platform, website, and related services (collectively, the &quot;Service&quot;).
@@ -94,7 +94,7 @@ export default function PrivacyPage() {
               <li>Withdraw consent at any time (where processing is based on consent)</li>
             </ul>
             <p className="mt-2">
-              To exercise any of these rights, please contact us at privacy@nexuscorp.io.
+              To exercise any of these rights, please contact us at privacy@example.com.
             </p>
           </section>
 
@@ -124,9 +124,8 @@ export default function PrivacyPage() {
               If you have questions about this Privacy Policy, please contact us:
             </p>
             <div className="mt-2 p-4 rounded-lg bg-gray-50 dark:bg-gray-900 text-muted-foreground">
-              <p>NexusCorp Inc. — Privacy Team</p>
-              <p>123 Enterprise Blvd, San Francisco, CA 94105</p>
-              <p>Email: privacy@nexuscorp.io</p>
+              <p>NextMav Inc. — Privacy Team</p>
+              <p>Email: privacy@example.com</p>
             </div>
           </section>
         </div>

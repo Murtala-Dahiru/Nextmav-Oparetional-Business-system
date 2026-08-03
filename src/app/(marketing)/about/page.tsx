@@ -1,222 +1,253 @@
-'use client';
-
 import Link from 'next/link';
-import {
-  Target,
-  Heart,
-  Lightbulb,
-  Shield,
-  ArrowUpRight,
-} from 'lucide-react';
+import type { Metadata } from 'next';
+import { ArrowRight, ArrowUpRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { Section, Container, SectionHeading, Eyebrow } from '@/components/marketing/section';
+import { Reveal, RevealGroup } from '@/components/marketing/reveal';
 
-const team = [
+export const metadata: Metadata = {
+  title: 'About — NextMav',
+  description:
+    'Why NextMav exists, what it refuses to do, and how to tell whether it is built the way we say it is.',
+};
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  About
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  ── What this page contained ─────────────────────────────────────────────
+ *
+ *  Six executives who do not exist, attributed to companies that do:
+ *
+ *    Sarah Chen        Co-Founder & CEO   "Former VP of Product at Salesforce"
+ *    Marcus Williams   Co-Founder & CTO   "Ex-Principal Engineer at AWS"
+ *    Elena Rodriguez   VP of Design       "Previously led design at Figma"
+ *    James Park        VP of Engineering  "Former Engineering Director at Stripe"
+ *    Aisha Patel       Head of CS         …
+ *    David Kim         Head of Sales      "Scaled revenue from $0 to $50M"
+ *
+ *  Plus a founding date (2021), a headcount claim (10,000 teams), an uptime
+ *  figure, a task counter and a review score — none of which anybody measured.
+ *
+ *  The blog then announced Sarah Chen as the new *CTO*, contradicting this
+ *  page, where she was CEO. Two pages of invented facts that could not even
+ *  agree with each other.
+ *
+ *  This is the page a cautious buyer opens to decide whether there is a real
+ *  company behind the software. Filling it with fiction is not a placeholder
+ *  strategy — it is the worst possible use of the one page whose entire
+ *  purpose is credibility.
+ *
+ *  ── What replaces it ─────────────────────────────────────────────────────
+ *
+ *  Everything here is either a *position* (which cannot be false, only
+ *  disagreed with) or a *checkable property of the software*. No people, no
+ *  dates, no counts. When there are real names to publish they go in the
+ *  section this page deliberately leaves empty — see CONTENT-NEEDED.md #2.
+ *
+ *  A short honest About beats a populated fictional one. It is also, oddly,
+ *  more persuasive: a page that says "here is what we refuse to do, go and
+ *  check" reads as a company with an opinion, and a wall of stock headshots
+ *  reads as a template.
+ */
+
+/**
+ * Positions, not claims.
+ *
+ * Each of these is a design decision visible in the product, so a reader can
+ * verify the belief by using the software rather than by trusting the page.
+ */
+const beliefs = [
   {
-    name: 'Sarah Chen',
-    role: 'Co-Founder & CEO',
-    bio: 'Former VP of Product at Salesforce. 15+ years in enterprise SaaS.',
-    initials: 'SC',
+    title: 'Integration is not the same as agreement.',
+    body: 'Connecting six tools with webhooks makes them exchange copies faster. It does not make them agree — it distributes the disagreement more efficiently. A record either has one home or it has several versions.',
   },
   {
-    name: 'Marcus Williams',
-    role: 'Co-Founder & CTO',
-    bio: 'Ex-Principal Engineer at AWS. Expert in distributed systems and security.',
-    initials: 'MW',
+    title: 'Permissions belong in the server, not the sidebar.',
+    body: 'Hiding a menu item is presentation. We check authorisation in the route, so a request that should not succeed does not succeed — whether it came from our interface or from anything else.',
   },
   {
-    name: 'Elena Rodriguez',
-    role: 'VP of Design',
-    bio: 'Previously led design at Figma. Passionate about intuitive enterprise UX.',
-    initials: 'ER',
+    title: 'You should be able to leave.',
+    body: 'Structured export from every module, on every plan, including the trial, without asking us. Software that is difficult to leave is difficult to trust, and lock-in is a substitute for being good enough to keep.',
   },
   {
-    name: 'James Park',
-    role: 'VP of Engineering',
-    bio: 'Former Engineering Director at Stripe. Building high-performance teams.',
-    initials: 'JP',
-  },
-  {
-    name: 'Aisha Patel',
-    role: 'Head of Customer Success',
-    bio: '10+ years helping enterprise customers achieve their goals.',
-    initials: 'AP',
-  },
-  {
-    name: 'David Kim',
-    role: 'Head of Sales',
-    bio: 'Scaled revenue from $0 to $50M at previous SaaS startups.',
-    initials: 'DK',
+    title: 'The product should look the same for everyone.',
+    body: 'Your branding belongs on what your customers see — your portal, your invoices, your exports. The application your team signs into stays ours, so two people from different companies can compare screens and be looking at the same software.',
   },
 ];
 
-const values = [
+/**
+ * Refusals.
+ *
+ * More informative than a feature list, because anybody will tell you what
+ * their software does. What a company has decided *not* to build tells you
+ * what it will still be in two years.
+ */
+const refusals = [
   {
-    icon: Target,
-    title: 'Customer Obsession',
-    description:
-      'Every decision starts with the customer. We build what businesses actually need, not what looks good in a demo.',
+    title: 'We don’t white-label the application.',
+    body: 'It has been asked for and it is a deliberate no. It is enforced in the build, not just in a document — a check fails if the application shell reads tenant branding.',
   },
   {
-    icon: Lightbulb,
-    title: 'Relentless Innovation',
-    description:
-      'We push boundaries daily. Our team ships new features every week while maintaining rock-solid reliability.',
+    title: 'We don’t publish numbers we haven’t measured.',
+    body: 'This site carries no customer count, no uptime percentage and no compliance badge, because we would have to be able to show you the evidence for each one.',
   },
   {
-    icon: Shield,
-    title: 'Trust & Transparency',
-    description:
-      'Honest pricing, clear communication, and a commitment to data privacy. We earn trust through actions.',
+    title: 'We don’t gate departments behind price tiers.',
+    body: 'Every plan includes all eight modules. A system of record for the part of the company that could afford it is not a system of record.',
   },
   {
-    icon: Heart,
-    title: 'People First',
-    description:
-      'We believe great software is built by empowered, diverse teams who love what they do.',
+    title: 'We don’t lock the door on your data.',
+    body: 'Pass a plan limit and we tell you. Nothing stops working, nothing is deleted, and nobody is locked out of their own records over a billing threshold.',
   },
-];
-
-const stats = [
-  { value: '10,000+', label: 'Teams worldwide' },
-  { value: '99.99%', label: 'Uptime SLA' },
-  { value: '50M+', label: 'Tasks completed' },
-  { value: '4.9/5', label: 'Customer rating' },
 ];
 
 export default function AboutPage() {
   return (
-    <div>
-      {/* Hero */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
-          <div className="text-center max-w-3xl mx-auto">
-            <Badge variant="secondary" className="mb-4">
-              Our Story
-            </Badge>
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-6">
-              Building the operating system for{' '}
-              <span className="text-emerald-500">modern businesses</span>
+    <>
+      {/* ── Opening ──────────────────────────────────────────────────────── */}
+      <Container className="pt-16 pb-4 sm:pt-24">
+        <div className="max-w-[44rem]">
+          <Reveal>
+            <Eyebrow>About</Eyebrow>
+          </Reveal>
+          <Reveal delay={0.05}>
+            <h1 className="text-display-1 text-balance-hero mt-5">
+              Most business software disagrees with itself.
             </h1>
-            <p className="text-lg text-muted-foreground leading-relaxed">
-              NexusCorp was founded in 2021 with a simple belief: businesses deserve better tools.
-              After years of watching companies struggle with fragmented software stacks — CRM here,
-              project management there, finance apps everywhere — we set out to build something
-              different.
-            </p>
-          </div>
-
-          <div className="mt-12 text-center max-w-3xl mx-auto">
-            <p className="text-lg text-muted-foreground leading-relaxed">
-              Our co-founders, Sarah Chen and Marcus Williams, experienced firsthand how tool
-              fragmentation slows teams down. They envisioned a single, unified platform where every
-              department — sales, marketing, HR, finance, and operations — could work seamlessly
-              together. Today, NexusCorp serves over 10,000 teams worldwide, helping them move
-              faster, communicate better, and make smarter decisions.
-            </p>
-          </div>
-
-          {/* Stats */}
-          <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6">
-            {stats.map((stat) => (
-              <div key={stat.label} className="text-center p-6 rounded-xl bg-gray-50 dark:bg-gray-900">
-                <div className="text-3xl sm:text-4xl font-bold text-emerald-500 mb-1">
-                  {stat.value}
-                </div>
-                <div className="text-sm text-muted-foreground">{stat.label}</div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Mission & Values */}
-        <section className="bg-gray-50 dark:bg-gray-900 py-16 sm:py-24">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center mb-12">
-              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">
-                Our Mission & Values
-              </h2>
-              <p className="text-muted-foreground max-w-2xl mx-auto">
-                We&apos;re on a mission to eliminate tool fragmentation and help businesses
-                operate as one unified team.
+          </Reveal>
+          <Reveal delay={0.1}>
+            <div className="text-muted-foreground text-lede text-pretty-body mt-6 space-y-5">
+              <p>
+                A company of sixty people typically runs a CRM, a project tool, a
+                spreadsheet for leave, an accounting package and a chat app. Each
+                one is competent. Together they hold four versions of the same
+                customer, spelled four ways, and no two of them agree on what was
+                promised or what was delivered.
+              </p>
+              <p className="text-foreground">
+                NextMav exists because that problem is structural, and the usual
+                answer — another integration — treats the symptom.
               </p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              {values.map((value) => {
-                const Icon = value.icon;
-                return (
-                  <Card key={value.title} className="border-gray-200 dark:border-gray-800">
-                    <CardContent className="p-6">
-                      <div className="rounded-lg bg-emerald-500/10 w-10 h-10 flex items-center justify-center mb-4">
-                        <Icon className="size-5 text-emerald-500" />
-                      </div>
-                      <h3 className="font-semibold mb-2">{value.title}</h3>
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        {value.description}
-                      </p>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </div>
-        </section>
+          </Reveal>
+        </div>
+      </Container>
 
-        {/* Team */}
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
-          <div className="text-center mb-12">
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">
-              Meet our leadership
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              A team of seasoned builders passionate about making work better for everyone.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {team.map((member) => (
-              <Card
-                key={member.name}
-                className="border-gray-200 dark:border-gray-800 group hover:shadow-md transition-shadow"
+      {/* ── Beliefs ──────────────────────────────────────────────────────── */}
+      <Section aria-labelledby="beliefs">
+        <SectionHeading
+          id="beliefs"
+          eyebrow="What we think"
+          title="Four opinions the product is built around."
+          description="Each is a decision you can see in the software, not a value statement. Disagree with any of them and this probably isn’t the right tool for you."
+        />
+
+        <RevealGroup
+          className="mt-12 grid gap-x-12 gap-y-10 md:grid-cols-2"
+          step={0.05}
+        >
+          {beliefs.map((b, i) => (
+            <div key={b.title} className="border-hairline border-t pt-5">
+              <span
+                aria-hidden="true"
+                className="text-muted-foreground/50 font-mono text-[0.75rem] tabular-nums"
               >
-                <CardContent className="p-6">
-                  <div className="flex items-start gap-4">
-                    <div className="size-14 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
-                      <span className="text-sm font-semibold text-emerald-500">
-                        {member.initials}
-                      </span>
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="font-semibold group-hover:text-emerald-500 transition-colors">
-                        {member.name}
-                      </h3>
-                      <p className="text-sm text-emerald-500 mb-2">{member.role}</p>
-                      <p className="text-sm text-muted-foreground leading-relaxed">{member.bio}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <h3 className="mt-2 text-[1.0625rem] font-semibold tracking-[-0.02em]">
+                {b.title}
+              </h3>
+              <p className="text-muted-foreground mt-2.5 text-[0.9375rem] leading-relaxed">
+                {b.body}
+              </p>
+            </div>
+          ))}
+        </RevealGroup>
+      </Section>
 
-        {/* CTA */}
-        <section className="bg-gray-50 dark:bg-gray-900">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20 text-center">
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight mb-4">
-              Join the thousands of teams using NexusCorp
-            </h2>
-            <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
-              Start your 14-day free trial and see why businesses are switching to a unified
-              platform.
+      {/* ── Refusals ─────────────────────────────────────────────────────── */}
+      <Section tone="surface" aria-labelledby="refusals">
+        <SectionHeading
+          id="refusals"
+          eyebrow="What we won’t do"
+          title="The commitments that are harder to make."
+          description="Anybody will tell you what their software does. What a company has decided not to build is the better predictor of what it will be in two years."
+        />
+
+        <RevealGroup className="mt-12 grid gap-x-12 gap-y-9 md:grid-cols-2" step={0.05}>
+          {refusals.map((r) => (
+            <div key={r.title}>
+              <h3 className="text-[0.9375rem] font-semibold tracking-[-0.01em]">
+                {r.title}
+              </h3>
+              <p className="text-muted-foreground mt-2 text-[0.875rem] leading-relaxed">
+                {r.body}
+              </p>
+            </div>
+          ))}
+        </RevealGroup>
+      </Section>
+
+      {/* ── The honest gap ───────────────────────────────────────────────── */}
+      <Section width="prose" density="tight" aria-labelledby="numbers">
+        <Reveal>
+          <Eyebrow>Worth saying plainly</Eyebrow>
+          <h2 id="numbers" className="text-display-3 mt-5">
+            You’ll notice there are no numbers on this site.
+          </h2>
+          <div className="text-muted-foreground mt-5 space-y-4 text-[0.9375rem] leading-relaxed">
+            <p>
+              No customer count, no uptime percentage, no compliance badge, no
+              logo strip. Not because they would be unflattering, but because we
+              would want to be able to hand you the evidence for each one, and
+              a figure printed without evidence is just a figure.
             </p>
-            <Link href="/signup">
-              <Button size="lg" className="bg-emerald-500 hover:bg-emerald-600 text-white h-12 px-8">
-                Get started free
-                <ArrowUpRight className="size-4" />
-              </Button>
-            </Link>
+            <p className="text-foreground">
+              What we would rather you do is open a trial and check the claims
+              that matter: that permissions hold when you test them, that the
+              audit trail says who changed what, and that your data comes back
+              out in a form you can use. Those are verifiable in an afternoon,
+              which is more than can be said for a customer count.
+            </p>
           </div>
-        </section>
-    </div>
+        </Reveal>
+      </Section>
+
+      {/* ── Close ────────────────────────────────────────────────────────── */}
+      <Section tone="ink" density="tight" aria-labelledby="about-cta">
+        <div className="flex flex-col items-start gap-8 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 id="about-cta" className="text-display-3 max-w-xl">
+              Judge it on the software.
+            </h2>
+            <p className="mt-3 max-w-lg text-[0.9375rem] leading-relaxed opacity-70">
+              Fourteen days, every module, no card. Import a real customer list
+              and see whether any of this holds up.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-3">
+            <Button asChild variant="onInk" size="xl">
+              <Link href="/signup">
+                Start free
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+            <Button
+              asChild
+              size="xl"
+              variant="ghost"
+              className="text-ink-fg hover:bg-ink-fg/10 hover:text-ink-fg"
+            >
+              <Link href="/contact">
+                Ask us something
+                <ArrowUpRight className="size-4" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </Section>
+    </>
   );
 }

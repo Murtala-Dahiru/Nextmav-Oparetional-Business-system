@@ -64,7 +64,18 @@ export const FOOTER_NAV: { heading: string; links: { label: string; href: string
     heading: 'Company',
     links: [
       { label: 'About', href: '/about' },
-      { label: 'Careers', href: '/careers' },
+      /*
+       * No Careers link.
+       *
+       * The original footer pointed "Careers" at /about — a page that never
+       * mentioned hiring — and this file's own header comment calls that out
+       * as one of four links that went somewhere other than where they said.
+       * The first rewrite then pointed it at /careers, which 404s. Removing
+       * four dead links and adding a fifth is not an improvement.
+       *
+       * It comes back when there is a page with roles on it. See
+       * CONTENT-NEEDED.md.
+       */
       { label: 'Contact', href: '/contact' },
     ],
   },

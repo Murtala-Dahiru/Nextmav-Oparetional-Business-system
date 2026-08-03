@@ -10,13 +10,13 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold mb-3">1. Acceptance of Terms</h2>
             <p>
-              By accessing or using the NexusCorp platform (&quot;Service&quot;), you agree to be
+              By accessing or using the NextMav platform (&quot;Service&quot;), you agree to be
               bound by these Terms of Service (&quot;Terms&quot;). If you do not agree to these
               Terms, you may not access or use the Service. These Terms apply to all visitors,
               users, and others who access or use the Service.
             </p>
             <p className="mt-3">
-              NexusCorp Inc. (&quot;Company,&quot; &quot;we,&quot; &quot;us,&quot; or
+              NextMav Inc. (&quot;Company,&quot; &quot;we,&quot; &quot;us,&quot; or
               &quot;our&quot;) reserves the right to update or modify these Terms at any time
               without prior notice. Your continued use of the Service after any such changes
               constitutes your acceptance of the new Terms.
@@ -26,7 +26,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold mb-3">2. Description of Service</h2>
             <p>
-              NexusCorp provides a cloud-based business operating system that includes customer
+              NextMav provides a cloud-based business operating system that includes customer
               relationship management (CRM), project management, human resources management,
               financial management, inventory management, and related features. The Service is
               provided &quot;as is&quot; and &quot;as available&quot; basis.
@@ -80,7 +80,7 @@ export default function TermsPage() {
             <h2 className="text-xl font-semibold mb-3">6. Intellectual Property</h2>
             <p>
               The Service and its original content (excluding content provided by users) remain
-              the exclusive property of NexusCorp and its licensors. The Service is protected by
+              the exclusive property of NextMav and its licensors. The Service is protected by
               copyright, trademark, and other laws. Our trademarks and trade dress may not be used
               in connection with any product or service without prior written consent.
             </p>
@@ -105,7 +105,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold mb-3">8. Limitation of Liability</h2>
             <p>
-              In no event shall NexusCorp, its directors, employees, partners, agents, suppliers,
+              In no event shall NextMav, its directors, employees, partners, agents, suppliers,
               or affiliates be liable for any indirect, incidental, special, consequential, or
               punitive damages, including loss of profits, data, or other intangible losses,
               resulting from your access to or use of (or inability to access or use) the Service.
@@ -127,9 +127,8 @@ export default function TermsPage() {
               If you have any questions about these Terms, please contact us at:
             </p>
             <div className="mt-2 p-4 rounded-lg bg-gray-50 dark:bg-gray-900 text-muted-foreground">
-              <p>NexusCorp Inc.</p>
-              <p>123 Enterprise Blvd, San Francisco, CA 94105</p>
-              <p>Email: legal@nexuscorp.io</p>
+              <p>NextMav Inc.</p>
+              <p>Email: legal@example.com</p>
             </div>
           </section>
         </div>

@@ -6,9 +6,10 @@ import { useSearchParams } from 'next/navigation';
 import { Loader2, Eye, EyeOff, MailCheck, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { AuthShell } from '@/components/auth/auth-shell';
-import { toast } from 'sonner';
+import { Notice } from '@/components/auth/notice';
+import { Field } from '@/components/forms/field';
+import { useFieldErrors } from '@/components/forms/use-field-errors';
 import { cn } from '@/lib/utils';
 
 /**
@@ -32,18 +33,24 @@ import { cn } from '@/lib/utils';
  * API would have accepted. A client-side checklist is a claim about the
  * server, and it is only worth showing while it is true of the server. If the
  * policy tightens, it tightens in `validations.ts` first and this follows.
- *
- * The advisory line below is separate, and worded as advice, for exactly that
- * reason: it never blocks the button.
  */
 function meetsRequirement(pw: string) {
   return pw.length >= 8;
 }
 
-/** Advice, not a rule. Shown only once the actual requirement is satisfied. */
+/** Advice, not a rule. Never blocks the button. */
 function isWeak(pw: string) {
   return pw.length < 12 && !(/[a-z]/i.test(pw) && /\d/.test(pw));
 }
+
+type FormError =
+  | { kind: 'duplicate' }
+  | { kind: 'rateLimited'; message: string }
+  | { kind: 'offline' }
+  | { kind: 'server'; message: string };
+
+const FIELDS = ['firstName', 'lastName', 'email', 'password', 'organization'] as const;
+type FieldName = (typeof FIELDS)[number];
 
 function SignupForm() {
   /**
@@ -53,7 +60,7 @@ function SignupForm() {
    * first. With it, the server resolves the invitation and stops requiring an
    * organization name — which is what an invitee had to invent before they
    * could join the company that invited them, ending up as the owner of a
-   * workspace nobody asked for. Without it this page behaves exactly as before.
+   * workspace nobody asked for.
    */
   const inviteToken = useSearchParams().get('invite');
   const joining = !!inviteToken;
@@ -68,14 +75,47 @@ function SignupForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [confirmationSent, setConfirmationSent] = useState(false);
+  const [formError, setFormError] = useState<FormError | null>(null);
 
-  function updateField(field: string, value: string) {
+  const { blur, revealAll, showing } = useFieldErrors<FieldName>();
+
+  const errors: Partial<Record<FieldName, string | null>> = {
+    firstName: formData.firstName.trim() ? null : 'We need something to call you.',
+    lastName: formData.lastName.trim() ? null : 'Please add a surname.',
+    email: !formData.email.trim()
+      ? 'We need an address to send the confirmation link to.'
+      : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())
+        ? null
+        : 'That address is missing an @ or a domain.',
+    password: meetsRequirement(formData.password)
+      ? null
+      : 'Passwords need at least 8 characters.',
+    // Not asked of an invitee: the workspace they are joining already exists.
+    // This field is how they used to end up owning a second one, which then
+    // followed them around for ever.
+    organization: joining
+      ? null
+      : formData.organization.trim()
+        ? null
+        : 'This names your workspace — your company name is usually right.',
+  };
+
+  // Invitees never see the organization field, so it must not be able to hold
+  // the submit button hostage from off-screen.
+  const activeFields = joining
+    ? (FIELDS.filter((f) => f !== 'organization') as readonly FieldName[])
+    : FIELDS;
+
+  function updateField(field: FieldName, value: string) {
     setFormData((prev) => ({ ...prev, [field]: value }));
   }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!revealAll(activeFields, errors, 'signup-')) return;
+
     setIsLoading(true);
+    setFormError(null);
 
     try {
       const res = await fetch('/api/auth/signup', {
@@ -94,7 +134,25 @@ function SignupForm() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error?.message || 'Signup failed. Please try again.');
+        const message: string = data.error?.message ?? '';
+        if (res.status === 429) {
+          // Signup is rate limited hourly per address and per account. Saying
+          // so beats "signup failed", which reads as a bug and invites the
+          // retries that extend the window.
+          setFormError({
+            kind: 'rateLimited',
+            message: message || 'Too many attempts from here in the last hour.',
+          });
+        } else if (/already|exists|registered/i.test(message)) {
+          setFormError({ kind: 'duplicate' });
+        } else if (res.status >= 500) {
+          setFormError({
+            kind: 'server',
+            message: 'Something failed on our side. Nothing was created.',
+          });
+        } else {
+          setFormError({ kind: 'server', message: message || 'That didn’t work.' });
+        }
         return;
       }
 
@@ -103,22 +161,23 @@ function SignupForm() {
       // nothing explaining why. Show what actually has to happen next.
       if (data.data?.requiresEmailConfirmation) {
         setConfirmationSent(true);
+        setIsLoading(false);
         return;
       }
 
-      toast.success('Account created successfully!');
       // Full document navigation so middleware re-evaluates the httpOnly
-      // session cookie set by the response above (see login page for detail).
+      // session cookie set by the response above (see login for detail).
       //
       // An invitee goes back to the invitation rather than to the dashboard:
       // they have an account and still belong nowhere, so the dashboard would
       // bounce them to onboarding — the screen they were sent here to avoid.
+      //
+      // `isLoading` stays true through the navigation; see login.
       window.location.assign(
         joining ? `/accept-invite?token=${encodeURIComponent(inviteToken!)}` : '/dashboard',
       );
     } catch {
-      toast.error('Network error. Please try again.');
-    } finally {
+      setFormError({ kind: 'offline' });
       setIsLoading(false);
     }
   }
@@ -130,11 +189,6 @@ function SignupForm() {
    * that just happened, so it has no URL of its own to be linked, bookmarked
    * or refreshed into — and giving it one would produce a page that says "we
    * sent a link to " with nothing after it.
-   *
-   * What it now does that it did not: name the inbox, say what the link does
-   * when opened, and offer the two things somebody in this state actually
-   * wants — a way back to the form when they mistyped the address, and the
-   * spam-folder hint they will otherwise email support about.
    */
   if (confirmationSent) {
     return (
@@ -206,79 +260,147 @@ function SignupForm() {
         </p>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-5">
+      {formError?.kind === 'duplicate' && (
+        <Notice tone="warning" title="That address already has an account">
+          {/*
+            Signup cannot avoid disclosing this — the server has to refuse a
+            duplicate — so the useful thing is to route them rather than leave
+            them re-reading the form.
+          */}
+          <p>
+            <Link href="/login" className="font-medium underline underline-offset-2">
+              Sign in instead
+            </Link>
+            , or{' '}
+            <Link
+              href="/forgot-password"
+              className="font-medium underline underline-offset-2"
+            >
+              set a new password
+            </Link>{' '}
+            if you’ve forgotten it.
+          </p>
+        </Notice>
+      )}
+
+      {formError?.kind === 'rateLimited' && (
+        <Notice tone="warning" title="Too many attempts">
+          {formError.message} Trying again immediately extends the wait.
+        </Notice>
+      )}
+
+      {formError?.kind === 'offline' && (
+        <Notice tone="warning" title="We couldn’t reach the server">
+          No account was created and nothing was sent. Check your connection and
+          try again.
+        </Notice>
+      )}
+
+      {formError?.kind === 'server' && (
+        <Notice tone="warning" title="That didn’t work">
+          {formError.message}
+        </Notice>
+      )}
+
+      <form onSubmit={handleSubmit} noValidate className="space-y-5">
         <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label htmlFor="firstName">First name</Label>
+          <Field
+            id="signup-firstName"
+            label="First name"
+            error={showing('firstName', errors.firstName)}
+          >
             <Input
-              id="firstName"
+              id="signup-firstName"
               placeholder="Alex"
               value={formData.firstName}
               onChange={(e) => updateField('firstName', e.target.value)}
-              required
+              onBlur={() => blur('firstName')}
               autoComplete="given-name"
               autoFocus
               disabled={isLoading}
+              aria-invalid={!!showing('firstName', errors.firstName)}
               className="h-11"
             />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="lastName">Last name</Label>
+          </Field>
+
+          <Field
+            id="signup-lastName"
+            label="Last name"
+            error={showing('lastName', errors.lastName)}
+          >
             <Input
-              id="lastName"
+              id="signup-lastName"
               placeholder="Morgan"
               value={formData.lastName}
               onChange={(e) => updateField('lastName', e.target.value)}
-              required
+              onBlur={() => blur('lastName')}
               autoComplete="family-name"
               disabled={isLoading}
+              aria-invalid={!!showing('lastName', errors.lastName)}
               className="h-11"
             />
-          </div>
+          </Field>
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="signup-email">Work email</Label>
+        <Field id="signup-email" label="Work email" error={showing('email', errors.email)}>
           <Input
             id="signup-email"
             type="email"
+            inputMode="email"
             placeholder="you@company.com"
             value={formData.email}
             onChange={(e) => updateField('email', e.target.value)}
-            required
+            onBlur={() => blur('email')}
             autoComplete="email"
             disabled={isLoading}
+            aria-invalid={!!showing('email', errors.email)}
             className="h-11"
           />
-        </div>
+        </Field>
 
-        <div className="space-y-2">
-          <Label htmlFor="signup-password">Password</Label>
-          <div className="relative">
-            <Input
-              id="signup-password"
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Create a strong password"
-              value={formData.password}
-              onChange={(e) => updateField('password', e.target.value)}
-              required
-              minLength={8}
-              autoComplete="new-password"
-              disabled={isLoading}
-              className="h-11 pr-11"
-              aria-describedby="password-requirements"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2 rounded-md p-1.5 transition-colors"
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-            >
-              {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-            </button>
-          </div>
+        <Field
+          id="signup-password"
+          label="Password"
+          error={showing('password', errors.password)}
+        >
+          {/* Function form: the input is wrapped for the show/hide button, so
+              the description has to be threaded onto the control. See `Field`. */}
+          {(a11y) => (
+            <div className="relative">
+              <Input
+                id="signup-password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Create a strong password"
+                value={formData.password}
+                onChange={(e) => updateField('password', e.target.value)}
+                onBlur={() => blur('password')}
+                autoComplete="new-password"
+                disabled={isLoading}
+                aria-invalid={!!showing('password', errors.password)}
+                {...a11y}
+                className="h-11 pr-12"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 grid size-10 -translate-y-1/2 place-items-center rounded-md transition-colors"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
+          )}
+        </Field>
 
-          <div id="password-requirements" className="space-y-1 pt-0.5">
+        {/*
+          Sits outside `Field` on purpose. It is neither a hint nor an error:
+          it is live acknowledgement, and it must remain visible *while* the
+          error is showing rather than being replaced by it.
+        */}
+        {!showing('password', errors.password) && (
+          <div className="-mt-3 space-y-1">
             <p
               className={cn(
                 'flex items-center gap-1.5 text-[0.75rem] transition-colors',
@@ -302,30 +424,27 @@ function SignupForm() {
               </p>
             )}
           </div>
-        </div>
+        )}
 
-        {/*
-          Not asked of an invitee. The workspace they are joining already
-          exists — this field is how they used to end up owning a second
-          one, which then followed them around for ever.
-        */}
         {!joining && (
-          <div className="space-y-2">
-            <Label htmlFor="organization">Company name</Label>
+          <Field
+            id="signup-organization"
+            label="Company name"
+            hint="This names your workspace. You can change it later."
+            error={showing('organization', errors.organization)}
+          >
             <Input
-              id="organization"
+              id="signup-organization"
               placeholder="Harlow Manufacturing"
               value={formData.organization}
               onChange={(e) => updateField('organization', e.target.value)}
-              required
+              onBlur={() => blur('organization')}
               autoComplete="organization"
               disabled={isLoading}
+              aria-invalid={!!showing('organization', errors.organization)}
               className="h-11"
             />
-            <p className="text-muted-foreground text-[0.75rem]">
-              This names your workspace. You can change it later.
-            </p>
-          </div>
+          </Field>
         )}
 
         <Button

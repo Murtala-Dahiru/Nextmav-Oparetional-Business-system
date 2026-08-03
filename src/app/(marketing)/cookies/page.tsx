@@ -16,7 +16,7 @@ export default function CookiesPage() {
               website owners.
             </p>
             <p className="mt-3">
-              This Cookie Policy explains how NexusCorp Inc. (&quot;we,&quot; &quot;us,&quot; or
+              This Cookie Policy explains how NextMav Inc. (&quot;we,&quot; &quot;us,&quot; or
               &quot;our&quot;) uses cookies and similar technologies when you visit and interact
               with our platform and website (the &quot;Service&quot;).
             </p>
@@ -146,9 +146,8 @@ export default function CookiesPage() {
               If you have any questions about our use of cookies, please contact us:
             </p>
             <div className="mt-2 p-4 rounded-lg bg-gray-50 dark:bg-gray-900 text-muted-foreground">
-              <p>NexusCorp Inc. — Privacy Team</p>
-              <p>123 Enterprise Blvd, San Francisco, CA 94105</p>
-              <p>Email: privacy@nexuscorp.io</p>
+              <p>NextMav Inc. — Privacy Team</p>
+              <p>Email: privacy@example.com</p>
             </div>
           </section>
         </div>

@@ -44,6 +44,26 @@ Eight invented articles, all linking to `href="#"`, including:
 
 ---
 
+### 3b. Legal pages — entity details
+**Where:** `privacy`, `terms`, `cookies`
+**Removed:** "123 Enterprise Blvd, San Francisco, CA 94105" from all three — a
+placeholder street on a real financial-district postcode, printed as a
+**registered address in legal documents**. A missing address is better than a
+false one, and no clause on any of the three pages depends on it.
+**Changed:** `NexusCorp Inc.` → `NextMav Inc.`, `@nexuscorp.io` → `@example.com`.
+
+**Not touched:** every legal clause. Rewriting those is not a design decision.
+**Needed:** the real registered entity name, address and legal/privacy
+addresses — and a lawyer's eye over text that was written for a company with a
+different name.
+
+### 3c. Careers
+The original footer pointed "Careers" at `/about`, which never mentioned
+hiring. My first rewrite pointed it at `/careers`, which 404s. Both removed —
+the link returns when there is a page with roles on it.
+
+---
+
 ## 🟠 Commercial — I will not invent these
 
 ### 4. Annual pricing

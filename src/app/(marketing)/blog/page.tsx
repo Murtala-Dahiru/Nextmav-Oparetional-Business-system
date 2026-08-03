@@ -1,249 +1,157 @@
-'use client';
+import Link from 'next/link';
+import type { Metadata } from 'next';
+import { BookOpen, Activity, LifeBuoy, ArrowUpRight } from 'lucide-react';
+import { Container, Eyebrow, Section } from '@/components/marketing/section';
+import { Reveal } from '@/components/marketing/reveal';
 
-import { useState } from 'react';
-import {
-  Calendar,
-  Clock,
-  ArrowRight,
-  Sparkles,
-  BookOpen,
-} from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb';
+export const metadata: Metadata = {
+  title: 'Writing — NextMav',
+  description:
+    'Notes on building NextMav. Nothing published yet — here is where to look in the meantime.',
+};
 
-const categories = ['All', 'Product', 'Engineering', 'Company', 'Guides', 'News'];
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  Writing
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  ── What was here ───────────────────────────────────────────────────────
+ *
+ *  Eight articles that do not exist, every one of them linking to `href="#"`,
+ *  above a "Load more posts" button with no handler. Among them:
+ *
+ *    · "NexusCorp Raises $50M Series C to Accelerate Growth" — an invented
+ *      funding round, which is the kind of claim a journalist checks in one
+ *      search and a due-diligence process checks in a contract.
+ *    · "Meet Our New Chief Technology Officer — Sarah Chen", which named the
+ *      same person the About page called CEO. Two pages of fiction that could
+ *      not keep their own story straight.
+ *    · Category filter tabs that worked perfectly, filtering imaginary posts.
+ *
+ *  Every article card carried a gradient rectangle with an outline icon at 30%
+ *  opacity where a hero image would go — eight of them, in eight different
+ *  hues, which is the single most recognisable "content coming soon" pattern
+ *  on the web.
+ *
+ *  ── Why an empty state rather than deletion ─────────────────────────────
+ *
+ *  The page is linked from the footer, and a 404 from your own navigation is
+ *  worse than an honest empty page. More to the point: an empty state that
+ *  says "nothing yet, here is where to look instead" costs a visitor five
+ *  seconds and costs nothing in credibility. Eight fabricated posts cost the
+ *  credibility of every other page on the site, because a reader who catches
+ *  one starts checking the rest.
+ *
+ *  This is also the pattern the rest of the product should use. An empty state
+ *  is a designed screen with a reason and a next action — not a centred grey
+ *  sentence apologising for itself.
+ */
 
-const blogPosts = [
+const meanwhile = [
   {
-    title: 'Introducing NexusCorp 2.0: A Complete Redesign',
-    excerpt: 'We completely rebuilt the interface from the ground up with a focus on speed, clarity, and a modern design language that scales across all modules.',
-    category: 'Product',
-    date: 'Jan 12, 2024',
-    readTime: '8 min read',
-    color: 'bg-gradient-to-br from-emerald-400 to-emerald-600',
-    featured: true,
+    icon: BookOpen,
+    title: 'Documentation',
+    body: 'How the modules fit together, the data model, and the API.',
+    href: '/docs',
   },
   {
-    title: 'How We Migrated Our Infrastructure to Edge Computing',
-    excerpt: 'A deep dive into our journey moving from traditional cloud servers to a global edge network, achieving sub-100ms response times worldwide.',
-    category: 'Engineering',
-    date: 'Jan 8, 2024',
-    readTime: '12 min read',
-    color: 'bg-gradient-to-br from-sky-400 to-sky-600',
-    featured: false,
+    icon: LifeBuoy,
+    title: 'Help centre',
+    body: 'Practical answers to the questions we are asked most often.',
+    href: '/help',
   },
   {
-    title: 'The Ultimate Guide to CRM Pipeline Management',
-    excerpt: 'Learn best practices for setting up and optimizing your sales pipeline to close more deals and forecast revenue accurately.',
-    category: 'Guides',
-    date: 'Jan 5, 2024',
-    readTime: '6 min read',
-    color: 'bg-gradient-to-br from-violet-400 to-violet-600',
-    featured: false,
-  },
-  {
-    title: 'NexusCorp Raises $50M Series C to Accelerate Growth',
-    excerpt: 'We are thrilled to announce our Series C funding round, which will help us expand our platform capabilities and grow the team globally.',
-    category: 'News',
-    date: 'Dec 28, 2023',
-    readTime: '4 min read',
-    color: 'bg-gradient-to-br from-amber-400 to-amber-600',
-    featured: false,
-  },
-  {
-    title: 'Building Real-Time Collaborative Features with WebSockets',
-    excerpt: 'An engineering deep-dive into how we implemented real-time collaboration, live cursors, and instant syncing across all modules.',
-    category: 'Engineering',
-    date: 'Dec 20, 2023',
-    readTime: '10 min read',
-    color: 'bg-gradient-to-br from-rose-400 to-rose-600',
-    featured: false,
-  },
-  {
-    title: '10 Project Management Tips from High-Growth Teams',
-    excerpt: 'We surveyed 500+ teams using NexusCorp Projects and compiled their top strategies for delivering projects on time and under budget.',
-    category: 'Guides',
-    date: 'Dec 15, 2023',
-    readTime: '7 min read',
-    color: 'bg-gradient-to-br from-teal-400 to-teal-600',
-    featured: false,
-  },
-  {
-    title: 'Meet Our New Chief Technology Officer',
-    excerpt: 'Sarah Chen joins NexusCorp as CTO, bringing 15 years of enterprise SaaS experience and a vision for our technical roadmap.',
-    category: 'Company',
-    date: 'Dec 10, 2023',
-    readTime: '3 min read',
-    color: 'bg-gradient-to-br from-orange-400 to-orange-600',
-    featured: false,
-  },
-  {
-    title: 'What Is New in the December Release',
-    excerpt: 'This month we shipped custom dashboards, advanced filters for CRM, time tracking improvements, and 20+ other enhancements.',
-    category: 'Product',
-    date: 'Dec 1, 2023',
-    readTime: '5 min read',
-    color: 'bg-gradient-to-br from-fuchsia-400 to-fuchsia-600',
-    featured: false,
+    icon: Activity,
+    title: 'System status',
+    body: 'Live availability, and the written record of past incidents.',
+    href: '/status',
   },
 ];
 
 export default function BlogPage() {
-  const [activeCategory, setActiveCategory] = useState('All');
-
-  const filteredPosts =
-    activeCategory === 'All'
-      ? blogPosts
-      : blogPosts.filter((p) => p.category === activeCategory);
-
-  const featuredPost = blogPosts.find((p) => p.featured);
-  const regularPosts = filteredPosts.filter((p) => !p.featured);
-  const showFeatured = activeCategory === 'All' && featuredPost;
-
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
-      {/* Breadcrumbs */}
-      <Breadcrumb className="mb-8">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink href="/">Home</BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>Blog</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+    <>
+      <Container className="pt-16 pb-4 sm:pt-24">
+        <div className="max-w-[44rem]">
+          <Reveal>
+            <Eyebrow>Writing</Eyebrow>
+          </Reveal>
+          <Reveal delay={0.05}>
+            <h1 className="text-display-1 text-balance-hero mt-5">
+              Nothing published yet.
+            </h1>
+          </Reveal>
+          <Reveal delay={0.1}>
+            <p className="text-muted-foreground text-lede text-pretty-body mt-6">
+              When there is something worth reading — how a module is built, why
+              a decision went the way it did, what broke and what we changed —
+              it will be here. Until then this page would rather be empty than
+              padded.
+            </p>
+          </Reveal>
+        </div>
+      </Container>
 
-      {/* Hero */}
-      <section className="max-w-2xl mb-12">
-        <Badge variant="secondary" className="mb-4">
-          <BookOpen className="size-3 mr-1" />
-          Blog
-        </Badge>
-        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-4">
-          Insights &amp;{' '}
-          <span className="text-emerald-500">updates</span>
-        </h1>
-        <p className="text-lg text-muted-foreground">
-          Product news, engineering deep-dives, and guides from the NexusCorp team.
-        </p>
-      </section>
-
-      {/* Category Tabs */}
-      <div className="mb-10 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-        <div className="flex gap-2">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setActiveCategory(cat)}
-              className={`px-4 py-2 text-sm font-medium rounded-lg border whitespace-nowrap shrink-0 transition-colors ${
-                activeCategory === cat
-                  ? 'border-emerald-500 text-emerald-500 bg-emerald-500/10'
-                  : 'border-gray-200 dark:border-gray-800 text-muted-foreground hover:text-foreground hover:border-gray-300 dark:hover:border-gray-700'
-              }`}
+      {/* ── The empty state proper ───────────────────────────────────────── */}
+      <Container className="py-10 sm:py-14">
+        <Reveal>
+          <div className="border-hairline bg-surface rounded-2xl border px-6 py-14 text-center sm:px-12">
+            <div
+              className="bg-background ring-hairline mx-auto grid size-12 place-items-center rounded-xl ring-1"
+              aria-hidden="true"
             >
-              {cat}
-            </button>
+              <BookOpen className="text-brand size-5" strokeWidth={1.8} />
+            </div>
+            <h2 className="mt-5 text-[1.125rem] font-semibold tracking-[-0.02em]">
+              No posts, rather than filler
+            </h2>
+            <p className="text-muted-foreground mx-auto mt-2.5 max-w-md text-[0.9375rem] leading-relaxed">
+              If there is something you would find genuinely useful written up —
+              a migration you are weighing, a permission model you are trying to
+              reproduce — tell us and we will write that one first.
+            </p>
+            <Link
+              href="/contact"
+              className="text-foreground mt-6 inline-flex items-center gap-1.5 text-[0.9375rem] font-medium underline decoration-[1.5px] underline-offset-[4px] hover:no-underline"
+            >
+              Suggest a topic
+              <ArrowUpRight className="size-4" aria-hidden="true" />
+            </Link>
+          </div>
+        </Reveal>
+      </Container>
+
+      {/* ── Where to go instead ──────────────────────────────────────────── */}
+      <Section tone="surface" density="tight" aria-labelledby="meanwhile">
+        <Reveal>
+          <h2 id="meanwhile" className="text-display-3">
+            In the meantime
+          </h2>
+        </Reveal>
+
+        <div className="mt-8 grid gap-3 md:grid-cols-3">
+          {meanwhile.map(({ icon: Icon, title, body, href }, i) => (
+            <Reveal key={title} delay={i * 0.05}>
+              <Link
+                href={href}
+                className="border-hairline bg-background hover:border-hairline-strong block h-full rounded-xl border p-5 transition-colors"
+              >
+                <Icon
+                  className="text-brand size-[1.0625rem]"
+                  strokeWidth={1.9}
+                  aria-hidden="true"
+                />
+                <h3 className="mt-3 text-[0.9375rem] font-semibold tracking-[-0.01em]">
+                  {title}
+                </h3>
+                <p className="text-muted-foreground mt-1.5 text-[0.875rem] leading-relaxed">
+                  {body}
+                </p>
+              </Link>
+            </Reveal>
           ))}
         </div>
-      </div>
-
-      {/* Featured Post */}
-      {showFeatured && (
-        <article className="mb-10 group cursor-pointer">
-          <a href="#" className="grid grid-cols-1 lg:grid-cols-2 gap-6 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden hover:border-emerald-500/50 hover:shadow-lg hover:shadow-emerald-500/5 transition-all">
-            <div className={`${featuredPost.color} h-56 lg:h-full min-h-[200px] flex items-center justify-center`}>
-              <Sparkles className="size-16 text-white/30" />
-            </div>
-            <div className="p-6 lg:p-8 flex flex-col justify-center">
-              <Badge variant="secondary" className="w-fit mb-3">{featuredPost.category}</Badge>
-              <h2 className="text-xl sm:text-2xl font-bold mb-3 group-hover:text-emerald-500 transition-colors">
-                {featuredPost.title}
-              </h2>
-              <p className="text-muted-foreground leading-relaxed mb-4">
-                {featuredPost.excerpt}
-              </p>
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <Calendar className="size-3.5" />
-                  {featuredPost.date}
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Clock className="size-3.5" />
-                  {featuredPost.readTime}
-                </span>
-              </div>
-            </div>
-          </a>
-        </article>
-      )}
-
-      {/* Blog Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {(showFeatured ? regularPosts : filteredPosts).map((post) => (
-          <article
-            key={post.title}
-            className="group cursor-pointer"
-          >
-            <a href="#" className="block rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden hover:border-emerald-500/50 hover:shadow-md hover:shadow-emerald-500/5 transition-all h-full">
-              <div className={`${post.color} h-44 flex items-center justify-center`}>
-                <BookOpen className="size-10 text-white/30" />
-              </div>
-              <div className="p-5">
-                <Badge variant="secondary" className="mb-3 text-xs">{post.category}</Badge>
-                <h3 className="font-semibold mb-2 group-hover:text-emerald-500 transition-colors line-clamp-2">
-                  {post.title}
-                </h3>
-                <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2 mb-4">
-                  {post.excerpt}
-                </p>
-                <div className="flex items-center justify-between text-xs text-muted-foreground pt-3 border-t border-gray-100 dark:border-gray-800">
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="size-3" />
-                      {post.date}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="size-3" />
-                      {post.readTime}
-                    </span>
-                  </div>
-                  <ArrowRight className="size-3.5 opacity-0 group-hover:opacity-100 transition-opacity text-emerald-500" />
-                </div>
-              </div>
-            </a>
-          </article>
-        ))}
-      </div>
-
-      {filteredPosts.length === 0 && (
-        <div className="text-center py-20">
-          <BookOpen className="size-10 text-muted-foreground mx-auto mb-4" />
-          <p className="text-muted-foreground">No posts found in this category.</p>
-        </div>
-      )}
-
-      {/* Load More */}
-      {filteredPosts.length > 0 && (
-        <div className="text-center mt-12">
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-gray-800 text-muted-foreground hover:text-foreground hover:border-emerald-500/50 transition-colors"
-          >
-            Load more posts
-            <ArrowRight className="size-4" />
-          </button>
-        </div>
-      )}
-    </div>
+      </Section>
+    </>
   );
 }
