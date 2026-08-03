@@ -3,10 +3,9 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Hexagon, Loader2, MailCheck, TriangleAlert, LogIn } from 'lucide-react';
-import { PLATFORM } from '@/lib/platform';
+import { Loader2, MailCheck, TriangleAlert, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { AuthShell } from '@/components/auth/auth-shell';
 import { toast } from 'sonner';
 
 /**
@@ -98,115 +97,145 @@ function AcceptInvite() {
 
   const signInHref = `/login?next=${encodeURIComponent(`/accept-invite?token=${token ?? ''}`)}`;
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4">
-      <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center gap-2 mb-2">
-            <Hexagon className="size-8 text-emerald-500" />
-            <span className="text-2xl font-bold tracking-tight">{PLATFORM.name}</span>
-          </div>
-          <p className="text-sm text-muted-foreground">You&apos;ve been invited</p>
+  /**
+   * ── Five phases, each given its own screen ────────────────────────────────
+   *
+   * They previously shared one card, so the heading changed while the frame
+   * around it did not — and the "checking" phase was a spinner in an otherwise
+   * empty card, which reads as a page that has failed rather than one that is
+   * working. Each phase now says what it is and what happens next.
+   */
+  if (phase === 'checking') {
+    return (
+      <AuthShell title="Checking your invitation" description="One moment.">
+        <div
+          className="border-hairline bg-surface flex items-center gap-3 rounded-xl border p-5"
+          role="status"
+        >
+          <Loader2 className="text-muted-foreground size-4 animate-spin" aria-hidden="true" />
+          <p className="text-muted-foreground text-[0.875rem]">
+            Confirming the link is still valid…
+          </p>
         </div>
+      </AuthShell>
+    );
+  }
 
-        <Card className="border-gray-200 dark:border-gray-800 shadow-lg">
-          {phase === 'checking' && (
-            <CardContent className="flex items-center justify-center py-12">
-              <Loader2 className="size-6 animate-spin text-emerald-500" />
-            </CardContent>
-          )}
+  if (phase === 'unauthenticated') {
+    return (
+      <AuthShell
+        eyebrow="You’ve been invited"
+        title="Sign in to accept"
+        description="An invitation can only be accepted by the account it was sent to. Sign in — or create an account with that same address — and you’ll come straight back here."
+      >
+        <div className="flex flex-col gap-2.5">
+          <Button asChild variant="cta" size="xl" className="w-full">
+            <Link href={signInHref}>
+              <LogIn className="size-4" />
+              Sign in
+            </Link>
+          </Button>
+          {/*
+            The token travels with them.
 
-          {phase === 'unauthenticated' && (
-            <>
-              <CardHeader className="space-y-1">
-                <CardTitle className="text-xl">Sign in to accept</CardTitle>
-                <CardDescription>
-                  An invitation can only be accepted by the account it was sent
-                  to. Sign in — or create an account with that same email
-                  address — and you&apos;ll come straight back here.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-2">
-                <Button asChild className="h-11 w-full bg-emerald-500 hover:bg-emerald-600 text-white">
-                  <Link href={signInHref}><LogIn className="size-4" /> Sign in</Link>
-                </Button>
-                {/*
-                  The token travels with them.
+            Without it, signup asks for an organization name and creates one —
+            so an invitee had to found a workspace of their own before they
+            could join the one that invited them, and then owned it for ever.
+            With it, signup recognises the invitation, skips that question, and
+            the confirmation email lands back on this page.
+          */}
+          <Button asChild variant="ctaOutline" size="xl" className="w-full">
+            <Link href={`/signup?invite=${encodeURIComponent(token ?? '')}`}>
+              Create an account
+            </Link>
+          </Button>
+        </div>
+        <p className="text-muted-foreground mt-4 text-[0.8125rem] leading-relaxed">
+          Use the address the invitation was sent to. A different one will
+          create an account that cannot accept it.
+        </p>
+      </AuthShell>
+    );
+  }
 
-                  Without it, signup asks for an organization name and creates
-                  one — so an invitee had to found a workspace of their own
-                  before they could join the one that invited them, and then
-                  owned it for ever. With it, signup recognises the invitation,
-                  skips that question, and the confirmation email lands back on
-                  this page.
-                */}
-                <Button asChild variant="outline" className="h-11 w-full">
-                  <Link href={`/signup?invite=${encodeURIComponent(token ?? '')}`}>
-                    Create an account
-                  </Link>
-                </Button>
-              </CardContent>
-            </>
-          )}
+  if (phase === 'joined') {
+    return (
+      <AuthShell
+        eyebrow="Done"
+        title={organization ? `Welcome to ${organization}` : 'Invitation accepted'}
+        description="You now have access with the role you were given."
+      >
+        <div
+          className="border-brand-line bg-brand-soft flex items-center gap-3 rounded-xl border p-5"
+          role="status"
+        >
+          <Loader2 className="text-brand size-4 animate-spin" aria-hidden="true" />
+          <p className="text-foreground/80 text-[0.875rem]">
+            Taking you to your dashboard…
+          </p>
+        </div>
+      </AuthShell>
+    );
+  }
 
-          {(phase === 'ready' || phase === 'joining') && (
-            <>
-              <CardHeader className="space-y-1">
-                <CardTitle className="text-xl">Join this workspace</CardTitle>
-                <CardDescription>
-                  Accepting adds your account to the organization that invited
-                  you, with the role they chose for you.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button
-                  onClick={accept}
-                  disabled={phase === 'joining'}
-                  className="h-11 w-full bg-emerald-500 hover:bg-emerald-600 text-white"
-                >
-                  {phase === 'joining' ? (
-                    <><Loader2 className="size-4 animate-spin" /> Joining…</>
-                  ) : (
-                    <><MailCheck className="size-4" /> Accept invitation</>
-                  )}
-                </Button>
-              </CardContent>
-            </>
-          )}
+  if (phase === 'failed') {
+    return (
+      <AuthShell
+        title="This invitation didn’t work"
+        description={message}
+        footer={
+          <button
+            type="button"
+            onClick={() => router.replace('/login')}
+            className="hover:text-foreground underline decoration-[1.5px] underline-offset-[3px] transition-colors"
+          >
+            Back to sign in
+          </button>
+        }
+      >
+        <div className="border-hairline bg-surface flex gap-4 rounded-xl border p-5">
+          <TriangleAlert
+            className="text-muted-foreground mt-0.5 size-5 shrink-0"
+            strokeWidth={1.9}
+            aria-hidden="true"
+          />
+          <p className="text-muted-foreground text-[0.875rem] leading-relaxed">
+            Ask whoever invited you to send a fresh one. Issuing a new
+            invitation replaces the old link, so an expired one cannot be
+            revived — only replaced.
+          </p>
+        </div>
+      </AuthShell>
+    );
+  }
 
-          {phase === 'joined' && (
-            <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-              <MailCheck className="size-8 text-emerald-500" />
-              <p className="text-sm font-medium">
-                {organization ? `Welcome to ${organization}.` : 'Invitation accepted.'}
-              </p>
-              <p className="text-xs text-muted-foreground">Taking you to your dashboard…</p>
-            </CardContent>
-          )}
-
-          {phase === 'failed' && (
-            <>
-              <CardHeader className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <TriangleAlert className="size-5 text-amber-500" />
-                  <CardTitle className="text-xl">Invitation not accepted</CardTitle>
-                </div>
-                <CardDescription>{message}</CardDescription>
-              </CardHeader>
-              <CardFooter className="flex flex-col gap-2">
-                <p className="text-xs text-center text-muted-foreground">
-                  Ask whoever invited you to send a fresh invitation — issuing a
-                  new one replaces the old link.
-                </p>
-                <Button variant="ghost" className="h-9 w-full text-muted-foreground" onClick={() => router.replace('/login')}>
-                  Back to sign in
-                </Button>
-              </CardFooter>
-            </>
-          )}
-        </Card>
-      </div>
-    </div>
+  // ready | joining
+  return (
+    <AuthShell
+      eyebrow="You’ve been invited"
+      title="Join this workspace"
+      description="Accepting adds your account to the organization that invited you, with the role they chose for you."
+    >
+      <Button
+        onClick={accept}
+        disabled={phase === 'joining'}
+        variant="cta"
+        size="xl"
+        className="w-full"
+      >
+        {phase === 'joining' ? (
+          <>
+            <Loader2 className="size-4 animate-spin" />
+            Joining…
+          </>
+        ) : (
+          <>
+            <MailCheck className="size-4" />
+            Accept invitation
+          </>
+        )}
+      </Button>
+    </AuthShell>
   );
 }
 

@@ -2,14 +2,15 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { Hexagon, Loader2, KeyRound, Eye, EyeOff } from 'lucide-react';
-import { PLATFORM } from '@/lib/platform';
+import { Loader2, Eye, EyeOff, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { AuthShell } from '@/components/auth/auth-shell';
+import { Notice } from '@/components/auth/notice';
+import { Field } from '@/components/forms/field';
 import { useAppStore } from '@/store/app-store';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 /**
  * Replace a temporary password.
@@ -99,144 +100,161 @@ export default function ChangePasswordPage() {
   if (checking) {
     return (
       <div className="bg-background flex min-h-screen items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-emerald-500" />
+        <Loader2 className="text-muted-foreground size-5 animate-spin" />
       </div>
     );
   }
 
+  const longEnough = next.length >= 8;
+  // Only report a mismatch once there is something to mismatch. Validating
+  // from the first character means the field spends most of its life showing
+  // an error about an answer still being given.
+  const mismatch = confirm.length > 0 && next !== confirm;
+  // Catches the most common failed attempt on this screen: pasting the
+  // temporary password into both boxes. The server would refuse it; saying so
+  // here saves a round trip and a confusing toast.
+  const unchanged = next.length > 0 && next === current;
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4">
-      <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center gap-2 mb-2">
-            <Hexagon className="size-8 text-emerald-500" />
-            <span className="text-2xl font-bold tracking-tight">{PLATFORM.name}</span>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {forced ? 'One step before you start' : 'Account security'}
-          </p>
-        </div>
+    <AuthShell
+      eyebrow={forced ? 'One step before you start' : undefined}
+      title="Choose a new password"
+      description={
+        forced
+          ? 'This account is using a temporary password set by an administrator. Pick your own to continue — nobody else can see what you choose.'
+          : 'Enter your current password, then the one you would like to use instead.'
+      }
+      footer={
+        forced ? (
+          <button
+            type="button"
+            onClick={() => logout()}
+            disabled={saving}
+            className="hover:text-foreground underline decoration-[1.5px] underline-offset-[3px] transition-colors disabled:opacity-50"
+          >
+            Sign out instead
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => router.push('/dashboard')}
+            disabled={saving}
+            className="hover:text-foreground underline decoration-[1.5px] underline-offset-[3px] transition-colors disabled:opacity-50"
+          >
+            Back to dashboard
+          </button>
+        )
+      }
+    >
+      {forced && (
+        <Notice tone="neutral">
+          {/*
+            Stated up front rather than discovered. The server refuses every
+            module while `force_password_change` is set, so somebody who goes
+            looking for a way around this finds 403s and assumes the product is
+            broken. There is no skip because a skip would lead nowhere.
+          */}
+          The rest of the workspace stays locked until this is done. There is no
+          way to skip it, which is why there is no button that pretends there is.
+        </Notice>
+      )}
 
-        <Card className="border-gray-200 dark:border-gray-800 shadow-lg">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-xl flex items-center gap-2">
-              <KeyRound className="size-5 text-emerald-500" />
-              Choose a new password
-            </CardTitle>
-            <CardDescription>
-              {forced
-                ? 'Your account is using a temporary password set by an administrator. Choose your own to continue — they cannot see whatever you pick.'
-                : 'Enter your current password, then the new one you would like to use.'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="current">
-                  {forced ? 'Temporary password' : 'Current password'}
-                </Label>
-                <Input
-                  id="current"
-                  type={show ? 'text' : 'password'}
-                  value={current}
-                  onChange={(e) => setCurrent(e.target.value)}
-                  required
-                  autoFocus
-                  autoComplete="current-password"
-                  disabled={saving}
-                  className="h-11"
-                />
-              </div>
+      <form onSubmit={handleSubmit} noValidate className="space-y-5">
+        <Field id="current" label={forced ? 'Temporary password' : 'Current password'}>
+          <Input
+            id="current"
+            type={show ? 'text' : 'password'}
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+            autoFocus
+            autoComplete="current-password"
+            disabled={saving}
+            className="h-11"
+          />
+        </Field>
 
-              <div className="space-y-2">
-                <Label htmlFor="next">New password</Label>
-                <div className="relative">
-                  <Input
-                    id="next"
-                    type={show ? 'text' : 'password'}
-                    value={next}
-                    onChange={(e) => setNext(e.target.value)}
-                    required
-                    minLength={8}
-                    autoComplete="new-password"
-                    disabled={saving}
-                    className="h-11 pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShow(!show)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    aria-label={show ? 'Hide passwords' : 'Show passwords'}
-                  >
-                    {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground">Must be at least 8 characters</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirm">Confirm new password</Label>
-                <Input
-                  id="confirm"
-                  type={show ? 'text' : 'password'}
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  required
-                  minLength={8}
-                  autoComplete="new-password"
-                  disabled={saving}
-                  className="h-11"
-                />
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full h-11 bg-emerald-500 hover:bg-emerald-600 text-white"
-                disabled={saving || !current || !next || !confirm}
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" />
-                    Saving…
-                  </>
-                ) : (
-                  'Change password'
-                )}
-              </Button>
-            </form>
-          </CardContent>
-
-          <CardFooter className="flex flex-col gap-2">
-            {forced ? (
-              <>
-                <p className="text-xs text-center text-muted-foreground">
-                  This cannot be skipped — the rest of the workspace stays locked
-                  until your password is your own.
-                </p>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="h-9 w-full text-muted-foreground"
-                  onClick={() => logout()}
-                  disabled={saving}
-                >
-                  Sign out
-                </Button>
-              </>
-            ) : (
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-9 w-full text-muted-foreground"
-                onClick={() => router.push('/dashboard')}
+        <Field
+          id="next"
+          label="New password"
+          error={unchanged ? 'This is the password you are replacing.' : null}
+        >
+          {(a11y) => (
+            <div className="relative">
+              <Input
+                id="next"
+                type={show ? 'text' : 'password'}
+                value={next}
+                onChange={(e) => setNext(e.target.value)}
+                autoComplete="new-password"
                 disabled={saving}
+                aria-invalid={unchanged}
+                {...a11y}
+                className="h-11 pr-12"
+              />
+              <button
+                type="button"
+                onClick={() => setShow(!show)}
+                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 grid size-10 -translate-y-1/2 place-items-center rounded-md transition-colors"
+                aria-label={show ? 'Hide passwords' : 'Show passwords'}
+                aria-pressed={show}
+                tabIndex={-1}
               >
-                Back to dashboard
-              </Button>
+                {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
+          )}
+        </Field>
+
+        {!unchanged && (
+          <p
+            className={cn(
+              '-mt-3 flex items-center gap-1.5 text-[0.75rem] transition-colors',
+              longEnough ? 'text-brand' : 'text-muted-foreground',
             )}
-          </CardFooter>
-        </Card>
-      </div>
-    </div>
+          >
+            <Check
+              className={cn('size-3', longEnough ? 'opacity-100' : 'opacity-30')}
+              strokeWidth={3}
+              aria-hidden="true"
+            />
+            At least 8 characters
+          </p>
+        )}
+
+        <Field
+          id="confirm"
+          label="Confirm new password"
+          error={mismatch ? 'These don’t match yet.' : null}
+        >
+          <Input
+            id="confirm"
+            type={show ? 'text' : 'password'}
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            autoComplete="new-password"
+            disabled={saving}
+            aria-invalid={mismatch}
+            className="h-11"
+          />
+        </Field>
+
+        <Button
+          type="submit"
+          variant="cta"
+          size="xl"
+          className="w-full"
+          disabled={saving || !current || !longEnough || mismatch || unchanged}
+        >
+          {saving ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Saving…
+            </>
+          ) : (
+            'Change password'
+          )}
+        </Button>
+      </form>
+    </AuthShell>
   );
 }
