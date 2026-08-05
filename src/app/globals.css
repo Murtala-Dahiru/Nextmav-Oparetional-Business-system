@@ -42,10 +42,15 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
-  /* ── Brand surface ─────────────────────────────────────────────────────
-     Exposed to Tailwind so pages can say `bg-surface` / `border-hairline`
-     instead of `bg-gray-50 dark:bg-gray-900/50` — the literal pair that was
-     written out by hand in every marketing file and drifted between them. */
+  /* ── Phase 1 surface ───────────────────────────────────────────────────
+     Semantic aliases over the `--nm-*` ramp below. The utility names are
+     unchanged from the previous pass — `bg-surface`, `border-hairline`,
+     `text-brand` — so the ~104 call sites across thirteen pages keep working
+     while the values underneath them become the measured system. Each page
+     migrates to the newer names during its own pass, not in one sweep.
+
+     Nothing in the authenticated application references these utilities;
+     verified across `src` before they were re-pointed. */
   --color-ink: var(--ink);
   --color-ink-hover: var(--ink-hover);
   --color-ink-fg: var(--ink-fg);
@@ -59,28 +64,127 @@
   --color-hairline: var(--hairline);
   --color-hairline-strong: var(--hairline-strong);
 
-  /* ── Display type ──────────────────────────────────────────────────────
-     Fluid, so a headline is never re-tuned per breakpoint. Tracking is
-     negative and tightens as size grows, which is what stops a large
-     heading reading as a shouted one. */
-  --text-display-1: clamp(2.75rem, 1.9rem + 3.4vw, 4.5rem);
+  /* The raw ramp, for the cases a semantic name would be a lie. */
+  --color-n-0: var(--nm-n-0);
+  --color-n-1: var(--nm-n-1);
+  --color-n-2: var(--nm-n-2);
+  --color-n-3: var(--nm-n-3);
+  --color-n-4: var(--nm-n-4);
+  --color-n-5: var(--nm-n-5);
+  --color-n-6: var(--nm-n-6);
+  --color-n-7: var(--nm-n-7);
+  --color-n-8: var(--nm-n-8);
+  --color-n-9: var(--nm-n-9);
+  --color-n-10: var(--nm-n-10);
+  --color-n-11: var(--nm-n-11);
+
+  /* Three text levels, each a measured step rather than an opacity.
+     18.85 : 9.04 : 6.23 on the page background — see `scripts/contrast.mjs`.
+     There is deliberately no fourth: `n-7` is 3.91:1 and is large-text and
+     non-text only. Hierarchy below tertiary comes from size and weight. */
+  --color-copy: var(--nm-n-11);
+  --color-copy-2: var(--nm-n-9);
+  --color-copy-3: var(--nm-n-8);
+  /* For text and icons sitting on an ink panel, which inverts with the mode
+     while the page does not. See the note on `--nm-accent-on-ink`. */
+  --color-copy-on-ink: var(--nm-n-0);
+  --color-copy-on-ink-2: var(--nm-n-5);
+  --color-accent-on-ink: var(--nm-accent-on-ink);
+
+  /* ── Type ──────────────────────────────────────────────────────────────
+     Fluid at display sizes, so a headline is never re-tuned per breakpoint.
+     Tracking runs negative and tightens as size grows; it turns positive at
+     `label`, where small caps need air to stay legible. Body sits at zero.
+
+     These nine tokens replace the 104 arbitrary `text-[0.9375rem]`-style
+     values currently spread across the surface. */
+  --text-display-1: clamp(2.5rem, 1.6rem + 3.6vw, 4.25rem);
   --text-display-1--line-height: 1.02;
-  --text-display-1--letter-spacing: -0.035em;
-  --text-display-1--font-weight: 560;
+  --text-display-1--letter-spacing: -0.038em;
+  --text-display-1--font-weight: 500;
 
-  --text-display-2: clamp(2rem, 1.5rem + 2vw, 3rem);
+  --text-display-2: clamp(1.875rem, 1.35rem + 2.1vw, 2.75rem);
   --text-display-2--line-height: 1.08;
-  --text-display-2--letter-spacing: -0.03em;
-  --text-display-2--font-weight: 560;
+  --text-display-2--letter-spacing: -0.032em;
+  --text-display-2--font-weight: 500;
 
-  --text-display-3: clamp(1.5rem, 1.25rem + 1vw, 2rem);
-  --text-display-3--line-height: 1.15;
-  --text-display-3--letter-spacing: -0.022em;
-  --text-display-3--font-weight: 580;
+  --text-display-3: clamp(1.375rem, 1.15rem + 0.9vw, 1.75rem);
+  --text-display-3--line-height: 1.18;
+  --text-display-3--letter-spacing: -0.024em;
+  --text-display-3--font-weight: 550;
 
-  --text-lede: clamp(1.0625rem, 1rem + 0.35vw, 1.25rem);
-  --text-lede--line-height: 1.6;
-  --text-lede--letter-spacing: -0.011em;
+  --text-title: 1.0625rem;
+  --text-title--line-height: 1.35;
+  --text-title--letter-spacing: -0.016em;
+  --text-title--font-weight: 550;
+
+  --text-lede: clamp(1.0625rem, 1rem + 0.35vw, 1.1875rem);
+  --text-lede--line-height: 1.62;
+  --text-lede--letter-spacing: -0.01em;
+
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.65;
+  --text-body--letter-spacing: 0em;
+
+  --text-body-sm: 0.875rem;
+  --text-body-sm--line-height: 1.6;
+  --text-body-sm--letter-spacing: 0em;
+
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.5;
+  --text-caption--letter-spacing: 0.005em;
+
+  /* Eyebrows, table headings, meta. Positive tracking is the whole point —
+     small type set solid is the most common amateur tell on the surface. */
+  --text-label: 0.75rem;
+  --text-label--line-height: 1.4;
+  --text-label--letter-spacing: 0.06em;
+  --text-label--font-weight: 550;
+
+  /* ── Space, with meanings ──────────────────────────────────────────────
+     The ramp was never the problem — Tailwind's default already gives these
+     eleven steps. What was missing is a rule for which one goes where, so
+     every gap was picked per file and nothing grouped.
+
+     Rule that governs all of them: the space above a heading is one step
+     larger than the space below it. Always. */
+  --spacing-nudge: 0.125rem; /*  2px — optical only: icon to baseline      */
+  --spacing-control: 0.25rem; /*  4px — inside a control                    */
+  --spacing-label: 0.5rem; /*  8px — label to control, icon to text     */
+  --spacing-pair: 0.75rem; /* 12px — a heading and its own subtitle     */
+  --spacing-row: 1rem; /* 16px — list rows, card padding ≤768       */
+  --spacing-comp: 1.5rem; /* 24px — card padding, grid gutter ≤768     */
+  --spacing-group: 2rem; /* 32px — heading block to the grid below it */
+  --spacing-block: 3rem; /* 48px — intra-section break, gutter ≥1024  */
+  --spacing-band: 4rem; /* 64px — section padding, small viewports   */
+  --spacing-section: 6rem; /* 96px — inter-section, the default         */
+  --spacing-open: 8rem; /* 128px — openers and closers only          */
+
+  /* ── Elevation ─────────────────────────────────────────────────────────
+     Three levels for the whole surface, each layered and each tinted with
+     the neutral (`n-11`) rather than black. A single black `0 4px 6px` is
+     the framework default and reads as one from across the room.
+
+     Borders do most of the work here; `e1` exists for the few cases where a
+     card must lift off a tinted band it shares a value with. */
+  --shadow-e1:
+    0 1px 2px -1px oklch(0.168 0.012 255 / 0.06), 0 1px 1px oklch(0.168 0.012 255 / 0.04);
+  --shadow-e2:
+    0 1px 1px oklch(0.168 0.012 255 / 0.04), 0 8px 16px -6px oklch(0.168 0.012 255 / 0.1),
+    0 20px 40px -20px oklch(0.168 0.012 255 / 0.14);
+  --shadow-e3:
+    0 2px 4px oklch(0.168 0.012 255 / 0.05), 0 16px 32px -12px oklch(0.168 0.012 255 / 0.14),
+    0 40px 80px -32px oklch(0.168 0.012 255 / 0.2);
+
+  /* ── Radius ────────────────────────────────────────────────────────────
+     Two values and a pill, down from the six in use.
+
+     Nesting rule: a child inside a `surface` container with padding *p* takes
+     `14px − p`, floored at `control`. A 14px card with 24px padding holds
+     8px children — never 14. Matched radii on nested boxes is what makes a
+     card look printed rather than drawn. */
+  --radius-control: 0.5rem; /*  8px — buttons, inputs, chips, nav items */
+  --radius-surface: 0.875rem; /* 14px — cards, panels, the product frame  */
 
   /* One curve for the whole product. Motion that decelerates the same way
      everywhere is most of what "feels considered" actually is. */
@@ -122,39 +226,70 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
-  /* ── Brand ───────────────────────────────────────────────────────────────
-     The accent was `emerald-500` (#10b981), written as a Tailwind literal in
-     61 files. Two things were wrong with it beyond the duplication.
+  /* ══ Phase 1 neutral ramp ══════════════════════════════════════════════
+     Twelve steps on a single hue (255), each with one job. Chroma peaks in
+     the mid-tones and tapers at both ends: near-white and near-black cannot
+     hold chroma without reading as tinted rather than as a chosen neutral.
 
-     It fails contrast. #10b981 on white is 2.54:1 — so "Forgot password?",
-     the "Sign up" link, every blog timestamp and every inline emphasis was
-     below the 4.5:1 that AA requires for body text. It read as decoration
-     because it was too weak to read as anything else.
+     The previous ramp was shadcn's, at chroma 0 — `oklch(0.556 0 0)` for
+     secondary text, `oklch(1 0 0)` for the page. Mathematically pure grey on
+     pure white is the single most reliable signature of an untouched
+     framework, and it was carrying every word of body copy on the site.
 
-     And it was used for *everything*: primary buttons, icon tiles, hover
-     borders, table highlights, the CTA panel, section headings. An accent
-     that appears in every region of the page stops being an accent and
-     becomes the background. Restraint is not an aesthetic preference here —
-     it is the only thing that lets emphasis mean "look at this".
+     `--nm-` is a namespace, not decoration. Phase 2 reconciles this ramp with
+     the application shell; when it does, that job is a rename rather than an
+     excavation. */
+  --nm-n-0: oklch(0.994 0.002 255); /* page background — not #ffffff        */
+  --nm-n-1: oklch(0.982 0.004 255); /* tinted band                          */
+  --nm-n-2: oklch(0.965 0.006 255); /* recessed, hover fill                 */
+  --nm-n-3: oklch(0.92 0.009 255); /* hairline — the default border        */
+  --nm-n-4: oklch(0.872 0.011 255); /* emphasis border, disabled border     */
+  --nm-n-5: oklch(0.826 0.012 255); /* disabled fill, tertiary on ink       */
+  --nm-n-6: oklch(0.715 0.014 255); /* placeholder, resting icon — no text  */
+  --nm-n-7: oklch(0.598 0.018 255); /* 3.91:1 — LARGE TEXT AND NON-TEXT ONLY */
+  --nm-n-8: oklch(0.487 0.02 255); /* text tertiary      6.23:1            */
+  --nm-n-9: oklch(0.4 0.019 255); /* text secondary     9.04:1            */
+  --nm-n-10: oklch(0.243 0.014 255); /* strong fill                          */
+  --nm-n-11: oklch(0.168 0.012 255); /* text primary, ink 18.85:1            */
 
-     So: the primary action is ink, the way a serious tool's primary action
-     usually is, and the accent is a teal deep enough to pass AA (5.4:1) that
-     appears on roughly one element per view. */
-  --ink: oklch(0.19 0.008 264);
-  --ink-hover: oklch(0.3 0.008 264);
-  --ink-fg: oklch(0.99 0 0);
-  --brand: oklch(0.505 0.085 177);
-  --brand-hover: oklch(0.44 0.08 177);
-  --brand-fg: oklch(0.99 0 0);
-  --brand-soft: oklch(0.965 0.018 177);
-  --brand-line: oklch(0.885 0.038 177);
+  /* ── The accent ────────────────────────────────────────────────────────
+     Chosen, not inherited. The previous teal was a survivor of the original
+     `emerald-500`, kept because it was already there; the hue is now moved
+     off 177 — the exact cyan-teal that ships in every framework palette —
+     to 173, and the chroma raised from 0.085 to 0.095 so it reads as a
+     decision rather than as a desaturated accident.
 
-  /* Surfaces. Near-neutral with a trace of blue so white cards sitting on
-     them read as lifted rather than as a different shade of grey. */
-  --surface: oklch(0.987 0.0015 250);
-  --surface-2: oklch(0.968 0.003 250);
-  --hairline: oklch(0.917 0.004 250);
-  --hairline-strong: oklch(0.86 0.005 250);
+     One rule, and it is the whole reason the accent exists: **at most three
+     accent-coloured elements in any viewport**, and never as a background
+     panel larger than an icon tile. The primary action is ink. An accent
+     present in every region of a page is not an accent, it is the
+     background, and nothing on that page can be emphasised. */
+  --nm-accent: oklch(0.505 0.095 173); /* 5.49:1 on n-0 */
+  --nm-accent-hover: oklch(0.44 0.09 173); /* 7.22:1 on n-0 */
+  --nm-accent-soft: oklch(0.966 0.019 173);
+  --nm-accent-line: oklch(0.888 0.04 173);
+
+  /* An ink panel inverts with the mode — near-black on a light page,
+     near-white on a dark one — while the page around it does not. So the
+     accent sitting on that panel has to be the *other* mode's accent.
+     Reusing `--nm-accent` there is what put a light teal tick on a
+     near-white panel at 1.88:1 in the auth shell; `scripts/contrast.mjs`
+     found it, tsc could not have. */
+  --nm-accent-on-ink: oklch(0.755 0.115 173); /* 9.23:1 on ink */
+
+  /* Semantic aliases. Pages address these, never `--nm-*` directly. */
+  --ink: var(--nm-n-11);
+  --ink-hover: var(--nm-n-10);
+  --ink-fg: var(--nm-n-0);
+  --brand: var(--nm-accent);
+  --brand-hover: var(--nm-accent-hover);
+  --brand-fg: var(--nm-n-0);
+  --brand-soft: var(--nm-accent-soft);
+  --brand-line: var(--nm-accent-line);
+  --surface: var(--nm-n-1);
+  --surface-2: var(--nm-n-2);
+  --hairline: var(--nm-n-3);
+  --hairline-strong: var(--nm-n-4);
 }
 
 .dark {
@@ -190,24 +325,96 @@
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
 
+  /* ══ Phase 1 ramp, dark ════════════════════════════════════════════════
+     Not a mechanical inversion. Chroma is *raised* through the mid-tones,
+     because a hue that reads as a considered neutral on white disappears
+     into flat grey on near-black, and the hairlines are set as opaque steps
+     rather than white-at-9%, so a border over a tinted band and a border
+     over the page are the same border. */
+  --nm-n-0: oklch(0.168 0.012 255);
+  --nm-n-1: oklch(0.203 0.013 255);
+  --nm-n-2: oklch(0.243 0.014 255);
+  --nm-n-3: oklch(0.295 0.014 255);
+  --nm-n-4: oklch(0.355 0.015 255);
+  --nm-n-5: oklch(0.44 0.016 255);
+  --nm-n-6: oklch(0.52 0.016 255);
+  --nm-n-7: oklch(0.62 0.016 255); /* large text and non-text only */
+  --nm-n-8: oklch(0.7 0.016 255); /* text tertiary   7.19:1  */
+  --nm-n-9: oklch(0.8 0.012 255); /* text secondary 10.27:1  */
+  --nm-n-10: oklch(0.89 0.008 255);
+  --nm-n-11: oklch(0.965 0.004 255); /* text primary   17.33:1  */
+
+  /* Lifted well above the light-mode accent: the value that passes on white
+     is nearly invisible on near-black. */
+  --nm-accent: oklch(0.755 0.115 173); /* 9.23:1 on n-0 */
+  --nm-accent-hover: oklch(0.815 0.105 173);
+  --nm-accent-soft: oklch(0.272 0.036 173);
+  --nm-accent-line: oklch(0.372 0.05 173);
+  /* Swaps with the panel it sits on — see the light-mode note. */
+  --nm-accent-on-ink: oklch(0.505 0.095 173); /* 5.04:1 on ink */
+
   /* Ink inverts: a black button on a black page is not a button. The token
      means "the strongest available fill", not "dark", which is why the pages
      that use it need no dark-mode branch of their own. */
-  --ink: oklch(0.97 0.002 250);
-  --ink-hover: oklch(0.88 0.002 250);
-  --ink-fg: oklch(0.16 0.008 264);
-  /* Lifted well above the light-mode teal: the same value that passes on
-     white is nearly invisible on near-black. */
-  --brand: oklch(0.735 0.105 177);
-  --brand-hover: oklch(0.81 0.1 177);
-  --brand-fg: oklch(0.17 0.025 177);
-  --brand-soft: oklch(0.27 0.035 177);
-  --brand-line: oklch(0.37 0.048 177);
+  --ink: var(--nm-n-11);
+  --ink-hover: var(--nm-n-10);
+  --ink-fg: var(--nm-n-0);
+  --brand: var(--nm-accent);
+  --brand-hover: var(--nm-accent-hover);
+  --brand-fg: var(--nm-n-0);
+  --brand-soft: var(--nm-accent-soft);
+  --brand-line: var(--nm-accent-line);
+  --surface: var(--nm-n-1);
+  --surface-2: var(--nm-n-2);
+  --hairline: var(--nm-n-3);
+  --hairline-strong: var(--nm-n-4);
+}
 
-  --surface: oklch(0.178 0.004 264);
-  --surface-2: oklch(0.212 0.004 264);
-  --hairline: oklch(1 0 0 / 9%);
-  --hairline-strong: oklch(1 0 0 / 17%);
+/* ══ Phase 1 scope ═════════════════════════════════════════════════════════
+   The one mechanism that lets the public surface adopt a new neutral system
+   while the authenticated application — in production, used internally every
+   day, and reading these same token names across 44 files — sees nothing.
+
+   Custom properties cascade, so re-declaring them on a wrapper re-points
+   every descendant and nothing else. `--background` and `--muted-foreground`
+   stay shadcn's pure greys at `:root` for the app; inside `.phase1` they are
+   the measured ramp.
+
+   Applied on the marketing layout and the auth shell. Phase 2 deletes this
+   block and promotes its contents to `:root` — which is the whole reason the
+   values below are references rather than literals. */
+.phase1 {
+  --background: var(--nm-n-0);
+  --foreground: var(--nm-n-11);
+  --card: var(--nm-n-0);
+  --card-foreground: var(--nm-n-11);
+  --popover: var(--nm-n-0);
+  --popover-foreground: var(--nm-n-11);
+  /* Secondary body copy, at 9.04:1. The old value was 4.73:1 with no
+     headroom, which is why four pages had reached for `/50` and `/60`
+     opacity underneath it and fallen through AA. */
+  --muted-foreground: var(--nm-n-9);
+  --muted: var(--nm-n-2);
+  --secondary: var(--nm-n-2);
+  --secondary-foreground: var(--nm-n-11);
+  --accent: var(--nm-n-2);
+  --accent-foreground: var(--nm-n-11);
+  --border: var(--nm-n-3);
+  --input: var(--nm-n-3);
+  --ring: var(--nm-accent);
+
+  /* `--radius` is deliberately NOT re-pointed here.
+     Setting it to `--radius-surface` looked right and silently rescaled every
+     derived step with it — `rounded-md` became 12px, so the header's buttons
+     rendered at 12px where the specification says controls are 8px. The
+     radius set is two explicit values, `rounded-control` and
+     `rounded-surface`; components name the one they mean rather than
+     inheriting a number from a base they cannot see. */
+
+  /* The wrapper has to paint what it re-points, or `body`'s `bg-background`
+     from `:root` keeps showing through underneath it. */
+  background-color: var(--background);
+  color: var(--foreground);
 }
 
 @layer base {
@@ -228,13 +435,22 @@
     scroll-behavior: smooth;
     scroll-padding-top: 6rem;
   }
-  /* One visible focus treatment for the whole product. The default ring was
-     a near-invisible grey at 50% opacity, which is a keyboard user's only
-     way of knowing where they are. */
+  /* One visible focus treatment for the whole product: 2px in the accent,
+     offset 2px so it clears the control's own border instead of sitting on
+     it. The shadcn default was a grey ring at 50% opacity — a keyboard
+     user's only means of knowing where they are, rendered nearly invisible.
+
+     The `border-radius` that used to be here has gone. It applied to every
+     focused element regardless of its own shape, so a focused pill got a
+     6px-cornered outline around it. `outline` follows the element's radius
+     on its own; it never needed telling.
+
+     `--brand` and not `--ring`: `--ring` is a shadcn token the authenticated
+     application reads for its own treatments, and it is grey at `:root`.
+     Re-pointing it there would reach outside the Phase 1 fence. */
   :focus-visible {
     outline: 2px solid var(--brand);
     outline-offset: 2px;
-    border-radius: calc(var(--radius) - 4px);
   }
 }
 

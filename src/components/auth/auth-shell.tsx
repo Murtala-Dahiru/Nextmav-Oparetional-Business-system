@@ -67,7 +67,9 @@ export function AuthShell({
   className?: string;
 }) {
   return (
-    <div className="grid min-h-screen lg:grid-cols-[1fr_minmax(0,28rem)] xl:grid-cols-[1fr_minmax(0,32rem)]">
+    // `phase1`: see the note in the marketing layout. The auth screens are the
+    // other half of the in-scope surface and take the same scoped ramp.
+    <div className="phase1 grid min-h-screen lg:grid-cols-[1fr_minmax(0,28rem)] xl:grid-cols-[1fr_minmax(0,32rem)]">
       {/* ── Form column ───────────────────────────────────────────────── */}
       <div className="flex flex-col px-5 py-8 sm:px-8 sm:py-10">
         <header className="mx-auto w-full max-w-[25rem]">
@@ -83,20 +85,17 @@ export function AuthShell({
           which is what `items-center` on a `min-h-screen` flex parent does.
         */}
         <main className={cn('mx-auto my-auto w-full max-w-[25rem] py-10', className)}>
-          {eyebrow && (
-            <p className="text-brand mb-3 text-[0.8125rem] font-medium">{eyebrow}</p>
-          )}
-          <h1 className="text-[1.75rem] font-semibold tracking-[-0.03em]">{title}</h1>
-          {description && (
-            <p className="text-muted-foreground mt-2.5 text-[0.9375rem] leading-relaxed">
-              {description}
-            </p>
-          )}
-          <div className="mt-8">{children}</div>
+          {eyebrow && <p className="text-copy-3 text-label mb-pair uppercase">{eyebrow}</p>}
+          {/* `display-3`, not a one-off `text-[1.75rem]`. The auth heading was
+              the last thing on the surface still setting its own size and
+              tracking by hand. */}
+          <h1 className="text-display-3">{title}</h1>
+          {description && <p className="text-copy-2 text-body mt-pair">{description}</p>}
+          <div className="mt-group">{children}</div>
         </main>
 
         {footer && (
-          <footer className="text-muted-foreground mx-auto w-full max-w-[25rem] text-[0.875rem]">
+          <footer className="text-copy-2 text-body-sm mx-auto w-full max-w-[25rem]">
             {footer}
           </footer>
         )}
@@ -120,24 +119,38 @@ export function AuthShell({
         <LogoMark className="relative size-9" />
 
         <div className="relative">
-          <p className="text-[1.5rem] leading-[1.25] font-medium tracking-[-0.025em] text-balance">
+          <p className="text-display-3 text-balance">
             The whole company, on one record.
           </p>
-          <ul className="mt-8 space-y-4">
+          <ul className="mt-group space-y-row">
             {assurances.map((line) => (
-              <li key={line} className="flex gap-3 text-[0.875rem] leading-relaxed">
+              <li key={line} className="text-body-sm flex gap-pair">
+                {/*
+                  `text-accent-on-ink`, not `text-brand`.
+
+                  This panel is `bg-ink`, and ink inverts with the mode — it is
+                  near-black on a light page and near-white on a dark one. The
+                  accent does not invert, so in dark mode a light teal tick was
+                  landing on a near-white panel at **1.88:1**: invisible, on
+                  the only visual marker in the panel. `scripts/contrast.mjs`
+                  found it; tsc could not have, and neither could a light-mode
+                  screenshot.
+                */}
                 <Check
-                  className="text-brand mt-0.5 size-4 shrink-0"
+                  className="text-accent-on-ink mt-nudge size-4 shrink-0"
                   strokeWidth={2.4}
                   aria-hidden="true"
                 />
-                <span className="opacity-80">{line}</span>
+                {/* Was `opacity-80` — hierarchy by transparency, which makes
+                    the value depend on whatever is painted behind it.
+                    `copy-on-ink-2` is a measured step: 11.21:1 on ink. */}
+                <span className="text-copy-on-ink-2">{line}</span>
               </li>
             ))}
           </ul>
         </div>
 
-        <p className="relative text-[0.8125rem] opacity-50">
+        <p className="text-copy-on-ink-2 text-caption relative">
           CRM · Projects · People · Finance · Inventory · Communication · Support
           · Calendar
         </p>

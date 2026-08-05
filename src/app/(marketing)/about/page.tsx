@@ -150,9 +150,13 @@ export default function AboutPage() {
         >
           {beliefs.map((b, i) => (
             <div key={b.title} className="border-hairline border-t pt-5">
+              {/* Was `text-muted-foreground/50`, which computed to roughly
+                  2:1 against the page — a fourth text level manufactured by
+                  dropping opacity on a colour that had no headroom left.
+                  `text-copy-3` is the tertiary step, measured at 6.23:1. */}
               <span
                 aria-hidden="true"
-                className="text-muted-foreground/50 font-mono text-[0.75rem] tabular-nums"
+                className="text-copy-3 text-label font-mono tabular-nums"
               >
                 {String(i + 1).padStart(2, '0')}
               </span>

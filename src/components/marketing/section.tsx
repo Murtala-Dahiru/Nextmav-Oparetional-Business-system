@@ -27,11 +27,36 @@ const widths = {
   wide: 'max-w-[88rem]',
 } as const;
 
+/**
+ * Four, not three — and the fourth exists because of a specific failure.
+ *
+ * With three densities the landing page ran four consecutive sections at
+ * `default`, so its entire middle had one vertical rhythm and read as a list
+ * of interchangeable blocks. Rhythm is variation; a page where every section
+ * breathes identically has none, whatever the number is.
+ *
+ * The rule, which the pages are held to: **`default` may not appear more than
+ * twice in a row.** A dense proof section and an airy statement section are
+ * different kinds of content and must be given different amounts of air.
+ */
 const densities = {
-  tight: 'py-14 sm:py-16',
-  default: 'py-20 sm:py-28',
-  loose: 'py-24 sm:py-36',
+  /** A band that interrupts: a CTA, a single sentence. */
+  interrupt: 'py-band sm:py-[4.5rem]',
+  /** Proof, tables, anything the reader scans rather than reads. */
+  dense: 'py-band sm:py-[5rem]',
+  /** Ordinary content. */
+  default: 'py-[5rem] sm:py-section',
+  /** Openers and closers, and the one statement a page is built around. */
+  open: 'py-section sm:py-open',
   none: '',
+
+  /* Aliases for the previous three-density set. Kept so the twelve call sites
+     across six pages keep compiling; each page drops its alias during its own
+     pass rather than in one sweep here. Do not use in new code. */
+  /** @deprecated → `interrupt` */
+  tight: 'py-band sm:py-[4.5rem]',
+  /** @deprecated → `open` */
+  loose: 'py-section sm:py-open',
 } as const;
 
 export function Container({
@@ -102,18 +127,33 @@ export function Section({
 export function Eyebrow({
   children,
   className,
+  tone = 'neutral',
 }: {
   children: ReactNode;
   className?: string;
+  /** `accent` spends one of the three accent slots on the screen. */
+  tone?: 'neutral' | 'accent';
 }) {
   return (
     <p
       className={cn(
-        'text-brand flex items-center gap-2.5 text-[0.8125rem] font-medium tracking-[0.02em]',
+        // `text-label` carries +0.06em. Small type set solid is the most
+        // common amateur tell on a page; an eyebrow is the place it shows.
+        //
+        // Neutral by default, not accent. The eyebrow was `text-brand` on
+        // every section of every page, which by itself put the accent five or
+        // six times on a screen and spent the emphasis before the page had
+        // said anything. `tone="accent"` is available for the one eyebrow on a
+        // page that is genuinely worth it.
+        'text-label flex items-center gap-label uppercase',
+        tone === 'accent' ? 'text-brand' : 'text-copy-3',
         className,
       )}
     >
-      <span aria-hidden="true" className="bg-brand/40 h-px w-6" />
+      <span
+        aria-hidden="true"
+        className={cn('h-px w-6', tone === 'accent' ? 'bg-brand/40' : 'bg-hairline-strong')}
+      />
       {children}
     </p>
   );
@@ -146,17 +186,21 @@ export function SectionHeading({
   return (
     <Reveal
       className={cn(
-        'flex flex-col gap-4',
+        // Not a uniform stack. The eyebrow sits close to the heading it
+        // labels (`pair`), and the description sits further from it than the
+        // eyebrow does — the rule being that space above a heading is a step
+        // larger than the space below it, so the heading groups downward.
+        'flex flex-col',
         align === 'center' && 'mx-auto max-w-2xl items-center text-center',
         className,
       )}
     >
-      {eyebrow && <Eyebrow>{eyebrow}</Eyebrow>}
+      {eyebrow && <Eyebrow className="mb-pair">{eyebrow}</Eyebrow>}
       <h2 id={id} className="text-display-2 text-balance-hero max-w-3xl">
         {title}
       </h2>
       {description && (
-        <p className="text-muted-foreground text-lede text-pretty-body max-w-2xl">
+        <p className="text-copy-2 text-lede text-pretty-body mt-row max-w-[38rem]">
           {description}
         </p>
       )}

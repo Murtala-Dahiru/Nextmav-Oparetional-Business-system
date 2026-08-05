@@ -16,134 +16,245 @@ deliberately different right now; reconciling them is Phase 2's first job.
 
 ## 1. Colour
 
-### Why the accent changed
+### The ramp
 
-The previous accent was `emerald-500` / `#10b981`, written as a Tailwind literal
-in 61 files. Two things were wrong with it.
+Twelve steps on a **single hue (255)**, each with one job. Chroma peaks in the
+mid-tones and tapers at both ends: near-white and near-black cannot hold chroma
+without reading as tinted rather than as a chosen neutral.
 
-**It failed contrast.** `#10b981` on white is **2.54:1**. WCAG AA requires 4.5:1
-for body text. It was carrying "Forgot password?", the "Sign up" link, every
-blog timestamp, every inline emphasis and every price-table highlight — text
-that people had to read, in a colour too weak to read comfortably.
+The previous ramp was shadcn's, at **chroma 0** — `oklch(0.556 0 0)` for
+secondary text on `oklch(1 0 0)` for the page. Mathematically pure grey on pure
+white is the single most reliable signature of an untouched framework, and it
+was carrying every word of body copy on the site. The Phase 1 tokens sat on top
+of it and only ever governed bands and borders, so the defaults stayed visible
+underneath everything.
 
-**It was used for everything.** Primary buttons, icon tiles, hover borders,
-section headings, table highlights, the CTA band, the logo. An accent present in
-every region of a page is not an accent; it is the background. Nothing could be
-emphasised because everything already was.
-
-### Resolution
-
-The **primary action is ink**, not the brand hue. One filled element per view
-gives the eye an entry point — the discipline behind Linear's and Vercel's
-near-monochrome buttons. The **brand teal is reserved** for state, small
-emphasis, and the mark: roughly one element per viewport.
-
-| Token | Light | Dark | Role | Contrast |
-|---|---|---|---|---|
-| `--ink` | `oklch(0.19 0.008 264)` | `oklch(0.97 0.002 250)` | Primary action fill, dark panels | 18.47:1 on white |
-| `--ink-fg` | `oklch(0.99 0 0)` | `oklch(0.16 0.008 264)` | Text on ink | — |
-| `--ink-hover` | `oklch(0.3 0.008 264)` | `oklch(0.88 0.002 250)` | Primary hover | — |
-| `--brand` | `oklch(0.505 0.085 177)` | `oklch(0.735 0.105 177)` | Accent, links, state | **5.61:1** light / **8.84:1** dark |
-| `--brand-fg` | `oklch(0.99 0 0)` | `oklch(0.17 0.025 177)` | Text on brand fill | — |
-| `--brand-soft` | `oklch(0.965 0.018 177)` | `oklch(0.27 0.035 177)` | Icon tiles, callouts | — |
-| `--brand-line` | `oklch(0.885 0.038 177)` | `oklch(0.37 0.048 177)` | Ring on soft surfaces | — |
-| `--surface` | `oklch(0.987 0.0015 250)` | `oklch(0.178 0.004 264)` | Tinted band | — |
-| `--surface-2` | `oklch(0.968 0.003 250)` | `oklch(0.212 0.004 264)` | Recessed / hover | — |
-| `--hairline` | `oklch(0.917 0.004 250)` | `oklch(1 0 0 / 9%)` | Default border | — |
-| `--hairline-strong` | `oklch(0.86 0.005 250)` | `oklch(1 0 0 / 17%)` | Emphasised border | — |
-
-### Measured, not assumed
-
-Computed from the oklch values above through sRGB to WCAG relative luminance.
-Every pair used for text on the in-scope surface:
-
-| Pair | Hex | Ratio | AA |
+| Token | Light | Dark | Job |
 |---|---|---|---|
-| `brand` on `background` | `#1c7464` on `#ffffff` | **5.61:1** | ✓ |
-| `brand` on `surface` | `#1c7464` on `#fafbfc` | **5.41:1** | ✓ |
-| `brand` on `brand-soft` | `#1c7464` on `#e8f8f3` | **5.10:1** | ✓ |
-| `ink` on `background` | `#121417` on `#ffffff` | **18.47:1** | ✓ |
-| `ink-fg` on `ink` | `#fcfcfc` on `#121417` | **17.95:1** | ✓ |
-| `brand` on dark `background` | `#53bfa8` on `#0a0a0a` | **8.84:1** | ✓ |
-| `muted-foreground` on `background` *(pre-existing)* | `#737373` on `#ffffff` | **4.73:1** | ✓ |
-| ~~`emerald-500` on white~~ *(replaced)* | `#10b981` on `#ffffff` | **2.54:1** | ✗ |
+| `--nm-n-0` | `oklch(0.994 0.002 255)` | `oklch(0.168 0.012 255)` | Page background — **not `#ffffff`** |
+| `--nm-n-1` | `oklch(0.982 0.004 255)` | `oklch(0.203 0.013 255)` | Tinted band (`surface`) |
+| `--nm-n-2` | `oklch(0.965 0.006 255)` | `oklch(0.243 0.014 255)` | Recessed, hover fill (`surface-2`) |
+| `--nm-n-3` | `oklch(0.92 0.009 255)` | `oklch(0.295 0.014 255)` | **Hairline** — the default border |
+| `--nm-n-4` | `oklch(0.872 0.011 255)` | `oklch(0.355 0.015 255)` | Emphasis border, disabled border |
+| `--nm-n-5` | `oklch(0.826 0.012 255)` | `oklch(0.44 0.016 255)` | Disabled fill; secondary text **on ink** |
+| `--nm-n-6` | `oklch(0.715 0.014 255)` | `oklch(0.52 0.016 255)` | Placeholder, resting icon — **never text** |
+| `--nm-n-7` | `oklch(0.598 0.018 255)` | `oklch(0.62 0.016 255)` | 3.91:1 — **large text and non-text only** |
+| `--nm-n-8` | `oklch(0.487 0.02 255)` | `oklch(0.7 0.016 255)` | Text tertiary (`copy-3`) |
+| `--nm-n-9` | `oklch(0.4 0.019 255)` | `oklch(0.8 0.012 255)` | Text secondary (`copy-2`) |
+| `--nm-n-10` | `oklch(0.243 0.014 255)` | `oklch(0.89 0.008 255)` | Strong fill, primary hover |
+| `--nm-n-11` | `oklch(0.168 0.012 255)` | `oklch(0.965 0.004 255)` | Text primary, ink (`copy`) |
 
-`muted-foreground` passes at 4.73:1 with little headroom. It is used for
-secondary body text throughout, so it must not be lightened — noted here
-because it is the pair most likely to be "tidied" into failure later.
+### Three text levels, and why there is no fourth
 
-**`ink` inverts in dark mode by design.** The token means "the strongest
-available fill", not "dark". A black button on a black page is not a button.
-This is why pages using `bg-ink text-ink-fg` need no dark-mode branch.
+**18.85 : 9.04 : 6.23** on the page background. Each is a measured step on the
+ramp, not the one above it at reduced opacity.
 
-**The brand hue is lifted in dark mode**, not reused. `oklch(0.505 …)` is nearly
-invisible on near-black; the same hue at `0.735` reads correctly. This follows
-the skill's `color-dark-mode` rule — desaturated/lighter tonal variants, tested
-separately, never a mechanical inversion.
+That distinction is the whole point. Four pages had reached for
+`text-muted-foreground/50`, `/60`, `opacity-70` and `text-foreground/85` to
+manufacture levels the ramp did not provide — and an opacity does not have a
+contrast ratio, it has whatever ratio the thing behind it happens to give. The
+same `/50` was 2:1 on the page and 6:1 on a tinted band.
 
-**Semantic states** reuse the existing shadcn `--destructive`. Error text pairs
-`--destructive` with `--background`. Per `color-not-decorative-only`, every
-error also carries an icon — colour never carries meaning alone.
+There is deliberately no fourth level. `n-7` is 3.91:1 and is restricted to
+large text and non-text. Below tertiary, hierarchy comes from **size and
+weight**, which is where it should have come from in the first place.
 
-### Surfaces, not greys
+### The accent
 
-Marketing pages previously wrote `bg-gray-50 dark:bg-gray-900/50` by hand and
-drifted between files — `border-gray-100`, `-150`, `-200` and `-800/80` all
-appear in the original code, plus a `bg-gray-155` that does not exist in
-Tailwind and silently rendered as nothing.
+`--nm-accent: oklch(0.505 0.095 173)` light, `oklch(0.755 0.115 173)` dark.
+
+**Chosen, not inherited.** The previous teal was a survivor of the original
+`emerald-500` — kept because it was already in the file, not because anyone
+picked it. The hue is now moved off **177**, the exact cyan-teal that ships in
+every framework palette, to **173**; and the chroma is raised from 0.085 to
+0.095 so it reads as a decision rather than as a desaturated accident.
+
+One rule, and it is the only reason an accent exists:
+
+> **At most three accent-coloured elements in any viewport**, and never as a
+> background panel larger than an icon tile.
+
+The primary action is **ink**, not the accent. An accent present in every region
+of a page is not an accent, it is the background, and nothing on that page can
+be emphasised. This is why `Eyebrow` now defaults to `tone="neutral"`: it was
+`text-brand` on every section of every page, which by itself spent three or four
+of the three available slots before the page had said anything.
+
+### `--nm-accent-on-ink`, and the bug that produced it
+
+An ink panel **inverts with the mode** — near-black on a light page, near-white
+on a dark one. The page around it does not. So the accent sitting on that panel
+has to be the *other* mode's accent.
+
+Reusing `--brand` there put a light teal tick on a near-white panel at
+**1.88:1** in the auth shell's assurance list, in dark mode: invisible, on the
+only visual marker in the panel. It had shipped. `tsc` cannot see it, a
+light-mode screenshot cannot see it, and the rendered page looks fine to anyone
+not in dark mode. `scripts/contrast.mjs` found it on the first run.
+
+### Measured, not asserted
+
+Every pair below is computed from the oklch values through OKLab → linear sRGB
+→ WCAG relative luminance, with out-of-gamut colours clipped in linear space
+first, because the ratio that matters is the one the display actually produces.
+
+```bash
+node scripts/contrast.mjs           # the table
+node scripts/contrast.mjs --check   # exits 1 if any pair fails
+```
+
+**All 40 pairs clear their threshold.** `--check` is the gate: a token edit that
+breaks AA fails here rather than in an audit.
+
+| Pair | Light | Dark | Min |
+|---|---|---|---|
+| text primary on background | **18.85** | **17.33** | 4.5 |
+| text secondary on background | **9.04** | **10.27** | 4.5 |
+| text tertiary on background | **6.23** | **7.19** | 4.5 |
+| text primary on surface | **18.21** | **16.25** | 4.5 |
+| text secondary on surface | **8.74** | **9.63** | 4.5 |
+| text tertiary on surface | **6.02** | **6.74** | 4.5 |
+| text tertiary on surface-2 | **5.73** | **6.11** | 4.5 |
+| `n-7` as large text | 3.91 | 5.27 | 3.0 |
+| accent on background | **5.49** | **9.23** | 4.5 |
+| accent on surface | **5.30** | **8.66** | 4.5 |
+| accent on accent-soft | **5.09** | **7.11** | 4.5 |
+| accent-hover on background | **7.22** | **11.29** | 4.5 |
+| background on ink | **18.85** | **17.33** | 4.5 |
+| `n-5` on ink | **11.21** | **7.01** | 4.5 |
+| **accent-on-ink on ink** | **9.23** | **5.04** | 3.0 |
+| hairline on background | 1.24 | 1.38 | 1.2 |
+| hairline-strong on background | 1.45 | 1.73 | 1.4 |
+| focus ring on background | **5.49** | **9.23** | 3.0 |
+| focus ring on surface | **5.30** | **8.66** | 3.0 |
+| error text on background | **4.68** | **6.63** | 4.5 |
+
+The three that failed on the first run, and what each cost:
+
+1. `hairline` at 1.19:1 — the border was too faint to see. `n-3` darkened.
+2. `hairline-strong` at 1.36:1 — same. `n-4` darkened.
+3. `accent on ink` at **1.88:1 in dark mode** — the shipped bug above.
+
+### Scope: how two ramps coexist
+
+`.phase1` is a class on the marketing layout and the auth shell. Custom
+properties cascade, so re-declaring `--background`, `--foreground`,
+`--muted-foreground`, `--border`, `--input` and `--ring` on that wrapper
+re-points every descendant **and nothing else**.
+
+At `:root` those tokens are still shadcn's pure greys, because the
+authenticated application reads the same names across 44 files, is in
+production, and is used internally every day. A ramp change propagating into it
+is not a design decision, it is an outage.
+
+Phase 2 deletes the `.phase1` block and promotes its contents to `:root`. That
+is the whole reason the values inside it are `var()` references and not
+literals, and the whole reason the ramp is namespaced `--nm-*`: reconciliation
+is a rename, not an excavation.
+
+**`--radius` is deliberately *not* re-pointed in `.phase1`.** Setting it to
+`--radius-surface` looked correct and silently rescaled every derived step with
+it — `rounded-md` became 12px, so the header's buttons rendered at 12px where
+the specification says controls are 8px. Caught in the browser, not by `tsc`.
 
 ---
 
 ## 2. Typography
 
-Geist Sans + Geist Mono, already loaded in [`layout.tsx`](src/app/layout.tsx) via
-`next/font` — self-hosted, so `font-display: swap` is handled and there is no
-FOIT and no third-party request.
+Geist Sans + Geist Mono, self-hosted via `next/font`. Geist thins out above
+about 3.5rem and a display face is a live question — the scale is built so that
+swapping it is one token, not a pass over thirteen pages.
 
-### Display scale — fluid, not per-breakpoint
+### The scale
 
-| Token | Size | Line-height | Tracking | Weight | Use |
-|---|---|---|---|---|---|
-| `--text-display-1` | `clamp(2.75rem, 1.9rem + 3.4vw, 4.5rem)` | 1.02 | −0.035em | 560 | Page h1, once per page |
-| `--text-display-2` | `clamp(2rem, 1.5rem + 2vw, 3rem)` | 1.08 | −0.03em | 560 | Section h2 |
-| `--text-display-3` | `clamp(1.5rem, 1.25rem + 1vw, 2rem)` | 1.15 | −0.022em | 580 | Sub-section h3 |
-| `--text-lede` | `clamp(1.0625rem, 1rem + 0.35vw, 1.25rem)` | 1.6 | −0.011em | 400 | Standfirst under an h1 |
+Nine tokens. They replace the **104 arbitrary `text-[0.9375rem]`-style values**
+that were spread across the in-scope surface — which is what the previous
+version of this document's "no ad-hoc values in page code" rule was worth
+without a scale complete enough to obey it. The gap was `title`, `body`,
+`body-sm`, `caption` and `label`: everything below a heading, which is most of
+the words on the site.
 
-**Weight is 560–580, not 800.** The original used `font-extrabold` and
-`font-black` at `text-6xl`. Very heavy type at very large sizes reads as
-shouting, and it is the most reliable visual signature of a template. Hierarchy
-comes from size and tracking; weight is the smaller lever.
+| Token | Size | Line-height | Tracking | Weight |
+|---|---|---|---|---|
+| `text-display-1` | `clamp(2.5rem, 1.6rem + 3.6vw, 4.25rem)` | 1.02 | −0.038em | 500 |
+| `text-display-2` | `clamp(1.875rem, 1.35rem + 2.1vw, 2.75rem)` | 1.08 | −0.032em | 500 |
+| `text-display-3` | `clamp(1.375rem, 1.15rem + 0.9vw, 1.75rem)` | 1.18 | −0.024em | 550 |
+| `text-title` | 1.0625rem | 1.35 | −0.016em | 550 |
+| `text-lede` | `clamp(1.0625rem, 1rem + 0.35vw, 1.1875rem)` | 1.62 | −0.010em | 400 |
+| `text-body` | 0.9375rem | 1.65 | 0 | 400 |
+| `text-body-sm` | 0.875rem | 1.60 | 0 | 400 |
+| `text-caption` | 0.8125rem | 1.50 | +0.005em | 400 |
+| `text-label` | 0.75rem | 1.40 | **+0.06em** | 550 |
 
-**Tracking tightens as size grows.** At 4.5rem, default letter-spacing looks
-loose and amateur. −0.035em at display-1 easing to 0 at body is the optical
-correction that makes large type look drawn rather than scaled.
+**Tracking runs negative at display sizes and turns positive at `label`.** At
+4.25rem, default letter-spacing looks loose and scaled-up rather than drawn;
+−0.038em is the optical correction. At 0.75rem the opposite is true — small type
+set solid is the most common amateur tell on a page, and an eyebrow is where it
+shows. `label` is uppercase and used for eyebrows, table headings and meta.
 
-**Body** stays at Tailwind's defaults — 16px minimum (`readable-font-size`),
-line-height 1.5–1.6 (`line-height`). Measure is capped by container width, not
-by a utility: `prose` = 46rem ≈ **68ch**, inside the 60–75ch target.
+**Weights are 400 / 500 / 550**, with 600 reserved for the single strongest
+label in a view. Display weight came *down* from 560: hierarchy comes from size
+and tracking, and very heavy type at very large sizes reads as shouting.
+
+**Measure** is capped at 60–75 characters by container, never by full width.
 
 ### Numerals
 
 `font-feature-settings: 'tnum' 1, 'cv11' 1` on `body`. Tabular figures so a
-column of money aligns (`number-tabular`); `cv11` gives a single-storey `l` so
-`1`, `l` and `I` stay distinguishable in an invoice number.
+column of money aligns; `cv11` gives a single-storey `l` so `1`, `l` and `I`
+stay distinguishable in an invoice number.
 
 ---
 
-## 3. Spacing & layout
+## 3. Space, with meanings
 
-4px base. Tailwind's default ramp is the scale; what this system adds is a
-**rule for which step to use where**, because the original picked per page —
-`py-16 sm:py-24` on four pages, `py-20` on the landing page, `mt-24` between
-sections here and `space-y-24` there.
+The ramp was never the problem — Tailwind's default already gives these eleven
+steps. What was missing is a **rule for which one goes where**, so every gap was
+picked per file and nothing grouped.
 
-### Section density — pick from three, never type a number
+| Token | px | Meaning |
+|---|---|---|
+| `nudge` | 2 | Optical only — icon to baseline, hairline offset |
+| `control` | 4 | Inside a control |
+| `label` | 8 | Label → control, icon → text |
+| `pair` | 12 | A heading and its own subtitle |
+| `row` | 16 | List rows, card padding ≤768 |
+| `comp` | 24 | Card padding, grid gutter ≤768 |
+| `group` | 32 | Heading block → the grid below it |
+| `block` | 48 | Intra-section break, grid gutter ≥1024 |
+| `band` | 64 | Section padding, small viewports |
+| `section` | 96 | Inter-section, the default |
+| `open` | 128 | Openers and closers only |
+
+Usable as `gap-label`, `mt-group`, `py-section` — the name is the reason.
+
+**Two rules govern all of them.**
+
+1. **Space above a heading is one step larger than the space below it.** Always.
+   A heading must group downward with what it introduces, or it reads as the
+   end of the section above.
+2. **Related things nearly touch; unrelated things are far apart.** If
+   everything is 24px from everything, there is no grouping, only a mesh.
+
+### Section density — four, not three
 
 | Name | Padding | Meaning |
 |---|---|---|
-| `tight` | `py-14 sm:py-16` | Bands that interrupt: CTA, a single idea |
-| `default` | `py-20 sm:py-28` | Ordinary content sections |
-| `loose` | `py-24 sm:py-36` | Openers and closers that need air |
+| `interrupt` | `py-band sm:py-[4.5rem]` | A band that interrupts: a CTA, one sentence |
+| `dense` | `py-band sm:py-[5rem]` | Proof, tables, anything scanned rather than read |
+| `default` | `py-[5rem] sm:py-section` | Ordinary content |
+| `open` | `py-section sm:py-open` | Openers, closers, the one statement a page is built around |
+
+> **`default` may not appear more than twice in a row.**
+
+The fourth density exists because of a specific failure: with three, the landing
+page ran **four consecutive sections at `default`**, so its entire middle had
+one vertical rhythm and read as a list of interchangeable blocks. Rhythm *is*
+variation. A dense proof section and an airy statement section are different
+kinds of content and must be given different amounts of air.
+
+`tight` and `loose` remain as deprecated aliases so the twelve existing call
+sites keep compiling; each page drops its alias during its own pass.
 
 ### Container width
 
@@ -155,13 +266,6 @@ sections here and `space-y-24` there.
 
 Gutters `px-5 sm:px-8`. Both live in
 [`section.tsx`](src/components/marketing/section.tsx).
-
-### Within a component
-
-- 2px–8px: parts of one element (icon → its label)
-- 12px–20px: related elements (label → input → hint)
-- 24px–40px: distinct groups inside a section
-- Section density above: between sections
 
 ### Breakpoints
 
@@ -178,18 +282,49 @@ no horizontal scroll at any width — wide tables scroll inside their own
 
 ## 4. Radius, borders, elevation
 
-`--radius: 0.625rem` (existing, unchanged). `sm/md/lg/xl` derive from it.
+### Radius — two values and a pill
 
-**Borders do the work elevation usually does.** Default is a hairline. A card
-that needs emphasis gets `border-ink` + `ring-1`, not a bigger shadow.
+| Token | Value | Use |
+|---|---|---|
+| `rounded-control` | 8px | Buttons, inputs, chips, nav items |
+| `rounded-surface` | 14px | Cards, panels, the product frame |
+| `rounded-full` | — | Badges, avatars, progress |
 
-**One real shadow on the whole site**, on the hero product surface —
-three layered stops approximating a single soft light source. Everywhere else,
-elevation means "this floats above the page" and almost nothing does.
+Down from the **six** in use (`sm`, `md`, `lg`, `xl`, `2xl`, `full`), which was
+why the pricing cards were `rounded-2xl` and every other card on the site was
+`rounded-xl`.
 
-Rejected: an elevation ramp of 5 steps. With hairline borders carrying
-separation, steps 2–4 were indistinguishable in review, and an unused scale
-invites decorative use.
+> **Nesting rule:** a child inside a `surface` container with padding *p* takes
+> `14px − p`, floored at `control`. A 14px card with 24px padding holds **8px**
+> children — never 14.
+
+Matched radii on nested boxes is what makes a card look printed rather than
+drawn.
+
+### Borders
+
+One hairline (`n-3`), one emphasis (`n-4`). Never 2px except focus. **Borders do
+the work elevation usually does** — in enterprise UI a hairline separates more
+cleanly than a shadow, and it does not imply a light source the rest of the page
+has to agree with.
+
+### Elevation — three levels, tinted, layered
+
+| Token | Use |
+|---|---|
+| `shadow-e1` | Resting. Rare — for a card that must lift off a band it shares a value with |
+| `shadow-e2` | Raised: popover, dropdown, the hero product frame |
+| `shadow-e3` | Overlay: dialog, mobile nav |
+
+Each is two or three stops with different blurs and opacities, **tinted with
+`n-11` rather than black**. A single `0 4px 6px rgba(0,0,0,0.1)` is the
+framework default and reads as one from across the room; a black shadow on a
+hue-biased neutral also goes slightly muddy, because it is the only element on
+the page not on the ramp.
+
+In dark mode `e1` degrades to a border, and `e2`/`e3` halve their opacity and
+gain an `inset 0 1px 0 white/6%` top highlight — a shadow carries almost no
+information on a dark ground, and a highlight does the lifting instead.
 
 ---
 
@@ -232,6 +367,35 @@ on a white background is close to invisible and is a keyboard user's only means
 of knowing where they are. `:focus-visible`, not `:focus`, so it does not fire on
 mouse clicks.
 
+**This rule existed and reached nothing.** `button.tsx` and `input.tsx` both
+opened with `outline-none focus-visible:border-ring focus-visible:ring-ring/50
+focus-visible:ring-[3px]`, which cancelled it for **every button and every input
+in the product** — 61 and 35 importers respectively, zero of them receiving the
+designed treatment. Three consequences, none intended:
+
+1. `outline-none` removed the accent outline entirely.
+2. What replaced it was grey, on grey, at half strength.
+3. `focus-visible:border-ring` moved the *border* too, so a focused outline
+   button changed shape by a pixel.
+
+Both overrides are gone. Repairing it is a product-wide change and that is the
+correct blast radius for an accessibility defect: every button in the
+authenticated application gets a visible focus ring out of it.
+
+`--brand` and not `--ring`, because `--ring` is a shadcn token the application
+reads for its own treatments and is grey at `:root`; re-pointing it there would
+reach outside the Phase 1 fence.
+
+The `border-radius: calc(var(--radius) - 4px)` that used to sit in this rule has
+gone. It applied to every focused element regardless of the element's own shape,
+so a focused pill got a 6px-cornered outline around it. `outline` follows the
+element's radius on its own.
+
+**Verified in the browser, not by eye.** Real `Tab` focus resolves to
+`2px solid` at the full-strength accent with a 2px offset. `outline-color` is
+part of Tailwind v4's `transition-colors` set, so a reading taken in the same
+tick as `.focus()` returns a mid-transition value — measure after it settles.
+
 ---
 
 ## 7. Component primitives
@@ -247,11 +411,36 @@ changed no existing variant, so the app is unaffected.
 | `ctaOutline` | Secondary. Hairline border, transparent. |
 | `onInk` | Primary inside a `tone="ink"` panel, where ink would vanish. |
 
-Size `xl` = `h-11` (44px — the touch-target minimum) with `text-[0.9375rem]`.
-Existing `default`/`sm`/`lg`/`icon` untouched.
+Size `xl` = `h-11` (44px — the touch-target minimum), `rounded-control`,
+`text-body`. Existing `default`/`sm`/`lg`/`icon` untouched.
 
-All variants carry default, hover, active (`scale-[0.985]`), focus-visible and
-disabled (`opacity-50`, `pointer-events-none`).
+**Hover moves by a real step on the ramp**, `n-11` → `n-10`, not by an opacity.
+A translucent button picks up whatever is behind it, so the same button on a
+tinted band and on the page hover to two different colours — "hover" ends up
+meaning two things.
+
+**Disabled drops to a neutral fill** (`bg-n-5` / `text-n-7`) with
+`cursor-not-allowed` and no shadow, rather than going see-through at
+`opacity-50`. A ghosted button still reads as the primary action, only broken.
+
+**`loading` reserves the width.** Swapping the label for "Sending…" resizes the
+control mid-action, so the thing under the user's cursor moves at the exact
+moment they are watching it. The label stays in the layout at `invisible`
+inside a `display: contents` wrapper — the children remain flex items and keep
+their box, `visibility` inherits, so the width is unchanged — and the spinner is
+positioned over it. `aria-busy` and an `aria-live` region carry the state to a
+screen reader, which a spinner alone does not. Opt-in, so the 61 existing call
+sites are unaffected; ignored under `asChild`, where `Slot` needs a single child.
+
+### Input — [`ui/input.tsx`](src/components/ui/input.tsx) ⚠️ shared
+
+**35 importers.** `h-9` is unchanged and deliberately so: nearly all of them are
+in the application, where control height is load-bearing against table rows and
+toolbars. The Phase 1 form scale is `size="lg"` — `h-11`, `rounded-control`,
+`text-body` — which matches `Button size="xl"`.
+
+Focus now reads as two things at once: the border changes to the accent, and the
+outline appears outside it.
 
 ### Field — [`forms/field.tsx`](src/components/forms/field.tsx)
 
@@ -264,6 +453,11 @@ not in the app's import graph.
 - Error **replaces** the hint rather than stacking, so the field does not grow by
   a line-height at the moment the user is fixing it
 - `optional` marks the exception rather than asterisking the rule
+- **`reserveMessage` (default on) holds a line of space for the message slot
+  even when it is empty.** Replacing the hint was only half the problem: a field
+  with *no* hint still grew when an error appeared, which moved every field
+  below it and the submit button while the user was reaching for them. The slot
+  now occupies its line from first paint.
 
 ### Notice — [`auth/notice.tsx`](src/components/auth/notice.tsx)
 

@@ -23,7 +23,12 @@ import { SiteFooter } from '@/components/marketing/site-footer';
 
 export default function MarketingLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col">
+    // `phase1` re-points the neutral tokens for this subtree only. The
+    // authenticated application reads the same token names from `:root` and
+    // is deliberately left on shadcn's ramp until Phase 2 reconciles the two
+    // — a ramp change propagating into 44 app files is not a design decision,
+    // it is an outage. See the block in `globals.css`.
+    <div className="phase1 flex min-h-screen flex-col">
       {/*
         The scroll-reveal system ships its hidden state in the server HTML to
         avoid a flash on load (see `Reveal`). That trade puts the page's

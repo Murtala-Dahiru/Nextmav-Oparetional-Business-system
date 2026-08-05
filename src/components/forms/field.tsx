@@ -60,6 +60,7 @@ export function Field({
   optional,
   children,
   className,
+  reserveMessage = true,
 }: {
   /** Must match the control's `id`. Binds the label and the descriptions. */
   id: string;
@@ -94,18 +95,26 @@ export function Field({
    */
   children: ReactNode | ((a11y: { 'aria-describedby': string | undefined }) => ReactNode);
   className?: string;
+  /**
+   * Holds a line of vertical space for the hint/error slot even when it is
+   * empty, so the field does not grow by a line-height at the moment an error
+   * appears — which moves every field below it, and the submit button, while
+   * the user is reaching for them.
+   *
+   * On by default: every field on these forms validates. Turn it off for a
+   * field that genuinely cannot produce a message.
+   */
+  reserveMessage?: boolean;
 }) {
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
   const describedBy = error ? errorId : hint ? hintId : undefined;
 
   return (
-    <div className={cn('space-y-2', className)}>
-      <div className="flex items-baseline justify-between gap-3">
+    <div className={cn('flex flex-col gap-label', className)}>
+      <div className="flex items-baseline justify-between gap-pair">
         <Label htmlFor={id}>{label}</Label>
-        {optional && (
-          <span className="text-muted-foreground text-[0.75rem]">Optional</span>
-        )}
+        {optional && <span className="text-copy-3 text-caption">Optional</span>}
       </div>
 
       {/*
@@ -147,20 +156,31 @@ export function Field({
               : child,
           )}
 
-      {error ? (
-        <p
-          id={errorId}
-          role="alert"
-          className="text-destructive flex items-start gap-1.5 text-[0.75rem] leading-relaxed"
-        >
-          <AlertCircle className="mt-[0.15rem] size-3 shrink-0" aria-hidden="true" />
-          {error}
-        </p>
-      ) : hint ? (
-        <p id={hintId} className="text-muted-foreground text-[0.75rem] leading-relaxed">
-          {hint}
-        </p>
-      ) : null}
+      {/* One slot, one line of reserved height. The error replaces the hint
+          rather than stacking on it — showing "Must be at least 8 characters"
+          directly above "That password is too short" is the interface saying
+          the same thing twice in two registers. */}
+      {(error || hint || reserveMessage) && (
+        <div className={cn(reserveMessage && 'min-h-[1.05rem]')}>
+          {error ? (
+            <p
+              id={errorId}
+              role="alert"
+              className="text-destructive text-caption flex items-start gap-control leading-snug"
+            >
+              <AlertCircle
+                className="mt-[0.15rem] size-3 shrink-0"
+                aria-hidden="true"
+              />
+              {error}
+            </p>
+          ) : hint ? (
+            <p id={hintId} className="text-copy-3 text-caption leading-snug">
+              {hint}
+            </p>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

@@ -9,68 +9,233 @@ and out of bounds**. If unsure whether something is in scope, it isn't.
 
 ---
 
+## Where this stands
+
+A craft correction pass is under way. The first pass produced pages that were
+structurally sound, accessible and honestly written, and **visually generic** —
+because the token layer was written as a document and never enforced. Symptoms,
+all measured rather than asserted:
+
+- **104 arbitrary `text-[0.9375rem]`-style values** across thirteen pages. The
+  display scale existed; `title`, `body`, `body-sm`, `caption` and `label` did
+  not, so every page invented them.
+- **Six radius values** in use where the system named one.
+- **Hierarchy built from opacity** — `opacity-70`, `text-foreground/85`,
+  `text-muted-foreground/50` — because the ramp had only two text levels.
+- **The root neutrals were shadcn's pure greys at chroma 0**, on `#ffffff`. The
+  Phase 1 tokens sat on top and only governed bands and borders, so the
+  framework defaults stayed visible underneath every word of body copy.
+
+Honest craft grades at the start of this pass, out of 10: header 6, sign-up 6,
+login 6, landing 5, pricing 5, about 5, contact 5, features 4, footer 4,
+forgot 4, reset 4. Email-verification and OTP screens **do not exist as routes**.
+
+Order of work: tokens → landing hero → header/footer → landing §2–6 → features →
+pricing → sign-up/login → forgot/reset → about/contact → `/help` `/docs`
+`/status` (token conformance only, no redesign).
+
+---
+
 ## Status
 
 | # | Item | Status | Left to do |
 |---|---|---|---|
 | 0 | Stabilise — revert out-of-scope backend, fix red build | ✅ done | — |
-| 1 | Design system + these three documents | ✅ done | — |
-| 2 | Header · footer · mobile nav | ✅ done | — |
-| 3 | Auth flows | 🔶 in-progress | **forgot-password + reset-password** still need `Field` + blur validation (they already use `AuthShell`) |
-| 4 | Landing | 🔶 needs-review | Rubric pass; 360/1920 check |
-| 5 | Features | 🔶 needs-review | Rubric pass |
-| 6 | Pricing | 🔶 needs-review | Currency/tax line (blocked — CONTENT-NEEDED #5) |
-| 7 | About | ✅ done | Team section intentionally absent (CONTENT-NEEDED #2) |
-| 8 | Contact | ✅ done | Real address (blocked — CONTENT-NEEDED #1) |
-| 9 | Solutions | ✅ done | — |
-| 10 | Legal + utility sweep | 🔶 in-progress | Fabricated address removed + brand fixed; **visual** pass on privacy/terms/cookies still to do |
-| 11 | Blog | ✅ done | Empty state; fabrications gone |
+| 1 | **Tokens + primitives + two bugs** | ✅ **done** | Commit 1 of the correction pass. See below. |
+| 2 | Landing **hero** | ⬜ **next** | Commit 2. Spec written below; awaiting nothing. |
+| 3 | Header · footer | ⬜ not-started | Structurally fine, craft 6 and 4 |
+| 4 | Landing §2–6 | ⬜ not-started | Do **not** start before the hero is approved |
+| 5 | Features | ⬜ not-started | Craft 4 — lowest score × high intent |
+| 6 | Pricing | ⬜ not-started | Currency/tax line blocked (CONTENT-NEEDED #5) |
+| 7 | Sign-up · login | ⬜ not-started | Shell is the fix; one file serves six screens |
+| 8 | Forgot · reset | ⬜ not-started | Also still need `Field` + blur validation |
+| 9 | About · contact | ⬜ not-started | — |
+| 10 | `/help` `/docs` `/status` | ⬜ not-started | **Token conformance only.** In scope, no redesign. |
+| 11 | Legal visual pass (privacy/terms/cookies) | ⬜ not-started | Layout and type only — do not touch a clause |
 | 12 | Consistency sweep + rubric scores | ⬜ not-started | 360/768/1024/1440/1920 |
 
-Auth screens converted: login, signup, forgot, reset, accept-invite,
+Auth screens on `AuthShell`: login, signup, forgot, reset, accept-invite,
 change-password. **`onboarding` is the only file left carrying the old
 `from-gray-50 to-gray-100` shell — it is Phase 2 app surface. Leave it.**
 
-Still on the old design and linked from the footer: `/help`, `/docs`,
-`/status`. Not in the original in-scope list; they read as a different site.
+---
+
+## Commit 1 — tokens, primitives, two bugs (done)
+
+### What landed
+
+**A measured neutral ramp.** Twelve steps on hue 255, namespaced `--nm-*`, with
+three text levels at **18.85 : 9.04 : 6.23** — each a step on the ramp, never an
+opacity. Accent moved off the framework cyan-teal (177 → 173) with chroma raised
+0.085 → 0.095, and documented as a choice rather than an inheritance.
+
+**A complete type scale** (nine tokens), **space with assigned meanings**
+(eleven, usable as `gap-label` / `mt-group` / `py-section`), **three layered
+neutral-tinted shadows**, **two radii plus a pill with a nesting rule**, and
+**four section densities** — the fourth because with three the landing page ran
+four consecutive sections at `default` and its whole middle had one rhythm.
+
+**Primitives converted:** `button`, `input`, `Field`, `Section`, `Container`,
+`Eyebrow`, `SectionHeading`, `AuthShell`.
+
+### The scope mechanism — read before touching tokens
+
+`.phase1` is a class on the marketing layout and `AuthShell`. Custom properties
+cascade, so re-declaring `--background`, `--foreground`, `--muted-foreground`,
+`--border`, `--input` and `--ring` on that wrapper re-points every descendant
+**and nothing else**.
+
+At `:root` those tokens are still shadcn's pure greys, deliberately. The
+authenticated application reads the same names across 44 files, is in
+production, and is used internally daily. **Verified in the browser:** inside
+`.phase1`, `--background` resolves to the new ramp; at `:root` it is still
+`lab(100% 0 0)` and `--muted-foreground` is still `lab(48.496% 0 0)`.
+
+Phase 2 deletes the `.phase1` block and promotes its contents to `:root`. That
+is why its values are `var()` references and not literals.
+
+⚠️ **`--radius` is deliberately not re-pointed inside `.phase1`.** Setting it to
+`--radius-surface` looked right and silently rescaled every derived step —
+`rounded-md` became 12px, so the header's buttons rendered at 12px where the
+spec says controls are 8px. Caught in the browser; `tsc` cannot see it.
+
+### The two bugs
+
+**`button.tsx` focus ring.** The base carried `outline-none
+focus-visible:ring-ring/50 focus-visible:ring-[3px]`, which cancelled the one
+designed focus treatment in the product for **all 61 importers**. Removed, along
+with the identical override in `input.tsx` (35 importers). Every button in the
+authenticated application now gets a visible focus ring — the correct blast
+radius for an accessibility defect. Verified with real `Tab` focus: `2px solid`
+at full-strength accent, 2px offset.
+
+**`about/page.tsx:155`.** `text-muted-foreground/50`, computing to roughly 2:1.
+Now `text-copy-3` at 6.23:1. *Correction to the original report: the element is
+`aria-hidden`, so it was decorative and not a formal WCAG violation — it was a
+legibility problem and an instance of the banned opacity-hierarchy pattern.*
+
+### A third bug, found by the new script
+
+`scripts/contrast.mjs` found a **shipped** defect on its first run. `AuthShell`'s
+assurance ticks were `text-brand` on a `bg-ink` panel. Ink inverts with the mode;
+the accent does not. In dark mode that was a light teal tick on a near-white
+panel at **1.88:1** — invisible, on the only visual marker in the panel.
+
+Fixed with `--nm-accent-on-ink`, which holds the *opposite* mode's accent.
+`tsc` could not have caught it and neither could a light-mode screenshot.
+
+### The gate
+
+```bash
+node scripts/contrast.mjs           # publishes the table
+node scripts/contrast.mjs --check   # exits 1 if any of the 40 pairs fails
+```
+
+All 40 pairs pass. Ratios in `DESIGN-SYSTEM.md` are now generated by this
+script, not asserted. Three failed on the first run; each is documented there.
+
+### What commit 1 deliberately did **not** do
+
+It did not convert the 104 arbitrary values across thirteen pages. Each page's
+conversion happens inside that page's own pass, when someone is already in the
+file and can judge whether a value was arbitrary or load-bearing. Converting
+everything up front is how the previous session died.
+
+`density="tight"` and `"loose"` remain as deprecated aliases so the twelve
+existing call sites compile; each page drops its alias during its own pass.
 
 ---
 
-## Next actions, in order
+## Next action — commit 2, the landing hero. Nothing else.
 
-Precise enough to resume cold.
+**Do not continue into the rest of the landing page.** The hero sets the
+vocabulary for eight more sections and is being reviewed before they are built.
 
-### 1 · Forgot-password and reset-password → `Field` + `useFieldErrors`
-Both already use `AuthShell`; they still hand-roll their field markup and
-validate on submit only.
+### What is wrong now
 
-- Wrap each input in `<Field id="…">`, ids matching the `revealAll` prefix
-- **reset-password's two password inputs are wrapped** for the show/hide
-  button → use the **function-child form** of `Field` and spread the argument
-  onto the `Input`. Passing them directly puts `aria-describedby` on the
-  wrapper div, where it does nothing. This already shipped once on login and
-  was caught by browser inspection, not by tsc — it will not fail the build.
-- Add the `FormError` union login uses: `rateLimited` (429 — the reset mailer
-  is rate-limited per recipient), `offline`, `server`
-- ⚠️ **forgot-password's copy must stay non-enumerating.** It deliberately says
-  "*if* that address has an account". Do not "improve" it into confirming one
-  exists — the endpoint answers identically either way on purpose, and the
-  screen is the last place that guarantee can be given away.
+`src/app/(marketing)/page.tsx:166–241`. Eyebrow, h1, lede, buttons, trust row
+and `ProductSurface` all sit on the same left edge inside the same 75rem box,
+and the frame is centred with equal air both sides. It is one left-aligned
+stack, so the reveal delays (0.05 → 0.25) walk the eye straight down a line —
+the least interesting path available. Scale runs 4.25rem → 1.1875rem →
+0.8125rem → a frame of uniform ~13px UI: a smooth ramp, which is the opposite of
+contrast. Nothing touches an edge.
 
-### 2 · Legal + utility visual pass
-`privacy`, `terms`, `cookies` still use the old card/prose treatment. Content
-is already corrected (brand, addresses). This is layout and type only — do not
-touch a legal clause.
+### What to build
 
-### 3 · Consistency sweep
-Every in-scope page at 360 / 768 / 1024 / 1440 / 1920. Check spacing, type,
-radius, button usage and voice for drift. Then publish rubric scores (§11 of
-the brief), honestly, per criterion per page.
+- **Asymmetric split at ≥1280.** Text pinned to a 5-column measure on the left;
+  the product frame starts at column 6 and **bleeds off the right viewport
+  edge**, cropped, its top aligned to the h1's first baseline rather than
+  stacked below it. Below 1280 it stacks and bleeds right only. At 360 it crops
+  to the stat row and the first two deals rather than shrinking to illegibility.
+- **A 5.7× scale jump.** `display-1` straight to `text-label` (0.75rem,
+  +0.06em), with nothing mid-sized between them.
+- **Accent down to one instance** in the hero — the live-state dot in the
+  frame's chrome. The eyebrow is already neutral as of commit 1.
+- **The grid substrate becomes a left-anchored plate** that terminates where the
+  frame begins, so the frame reads as sitting *on* something rather than
+  floating over a wash.
+- Use `shadow-e2` on the frame and `rounded-surface`; drop the inline
+  `shadow-[0_1px_1px_rgba(0,0,0,0.03)…]` at `product-surface.tsx:89`, which is a
+  black-tinted one-off.
 
-### 4 · Optional, out of the original scope
-`/help`, `/docs`, `/status` are linked from the footer and still carry the old
-emerald design. They read as a different site. Ask before starting.
+**Eye path:** headline first (largest, top-left, highest contrast) → the frame's
+bleeding edge (largest object, the crop pulls right) → the ink primary button
+(only filled element, sitting at the elbow between the two).
 
+**Rejected:** centring the hero over a full-bleed frame — the Linear/Vercel
+shape. Most-copied hero on the internet, forces the h1 short enough to centre,
+and on a 768 laptop pushes the product below the fold, defeating the point.
+
+### The product imagery decision (answered, 2026-08-05)
+
+No usable demo instance exists. **Keep the DOM frame** — the argument for
+DOM over screenshot holds (sharp at any zoom, follows dark mode, reflows on a
+phone, cannot go stale). What broke the brief was the *data*, not the technique.
+
+So: **replace the fabricated content in `product-surface.tsx`** — real field
+labels, plausible non-specific values, and **"Demo workspace" in the frame's own
+chrome** so it can never be read as a customer. Currently it carries invented
+companies ("Harlow Manufacturing", "Vantage Logistics") and invented figures
+("$1,284,900"), which is a §6 violation regardless of the code comment's intent.
+
+Below-fold captures of **Projects, Attendance and Dashboard** are being supplied.
+Log them in `CONTENT-NEEDED.md` with exact pixel dimensions and use marked
+placeholders until they land. Do not substitute an icon card.
+
+---
+
+## Decisions taken in this pass
+
+1. **Neutral ramp is marketing-scoped.** Confirmed: two neutral systems until
+   Phase 2 is the correct trade against a 44-file blast radius in production.
+2. **Geist stays** for now. The scale is built so the display face is a single
+   token swap. Revisit after the hero — if display type is still the weakest
+   part of the composition then, license one.
+3. **Verification and OTP are out of this pass.** Creating routes is new
+   functionality, not refinement, and what the backend supports needs
+   confirming first. Logged as a product gap below. The sign-up inline "check
+   your email" state (`signup/page.tsx:195`) remains the only coverage.
+4. **Teal was inherited, not chosen.** Now deliberate: hue 173, chroma 0.095,
+   reasoning recorded in `globals.css` and `DESIGN-SYSTEM.md` §1.
+5. **`/help`, `/docs`, `/status` are in scope, narrowly** — token conformance
+   only, no redesign, done last.
+
+## Product gap — email verification and OTP
+
+Neither route exists under `src/app`. Recommended flow when it is picked up as
+its own piece of work:
+
+1. Sign-up posts, server sends a link **and** a 6-digit code to the same address.
+2. `/verify-email` accepts either: the link lands verified; the code is typed
+   into a 6-input group with paste-to-fill, `inputmode="numeric"`,
+   `autocomplete="one-time-code"`, and one `aria-live` region for the group
+   rather than six.
+3. Resend is rate-limited per recipient with a visible cooldown, not a silent
+   failure.
+4. Copy must stay non-enumerating, exactly as `forgot-password` already does.
+
+Blocked on: what the backend actually supports. Do not design against a guess.
 ---
 
 ## Health
@@ -138,15 +303,19 @@ the sake of one `useState`.
 
 ## Open questions
 
-Asked, not yet answered — proceeding on the recommendation in each case, all
-reversible:
+Answered on 2026-08-05 — see "Decisions taken in this pass" above:
 
-1. Confirm the backend revert (taken).
-2. Confirm NextMav over NexusCorp, and whether the `PLATFORM` rename should wait
+- ✅ Product imagery → no demo instance; keep the DOM frame, replace the data.
+- ✅ Display typeface → Geist stays, revisit after the hero.
+- ✅ Verification + OTP → out of this pass; logged as a product gap.
+- ✅ Neutral ramp scope → marketing-scoped, `.phase1`.
+- ✅ Brand accent → teal was inherited; hue 173 / chroma 0.095 is now the choice.
+- ✅ `/help`, `/docs`, `/status` → in scope, token conformance only, done last.
+
+Still open, none of them blocking:
+
+1. Confirm NextMav over NexusCorp, and whether the `PLATFORM` rename should wait
    for Phase 2 given it touches the app shell.
-3. Confirm brief-beats-skill on visual/content.
-4. OTP + email verification — deferred; confirm.
-5. Fabricated content — deleted; confirm.
-6. Install Python for the skill's search tool?
-7. Annual pricing for the billing toggle.
-8. Is `/blog` in Phase 1 scope? Currently treated as credibility-fix only.
+2. Annual pricing for the billing toggle (CONTENT-NEEDED #5).
+3. Is `/blog` in Phase 1 scope? Currently treated as credibility-fix only.
+4. Real address for `/contact` (CONTENT-NEEDED #1).
