@@ -166,15 +166,17 @@
      the framework default and reads as one from across the room.
 
      Borders do most of the work here; `e1` exists for the few cases where a
-     card must lift off a tinted band it shares a value with. */
-  --shadow-e1:
-    0 1px 2px -1px oklch(0.168 0.012 255 / 0.06), 0 1px 1px oklch(0.168 0.012 255 / 0.04);
-  --shadow-e2:
-    0 1px 1px oklch(0.168 0.012 255 / 0.04), 0 8px 16px -6px oklch(0.168 0.012 255 / 0.1),
-    0 20px 40px -20px oklch(0.168 0.012 255 / 0.14);
-  --shadow-e3:
-    0 2px 4px oklch(0.168 0.012 255 / 0.05), 0 16px 32px -12px oklch(0.168 0.012 255 / 0.14),
-    0 40px 80px -32px oklch(0.168 0.012 255 / 0.2);
+     card must lift off a tinted band it shares a value with.
+
+     Each maps through `--nm-e*` rather than holding its value directly.
+     `@theme inline` substitutes the token's value into the utility at build
+     time, so a `.dark` override of `--shadow-e2` would never be seen — the
+     utility would already have the light value baked in. Pointing at a second
+     custom property keeps the indirection alive to the browser, which is what
+     lets elevation invert with the mode. */
+  --shadow-e1: var(--nm-e1);
+  --shadow-e2: var(--nm-e2);
+  --shadow-e3: var(--nm-e3);
 
   /* ── Radius ────────────────────────────────────────────────────────────
      Two values and a pill, down from the six in use.
@@ -290,6 +292,19 @@
   --surface-2: var(--nm-n-2);
   --hairline: var(--nm-n-3);
   --hairline-strong: var(--nm-n-4);
+
+  /* Elevation. Two or three stops with different blurs and opacities, tinted
+     with `n-11` rather than black — a black shadow is the framework default,
+     and against a hue-biased neutral it is the only thing on the page not on
+     the ramp, which is what makes it look slightly muddy. */
+  --nm-e1:
+    0 1px 2px -1px oklch(0.168 0.012 255 / 0.06), 0 1px 1px oklch(0.168 0.012 255 / 0.04);
+  --nm-e2:
+    0 1px 1px oklch(0.168 0.012 255 / 0.04), 0 8px 16px -6px oklch(0.168 0.012 255 / 0.1),
+    0 20px 40px -20px oklch(0.168 0.012 255 / 0.14);
+  --nm-e3:
+    0 2px 4px oklch(0.168 0.012 255 / 0.05), 0 16px 32px -12px oklch(0.168 0.012 255 / 0.14),
+    0 40px 80px -32px oklch(0.168 0.012 255 / 0.2);
 }
 
 .dark {
@@ -368,6 +383,25 @@
   --surface-2: var(--nm-n-2);
   --hairline: var(--nm-n-3);
   --hairline-strong: var(--nm-n-4);
+
+  /* Elevation, inverted.
+
+     A shadow carries almost no information on a dark ground — there is not
+     enough range beneath the surface for a darker patch to read as distance,
+     so the light-mode values render as very nearly nothing. What does the
+     lifting instead is a one-pixel top highlight, which is how a raised
+     surface actually behaves under a light source above it. The geometry is
+     kept and the opacities are roughly halved so the shape still reads at the
+     edges of a large panel.
+
+     `e1` degrades to the highlight alone: at rest the border is the boundary. */
+  --nm-e1: inset 0 1px 0 oklch(1 0 0 / 0.05);
+  --nm-e2:
+    inset 0 1px 0 oklch(1 0 0 / 0.06), 0 8px 16px -6px oklch(0 0 0 / 0.5),
+    0 20px 40px -20px oklch(0 0 0 / 0.6);
+  --nm-e3:
+    inset 0 1px 0 oklch(1 0 0 / 0.07), 0 16px 32px -12px oklch(0 0 0 / 0.55),
+    0 40px 80px -32px oklch(0 0 0 / 0.7);
 }
 
 /* ══ Phase 1 scope ═════════════════════════════════════════════════════════
@@ -509,6 +543,57 @@
     linear-gradient(to bottom, var(--hairline) 1px, transparent 1px);
   background-size: 64px 64px;
   mask-image: radial-gradient(ellipse 100% 60% at 50% 0%, #000 20%, transparent 75%);
+}
+
+/* ── Hero plate ─────────────────────────────────────────────────────────────
+   The same grid, but anchored left and terminated before the product frame
+   instead of washed symmetrically across the whole width.
+
+   A substrate that runs edge to edge sits *behind* everything equally, which
+   means it reads as a background texture and nothing is on it. Ending it at
+   the frame's left edge gives the frame something to sit on, and gives the
+   composition a second vertical edge — the point where the plate stops — that
+   the eye can use. */
+.hero-plate {
+  background-image:
+    linear-gradient(to right, var(--hairline) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--hairline) 1px, transparent 1px);
+  background-size: 64px 64px;
+  /* Two masks intersected: fade down, and stop before the frame. Written as
+     one shorthand pair so Safari's prefixed compositing agrees with the
+     standard property. */
+  -webkit-mask-image:
+    linear-gradient(to bottom, #000 0%, #000 52%, transparent 100%),
+    linear-gradient(to right, #000 0%, #000 34%, transparent 64%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to bottom, #000 0%, #000 52%, transparent 100%),
+    linear-gradient(to right, #000 0%, #000 34%, transparent 64%);
+  mask-composite: intersect;
+}
+
+/* ── Right-edge bleed ───────────────────────────────────────────────────────
+   Pulls the product frame past the container's right gutter and off the
+   viewport, where the section's `overflow-hidden` crops it.
+
+   A cropped object reads as confident: the page is not apologising for the
+   thing it is showing by giving it a polite margin. It also does real work —
+   the crop implies the interface continues, which a frame floating in the
+   middle of a container with equal air on both sides cannot.
+
+   Viewport-relative rather than a fixed negative margin, because a fixed one
+   that bleeds correctly at 1280 leaves a hundred pixels of gutter at 1920 and
+   stops bleeding at all. `max(0px, …)` keeps it at zero if the viewport is
+   ever narrower than the container. Only above `xl`, where the split exists. */
+@media (min-width: 80rem) {
+  .hero-bleed-right {
+    /* 6rem past the gutter. Measured, not guessed: at 4rem the frame cleared
+       the viewport by only 24px, which reads as a rendering accident rather
+       than a decision. 6rem takes roughly 55px — enough that the crop is
+       unmistakably intentional, and still short of the table's right padding,
+       so no figure is cut in half. */
+    margin-right: calc(-1 * (max(0px, (100vw - 75rem) / 2) + 6rem));
+  }
 }
 
 /* Type set at display sizes needs its own optical correction. */

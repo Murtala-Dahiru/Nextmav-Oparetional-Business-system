@@ -42,8 +42,8 @@ pricing → sign-up/login → forgot/reset → about/contact → `/help` `/docs`
 |---|---|---|---|
 | 0 | Stabilise — revert out-of-scope backend, fix red build | ✅ done | — |
 | 1 | **Tokens + primitives + two bugs** | ✅ **done** | Commit 1 of the correction pass. See below. |
-| 2 | Landing **hero** | ⬜ **next** | Commit 2. Spec written below; awaiting nothing. |
-| 3 | Header · footer | ⬜ not-started | Structurally fine, craft 6 and 4 |
+| 2 | **Landing hero** | ✅ **done** | Commit 2. **Awaiting review — do not continue past it.** |
+| 3 | Header · footer | ⬜ **next**, after review | Structurally fine, craft 6 and 4 |
 | 4 | Landing §2–6 | ⬜ not-started | Do **not** start before the hero is approved |
 | 5 | Features | ⬜ not-started | Craft 4 — lowest score × high intent |
 | 6 | Pricing | ⬜ not-started | Currency/tax line blocked (CONTENT-NEEDED #5) |
@@ -146,62 +146,87 @@ existing call sites compile; each page drops its alias during its own pass.
 
 ---
 
-## Next action — commit 2, the landing hero. Nothing else.
+## Commit 2 — the landing hero (done, awaiting review)
 
-**Do not continue into the rest of the landing page.** The hero sets the
-vocabulary for eight more sections and is being reviewed before they are built.
+**Stop here.** The hero sets the vocabulary for eight more sections. Nothing
+below it on the landing page has been touched, deliberately.
 
-### What is wrong now
+### What changed
 
-`src/app/(marketing)/page.tsx:166–241`. Eyebrow, h1, lede, buttons, trust row
-and `ProductSurface` all sit on the same left edge inside the same 75rem box,
-and the frame is centred with equal air both sides. It is one left-aligned
-stack, so the reveal delays (0.05 → 0.25) walk the eye straight down a line —
-the least interesting path available. Scale runs 4.25rem → 1.1875rem →
-0.8125rem → a frame of uniform ~13px UI: a smooth ramp, which is the opposite of
-contrast. Nothing touches an edge.
+**An asymmetric split above `xl`.** Text holds a 34rem measure on the left; the
+product frame takes the rest and runs **56px off the right edge of the
+viewport**, cropped by the section's `overflow-hidden`. Below `xl` it stacks and
+the bleed switches off. Measured at 360 / 1024 / 1440 / 1920: no horizontal
+scroll at any width, and the bleed is a constant 56px at both 1440 and 1920
+because the margin is viewport-relative rather than a fixed negative value.
 
-### What to build
+**A 5.7× scale jump.** `display-1` at 68px sits directly under the eyebrow at
+12px, with nothing mid-sized between them. Verified in the browser: 5.7x.
 
-- **Asymmetric split at ≥1280.** Text pinned to a 5-column measure on the left;
-  the product frame starts at column 6 and **bleeds off the right viewport
-  edge**, cropped, its top aligned to the h1's first baseline rather than
-  stacked below it. Below 1280 it stacks and bleeds right only. At 360 it crops
-  to the stat row and the first two deals rather than shrinking to illegibility.
-- **A 5.7× scale jump.** `display-1` straight to `text-label` (0.75rem,
-  +0.06em), with nothing mid-sized between them.
-- **Accent down to one instance** in the hero — the live-state dot in the
-  frame's chrome. The eyebrow is already neutral as of commit 1.
-- **The grid substrate becomes a left-anchored plate** that terminates where the
-  frame begins, so the frame reads as sitting *on* something rather than
-  floating over a wash.
-- Use `shadow-e2` on the frame and `rounded-surface`; drop the inline
-  `shadow-[0_1px_1px_rgba(0,0,0,0.03)…]` at `product-surface.tsx:89`, which is a
-  black-tinted one-off.
+**Accent down to exactly one element** in the whole hero — the status dot in the
+frame's "Demo workspace" chip. Census above the fold returns 1. It had been
+seven: three stat deltas, five progress fills, a stage chip, the active nav icon
+and three trust-row dots. Each was individually defensible and collectively they
+meant the accent signalled nothing. Direction is now carried by the arrows, deal
+stage by weight and border, meters by length.
 
-**Eye path:** headline first (largest, top-left, highest contrast) → the frame's
-bleeding edge (largest object, the crop pulls right) → the ink primary button
-(only filled element, sitting at the elbow between the two).
+**The plate replaces the wash.** The substrate is anchored left and masked out
+before the frame begins, so the frame sits *on* something and the composition
+gains a second vertical edge — the point where the plate stops.
 
-**Rejected:** centring the hero over a full-bleed frame — the Linear/Vercel
-shape. Most-copied hero on the internet, forces the h1 short enough to centre,
-and on a 768 laptop pushes the product below the fold, defeating the point.
+**The trust row is one tertiary line**, not three items each carrying a dot.
 
-### The product imagery decision (answered, 2026-08-05)
+### Product imagery — what was actually done
 
-No usable demo instance exists. **Keep the DOM frame** — the argument for
-DOM over screenshot holds (sharp at any zoom, follows dark mode, reflows on a
-phone, cannot go stale). What broke the brief was the *data*, not the technique.
+The DOM frame is kept; the **data** was the §6 violation, not the technique.
+Invented company names became record *categories* ("Manufacturing · line
+retrofit"), the fabricated person in the sidebar became a role, and the frame
+now states **"Demo workspace" in its own chrome** — which is what makes the
+figures inside it illustrative rather than a claim about customers.
 
-So: **replace the fabricated content in `product-surface.tsx`** — real field
-labels, plausible non-specific values, and **"Demo workspace" in the frame's own
-chrome** so it can never be read as a customer. Currently it carries invented
-companies ("Harlow Manufacturing", "Vantage Logistics") and invented figures
-("$1,284,900"), which is a §6 violation regardless of the code comment's intent.
+⚠️ **Known inconsistency, logged as CONTENT-NEEDED #15.** The one-record chain
+section further down the same page still renders "Priya Raman — Harlow
+Manufacturing". It belongs to a later pass and was left on purpose, but it must
+be de-fabricated when that section is done, or the page names a customer 600px
+below a frame that carefully does not.
 
-Below-fold captures of **Projects, Attendance and Dashboard** are being supplied.
-Log them in `CONTENT-NEEDED.md` with exact pixel dimensions and use marked
-placeholders until they land. Do not substitute an icon card.
+### Things measurement caught that the eye would not have
+
+- At a 4rem bleed the frame cleared the viewport by **24px** — which reads as a
+  rendering accident, not a decision. Raised to 6rem.
+- At 6rem the crop then landed **23px into the first row's value figure**. A
+  cropped interface is confident; a cropped *number* is broken. The frame now
+  carries an `xl:pr-14` crop margin so the bleed eats padding instead. Values
+  clear the viewport edge by 13px at both 1440 and 1920.
+- At 1024 the split collapses and the lede inherited the full 75rem container —
+  **~108 characters a line**, past the 75 ceiling, and invisible at 1440 because
+  the grid column was holding it in. Capped at 34rem. A constraint that exists
+  in only one layout will be wrong in the other.
+- Dark-mode elevation was documented in commit 1 and **not implemented** — the
+  light shadow rendered as very nearly nothing on a dark ground. It now inverts
+  to an inset top highlight. This needed `--shadow-e*` to point at `--nm-e*`:
+  `@theme inline` bakes the token's value into the utility at build time, so a
+  `.dark` override of the shadow token itself is never seen.
+
+### Verified in the browser, not by eye
+
+- 360 / 1024 / 1440 / 1920 — no horizontal scroll; bleed correctly inactive
+  below `xl`; buttons 44px at narrow widths
+- Accent elements above the fold: **1**
+- Headline 3 lines at 1440, lede 54 characters a line (under the 75 ceiling)
+- Focus ring: real `Tab` focus resolves to 2px solid accent at 2px offset
+- Dark mode: the three text levels hold, and the auth panel's ticks invert with
+  the panel (9.23:1 light, 5.04:1 dark) instead of vanishing at 1.88:1
+
+⚠️ **Screenshots in this environment are heavily downscaled** — the browser pane
+renders a 1440px viewport into roughly 295px of canvas, so fine detail cannot be
+judged from a capture here. Everything above was verified by measuring computed
+styles and geometry. A human eye on the real thing is still the last check.
+
+### Left alone on purpose
+
+Sections 2–6 of the landing page, the header, the footer, and every other page.
+The hero is for review first.
 
 ---
 

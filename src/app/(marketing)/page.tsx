@@ -160,84 +160,120 @@ export default function LandingPage() {
   return (
     <>
       {/* ── Hero ───────────────────────────────────────────────────────────
-          Left-aligned, not centred. A centred hero is a poster; this one has a
-          reading order — eyebrow, claim, explanation, action — and left
-          alignment is what makes that order a line rather than a shape. */}
+          ── What this replaces ───────────────────────────────────────────
+
+          A single left-aligned stack: eyebrow, headline, lede, buttons, trust
+          row and the product frame all on the same left edge inside the same
+          75rem box, with the frame centred and given equal air on both sides.
+
+          Three things followed. The reveal delays walked the eye straight down
+          a line, which is the least interesting path available. The scale ran
+          68px → 19px → 13px → a frame of uniform 13px UI: a smooth ramp, which
+          is the opposite of contrast. And nothing ever touched an edge, so the
+          page read as content placed inside a container rather than as a
+          composition.
+
+          ── What it does now ─────────────────────────────────────────────
+
+          An asymmetric split above `xl`. The text holds a 34rem measure on the
+          left; the frame takes the rest and runs off the right edge of the
+          viewport, cropped. The plate behind them stops where the frame
+          begins, so the frame sits *on* something.
+
+          Eye path: the headline first — largest object, top-left, highest
+          contrast, and the only thing on the page at `display-1`. Then the
+          frame's cropped edge, because a cut-off object pulls harder than a
+          contained one and the crop points right. Then the primary button,
+          which is the only filled element and sits at the elbow between them.
+
+          Rejected: centring the hero over a full-bleed frame — the shape every
+          developer-tools company currently uses. It forces the headline short
+          enough to centre, it puts the product below the fold on a 768 laptop,
+          and it is the most-copied hero on the internet. */}
       <section className="relative overflow-hidden">
         <div
           aria-hidden="true"
-          className="grid-substrate pointer-events-none absolute inset-x-0 top-0 h-[38rem] opacity-70"
+          className="hero-plate pointer-events-none absolute inset-x-0 top-0 h-[42rem]"
         />
 
-        <Container className="relative pt-16 pb-14 sm:pt-24 sm:pb-20">
-          <div className="max-w-[46rem]">
-            <Reveal>
-              <Eyebrow>Business operating system</Eyebrow>
-            </Reveal>
-
-            <Reveal delay={0.05}>
-              <h1 className="text-display-1 text-balance-hero mt-5">
-                One system of record for the entire company.
-              </h1>
-            </Reveal>
-
-            <Reveal delay={0.1}>
-              <p className="text-muted-foreground text-lede text-pretty-body mt-6 max-w-[38rem]">
-                CRM, projects, people, finance, inventory and communication in a
-                single application — where a customer, the project you are
-                running for them and the invoice it produced are one record, not
-                three exports that disagree.
-              </p>
-            </Reveal>
-
-            <Reveal delay={0.15}>
-              <div className="mt-9 flex flex-wrap items-center gap-3">
-                <Button asChild variant="cta" size="xl">
-                  <Link href="/signup">
-                    Start free
-                    <ArrowRight className="size-4" />
-                  </Link>
-                </Button>
-                <Button asChild variant="ctaOutline" size="xl">
-                  <Link href="/features">Explore the product</Link>
-                </Button>
-              </div>
-            </Reveal>
-
-            <Reveal delay={0.2}>
+        <div className="relative mx-auto w-full max-w-[75rem] px-5 pt-band pb-section sm:px-8 xl:pt-[5.5rem]">
+          <div className="grid items-start gap-band xl:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] xl:gap-block">
+            {/* ── The claim ───────────────────────────────────────────
+                `max-w-[40rem]` matters only below `xl`, where the split
+                collapses and this column would otherwise inherit the full
+                75rem container. Measured at 1024 before it was added: the lede
+                ran 945px wide at roughly 108 characters a line — comfortably
+                past the 75 ceiling, and invisible at 1440 because the grid
+                column was holding it in. A constraint that only exists in one
+                layout is a constraint that will be wrong in the other. */}
+            <div className="max-w-[40rem]">
               {/*
-                Three specific promises rather than a row of logos we do not
-                have. Each one is a thing the product does, so none of them
-                becomes false the moment somebody checks.
+                12px against 68px directly beneath it — a 5.7× jump with
+                nothing mid-sized in between. Timid, mid-sized everything is
+                what "just there" means; contrast of scale is the cheapest way
+                out of it and it costs no space.
               */}
-              <ul className="text-muted-foreground mt-7 flex flex-wrap items-center gap-x-7 gap-y-2 text-[0.8125rem]">
-                {[
-                  '14 days, no card',
-                  'Every module during the trial',
-                  'Export your data whenever you like',
-                ].map((item) => (
-                  <li key={item} className="flex items-center gap-2">
-                    {/*
-                      A dot per item rather than a rule between items. Divider
-                      rules only work when the row does not wrap — the moment
-                      it does, the item that starts the second line begins with
-                      a separator separating it from nothing.
-                    */}
-                    <span
-                      aria-hidden="true"
-                      className="bg-brand/50 size-1 shrink-0 rounded-full"
-                    />
-                    {item}
-                  </li>
-                ))}
-              </ul>
+              <Reveal>
+                <Eyebrow>Business operating system</Eyebrow>
+              </Reveal>
+
+              <Reveal delay={0.05}>
+                <h1 className="text-display-1 text-balance-hero mt-pair">
+                  One system of record for the entire company.
+                </h1>
+              </Reveal>
+
+              <Reveal delay={0.1}>
+                <p className="text-copy-2 text-lede text-pretty-body mt-comp max-w-[34rem]">
+                  CRM, projects, people, finance, inventory and communication in
+                  a single application — where a customer, the project you are
+                  running for them and the invoice it produced are one record,
+                  not three exports that disagree.
+                </p>
+              </Reveal>
+
+              <Reveal delay={0.15}>
+                <div className="mt-group flex flex-wrap items-center gap-pair">
+                  <Button asChild variant="cta" size="xl">
+                    <Link href="/signup">
+                      Start free
+                      <ArrowRight className="size-4" />
+                    </Link>
+                  </Button>
+                  <Button asChild variant="ctaOutline" size="xl">
+                    <Link href="/features">Explore the product</Link>
+                  </Button>
+                </div>
+              </Reveal>
+
+              <Reveal delay={0.2}>
+                {/*
+                  One tertiary line, not three items each carrying an accent
+                  dot. The dots put three accent instances in the hero before
+                  the frame had used its one, which is most of a screen's
+                  budget spent on punctuation. This is meta — the smallest,
+                  quietest thing in the column — so it is set as meta.
+                */}
+                <p className="text-copy-3 text-label mt-comp uppercase">
+                  14 days · no card · every module · export whenever you like
+                </p>
+              </Reveal>
+            </div>
+
+            {/* ── The product ───────────────────────────────────────── */}
+            <Reveal
+              delay={0.25}
+              // `xl:mt-block` lands the frame's top edge on the headline's
+              // cap height — the top of the letterforms, not the top of the
+              // line box, which sits ~16px higher and would leave the two
+              // columns looking a half-step out. Aligning to a *box* edge is
+              // what makes two columns read as placed rather than composed.
+              className="hero-bleed-right min-w-0 xl:mt-block"
+            >
+              <ProductSurface />
             </Reveal>
           </div>
-
-          <Reveal delay={0.25} className="mt-14 sm:mt-20">
-            <ProductSurface />
-          </Reveal>
-        </Container>
+        </div>
       </section>
 
       {/* ── The problem ────────────────────────────────────────────────────

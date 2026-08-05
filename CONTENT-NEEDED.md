@@ -158,3 +158,47 @@ Currently a **state inside signup**, which is correct: it is only reachable as
 the result of a submission that just happened. A standalone `/verify-email`
 would render "we sent a link to " with nothing after it when opened directly.
 Improved in place instead.
+
+---
+
+## 🔴 Blocking a page that is otherwise finished
+
+### 14. Real product captures — Projects, Attendance, Dashboard
+**Being supplied.** Until they land, the sections below the hero must use marked
+placeholders at the exact dimensions listed. Do **not** substitute an icon card:
+an icon in a tinted tile where the software should be is the single strongest
+signal that there is no software to show.
+
+| # | Screen | Frame | Crop |
+|---|---|---|---|
+| 1 | **Projects** — board view, 3 visible columns, cards showing assignee + due date | 1440 × 900 @2× | Crop to the board region; exclude the app sidebar (the hero frame already shows it) |
+| 2 | **Attendance** — month grid with a mix of present / leave / holiday states | 1440 × 900 @2× | Crop to the grid plus its header row |
+| 3 | **Dashboard** — the default landing view for an admin | 1440 × 900 @2× | Full content area, sidebar excluded |
+
+Requirements for all three, so they do not have to be retaken:
+
+- **Light mode**, default density, English.
+- Captured at **@2×** so they stay sharp on a retina display, then served
+  responsively — a 1× capture scaled up is the most visible way to make a
+  product look cheap.
+- **No real customer or personal data.** Seeded demo content only. Names of
+  real companies or real people cannot appear, for the same reason the hero
+  frame stopped naming them (see #15).
+- The workspace should be **visibly a demo** — the same "Demo workspace" marker
+  the hero frame carries, if the app can show one.
+
+Until they arrive, the hero's `ProductSurface` is the only real interface on
+the page, and it is DOM rather than a capture.
+
+### 15. Fabricated names still on the landing page — **known inconsistency**
+The hero frame's invented company names were removed in the hero pass
+(`product-surface.tsx`). The **one-record chain section further down the same
+page still carries them** — `page.tsx` renders "Priya Raman — Harlow
+Manufacturing" and a matching invoice number, which is a fabricated person at a
+fabricated company presented as a record.
+
+It was left deliberately: that section belongs to the landing page's later pass
+and the hero was to be reviewed on its own. **It must be de-fabricated in the
+same way when that section is done** — describe the kind of record, not the
+party — or the page will name a customer 600px below a frame that carefully
+does not.

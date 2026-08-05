@@ -39,11 +39,23 @@ import { LogoMark } from '@/components/brand/logo';
  *  of being scaled into illegibility, and it cannot become a picture of a
  *  version of the product that no longer exists.
  *
- *  ── On the numbers ───────────────────────────────────────────────────────
+ *  ── On the content, and what changed ─────────────────────────────────────
  *
- *  Illustrative, and deliberately unrounded — a demo showing £50,000 and
- *  exactly 100 customers is one nobody believes. They describe a plausible
- *  mid-size workspace and appear nowhere as a claim about this business.
+ *  This used to carry invented company names — "Harlow Manufacturing",
+ *  "Vantage Logistics", "Northgate Health" — beside invented figures, with a
+ *  fabricated person in the sidebar. The code comment called them
+ *  illustrative. Nothing on screen said so, which is the entire problem: a
+ *  visitor reads a named company in a CRM as a customer, and a named person as
+ *  a user. That is the same move as a fabricated testimonial, made quieter.
+ *
+ *  Two changes. The rows now describe the *kind* of record rather than naming
+ *  a party — "Manufacturing · line retrofit" is a category, not a claim — and
+ *  the frame states "Demo workspace" in its own chrome, where it cannot be
+ *  cropped off or missed. Figures inside an explicitly labelled demo are
+ *  ordinary; figures beside a company name are a reference customer.
+ *
+ *  Real captures of Projects, Attendance and the Dashboard are pending. See
+ *  CONTENT-NEEDED.md #13.
  */
 
 const modules = [
@@ -64,18 +76,26 @@ const stats = [
 ];
 
 const deals = [
-  { name: 'Harlow Manufacturing', owner: 'AM', stage: 'Proposal', value: '$184,000', pct: 72 },
-  { name: 'Vantage Logistics', owner: 'RK', stage: 'Negotiation', value: '$96,500', pct: 88 },
-  { name: 'Northgate Health', owner: 'JP', stage: 'Discovery', value: '$212,000', pct: 24 },
-  { name: 'Bellamy & Co', owner: 'TS', stage: 'Proposal', value: '$47,300', pct: 60 },
-  { name: 'Orbit Studios', owner: 'AM', stage: 'Qualified', value: '$28,900', pct: 40 },
+  { name: 'Manufacturing · line retrofit', owner: 'AM', stage: 'Proposal', value: '$184,000', pct: 72 },
+  { name: 'Logistics · fleet telematics', owner: 'RK', stage: 'Negotiation', value: '$96,500', pct: 88 },
+  { name: 'Healthcare · records migration', owner: 'JP', stage: 'Discovery', value: '$212,000', pct: 24 },
+  { name: 'Professional services · retainer', owner: 'TS', stage: 'Proposal', value: '$47,300', pct: 60 },
+  { name: 'Creative studio · brand system', owner: 'AM', stage: 'Qualified', value: '$28,900', pct: 40 },
 ];
 
+/**
+ * Stage emphasis by weight and border, not by colour.
+ *
+ * `Negotiation` used the accent as a filled chip. With five rows of accent
+ * progress bars beneath it and the frame's own status dot, the hero was
+ * carrying seven accent elements against a budget of three — which is how an
+ * accent stops meaning "look here" and becomes the palette.
+ */
 const stageTone: Record<string, string> = {
-  Negotiation: 'bg-brand-soft text-brand border-brand-line',
-  Proposal: 'bg-surface-2 text-foreground/75 border-hairline',
-  Discovery: 'bg-surface-2 text-muted-foreground border-hairline',
-  Qualified: 'bg-surface-2 text-muted-foreground border-hairline',
+  Negotiation: 'bg-surface-2 text-copy border-hairline-strong font-semibold',
+  Proposal: 'bg-surface-2 text-copy-2 border-hairline',
+  Discovery: 'bg-surface-2 text-copy-3 border-hairline',
+  Qualified: 'bg-surface-2 text-copy-3 border-hairline',
 };
 
 export function ProductSurface({ className }: { className?: string }) {
@@ -86,11 +106,16 @@ export function ProductSurface({ className }: { className?: string }) {
         // interface, not the interface. A screen reader announcing forty
         // fabricated deal names before reaching the call to action would be
         // reading furniture aloud.
-        'border-hairline bg-background relative isolate select-none overflow-hidden rounded-xl border shadow-[0_1px_1px_rgba(0,0,0,0.03),0_8px_24px_-8px_rgba(0,0,0,0.10),0_24px_64px_-24px_rgba(0,0,0,0.16)]',
+        // `shadow-e2` and `rounded-surface`, from the token set. The value it
+        // replaces was a three-stop shadow tinted with pure black, written
+        // inline — the right idea, hard-coded, and the only shadow on the site
+        // not on the ramp, which is why it went slightly muddy against a
+        // hue-biased neutral.
+        'border-hairline bg-background rounded-surface shadow-e2 relative isolate select-none overflow-hidden border',
         className,
       )}
       role="img"
-      aria-label="The NextMav CRM pipeline: a sidebar of modules, four summary figures, and a table of open deals with their stage, owner and value."
+      aria-label="A demo NextMav workspace showing the CRM pipeline: a sidebar of modules, four summary figures, and a table of open deals with their stage, owner and value."
     >
       <div aria-hidden="true" className="flex min-h-[26rem] text-[0.8125rem]">
         {/* ── Rail ────────────────────────────────────────────────────────
@@ -110,57 +135,84 @@ export function ProductSurface({ className }: { className?: string }) {
               <span
                 key={label}
                 className={cn(
-                  'flex items-center gap-2.5 rounded-md px-2.5 py-[0.4375rem] font-medium',
+                  'flex items-center gap-2.5 rounded-control px-2.5 py-[0.4375rem] font-medium',
                   active
-                    ? 'bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)] ring-hairline ring-1'
-                    : 'text-muted-foreground',
+                    ? 'bg-background text-foreground shadow-e1 ring-hairline ring-1'
+                    : 'text-copy-3',
                 )}
               >
-                <Icon
-                  className={cn('size-[0.9375rem]', active && 'text-brand')}
-                  strokeWidth={1.9}
-                />
+                {/* The active item already carries a fill, a ring and a
+                    shadow. A fourth signal in the accent was spending the
+                    budget on a state that was already unambiguous. */}
+                <Icon className="size-[0.9375rem]" strokeWidth={1.9} />
                 {label}
               </span>
             ))}
           </nav>
 
-          <div className="border-hairline mt-auto flex items-center gap-2.5 border-t px-1.5 pt-3">
-            <span className="bg-brand-soft text-brand grid size-6 place-items-center rounded-full text-[0.6875rem] font-semibold">
+          {/* Was a fabricated person. A named individual in a product shot
+              reads as a user of the product; there is no such user yet. */}
+          <div className="border-hairline mt-auto flex items-center gap-label border-t px-1.5 pt-3">
+            <span className="bg-surface-2 text-copy-3 grid size-6 place-items-center rounded-full text-[0.6875rem] font-semibold">
               AM
             </span>
-            <span className="text-muted-foreground truncate text-[0.75rem]">
-              Ana Mireles
-            </span>
+            <span className="text-copy-3 truncate text-[0.75rem]">Account manager</span>
           </div>
         </aside>
 
         {/* ── Work area ─────────────────────────────────────────────────── */}
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="border-hairline flex items-center gap-3 border-b px-4 py-2.5 sm:px-5">
-            <span className="text-muted-foreground truncate text-[0.75rem]">
-              CRM <span className="opacity-40">/</span>{' '}
+            <span className="text-copy-3 truncate text-[0.75rem]">
+              CRM <span className="text-n-6">/</span>{' '}
               <span className="text-foreground font-medium">Pipeline</span>
             </span>
-            <span className="border-hairline text-muted-foreground ml-auto hidden items-center gap-2 rounded-md border px-2.5 py-1 text-[0.75rem] md:flex">
+            <span className="border-hairline text-copy-3 ml-auto hidden items-center gap-label rounded-control border px-2.5 py-1 text-[0.75rem] md:flex">
               <Search className="size-3.5" strokeWidth={1.9} />
               Search
-              <kbd className="border-hairline bg-surface rounded border px-1 font-sans text-[0.625rem]">
+              <kbd className="border-hairline bg-surface rounded-sm border px-1 font-sans text-[0.625rem]">
                 ⌘K
               </kbd>
             </span>
-            <span className="bg-brand size-1.5 shrink-0 rounded-full" />
+
+            {/*
+              The frame says what it is, in its own chrome, where it cannot be
+              cropped away or mistaken for decoration. This one label is what
+              makes the figures inside it illustrative rather than a claim
+              about customers we do not have.
+
+              It is also the hero's single accent element — the live dot. That
+              is the entire accent budget for this screen, spent on the one
+              thing that says the interface is running.
+            */}
+            <span className="border-hairline text-copy-3 text-label ml-auto flex shrink-0 items-center gap-control rounded-full border py-0.5 pr-2 pl-1.5 uppercase md:ml-0">
+              <span
+                aria-hidden="true"
+                className="bg-brand size-1.5 shrink-0 rounded-full"
+              />
+              Demo workspace
+            </span>
           </header>
 
-          <div className="flex-1 space-y-4 p-4 sm:p-5">
+          {/*
+            `xl:pr-14` is a crop margin, not decoration.
+
+            Above `xl` this frame runs off the right edge of the viewport. With
+            the table's own 12px padding that crop landed 23px into the first
+            row's value — the single most meaningful figure on screen — which
+            is a cropped *number*, not a cropped interface. The extra right
+            padding gives the bleed something empty to eat, so the frame reads
+            as continuing past the edge while every figure stays whole.
+          */}
+          <div className="flex-1 space-y-4 p-4 sm:p-5 xl:pr-14">
             {/* Summary figures. Two columns on a phone, four from `md`. */}
             <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
               {stats.map((s) => (
                 <div
                   key={s.label}
-                  className="border-hairline rounded-lg border p-3"
+                  className="border-hairline rounded-control border p-3"
                 >
-                  <p className="text-muted-foreground truncate text-[0.6875rem]">
+                  <p className="text-copy-3 truncate text-[0.6875rem]">
                     {s.label}
                   </p>
                   <p className="mt-1.5 text-[0.9375rem] font-semibold tracking-[-0.02em] tabular-nums">
@@ -168,8 +220,12 @@ export function ProductSurface({ className }: { className?: string }) {
                   </p>
                   <p
                     className={cn(
+                      // Direction is carried by the arrow, which is the signal
+                      // that survives being colour-blind, printed, or read at
+                      // 11px. Three of the four figures are "up", so tinting
+                      // them put three more accent elements in the hero.
                       'mt-1 flex items-center gap-0.5 text-[0.6875rem] font-medium tabular-nums',
-                      s.up ? 'text-brand' : 'text-muted-foreground',
+                      s.up ? 'text-copy-2' : 'text-copy-3',
                     )}
                   >
                     {s.up ? (
@@ -185,8 +241,8 @@ export function ProductSurface({ className }: { className?: string }) {
 
             {/* Deals. The right-hand columns drop away on narrow screens
                 rather than the table scrolling sideways inside the frame. */}
-            <div className="border-hairline overflow-hidden rounded-lg border">
-              <div className="border-hairline bg-surface text-muted-foreground grid grid-cols-[1fr_auto] gap-3 border-b px-3 py-2 text-[0.6875rem] font-medium sm:grid-cols-[1.6fr_0.8fr_0.7fr_auto]">
+            <div className="border-hairline rounded-control overflow-hidden border">
+              <div className="border-hairline bg-surface text-copy-3 grid grid-cols-[1fr_auto] gap-3 border-b px-3 py-2 text-[0.6875rem] font-medium sm:grid-cols-[1.6fr_0.8fr_0.7fr_auto]">
                 <span>Deal</span>
                 <span className="hidden sm:block">Stage</span>
                 <span className="hidden sm:block">Confidence</span>
@@ -199,7 +255,7 @@ export function ProductSurface({ className }: { className?: string }) {
                   className="border-hairline grid grid-cols-[1fr_auto] items-center gap-3 border-b px-3 py-2.5 last:border-b-0 sm:grid-cols-[1.6fr_0.8fr_0.7fr_auto]"
                 >
                   <span className="flex min-w-0 items-center gap-2">
-                    <span className="bg-surface-2 text-muted-foreground grid size-5 shrink-0 place-items-center rounded-full text-[0.625rem] font-semibold">
+                    <span className="bg-surface-2 text-copy-3 grid size-5 shrink-0 place-items-center rounded-full text-[0.625rem] font-semibold">
                       {d.owner}
                     </span>
                     <span className="truncate font-medium">{d.name}</span>
@@ -218,12 +274,17 @@ export function ProductSurface({ className }: { className?: string }) {
 
                   <span className="hidden items-center gap-2 sm:flex">
                     <span className="bg-surface-2 h-1 w-full max-w-[3.5rem] overflow-hidden rounded-full">
+                      {/* Neutral, not accent. Five rows meant five accent
+                          fills, which on its own blew the three-per-viewport
+                          budget before the frame's own status dot. A meter
+                          does not need colour to be read — length is the
+                          information. */}
                       <span
-                        className="bg-brand block h-full rounded-full"
+                        className="bg-n-9 block h-full rounded-full"
                         style={{ width: `${d.pct}%` }}
                       />
                     </span>
-                    <span className="text-muted-foreground text-[0.6875rem] tabular-nums">
+                    <span className="text-copy-3 text-[0.6875rem] tabular-nums">
                       {d.pct}%
                     </span>
                   </span>
