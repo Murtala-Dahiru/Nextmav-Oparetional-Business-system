@@ -190,15 +190,13 @@ Requirements for all three, so they do not have to be retaken:
 Until they arrive, the hero's `ProductSurface` is the only real interface on
 the page, and it is DOM rather than a capture.
 
-### 15. Fabricated names still on the landing page — **known inconsistency**
-The hero frame's invented company names were removed in the hero pass
-(`product-surface.tsx`). The **one-record chain section further down the same
-page still carries them** — `page.tsx` renders "Priya Raman — Harlow
-Manufacturing" and a matching invoice number, which is a fabricated person at a
-fabricated company presented as a record.
+### 15. ~~Fabricated names on the landing page~~ — ✅ CLOSED
 
-It was left deliberately: that section belongs to the landing page's later pass
-and the hero was to be reviewed on its own. **It must be de-fabricated in the
-same way when that section is done** — describe the kind of record, not the
-party — or the page will name a customer 600px below a frame that carefully
-does not.
+The one-record chain rendered "Priya Raman — Harlow Manufacturing": a fabricated
+person at a fabricated company, presented as a record, 600px below a product
+frame that carefully avoided naming either.
+
+Closed in commit 3. Records are described by kind now — "Operations lead ·
+manufacturing" — which costs the illustration nothing. The claim that section
+makes is about relationships *between rows*, and a relationship does not need a
+name to be shown.

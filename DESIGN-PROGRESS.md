@@ -43,9 +43,9 @@ pricing → sign-up/login → forgot/reset → about/contact → `/help` `/docs`
 | 0 | Stabilise — revert out-of-scope backend, fix red build | ✅ done | — |
 | 1 | **Tokens + primitives + two bugs** | ✅ **done** | Commit 1 of the correction pass. See below. |
 | 2 | **Landing hero** | ✅ **done** | Commit 2. **Awaiting review — do not continue past it.** |
-| 3 | Header · footer | ⬜ **next**, after review | Structurally fine, craft 6 and 4 |
-| 4 | Landing §2–6 | ⬜ not-started | Do **not** start before the hero is approved |
-| 5 | Features | ⬜ not-started | Craft 4 — lowest score × high intent |
+| 3 | **Product surfaces + landing rebuild** | ✅ **done** | Commit 3. Four app screens; page built around them. |
+| 4 | Features | ⬜ **next** | Highest intent × lowest craft; reuse `AppFrame` |
+| 5 | Header · footer | ⬜ not-started | Craft 6 and 4; footer grid is ragged |
 | 6 | Pricing | ⬜ not-started | Currency/tax line blocked (CONTENT-NEEDED #5) |
 | 7 | Sign-up · login | ⬜ not-started | Shell is the fix; one file serves six screens |
 | 8 | Forgot · reset | ⬜ not-started | Also still need `Field` + blur validation |
@@ -227,6 +227,118 @@ styles and geometry. A human eye on the real thing is still the last check.
 
 Sections 2–6 of the landing page, the header, the footer, and every other page.
 The hero is for review first.
+
+---
+
+## Commit 3 — product surfaces, and a landing page built around them
+
+The hero was right and the rest of the page was still an argument told in
+paragraphs. One product screen followed by seven sections of prose is not a
+product site; it is a blog post with a screenshot at the top.
+
+### What landed
+
+**`src/components/marketing/surfaces.tsx`** — four full application screens
+rendered as DOM, sharing one `AppFrame` (rail, breadcrumb, toolbar, demo
+marker) so they read as four views of one product rather than four unrelated
+mockups:
+
+| Surface | Shows |
+|---|---|
+| `CrmSurface` | Pipeline — four summary figures, six deals with stage, owner, confidence, value |
+| `ProjectsSurface` | Board — three columns, cards with checklists, assignees, comments, attachments |
+| `AttendanceSurface` | Four-week grid, six people, present/leave/holiday/absent, legend |
+| `FinanceSurface` | Twelve-month bar chart beside an invoice list with payment states |
+
+Deliberately information-dense. A sparse mock reads as a product with nothing
+in it; what makes enterprise software look substantial is a lot of real
+structure held in order.
+
+`product-surface.tsx` was deleted — superseded, and nothing imported it.
+
+**The landing page** now alternates contained and full-bleed, plain and tinted
+and ink, dense and open. Measured rhythm: `plain → ink → plain → surface →
+plain → surface → plain → ink`, with no two adjacent sections sharing a tone
+and `default` density never appearing twice in a row.
+
+The projects board runs at the `wide` container (1344px at 1440) — the largest
+object on the page, and allowed to say so. Attendance and finance sit two-up
+beneath it at a different rhythm.
+
+**Icon-in-a-tile is gone from `foundations`.** Six numbered arguments with a
+hairline rule instead — these are claims to be checked, not features to be
+browsed, and an icon in a soft circle is the most reliable signature of a
+generated feature grid.
+
+**The chain section is de-fabricated** (was CONTENT-NEEDED #15, now closed).
+"Priya Raman — Harlow Manufacturing" became "Operations lead · manufacturing".
+The claim is about relationships between rows, and a relationship needs no
+name. A fifth link (Timesheet) was added so the chain crosses four modules.
+
+### The bug this pass found — `cn()` was silently dropping classes
+
+tailwind-merge resolves `text-*` conflicts by checking the value against the
+font sizes it knows. It knows Tailwind's defaults. It did not know ours — so
+**every Phase 1 type token was classified as a colour**, landed in the same
+group as `text-copy-3`, and the two were treated as a conflict where only the
+last survives.
+
+Symptom, found in the browser: the ink section's eyebrow rendered at **16px
+with normal tracking** instead of 12px at +0.06em, because
+`<Eyebrow className="text-copy-on-ink-2">` merged down to the colour alone and
+dropped `text-label`.
+
+It only bit classes passing through `cn()` — a literal `className` string in
+JSX never reaches tailwind-merge — which is exactly why it was invisible. The
+pages looked right; the *components* did not, and components are the part that
+repeats.
+
+`src/lib/utils.ts` now uses `extendTailwindMerge` and registers the custom
+`font-size`, `text-color`, `shadow` and `rounded` groups.
+
+⚠️ **Anything added to `@theme` in `globals.css` must be added to
+`src/lib/utils.ts` too**, or it will be silently mis-grouped in exactly this
+way. There is no build error for this. Verified after the fix: `text-label`
+survives the merge at 12px / +0.72px.
+
+### Verified in the browser
+
+- 17 routes return 200
+- 1440: hero surface bleeds 56px right, board 1344px wide, attendance and
+  finance two-up at 660px each, no horizontal scroll
+- 531px: all four surfaces stack, no horizontal scroll
+- Accent elements on the **whole page: 5** — one demo marker per surface plus
+  the header's active-nav dot. No viewport shows more than two.
+- Dark mode: elevation inverts to the inset highlight; page ramp inverts
+- `contrast --check` clean, `security-check` clean
+
+### ⚠️ Preview server
+
+`npm run build` **takes port 3100 and tears down the dev server** — this is why
+the preview kept dying. Run the build last, then restart the preview.
+
+---
+
+## Still on the old, thinner treatment
+
+The landing page and the shared component layer got this pass. These did not,
+and they still read as the earlier, plainer site:
+
+| Page | State |
+|---|---|
+| Features | Eight identical two-column blocks, icon-in-tile, no product surface |
+| Pricing | Three cards, featured plan differentiated only by a ring |
+| About | No visual content at all |
+| Contact | Accent used as a large background panel; ad-hoc section density |
+| Header · footer | Craft 6 and 4; footer grid is ragged |
+| Solutions · blog · legal | Untouched |
+| `/help` `/docs` `/status` | Still on the old emerald design |
+
+**Next, in order:** features (highest intent × lowest craft, and the page that
+most needs the new surfaces), then pricing, then header/footer, then the rest.
+`surfaces.tsx` is built to be reused — `AppFrame` takes any children, so a
+features page can show a module's real screen beside its description instead of
+a bullet list.
 
 ---
 
