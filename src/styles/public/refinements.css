@@ -19,6 +19,258 @@
  *  should go back through the script.
  */
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Landing — craft pass
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── The hero rag ───────────────────────────────────────────────────────────
+
+   At 1440px the headline set as:
+
+       Run your
+       organization
+       from one
+       connected platform.
+
+   Line three is two short words. On the single largest piece of type on the
+   site, a stub line reads as an accident — and it is the one thing a visitor
+   looks at before deciding whether to keep reading.
+
+   `text-wrap: balance` was the obvious first try and it changed nothing. The
+   reason is worth recording: the second half of the headline is Instrument
+   Serif at display size, so "connected platform." is close to a full line on
+   its own whatever the browser does with the rest. Balance cannot rebalance
+   around a fragment that will not fit anywhere else.
+
+   The real constraint was narrower still. The `max-width: 620px` already on
+   this heading had never applied — the hero grid was `1fr 1.15fr`, which gave
+   the text column **499px** at 1440. The heading had been wrapping inside a
+   column a fifth narrower than the width it was written for.
+
+   So: rebalance the grid, size the type to the column it actually has, and
+   break the line on purpose. Two even lines at ~50px read as more confident
+   than four ragged ones at 72px — the old size was not buying authority, it
+   was buying a rag.
+
+   The size is measured rather than chosen. Line two is "from " in Plus Jakarta
+   Sans plus "one connected platform." in Instrument Serif, which together need
+   ≈10.74px of width per 1px of font-size. Against the 579px column the grid
+   below produces, that puts the ceiling near 53px; 3.1rem leaves ~45px of
+   slack — the margin needed for the serif to load late without reflowing the
+   headline into three lines. */
+
+.nm-public .nm-hero-grid {
+  grid-template-columns: 1fr 0.88fr;
+  gap: var(--nm-space-12);
+}
+
+.nm-public .nm-hero-title {
+  font-size: clamp(2.5rem, 4vw, 3.1rem);
+  max-width: none;
+}
+
+@media (min-width: 981px) {
+  .nm-public .nm-hero-title-line {
+    display: block;
+  }
+}
+
+/* The mono line under the buttons had the same shape of problem — it broke
+   after "Every available" and left "module" alone. With the wider column it
+   sets on one line. */
+.nm-public .nm-hero-foot {
+  max-width: none;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .nm-public .nm-hero-foot {
+    white-space: normal;
+  }
+}
+
+/* ── The secondary call to action ───────────────────────────────────────────
+
+   Measured against the hero's near-black ground, "Talk to sales" was a 0.8px
+   border at `rgba(255,255,255,0.15)` over a `0.06` fill — so faint that beside
+   a solid emerald primary it read as disabled rather than as the second of two
+   choices. "Talk to sales" is the *enterprise* path; on a B2B landing page it
+   is often the more valuable click, and it was the one nobody could see.
+
+   Raised until it is legibly a button. Deliberately still quieter than the
+   primary — this is about restoring a hierarchy, not flattening it. */
+
+.nm-public .nm-hero-dark .nm-btn-secondary,
+.nm-public .nm-dark-surface .nm-btn-secondary {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: var(--nm-neutral-0);
+}
+
+.nm-public .nm-hero-dark .nm-btn-secondary:hover,
+.nm-public .nm-dark-surface .nm-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.45);
+}
+
+/* ── Bento: the finance panel was styled for the wrong ground ───────────────
+
+   `.nm-bento-finance-mock` carries `background: rgba(255,255,255,0.04)` and
+   `border-color: var(--nm-border-dark)` — both correct on a dark card, and
+   both invisible on the white one it actually sits on. The result was a
+   bordered panel nobody could see, so the right half of a full-width card read
+   as empty space with two stray labels floating in it.
+
+   This is the light-surface equivalent of the same panel. */
+
+.nm-public .nm-bento-card:not(.nm-bento-large) .nm-bento-finance-mock {
+  background: var(--nm-bg-subtle);
+  border-color: var(--nm-border);
+}
+
+.nm-public .nm-bento-card:not(.nm-bento-large) .nm-bento-finance-mock .nm-mono {
+  color: var(--nm-ink-subtle);
+}
+
+/* The panel also has to earn its half of the card rather than floating in the
+   middle of it. */
+.nm-public .nm-bento-row > div:first-child {
+  flex: 1;
+}
+
+.nm-public .nm-bento-row .nm-bento-finance-mock {
+  width: 280px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 880px) {
+  .nm-public .nm-bento-row .nm-bento-finance-mock {
+    width: 100%;
+  }
+}
+
+/* ── Bento: the tall card's dead space ──────────────────────────────────────
+
+   Card 01 spans two rows, so it is ~550px tall for ~180px of content. The
+   remainder was closed by an 80px strip of six bars pinned to the bottom with
+   `margin-top: auto` — arbitrary heights, no baseline, no labels, no units.
+   That is decoration standing in for a product, and it left roughly 300px of
+   flat black above it.
+
+   The chart now fills the space it was hiding in and is labelled as what it
+   is. An illustration that says it is an illustration is honest; six unlabelled
+   bars implying a metric are not. Card 04 already uses exactly this wording. */
+
+.nm-public .nm-bento-large .nm-bento-chart-wrap {
+  margin-top: auto;
+  padding-top: var(--nm-space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--nm-space-3);
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.nm-public .nm-bento-large .nm-bento-mini-chart {
+  height: auto;
+  flex: 1;
+  min-height: 120px;
+  margin-top: 0;
+  padding-top: 0;
+  border-bottom: 1px solid var(--nm-border-dark-strong);
+  padding-bottom: 1px;
+}
+
+.nm-public .nm-bento-chart-caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--nm-space-4);
+  font-family: var(--nm-font-mono);
+  font-size: var(--nm-text-2xs);
+  letter-spacing: var(--nm-tracking-wide);
+  text-transform: uppercase;
+  color: var(--nm-neutral-7);
+}
+
+/* ── Bento: the ragged last row ─────────────────────────────────────────────
+
+   Six cards in a three-column grid where the first spans 2×2 and the fourth
+   spans two columns leaves exactly one cell filled on the final row — card 06
+   alone, with two-thirds of the row empty and the grid ending mid-thought.
+
+   The trailing "see the full platform" link becomes that missing cell. It
+   closes the row, and it resolves a second problem in the same move: the
+   heading promises sixteen capabilities and the grid shows six, which a
+   careful reader notices. The card says so, and says where the rest are. */
+
+/* The span goes on the reveal wrapper, which is the actual grid child — the
+   link is inside it. Putting it on the link styles a element the grid never
+   sees, which is the same descendant/self mistake that cost the auth layout. */
+.nm-public .nm-bento-more-wrap {
+  grid-column: span 2;
+  display: flex;
+}
+
+.nm-public .nm-bento-more {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--nm-space-3);
+  background: var(--nm-bg-subtle);
+  border: 1px solid var(--nm-border);
+  border-radius: var(--nm-radius-xl);
+  padding: var(--nm-space-8);
+  text-decoration: none;
+  transition:
+    border-color var(--nm-dur-base) var(--nm-ease),
+    background-color var(--nm-dur-base) var(--nm-ease),
+    transform var(--nm-dur-base) var(--nm-ease);
+}
+
+.nm-public .nm-bento-more:hover {
+  border-color: var(--nm-border-strong);
+  background: var(--nm-bg);
+  transform: translateY(-2px);
+}
+
+.nm-public .nm-bento-more-count {
+  font-family: var(--nm-font-mono);
+  font-size: var(--nm-text-2xs);
+  letter-spacing: var(--nm-tracking-wider);
+  text-transform: uppercase;
+  color: var(--nm-accent-6);
+}
+
+.nm-public .nm-bento-more-title {
+  font-size: var(--nm-text-xl);
+  font-weight: var(--nm-weight-semibold);
+  letter-spacing: var(--nm-tracking-tight);
+  color: var(--nm-ink);
+  max-width: 34ch;
+}
+
+.nm-public .nm-bento-more-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--nm-space-2);
+  font-size: var(--nm-text-sm);
+  font-weight: var(--nm-weight-medium);
+  color: var(--nm-accent-6);
+  transition: gap var(--nm-dur-base) var(--nm-ease);
+}
+
+.nm-public .nm-bento-more:hover .nm-bento-more-link {
+  gap: var(--nm-space-3);
+}
+
+@media (max-width: 600px) {
+  .nm-public .nm-bento-more-wrap {
+    grid-column: span 1;
+  }
+}
+
 /* ── /blog — the three destinations ─────────────────────────────────────────
 
    A card grid rather than a list because the three are alternatives, not

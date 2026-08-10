@@ -94,9 +94,24 @@ function Hero() {
               </span>
             </ScrollReveal>
             <ScrollReveal delay={1}>
+              {/*
+                Two spans so the line break is a decision rather than a
+                by-product of the column width. Above 980px each is a block and
+                the headline sets as two even lines; below it they run inline
+                and wrap normally, which is what a narrow screen needs.
+
+                It was breaking as "Run your / organization / from one /
+                connected platform." — a four-line rag with a two-word stub in
+                the middle, on the largest type on the site.
+              */}
               <h1 className="nm-hero-title">
-                Run your organization from{' '}
-                <span className="nm-hero-highlight nm-serif">one connected platform.</span>
+                <span className="nm-hero-title-line">Run your organization</span>{' '}
+                <span className="nm-hero-title-line">
+                  from{' '}
+                  <span className="nm-hero-highlight nm-serif">
+                    one connected platform.
+                  </span>
+                </span>
               </h1>
             </ScrollReveal>
             <ScrollReveal delay={2}>
@@ -279,10 +294,24 @@ function BentoFeatures() {
                 drawn from the modules rather than typed into a report, so
                 executives see the whole organization on one screen.
               </p>
-              <div className="nm-bento-mini-chart">
-                {[40, 65, 50, 80, 70, 95].map((h, i) => (
-                  <div key={i} className="nm-bento-mini-bar" style={{ height: `${h}%` }} />
-                ))}
+              {/*
+                Labelled, and labelled as an illustration. Six unlabelled bars
+                pinned to the bottom of a 550px card implied a metric while
+                stating none, which is the decorative-numbers pattern this page
+                is otherwise careful to avoid — and it left the card's middle
+                empty. Card 04's finance panel already says "Illustrative"; this
+                now matches it.
+              */}
+              <div className="nm-bento-chart-wrap" aria-hidden="true">
+                <div className="nm-bento-mini-chart">
+                  {[40, 65, 50, 80, 70, 95].map((h, i) => (
+                    <div key={i} className="nm-bento-mini-bar" style={{ height: `${h}%` }} />
+                  ))}
+                </div>
+                <div className="nm-bento-chart-caption">
+                  <span>Department performance</span>
+                  <span>Illustrative</span>
+                </div>
               </div>
             </div>
           </ScrollReveal>
@@ -371,13 +400,40 @@ function BentoFeatures() {
               </p>
             </div>
           </ScrollReveal>
-        </div>
 
-        <div className="nm-bento-foot">
-          <Link href="/features" className="nm-arrow-link">
-            See the full platform, and what is still being built
-            <ArrowRight size={14} />
-          </Link>
+          {/*
+            The seventh cell.
+
+            Six cards in a three-column grid — the first spanning 2×2, the
+            fourth spanning two columns — leave exactly one cell filled on the
+            last row, so the grid ended with card 06 alone beside two empty
+            thirds. This was a text link below the grid; as a card it closes the
+            row instead.
+
+            It also answers a question the section was raising and not
+            addressing: the heading says sixteen capabilities and the grid shows
+            six. Now the grid says so itself.
+          */}
+          <ScrollReveal delay={4} className="nm-bento-more-wrap">
+            <Link href="/features" className="nm-bento-more">
+              {/*
+                Named, not counted. The six cards above merge several entries
+                from `CAPABILITIES` — card 06 alone covers both "Inventory &
+                supply" and "Documents" — so any arithmetic printed here would
+                be wrong on the day somebody splits or merges a card. These are
+                real names from that list.
+              */}
+              <span className="nm-bento-more-count">Also included</span>
+              <span className="nm-bento-more-title">
+                CRM &amp; sales, communication, support &amp; client portal,
+                calendar, procurement and identity.
+              </span>
+              <span className="nm-bento-more-link">
+                See everything, and what is still being built
+                <ArrowRight size={14} aria-hidden="true" />
+              </span>
+            </Link>
+          </ScrollReveal>
         </div>
       </Container>
     </Section>
