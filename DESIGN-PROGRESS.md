@@ -9,6 +9,61 @@ and out of bounds**. If unsure whether something is in scope, it isn't.
 
 ---
 
+## Pass of 2026-08-10 — launch-readiness refinement
+
+Three surfaces landed, one commit each. The finding that reframed the whole
+pass: the public surface is **running two design systems at once**, and the
+pages that read as "weaker" are not under-polished — they are un-migrated.
+
+Adoption, measured as `nm-` class references per page at the start:
+
+```
+landing 241 │ features 89 │ pricing 87 │ solutions 79 │ about 77
+contact  37 │ privacy 22 │ terms 17 │ cookies 16
+docs 0 │ help 0 │ status 0 │ blog 0        ← still the previous website
+```
+
+### Landed
+
+1. **`0b6b06a` — the scope-wrapper trap.** Both public shells put `nm-public`
+   and their layout class on the *same element*, and the import script emits
+   `.nm-public <sel>` descendant selectors. So `.nm-public .nm-auth` and
+   `.nm-public .nm-app` matched **nothing**. The auth split-screen had never
+   rendered — form 400px wide in 1265px of white, dark aside a full screen
+   below the fold. The marketing sticky footer was dead too: 342px of bare
+   white under `/blog` at a 1400px viewport. Fixed by nesting.
+
+2. **`3a6c98b` — the auth cluster.** Seven screens whose shell was the new
+   system and whose forms were the application's shadcn kit. Replaced
+   `components/forms/field.tsx` (three importers, all auth) with
+   `components/auth/fields.tsx`. Also: per-screen asides instead of one trial
+   pitch on all seven, one left edge instead of two, a keyboard-reachable
+   reveal toggle, a composed mobile screen, 44px standalone targets.
+
+3. **`b84b583` — `/blog`.** The last page importing
+   `components/marketing/section`. Content unchanged; system swapped.
+
+### Not done — the remaining Tier 1
+
+`/docs`, `/help`, `/status` are still at **0** adoption. They import `Card`,
+`Badge`, `Breadcrumb`, `Separator` and `ScrollArea` from `@/components/ui/*`.
+`/docs` is the largest at 657 lines and 99 Tailwind class attributes. These
+are the next unit, and they are the last of the "looks like an older version
+of the website" problem.
+
+Note for whoever picks this up: not everything in `components/marketing/` is
+legacy. `capabilities.ts`, `media.tsx` and `use-session-peek.ts` are data and
+utilities that converted pages depend on. Only `section.tsx` and `reveal.tsx`
+are the old primitives, and after this pass nothing imports `section.tsx`.
+
+New hand-maintained stylesheets — these survive a re-run of
+`scripts/import-public-css.mjs`, which only overwrites basenames present in its
+external source directory: `styles/public/auth-forms.css`,
+`styles/public/refinements.css`. Public CSS goes in those, never in the
+generated files.
+
+---
+
 ## Where this stands
 
 A craft correction pass is under way. The first pass produced pages that were
