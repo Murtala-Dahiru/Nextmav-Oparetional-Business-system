@@ -1,8 +1,8 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { BookOpen, Activity, LifeBuoy, ArrowUpRight } from 'lucide-react';
-import { Container, Eyebrow, Section } from '@/components/marketing/section';
-import { Reveal } from '@/components/marketing/reveal';
+import { Container, Eyebrow, Section } from '@/components/public/ui';
+import { ScrollReveal } from '@/components/public/client';
 
 export const metadata: Metadata = {
   title: 'Writing — NextMav',
@@ -42,9 +42,22 @@ export const metadata: Metadata = {
  *  credibility of every other page on the site, because a reader who catches
  *  one starts checking the rest.
  *
- *  This is also the pattern the rest of the product should use. An empty state
- *  is a designed screen with a reason and a next action — not a centred grey
- *  sentence apologising for itself.
+ *  ── Why it was rebuilt again ────────────────────────────────────────────
+ *
+ *  The empty state was right and is kept word for word. What was wrong was
+ *  that it was the only page on the site still written in the *previous*
+ *  design system — `components/marketing/section`, the application's Tailwind
+ *  tokens, `border-hairline`, `bg-surface`, `text-display-1`. Measured against
+ *  the rest of the public surface it referenced the new system zero times,
+ *  while the landing page referenced it 241 times.
+ *
+ *  So a reader arriving from `/contact` or `/pricing` — both of which open on
+ *  the dark cinematic hero every secondary page uses — landed on a white page
+ *  with a different type scale, different card radius and different borders.
+ *  Nothing on it looked broken. It simply looked like an older version of the
+ *  company, which is the more expensive of the two problems.
+ *
+ *  The structure below is unchanged. Only the system it is written in is.
  */
 
 const meanwhile = [
@@ -71,86 +84,83 @@ const meanwhile = [
 export default function BlogPage() {
   return (
     <>
-      <Container className="pt-16 pb-4 sm:pt-24">
-        <div className="max-w-[44rem]">
-          <Reveal>
-            <Eyebrow>Writing</Eyebrow>
-          </Reveal>
-          <Reveal delay={0.05}>
-            <h1 className="text-display-1 text-balance-hero mt-5">
-              Nothing published yet.
-            </h1>
-          </Reveal>
-          <Reveal delay={0.1}>
-            <p className="text-muted-foreground text-lede text-pretty-body mt-6">
-              When there is something worth reading — how a module is built, why
-              a decision went the way it did, what broke and what we changed —
-              it will be here. Until then this page would rather be empty than
-              padded.
-            </p>
-          </Reveal>
+      <section className="nm-page-hero nm-page-hero-dark">
+        <div className="nm-page-hero-bg">
+          <div className="nm-grid-bg nm-grid-bg-dark" />
+          <div className="nm-hero-glow nm-hero-glow-1" />
+          <div className="nm-hero-glow nm-hero-glow-2" />
         </div>
-      </Container>
+        <Container className="nm-page-hero-content">
+          <Eyebrow>Writing</Eyebrow>
+          <h1 className="nm-page-hero-title nm-page-hero-title-dark">
+            Nothing published <span className="nm-serif">yet.</span>
+          </h1>
+          <p className="nm-page-hero-sub nm-page-hero-sub-dark">
+            When there is something worth reading — how a module is built, why a
+            decision went the way it did, what broke and what we changed — it
+            will be here. Until then this page would rather be empty than
+            padded.
+          </p>
+        </Container>
+      </section>
 
       {/* ── The empty state proper ───────────────────────────────────────── */}
-      <Container className="py-10 sm:py-14">
-        <Reveal>
-          <div className="border-hairline bg-surface rounded-2xl border px-6 py-14 text-center sm:px-12">
-            <div
-              className="bg-background ring-hairline mx-auto grid size-12 place-items-center rounded-xl ring-1"
-              aria-hidden="true"
-            >
-              <BookOpen className="text-brand size-5" strokeWidth={1.8} />
+      <Section aria-labelledby="empty">
+        <Container width="narrow">
+          <ScrollReveal>
+            <div className="nm-card-inset" style={{ textAlign: 'center' }}>
+              <div className="nm-state">
+                <div className="nm-auth-state-icon" aria-hidden="true">
+                  <BookOpen size={22} />
+                </div>
+                <h2 id="empty" className="nm-state-title">
+                  No posts, rather than filler
+                </h2>
+                <p className="nm-state-desc">
+                  If there is something you would find genuinely useful written
+                  up — a migration you are weighing, a permission model you are
+                  trying to reproduce — tell us and we will write that one
+                  first.
+                </p>
+                <Link
+                  href="/contact"
+                  className="nm-arrow-link"
+                  style={{ marginTop: 'var(--nm-space-4)' }}
+                >
+                  Suggest a topic
+                  <ArrowUpRight size={14} aria-hidden="true" />
+                </Link>
+              </div>
             </div>
-            <h2 className="mt-5 text-[1.125rem] font-semibold tracking-[-0.02em]">
-              No posts, rather than filler
-            </h2>
-            <p className="text-muted-foreground mx-auto mt-2.5 max-w-md text-[0.9375rem] leading-relaxed">
-              If there is something you would find genuinely useful written up —
-              a migration you are weighing, a permission model you are trying to
-              reproduce — tell us and we will write that one first.
-            </p>
-            <Link
-              href="/contact"
-              className="text-foreground mt-6 inline-flex items-center gap-1.5 text-[0.9375rem] font-medium underline decoration-[1.5px] underline-offset-[4px] hover:no-underline"
-            >
-              Suggest a topic
-              <ArrowUpRight className="size-4" aria-hidden="true" />
-            </Link>
-          </div>
-        </Reveal>
-      </Container>
+          </ScrollReveal>
+        </Container>
+      </Section>
 
       {/* ── Where to go instead ──────────────────────────────────────────── */}
-      <Section tone="surface" density="tight" aria-labelledby="meanwhile">
-        <Reveal>
-          <h2 id="meanwhile" className="text-display-3">
-            In the meantime
-          </h2>
-        </Reveal>
+      <Section size="sm" aria-labelledby="meanwhile" className="nm-section-surface">
+        <Container>
+          <ScrollReveal>
+            <h2 id="meanwhile" className="nm-heading">
+              In the meantime
+            </h2>
+          </ScrollReveal>
 
-        <div className="mt-8 grid gap-3 md:grid-cols-3">
-          {meanwhile.map(({ icon: Icon, title, body, href }, i) => (
-            <Reveal key={title} delay={i * 0.05}>
-              <Link
-                href={href}
-                className="border-hairline bg-background hover:border-hairline-strong block h-full rounded-xl border p-5 transition-colors"
-              >
-                <Icon
-                  className="text-brand size-[1.0625rem]"
-                  strokeWidth={1.9}
-                  aria-hidden="true"
-                />
-                <h3 className="mt-3 text-[0.9375rem] font-semibold tracking-[-0.01em]">
-                  {title}
-                </h3>
-                <p className="text-muted-foreground mt-1.5 text-[0.875rem] leading-relaxed">
-                  {body}
-                </p>
-              </Link>
-            </Reveal>
-          ))}
-        </div>
+          <div className="nm-blog-meanwhile">
+            {meanwhile.map(({ icon: Icon, title, body, href }, i) => (
+              <ScrollReveal key={title} delay={(i + 1) as 1 | 2 | 3}>
+                <Link href={href} className="nm-card nm-card-hover nm-blog-meanwhile-card">
+                  <Icon
+                    size={18}
+                    aria-hidden="true"
+                    style={{ color: 'var(--nm-accent)' }}
+                  />
+                  <h3 className="nm-blog-meanwhile-title">{title}</h3>
+                  <p className="nm-blog-meanwhile-body">{body}</p>
+                </Link>
+              </ScrollReveal>
+            ))}
+          </div>
+        </Container>
       </Section>
     </>
   );

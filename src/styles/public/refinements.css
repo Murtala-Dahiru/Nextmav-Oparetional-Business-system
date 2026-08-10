@@ -1,0 +1,77 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  Page refinements
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  ── Hand-maintained. Not generated. ──────────────────────────────────────
+ *
+ *  The sibling files in this directory are written by
+ *  `scripts/import-public-css.mjs` and carry a "do not edit by hand" header.
+ *  This one and `auth-forms.css` are ours; the script only writes basenames it
+ *  finds in its source directory, so these two survive a re-run untouched.
+ *
+ *  `auth-forms.css` covers the auth screens. This covers everything else on
+ *  the public surface that needs a rule the uploaded system never had to
+ *  describe — because the uploaded project did not have the page.
+ *
+ *  Keep it small. A rule belongs here only when it is specific to one page's
+ *  composition; anything reusable belongs in the design system proper and
+ *  should go back through the script.
+ */
+
+/* ── /blog — the three destinations ─────────────────────────────────────────
+
+   A card grid rather than a list because the three are alternatives, not
+   steps: nothing about documentation comes before the help centre. Three
+   equal columns say "pick one"; a stacked list says "read in order".
+
+   Collapses at 860px rather than at a device breakpoint — that is the width at
+   which a three-column split leaves each card too narrow for its second line
+   of body text to be worth reading. */
+
+.nm-public .nm-blog-meanwhile {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--nm-space-4);
+  margin-top: var(--nm-space-8);
+}
+
+@media (max-width: 860px) {
+  .nm-public .nm-blog-meanwhile {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* `ScrollReveal` wraps each card in a div, so the card cannot inherit the
+   grid cell's height without this. Without it the three cards are as tall as
+   their own text and the row has a ragged bottom edge. */
+.nm-public .nm-blog-meanwhile > * {
+  height: 100%;
+}
+
+.nm-public .nm-blog-meanwhile-card {
+  display: block;
+  height: 100%;
+}
+
+.nm-public .nm-blog-meanwhile-title {
+  margin-top: var(--nm-space-3);
+  font-size: var(--nm-text-base);
+  font-weight: var(--nm-weight-semibold);
+  letter-spacing: var(--nm-tracking-tight);
+  color: var(--nm-ink);
+}
+
+.nm-public .nm-blog-meanwhile-body {
+  margin-top: var(--nm-space-2);
+  font-size: var(--nm-text-sm);
+  color: var(--nm-ink-muted);
+  line-height: var(--nm-leading-relaxed);
+}
+
+/* A section that sits on the subtle ground, to separate it from the one above
+   without a rule. The uploaded system has the token but never a class for it. */
+.nm-public .nm-section-surface {
+  background: var(--nm-bg-subtle);
+  border-top: 1px solid var(--nm-border);
+}

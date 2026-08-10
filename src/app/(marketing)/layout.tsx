@@ -12,6 +12,7 @@ import '@/styles/public/landing.css';
 import '@/styles/public/pages.css';
 import '@/styles/public/auth.css';
 import '@/styles/public/auth-forms.css';
+import '@/styles/public/refinements.css';
 // Last, deliberately: it overrides the font tokens and relies on source order.
 import '@/styles/public-fonts.css';
 

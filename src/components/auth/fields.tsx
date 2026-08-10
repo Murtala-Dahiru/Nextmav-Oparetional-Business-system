@@ -260,7 +260,10 @@ export function PasswordRules({
           {/* The state is in the icon, which a screen reader does not read.
               Saying it in text is the difference between a list of rules and a
               list of rules with answers. */}
-          <span className="nm-visually-hidden">{rule.met ? 'Met: ' : 'Not yet met: '}</span>
+          {/* `nm-sr-only`, not `nm-visually-hidden`: both exist in the public
+              system and do the same thing, and this is the one the converted
+              pages already use. */}
+          <span className="nm-sr-only">{rule.met ? 'Met: ' : 'Not yet met: '}</span>
           {rule.label}
         </span>
       ))}
