@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { Check, Minus, ArrowUpRight } from 'lucide-react';
+import { Check, Minus, ArrowUpRight, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Section, Container, SectionHeading, Eyebrow } from '@/components/marketing/section';
 import { Reveal } from '@/components/marketing/reveal';
@@ -195,11 +195,29 @@ const faqs = [
   },
 ];
 
+/**
+ * On every plan, so it does not need saying three times.
+ *
+ * Six identical lines repeated across three cards is most of what makes a
+ * pricing grid unreadable — the eye cannot find the differences because the
+ * similarities are taking up the same space. Pulling them into one strip lets
+ * each card carry only what distinguishes it, and states the page's actual
+ * argument in one place: you are not buying departments one at a time.
+ */
+const everyPlan = [
+  'All eight core modules',
+  'Role-based permissions',
+  'Row-level tenant isolation',
+  'Real-time updates',
+  'Data export from every module',
+  'Fourteen days free, no card',
+];
+
 function CellValue({ value }: { value: Cell }) {
   if (value === true) {
     return (
       <>
-        <Check className="text-brand mx-auto size-4" strokeWidth={2.4} aria-hidden="true" />
+        <Check className="text-copy mx-auto size-4" strokeWidth={2.4} aria-hidden="true" />
         <span className="sr-only">Included</span>
       </>
     );
@@ -207,7 +225,7 @@ function CellValue({ value }: { value: Cell }) {
   if (value === false) {
     return (
       <>
-        <Minus className="text-muted-foreground/40 mx-auto size-4" aria-hidden="true" />
+        <Minus className="text-n-6 mx-auto size-4" aria-hidden="true" />
         <span className="sr-only">Not included</span>
       </>
     );
@@ -218,81 +236,86 @@ function CellValue({ value }: { value: Cell }) {
 export default function PricingPage() {
   return (
     <>
-      <Container className="pt-16 pb-4 text-center sm:pt-24">
-        <Reveal className="mx-auto flex max-w-2xl flex-col items-center gap-5">
+      <Container className="pt-band pb-pair text-center sm:pt-[6rem]">
+        <Reveal className="mx-auto flex max-w-2xl flex-col items-center gap-pair">
           <Eyebrow>Pricing</Eyebrow>
           <h1 className="text-display-1 text-balance-hero">
             Priced by team size, not by module.
           </h1>
-          <p className="text-muted-foreground text-lede text-pretty-body">
-            Every plan includes all eight modules. You are not buying access to
-            departments one at a time.
+          <p className="text-copy-2 text-lede text-pretty-body mt-2">
+            Every plan includes all eight core modules. You are not buying access
+            to departments one at a time.
           </p>
         </Reveal>
       </Container>
 
       {/* ── Plans ────────────────────────────────────────────────────────── */}
-      <Container className="py-12 sm:py-16">
-        <div className="grid gap-5 md:grid-cols-3">
+      <Container className="py-block">
+        <div className="grid gap-comp md:grid-cols-3">
           {plans.map((plan, i) => (
             <Reveal key={plan.name} delay={i * 0.05} className="h-full">
               <div
                 className={cn(
-                  'flex h-full flex-col rounded-2xl border p-7',
+                  'rounded-surface relative flex h-full flex-col border p-comp sm:p-7',
                   plan.featured
                     ? // Weight, not scale. The old card used `scale-[1.02]`,
                       // which blurs text on non-retina displays and lifts the
                       // card out of the grid's baseline so all three headings
                       // stop aligning.
-                      'border-ink bg-surface ring-ink shadow-sm ring-1'
-                    : 'border-hairline',
+                      'border-ink bg-surface ring-ink shadow-e2 ring-1'
+                    : 'border-hairline shadow-e1 bg-background',
                 )}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-[1.0625rem] font-semibold tracking-[-0.02em]">
-                    {plan.name}
-                  </h2>
+                {/* A rule along the top edge of the featured card. A second,
+                    silent signal beside the ring and the badge — the plan a
+                    reader is meant to land on should not depend on noticing a
+                    one-pixel border colour. */}
+                {plan.featured && (
+                  <span
+                    aria-hidden="true"
+                    className="bg-ink absolute inset-x-0 top-0 h-[3px] rounded-t-[inherit]"
+                  />
+                )}
+
+                <div className="flex items-center justify-between gap-pair">
+                  <h2 className="text-title">{plan.name}</h2>
                   {plan.featured && (
-                    <span className="bg-ink text-ink-fg rounded-full px-2.5 py-1 text-[0.6875rem] font-medium">
+                    <span className="bg-ink text-ink-fg text-label rounded-full px-2.5 py-1">
                       Most teams
                     </span>
                   )}
                 </div>
 
-                <p className="text-muted-foreground mt-2 text-[0.875rem] leading-relaxed">
-                  {plan.description}
-                </p>
+                <p className="text-copy-2 text-body-sm mt-label">{plan.description}</p>
 
-                <div className="mt-6 flex items-baseline gap-1.5">
-                  <span className="text-[2.25rem] font-semibold tracking-[-0.035em] tabular-nums">
-                    {plan.price}
-                  </span>
-                  <span className="text-muted-foreground text-[0.875rem]">
-                    {plan.unit}
-                  </span>
+                <div className="mt-comp flex items-baseline gap-1.5">
+                  <span className="text-display-2 tabular-nums">{plan.price}</span>
+                  <span className="text-copy-2 text-body-sm">{plan.unit}</span>
                 </div>
-                <p className="text-muted-foreground mt-1 text-[0.8125rem]">
-                  {plan.seats}
-                </p>
+                <p className="text-copy-3 text-caption mt-1">{plan.seats}</p>
 
                 <Button
                   asChild
                   variant={plan.featured ? 'cta' : 'ctaOutline'}
                   size="xl"
-                  className="mt-6 w-full"
+                  className="mt-comp w-full"
                 >
                   <Link href={plan.href}>{plan.cta}</Link>
                 </Button>
 
-                <ul className="border-hairline mt-7 space-y-3 border-t pt-6">
+                <ul className="border-hairline mt-comp space-y-pair border-t pt-comp">
                   {plan.includes.map((item) => (
-                    <li key={item} className="flex gap-2.5 text-[0.875rem] leading-relaxed">
+                    <li key={item} className="text-body-sm flex gap-pair">
+                      {/* Tertiary, not accent. Eighteen accent ticks across
+                          three cards is a texture; the accent budget on this
+                          page is spent on nothing at all, which is correct —
+                          the featured plan is carried by ink. */}
                       <Check
-                        className="text-brand mt-[0.28rem] size-3.5 shrink-0"
+                        className="text-copy-3 mt-[0.3rem] size-3.5 shrink-0"
                         strokeWidth={2.6}
                         aria-hidden="true"
                       />
-                      <span className="text-foreground/85">{item}</span>
+                      <span className="text-copy">{item}</span>
                     </li>
                   ))}
                 </ul>
@@ -300,17 +323,43 @@ export default function PricingPage() {
             </Reveal>
           ))}
         </div>
-
-        <Reveal>
-          <p className="text-muted-foreground mt-8 text-center text-[0.875rem]">
-            Fourteen days free on any plan. No card, and nothing held back
-            during the trial.
-          </p>
-        </Reveal>
       </Container>
 
+      {/* ── On every plan ────────────────────────────────────────────────
+          The page's actual argument, stated once instead of three times. */}
+      <Section tone="surface" density="interrupt" aria-labelledby="every-plan">
+        <div className="grid gap-comp lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] lg:gap-block">
+          <Reveal>
+            <Eyebrow>On every plan</Eyebrow>
+            <h2 id="every-plan" className="text-display-3 mt-pair">
+              Nothing is held back by tier.
+            </h2>
+            <p className="text-copy-2 text-body-sm mt-row">
+              Gating whole departments behind a price is how a system of record
+              becomes a system of record for the part of the company that could
+              afford it.
+            </p>
+          </Reveal>
+
+          <div className="grid gap-x-block gap-y-pair sm:grid-cols-2 lg:pt-1">
+            {everyPlan.map((item, i) => (
+              <Reveal key={item} delay={Math.min(i, 5) * 0.03}>
+                <div className="border-hairline text-body-sm flex items-center gap-pair border-b py-pair">
+                  <Check
+                    className="text-copy-3 size-3.5 shrink-0"
+                    strokeWidth={2.6}
+                    aria-hidden="true"
+                  />
+                  <span className="text-copy">{item}</span>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </Section>
+
       {/* ── Comparison ───────────────────────────────────────────────────── */}
-      <Section tone="surface" aria-labelledby="compare">
+      <Section aria-labelledby="compare">
         <SectionHeading
           id="compare"
           eyebrow="In detail"
@@ -318,18 +367,18 @@ export default function PricingPage() {
           align="center"
         />
 
-        <Reveal className="mt-12">
+        <Reveal className="mt-group">
           {/* The wide table scrolls inside its own container rather than
               making the page scroll sideways on a phone. */}
-          <div className="border-hairline bg-background overflow-x-auto rounded-xl border">
-            <table className="w-full min-w-[36rem] text-[0.875rem]">
+          <div className="border-hairline bg-background rounded-surface shadow-e1 overflow-x-auto border">
+            <table className="text-body-sm w-full min-w-[36rem]">
               <caption className="sr-only">
                 Feature comparison across the Starter, Professional and
                 Enterprise plans
               </caption>
               <thead>
                 <tr className="border-hairline border-b">
-                  <th scope="col" className="text-muted-foreground px-5 py-3.5 text-left font-medium">
+                  <th scope="col" className="text-copy-3 text-label px-5 py-3.5 text-left uppercase">
                     Feature
                   </th>
                   {['Starter', 'Professional', 'Enterprise'].map((name) => (
@@ -337,7 +386,7 @@ export default function PricingPage() {
                       key={name}
                       scope="col"
                       className={cn(
-                        'px-5 py-3.5 text-center font-semibold',
+                        'text-title px-5 py-3.5 text-center',
                         name === 'Professional' && 'bg-surface',
                       )}
                     >
@@ -353,14 +402,14 @@ export default function PricingPage() {
                     <th
                       scope="colgroup"
                       colSpan={4}
-                      className="border-hairline text-muted-foreground border-y px-5 py-2 text-left text-[0.75rem] font-semibold tracking-[0.04em] uppercase"
+                      className="border-hairline text-copy-3 text-label bg-surface-2 border-y px-5 py-2 text-left uppercase"
                     >
                       {group.group}
                     </th>
                   </tr>
                   {group.rows.map((row) => (
                     <tr key={row.name} className="border-hairline border-b last:border-b-0">
-                      <th scope="row" className="text-foreground/85 px-5 py-3 text-left font-normal">
+                      <th scope="row" className="text-copy px-5 py-3 text-left font-normal">
                         {row.name}
                       </th>
                       {row.values.map((value, i) => (
@@ -383,42 +432,59 @@ export default function PricingPage() {
         </Reveal>
       </Section>
 
-      {/* ── Questions ────────────────────────────────────────────────────── */}
-      <Section aria-labelledby="faq">
+      {/* ── Questions ────────────────────────────────────────────────────
+          A disclosure list, migrated from the second uploaded project — at six
+          questions with answers this long, a flat list makes the reader scroll
+          past five things they did not ask to reach the one they did.
+
+          Built on `<details>` rather than on state. It is keyboard-operable,
+          announced correctly as a disclosure, and findable by the browser's own
+          in-page search with no `aria-expanded` to keep in sync — and it costs
+          no `'use client'`, so this page stays static. The upload's version is
+          a `<button>` with none of that wiring.
+
+          The first is open on load: an accordion that is entirely closed reads
+          as an empty page, and the trial question is the one most people came
+          for. */}
+      <Section tone="surface" aria-labelledby="faq">
         <SectionHeading
           id="faq"
           eyebrow="Before you decide"
           title="The questions that actually matter."
         />
 
-        <div className="divide-hairline mt-12 grid divide-y">
+        <div className="divide-hairline border-hairline mt-group divide-y border-y">
           {faqs.map((f, i) => (
             <Reveal key={f.q} delay={Math.min(i, 4) * 0.03}>
-              <div className="grid gap-3 py-6 md:grid-cols-[0.8fr_1.2fr] md:gap-12">
-                <h3 className="text-[0.9375rem] font-semibold tracking-[-0.01em]">
-                  {f.q}
-                </h3>
-                <p className="text-muted-foreground text-pretty-body text-[0.9375rem] leading-relaxed">
+              <details className="group" open={i === 0} name="pricing-faq">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-comp py-comp [&::-webkit-details-marker]:hidden">
+                  <h3 className="text-title">{f.q}</h3>
+                  <ChevronDown
+                    className="text-copy-3 size-4 shrink-0 transition-transform duration-200 group-open:rotate-180"
+                    aria-hidden="true"
+                  />
+                </summary>
+                <p className="text-copy-2 text-body text-pretty-body pb-comp max-w-[46rem]">
                   {f.a}
                 </p>
-              </div>
+              </details>
             </Reveal>
           ))}
         </div>
       </Section>
 
-      <Section tone="ink" density="tight" aria-labelledby="pricing-cta">
-        <div className="flex flex-col items-start gap-8 md:flex-row md:items-center md:justify-between">
+      <Section tone="ink" density="interrupt" aria-labelledby="pricing-cta">
+        <div className="flex flex-col items-start gap-group md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 id="pricing-cta" className="text-display-3 max-w-xl">
+            <h2 id="pricing-cta" className="text-display-2 text-balance-hero max-w-xl">
               Still not sure it fits?
             </h2>
-            <p className="mt-3 max-w-lg text-[0.9375rem] leading-relaxed opacity-70">
+            <p className="text-copy-on-ink-2 text-body mt-pair max-w-lg">
               Tell us what you run today. If the answer is that you should not
               move yet, we will say so.
             </p>
           </div>
-          <div className="flex shrink-0 flex-wrap gap-3">
+          <div className="flex shrink-0 flex-wrap gap-pair">
             <Button asChild variant="onInk" size="xl">
               <Link href="/contact">
                 Talk to us
