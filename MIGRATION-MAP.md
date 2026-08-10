@@ -163,8 +163,96 @@ legal copy · client-side Supabase auth · react-router · `@fontsource` (Next h
 
 ---
 
-## Dependencies
+## Dependencies (v1)
 
 Nothing must be installed. `lucide-react` is already here. `@fontsource/*` is
 replaced by `next/font` if a serif is adopted. `react-router-dom`,
 `@supabase/supabase-js` (direct), `vite` — all rejected.
+
+---
+---
+
+# Second pass — `bolt landing page 2`
+
+A newer iteration of the public-experience source was supplied on 2026-08-10.
+**Nothing was assumed to be better for being newer.** This section is the
+reconciliation; the implementation follows it.
+
+## The delta is unusually narrow
+
+`diff -rq` between the two uploads reports **eight changed files**:
+
+```
+index.html · AboutPage · BlogPage · ContactPage
+FeaturesPage · PricingPage · SolutionsPage · styles/pages.css
+```
+
+Which means everything else is **byte-identical to the version already
+evaluated**:
+
+- **`LandingPage.tsx` is unchanged.** The landing page needs no reconsideration
+  — v2 makes the same argument, with the same three fabricated sections. The
+  work already committed stands, and this pass does not reopen it.
+- All six auth pages, `Header`, `Footer`, `AuthLayout`, `Logo`, `ScrollReveal`,
+  every `ui/*` primitive, `App.tsx`, `lib/supabase.ts` — unchanged.
+- `tokens.css`, `base.css`, `components.css`, `layout.css`, `landing.css`,
+  `auth.css` — unchanged. The visual language did not move.
+
+So the whole of v2's new work lands on the six secondary public pages, which is
+precisely the set the first pass graded weakest. That makes this a genuinely
+useful upload rather than a re-run.
+
+## What changed, and the call on each
+
+| From v2 | Verdict | Reasoning |
+|---|---|---|
+| **Pricing: a 13-row comparison table** | ✅ **migrate** | A plan comparison is an expected pricing pattern and the current page has none. Three cards differentiated by a ring is the weakness already logged. |
+| **Pricing: accordion FAQ**, one open by default | ✅ **migrate** | Better than a static list at five questions. Needs real disclosure semantics — v2's is a `<button>` with no `aria-expanded` and no `aria-controls`. |
+| **Pricing: "Most popular" badge, feature checkmarks** | ✅ migrate | Cheap, conventional, and it gives the featured plan a second signal beyond a border. |
+| **Features: a pillar trio** before the module list | ✅ **migrate structure** | Three "why it connects" statements ahead of the detail is a real improvement in argument order. Content must be rewritten — v2's cites cost centres and a procurement→budget check that do not exist. |
+| **Features: architecture band with a checklist** | ✅ **migrate, content included** | The one place v2's copy is *verifiable here*: RLS on every table, structured logging, request tracing, rate limiting. `scripts/security-check.mjs` asserts all four. |
+| **Contact: a channel grid** (sales, support, response time, presence) | ✅ **migrate structure** | Better than the current accent-panel treatment, and "Global, remote-first" sidesteps CONTENT-NEEDED #1 honestly. Email addresses must be confirmed before they ship. |
+| **About: mission points, stats** | ⚠️ partial | The stats duplicate the landing page's figures band; repeating them weakens both. Mission points are usable structure. |
+| **Solutions: role and org-type splits** | ⚠️ partial | Useful structure, two stock photographs attached. |
+| **Blog: featured post + categories** | ⬜ defer | `/blog` is still credibility-fix only, and open question 3 is unanswered. |
+| **Five new stock photographs** | ❌ **reject** | `AboutPage` architecture, `BlogPage` featured, `FeaturesPage` ×2 ("analytics dashboard", "code on a dark screen"), `SolutionsPage` ×2. Nine hotlinked Pexels images across v2 now, up from six. |
+| **`index.html` OG/Twitter images** | ❌ **reject** | They point at `https://bolt.new/static/og_default.png` — the *builder tool's* default card. Shipping it would put another company's image on every NextMav link preview. |
+| **Twelve capability cards, seven of them invented** | ❌ reject | Unchanged from v1. Procurement, assets, documents-as-a-module, a configurable approvals engine, predictive analytics, cost centres, SSO. |
+| **`$12 per user / month`** | ❌ reject | Still invented; still blocked as CONTENT-NEEDED #5. The comparison table migrates without a price attached to it. |
+| **Gradient headline text, glow orbs, `nm-serif` spans** | ❌ reject | Visual language, and the identity decision from the first pass stands. |
+
+## Where the current implementation is stronger, and stays
+
+**`/features` content beats v2's outright and is kept.** The current page carries
+eight real modules with four concrete specifics each — thirty-two truthful
+lines drawn from actual tables and routes — against v2's twelve cards of which
+seven describe software that does not exist. It also has a jump-link contents
+nav for a long page, and the `#platform` anchor the footer depends on. None of
+that is given up.
+
+What the current `/features` genuinely needs is **craft, not content**, and that
+is independent of this upload:
+
+- icon-in-a-soft-tile on all eight modules — the pattern the landing page
+  removed as the most reliable signature of a generated feature grid
+- `opacity-70` and `text-foreground/85` — the banned opacity-hierarchy pattern
+- ~20 arbitrary `text-[0.9375rem]`-style values; none of the nine type tokens
+- `text-muted-foreground` rather than the copy ramp
+- `density="tight"`, a deprecated alias
+- accent far past the three-per-viewport rule: 8 icon tiles + 32 accent ticks
+- **no product surface at all**, while `AttendanceSurface` and `FinanceSurface`
+  currently have no importer anywhere in the repository
+
+That last pair is the tell: the features page is where those two screens were
+always meant to land, and putting them there closes the dead-code gap opened by
+the landing-page pass.
+
+## Order of work
+
+1. **`/features`** — takes v2's pillar trio and architecture band, keeps its own
+   module content, gets the token conformance pass, and adopts the two orphaned
+   surfaces. Highest intent × lowest craft, and the next item on the plan.
+2. **`/pricing`** — comparison table and accordion FAQ, no price invented.
+3. **`/contact`** — channel grid, pending confirmation of the email addresses.
+4. `/about`, `/solutions` — structure only, later.
+5. `/blog` — deferred, still blocked on open question 3.
