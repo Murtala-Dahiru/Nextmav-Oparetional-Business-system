@@ -315,7 +315,10 @@ function LoginForm() {
             sharing a row with the label crowds it, and this is the control
             somebody reaches for when they are already frustrated. */}
         <div style={{ marginTop: 'calc(var(--nm-space-3) * -1)' }}>
-          <Link href="/forgot-password" className="nm-link" style={{ fontSize: 'var(--nm-text-sm)' }}>
+          {/* A class rather than an inline size, so the touch-target rule in
+              `refinements.css` can reach it — it measured 18px tall, and it is
+              a link standing on its own rather than one inside a sentence. */}
+          <Link href="/forgot-password" className="nm-link nm-auth-standalone-link">
             Forgot your password?
           </Link>
         </div>

@@ -219,7 +219,7 @@ function AcceptInvite() {
           <button
             type="button"
             onClick={() => router.replace('/login')}
-            className="nm-link"
+            className="nm-link nm-auth-standalone-link"
           >
             Back to sign in
           </button>

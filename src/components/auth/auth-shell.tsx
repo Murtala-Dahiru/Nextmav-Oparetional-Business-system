@@ -13,8 +13,12 @@ import '@/styles/public/layout.css';
 import '@/styles/public/components.css';
 import '@/styles/public/pages.css';
 import '@/styles/public/auth.css';
-// Hand-maintained, after the generated sheet it extends. See its header.
+// Hand-maintained, after the generated sheets they extend. See their headers.
 import '@/styles/public/auth-forms.css';
+// `refinements.css` too, not only on the marketing layout: it carries the
+// touch-target rules, and without it here the auth screens were the only
+// public pages still shipping 21px standalone links on a phone.
+import '@/styles/public/refinements.css';
 import '@/styles/public-fonts.css';
 
 /**

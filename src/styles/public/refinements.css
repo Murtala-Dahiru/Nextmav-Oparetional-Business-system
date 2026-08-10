@@ -272,6 +272,70 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   Touch targets on the public surface
+   ═══════════════════════════════════════════════════════════════════════════
+
+   A sweep of all 19 public routes at 375, 768, 1024, 1280, 1440 and 1600 found
+   no overflow, no dead links, no console errors — and one systemic gap: several
+   *standalone* links sit between 18px and 39px tall. On a pointer device that
+   is nothing. On a phone it is the difference between a link and a coin toss.
+
+   Scoped to coarse pointers and small viewports on purpose. Padding a 22px
+   arrow link out to 44px on the desktop layouts it was composed for would open
+   gaps the spacing scale never intended — this is a touch fix, not a redesign.
+
+   Inline links inside a sentence are deliberately excluded: WCAG exempts them,
+   and stretching them would break the line box of the paragraph they sit in.
+   The ones treated here are links that stand alone as their own control. */
+
+@media (max-width: 768px), (pointer: coarse) {
+  /* Arrow links — "Suggest a topic", "Read the documentation", "Back to sign
+     in". Standalone calls to action, measured at 22px. */
+  .nm-public .nm-arrow-link {
+    min-height: 44px;
+  }
+
+  /* Any button. `.nm-btn-sm` is 34px and `.nm-btn` 40px, which is fine under a
+     mouse and short of the mark under a thumb — the footer's newsletter submit
+     is a 34px icon button, and it is the smallest control on the site. */
+  .nm-public .nm-btn {
+    min-height: 44px;
+  }
+
+  /* Footer navigation. At 375 the header collapses into a menu, so these are
+     the primary navigation on a phone, and they measured 34–38px. */
+  .nm-public .nm-footer-link,
+  .nm-public .nm-footer-nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* The brand mark, in both the header and the footer — 35px and 39px. */
+  .nm-public .nm-header-logo,
+  .nm-public .nm-footer-brand > a,
+  .nm-public .nm-auth-top > a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
+  /* "Forgot your password?" — 18px, and the one link on the sign-in form
+     somebody reaches for when they are already having a bad time. */
+  .nm-public .nm-auth-standalone-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
+/* Off touch it keeps the smaller size it was composed at, but it still needs
+   the type scale the inline style used to give it. */
+.nm-public .nm-auth-standalone-link {
+  font-size: var(--nm-text-sm);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    Pricing — craft pass
    ═══════════════════════════════════════════════════════════════════════════ */
 
