@@ -44,6 +44,7 @@ pricing → sign-up/login → forgot/reset → about/contact → `/help` `/docs`
 | 1 | **Tokens + primitives + two bugs** | ✅ **done** | Commit 1 of the correction pass. See below. |
 | 2 | **Landing hero** | ✅ **done** | Commit 2. **Awaiting review — do not continue past it.** |
 | 3 | **Product surfaces + landing rebuild** | ✅ **done** | Commit 3. Four app screens; page built around them. |
+| 3b | **Landing migrated to the uploaded structure** | ✅ **done** | Commit 4. See `MIGRATION-MAP.md` and below. **Awaiting review.** |
 | 4 | Features | ⬜ **next** | Highest intent × lowest craft; reuse `AppFrame` |
 | 5 | Header · footer | ⬜ not-started | Craft 6 and 4; footer grid is ragged |
 | 6 | Pricing | ⬜ not-started | Currency/tax line blocked (CONTENT-NEEDED #5) |
@@ -316,6 +317,111 @@ survives the merge at 12px / +0.72px.
 
 `npm run build` **takes port 3100 and tears down the dev server** — this is why
 the preview kept dying. Run the build last, then restart the preview.
+
+---
+
+## Commit 4 — the landing page migrated onto the uploaded structure
+
+An external project (`bolt landing page`, a Vite SPA built by another AI) was
+supplied as the preferred public-experience source. Discovery and the
+page-by-page map are in **`MIGRATION-MAP.md`**; read it before touching any
+other public page, because the three findings in it apply to all of them.
+
+**Decisions taken by the owner, on the record:**
+
+1. The landing page adopts the **upload's section structure**, de-fabricated.
+2. The **visual identity stays as it is** — cool ramp, Geist, teal, the
+   existing tokens. Structure and layout only; no visual-language change.
+
+### What the page is now
+
+Eight movements, in the upload's order: hero → capabilities (bento) →
+consolidation → showcase → architecture → figures → readiness → close.
+Tones measured on the rendered page: `plain · surface · plain · surface · ink ·
+plain · surface · ink` — no two adjacent alike.
+
+Three of the upload's sections did not come across, and will not:
+
+| Dropped | Why |
+|---|---|
+| Trust marquee | Eight invented organisation names |
+| Testimonials | Three named people at three named companies, illustrated with **photographs of real people** hotlinked from a stock library |
+| Star rating | "Rated 4.9/5 by operators" — there is no rating |
+
+Its **showcase** section survives with the stock office photograph and its
+invented "3.2x faster approvals" badge replaced by `ProjectsSurface`. That
+section wanted evidence; the board is the evidence.
+
+Its **architecture diagram** and **before/after consolidation** came across
+close to intact — they are the two things on that page making claims that can
+be checked. Layer names are this system's.
+
+### What the copy is allowed to say
+
+The upload's `/features` sells twelve capabilities and **seven do not exist**
+here: Procurement, an asset register, a documents module, a configurable
+approvals engine, predictive analytics, cost centres and SSO. It never mentions
+CRM, Inventory, Support, Calendar or the client portal. Every capability named
+on the new landing page is a module in `lib/constants.ts`.
+
+The four figures are the only numbers on the page, and each describes the
+software's shape rather than the company's traction: 8 modules · 1 permission
+model · 0 exports · 100% of tables under RLS.
+
+### Three things measurement caught
+
+**The bento rendered as six equal tiles.** `col-span` was written on the card,
+but `RevealGroup` wraps every child in its own `Reveal` div and *that* is the
+direct grid child — so the span applied to an element the grid never sees.
+`itemClassName` cannot fix it either, being one string shared by all items.
+Measured at 1440: all six tiles 363px. Mapped by hand now; Finance is 749×335
+across 2×2 and the grid closes at nine cells with no gaps.
+
+**`aria-label` on `<Section>` does nothing.** The component forwards only
+`aria-labelledby`, and **TypeScript does not excess-check hyphenated JSX
+attributes**, so the prop was dropped in silence and the figures band shipped as
+an unnamed region. It carries an `sr-only` heading now. ⚠️ This affects every
+page: `aria-label` on `Section` will never warn and will never work.
+
+**The showcase split gave the board 506px at 1024.** A three-column kanban with
+checklists and avatars, at a third of the width it was designed at — nothing
+overflowed, which is not the same as being readable. Split raised to `xl`; below
+that the board takes the full `wide` container at 945px.
+
+### Verified in the browser, not by eye
+
+- 17 routes return 200
+- 360 / 768 / 1024 / 1440: no horizontal scroll from this page at any width
+- 360: zero overflowing elements, CTAs measure 44px, `display-1` at 40px
+- 1440: hero frame bleeds exactly 56px past the viewport, `display-1` at 68px
+- Bento: 3 distinct row tops, 2×2 lead tile, no empty cells
+- Architecture stack narrows 536 → 512 → 488 → 464
+- **Accent elements on the whole page: 2** — one demo marker per surface. The
+  rule is three per viewport; this page never shows more than one.
+- Dark mode: page ramp inverts, the ink bands invert against it, card borders
+  and fills resolve to the dark ramp
+- `contrast --check` clean (40/40), `security-check` clean, `tsc` clean, `eslint` clean
+
+### Known, and deliberately not fixed here
+
+**A 7px horizontal overflow at exactly 768px, from the header.** The desktop
+actions block (`min-w-[11.5rem]`) plus the nav exceed the bar at the width where
+`md:` engages. Reproduced on `/pricing`, which this pass did not touch, so it is
+pre-existing and belongs to the header pass (item 5). Not expanded into, per the
+scope fence.
+
+**`AttendanceSurface` and `FinanceSurface` now have no importer.** The upload's
+structure carries one product surface per section rather than four in a row.
+They are kept because the features page is the next item and `AppFrame` was
+built for exactly that reuse — but if features lands without consuming them,
+they are dead code and should go.
+
+**`npm run build` was not run.** It takes port 3100 and would tear down another
+session's dev server. `tsc`, `eslint`, both gate scripts and all 17 routes were
+verified instead; the build should be run before this is called finished.
+
+**`.claude/launch.json` gained a `dev-preview` entry** on port 3210, because
+3100 was held. Anything touching sign-in should still use `dev`.
 
 ---
 
