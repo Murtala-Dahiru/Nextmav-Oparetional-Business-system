@@ -9,7 +9,48 @@ and out of bounds**. If unsure whether something is in scope, it isn't.
 
 ---
 
-## Pass of 2026-08-10 — launch-readiness refinement
+## Pass of 2026-08-10 (second) — visual craft pass
+
+The first pass of the day was verified by DOM measurement only, because the
+Browser pane cannot screenshot in this environment. This one drove Chrome over
+CDP directly and looked at the pages. **Every defect below was invisible to
+DOM measurement and obvious in a screenshot.**
+
+- **The hero headline had never fitted its column.** `max-width: 620px` on the
+  heading had never applied — the grid was `1fr 1.15fr`, giving the text 499px
+  at 1440. It set as "Run your / organization / from one / connected platform."
+  Grid rebalanced, size derived by measurement (≈10.74px of width per 1px of
+  font-size for line two), break made explicit. Two even lines.
+- **"Talk to sales" was invisible** — 0.8px at `rgba(255,255,255,0.15)` beside
+  a solid primary.
+- **The bento's finance panel was styled for a dark ground** and sat on a white
+  card, so half a card read as empty.
+- **The bento's tall card was ~300px of nothing** above six unlabelled bars.
+- **The bento's last row was one card beside two empty thirds.**
+- **All three pricing buttons had left-aligned labels** — `.nm-price-card-cta`
+  sets `display: block`, killing `.nm-btn`'s flex centring.
+- **"Custom" broke the pricing baseline** — 203px against 102px in a slot tuned
+  for "$29".
+- **Standalone links at 18–39px on touch**, found by sweeping 19 routes × 6
+  widths (114 loads). That sweep also confirmed zero overflow, zero dead links,
+  zero console errors, zero ground mismatches, zero non-flex buttons.
+
+Tooling worth keeping: `shoot.mjs` and `audit.mjs` (CDP, no dependencies). Two
+traps — Git Bash mangles a bare `/` argument (use `MSYS_NO_PATHCONV=1`), and a
+scroll loop must yield with `requestAnimationFrame` or IntersectionObserver
+never fires and every capture is blank (28/28 reveals with rAF, 5/28 without).
+
+### Still not done
+
+The **middle sections of the landing page** (consolidation, showcase,
+positions, architecture, readiness, closing) and **features / solutions /
+about / contact** were audited by machine and are clean on every mechanical
+check, but have **not** had a section-by-section visual review. That is the
+remaining craft work.
+
+---
+
+## Pass of 2026-08-10 (first) — launch-readiness refinement
 
 Three surfaces landed, one commit each. The finding that reframed the whole
 pass: the public surface is **running two design systems at once**, and the
