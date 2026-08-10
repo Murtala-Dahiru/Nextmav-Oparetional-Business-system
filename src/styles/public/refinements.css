@@ -278,3 +278,25 @@
   color: var(--nm-ink-muted);
   line-height: var(--nm-leading-relaxed);
 }
+
+/* ── /docs — the same grid at a readable measure ────────────────────────────
+
+   `.nm-help-grid` is `auto-fit minmax(260px, …)`, which is right on /help: ten
+   cards carrying one-line capability summaries, four across. On /docs it holds
+   four cards carrying a paragraph each, and at 1440px it produced 272px
+   columns — a measured 32 characters per line, seven lines deep. That is a
+   column of text pretending to be a card.
+
+   Two columns, and the grid capped rather than the page, so the measure lands
+   near 60 characters instead of growing with the viewport. */
+
+.nm-public .nm-help-grid-wide {
+  grid-template-columns: repeat(2, 1fr);
+  max-width: 880px;
+}
+
+@media (max-width: 720px) {
+  .nm-public .nm-help-grid-wide {
+    grid-template-columns: 1fr;
+  }
+}
