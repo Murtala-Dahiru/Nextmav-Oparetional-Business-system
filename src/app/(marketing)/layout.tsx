@@ -1,58 +1,93 @@
 import type { ReactNode } from 'react';
-import { SiteHeader } from '@/components/marketing/site-header';
-import { SiteFooter } from '@/components/marketing/site-footer';
+import { Plus_Jakarta_Sans, Instrument_Serif, JetBrains_Mono } from 'next/font/google';
+import { PublicHeader } from '@/components/public/header';
+import { PublicFooter } from '@/components/public/footer';
+
+// The uploaded project's stylesheets, scoped to `.nm-public` by
+// `scripts/import-public-css.mjs`. `base.css` pulls in `tokens.css` itself.
+import '@/styles/public/base.css';
+import '@/styles/public/layout.css';
+import '@/styles/public/components.css';
+import '@/styles/public/landing.css';
+import '@/styles/public/pages.css';
+import '@/styles/public/auth.css';
+// Last, deliberately: it overrides the font tokens and relies on source order.
+import '@/styles/public-fonts.css';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- *  Marketing shell
+ *  Public shell
  * ═══════════════════════════════════════════════════════════════════════════
  *
- *  ── Why this is no longer a client component ─────────────────────────────
+ *  ── The isolation boundary ───────────────────────────────────────────────
  *
- *  It was `'use client'` for one reason: a `useState` holding whether the
- *  mobile menu was open. That single boolean opted the header, the footer, the
- *  entire link graph and every page that renders inside this layout out of
- *  server rendering — so a visitor on a phone downloaded and executed
- *  JavaScript before they could read a footer that never changes.
+ *  `.nm-public` is the entire mechanism keeping the uploaded design system off
+ *  the authenticated application. In the App Router every imported stylesheet
+ *  is global no matter which layout imports it, so importing these here is not
+ *  isolation on its own — the isolation is in the CSS, where every `:root`,
+ *  `html`, `body`, `*`, element and pseudo-element selector has been rewritten
+ *  to sit under this class.
  *
- *  The state moved into `SiteHeader`, which is the only thing that needs it.
- *  Everything else renders on the server. It is the same pattern the rest of
- *  this codebase already uses, and the reason the landing page can now be
- *  static.
+ *  Three custom properties genuinely collide between the two systems
+ *  (`--nm-accent`, `--nm-accent-hover`, `--nm-accent-soft`). Scoping the
+ *  uploaded `:root` to this wrapper is what keeps them apart: inside here the
+ *  uploaded values apply, and at `:root` the application's own ramp is
+ *  untouched.
+ *
+ *  If you add a stylesheet to this list, run it through the script first.
+ *
+ *  ── Why the pages stay server components ─────────────────────────────────
+ *
+ *  The uploaded project is a client-rendered SPA. Ported literally, every
+ *  marketing route would leave static generation for the sake of a scroll
+ *  observer and a password toggle. The interactive parts live in
+ *  `components/public/client.tsx` and the header and footer; the pages
+ *  themselves render on the server and prerender static, as they did before.
  */
+
+const jakarta = Plus_Jakarta_Sans({
+  variable: '--font-jakarta',
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  display: 'swap',
+});
+
+const instrument = Instrument_Serif({
+  variable: '--font-instrument',
+  subsets: ['latin'],
+  weight: ['400'],
+  display: 'swap',
+});
+
+const jetbrains = JetBrains_Mono({
+  variable: '--font-jetbrains',
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  display: 'swap',
+});
 
 export default function MarketingLayout({ children }: { children: ReactNode }) {
   return (
-    // `phase1` re-points the neutral tokens for this subtree only. The
-    // authenticated application reads the same token names from `:root` and
-    // is deliberately left on shadcn's ramp until Phase 2 reconciles the two
-    // — a ramp change propagating into 44 app files is not a design decision,
-    // it is an outage. See the block in `globals.css`.
-    <div className="phase1 flex min-h-screen flex-col">
+    <div
+      className={`nm-public nm-app ${jakarta.variable} ${instrument.variable} ${jetbrains.variable}`}
+    >
       {/*
-        The scroll-reveal system ships its hidden state in the server HTML to
-        avoid a flash on load (see `Reveal`). That trade puts the page's
-        content behind JavaScript, so this hands it back to anyone who does not
-        have it. Without these three lines a reader with scripts disabled gets
-        a site with a header, a footer and nothing in between.
+        The reveal system ships its hidden state in the server HTML to avoid a
+        flash on load, which puts content behind JavaScript. This hands it back
+        to anyone without it — otherwise a reader with scripts disabled gets a
+        header, a footer and nothing in between.
       */}
       <noscript>
-        <style>{`[data-reveal]{opacity:1!important;transform:none!important}`}</style>
+        <style>{`.nm-reveal{opacity:1!important;transform:none!important}`}</style>
       </noscript>
 
-      {/* Keyboard users should not have to tab the whole nav on every page. */}
-      <a
-        href="#main"
-        className="bg-ink text-ink-fg focus-visible:ring-brand sr-only z-[60] rounded-md px-4 py-2 text-sm font-medium focus-visible:not-sr-only focus-visible:fixed focus-visible:top-3 focus-visible:left-3"
-      >
+      <a href="#main" className="nm-skip-link">
         Skip to content
       </a>
 
-      <SiteHeader />
-      <main id="main" className="flex-1">
-        {children}
-      </main>
-      <SiteFooter />
+      <PublicHeader />
+      <main id="main">{children}</main>
+      <PublicFooter />
     </div>
   );
 }

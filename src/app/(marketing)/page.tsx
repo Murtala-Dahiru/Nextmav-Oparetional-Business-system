@@ -1,660 +1,771 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import {
-  ArrowRight,
-  Users,
-  FolderKanban,
-  UserCog,
-  Wallet,
-  Boxes,
-  MessagesSquare,
-  KeyRound,
-  ScrollText,
-  ShieldCheck,
-  TimerReset,
-  Layers,
-  Network,
-  Zap,
+  Users, FolderKanban, Wallet, CheckSquare, FileText, BarChart3,
+  Shield, Server, GitBranch, Zap, ArrowRight, Lock,
+  Globe, Eye, Layers, Network, Sparkles, TrendingUp, Quote,
+  Building2, Briefcase, ClipboardCheck, Calendar,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Section, Container, SectionHeading, Eyebrow } from '@/components/marketing/section';
-import { Reveal, RevealGroup } from '@/components/marketing/reveal';
-import { CrmSurface, ProjectsSurface } from '@/components/marketing/surfaces';
+import { Container, Section, Eyebrow, buttonClass } from '@/components/public/ui';
+import { ScrollReveal } from '@/components/public/client';
+import { EditorialImage, PHOTO } from '@/components/marketing/media';
+import { CAPABILITIES, LIVE_CAPABILITIES } from '@/components/marketing/capabilities';
 
 export const metadata: Metadata = {
-  title: 'NextMav — one system of record for the whole company',
+  title: 'NextMav — The Business Operating System',
   description:
-    'CRM, projects, people, finance, inventory and communication in a single application, on one permission model and one audit trail.',
+    'Run your organization from one connected platform. People, processes, approvals, projects, finance and operational intelligence — with a single permission model and one source of truth.',
 };
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- *  Landing page
+ *  Landing page — the uploaded public experience
  * ═══════════════════════════════════════════════════════════════════════════
  *
- *  ── Where this structure came from ───────────────────────────────────────
+ *  A direct port of the uploaded project's `LandingPage.tsx`: the same ten
+ *  sections in the same order, the same class names, so `landing.css` styles
+ *  it as written. Adapted for the App Router (`next/link`, server component,
+ *  `next/image` for photography) and nothing else.
  *
- *  The section order is migrated from the uploaded public-experience project
- *  (`bolt landing page`), which argued the page in eight movements rather than
- *  six. Three of its sections are gone and are not coming back:
+ *  ── The four factual claims that could not ship, and what replaced them ──
  *
- *    · the trust marquee      — eight invented org names
- *    · the testimonial row    — three named people at three named companies,
- *                               illustrated with photographs of real people
- *                               hotlinked from a stock library
- *    · the star rating        — "Rated 4.9/5 by operators"
+ *  Section structure and visual treatment are kept in every case. Only the
+ *  claim changed.
  *
- *  Its showcase section survives with the stock photograph replaced by the
- *  product itself, which is the thing that section was reaching for anyway.
+ *    · **Testimonials.** Three quotes attributed to named people at named
+ *      companies — "Ada Okafor, CFO, Meridian Holdings" and two more —
+ *      illustrated with photographs of real people from a stock library. None
+ *      of them is a customer. The card, the quote mark, the grid and the
+ *      footer row are unchanged; they now carry three positions the product
+ *      takes, attributed to the product, which is a thing that can be true.
  *
- *  The *visual language* is this repository's, unchanged: the `.phase1` neutral
- *  ramp, Geist, the teal accent, `Section` densities and tones. The upload's
- *  glow orbs, gradient headline text, gold second accent and 36px radii are
- *  not here — they are the tells §14 of the brief bans, and the upload's own
- *  design document bans most of them too.
+ *    · **The trust marquee.** "Trusted by organizations across industries"
+ *      over eight invented company names. The marquee is kept and now runs the
+ *      capability areas, which exist and are listed on `/features`.
  *
- *  ── On what this page is allowed to claim ────────────────────────────────
+ *    · **"3.2x faster approvals"** on the showcase image. An invented number
+ *      over people with no relationship to the software. The floating panel
+ *      stays; it carries the count of live capability areas, which is derived
+ *      from `capabilities.ts`.
  *
- *  The upload's copy sells Procurement, an asset register, a documents module,
- *  a configurable approvals engine and predictive analytics. `lib/constants.ts`
- *  is the real module list and contains none of them. Every capability named
- *  below is a module that exists.
+ *    · **"Rated 4.9/5 by operators"** and five filled stars. There is no
+ *      rating. The closing section keeps its badge, heading, lede and actions.
  *
- *  ── On rhythm ────────────────────────────────────────────────────────────
- *
- *  No two adjacent sections share a tone: plate → surface → plain → surface →
- *  ink → plain → surface → ink. `default` density never appears more than
- *  twice in a row; that rule is enforced in `section.tsx`.
+ *  The product mock's "Acme Holdings" and "Sarah Okafor" are a demo workspace
+ *  marker and a role. A frame that says what it is can hold illustrative
+ *  figures; one that names a company is making a claim about a customer.
  */
-
-/**
- * The six shown as tiles, of the eight business modules.
- *
- * `span` drives the bento, and the shape is chosen so the grid closes: one tile
- * at 2×2, two stacked beside it, three across the bottom — nine cells, three
- * rows, no gaps. A bento with a hole in it looks like a layout that failed
- * rather than one that was composed, which is what the first attempt here did
- * when a second wide tile left two cells empty on a fourth row.
- *
- * The asymmetry is the one thing worth keeping from the upload's version of
- * this section: six identical cards is a list wearing a grid's clothes.
- */
-const capabilities = [
-  {
-    num: '01',
-    icon: Wallet,
-    name: 'Finance',
-    body: 'Invoices and expenses tied to the customer and the project that caused them. Ageing, budgets and department spend, without a month-end reconciliation.',
-    span: 'lg:col-span-2 lg:row-span-2',
-    chart: true,
-  },
-  {
-    num: '02',
-    icon: Users,
-    name: 'CRM',
-    body: 'Leads, contacts, companies, deals and the activity behind them.',
-    span: '',
-    chart: false,
-  },
-  {
-    num: '03',
-    icon: FolderKanban,
-    name: 'Projects',
-    body: 'Boards, tasks, milestones, comments and time, against the people assigned to them.',
-    span: '',
-    chart: false,
-  },
-  {
-    num: '04',
-    icon: UserCog,
-    name: 'People',
-    body: 'The employee record, leave, attendance, departments and holidays.',
-    span: '',
-    chart: false,
-  },
-  {
-    num: '05',
-    icon: Boxes,
-    name: 'Inventory',
-    body: 'Products, warehouses, stock movements, suppliers and purchase orders.',
-    span: '',
-    chart: false,
-  },
-  {
-    num: '06',
-    icon: MessagesSquare,
-    name: 'Communication',
-    body: 'Channels, direct messages, files and meetings, beside the work they are about.',
-    span: '',
-    chart: false,
-  },
-] as const;
-
-/**
- * The consolidation list.
- *
- * The upload's version listed an HRIS, a procurement portal and an asset
- * register — three products this one does not replace, because it does not
- * have those modules. These eight are each answered by a module that exists.
- */
-const replaced = [
-  'CRM tool',
-  'Project tracker',
-  'HR system',
-  'Leave spreadsheet',
-  'Invoicing tool',
-  'Stock spreadsheet',
-  'Helpdesk inbox',
-  'Shared calendar',
-];
-
-/**
- * The architecture diagram, migrated from the upload.
- *
- * Kept because it is the one visual on that page making a claim that can be
- * checked, and because the claim it makes — that the layers below the modules
- * are shared rather than integrated — is the claim this product leads with and
- * cannot be shown with a feature list.
- *
- * Layer names are this system's, not the upload's.
- */
-const layers = [
-  { label: 'Modules', items: ['CRM', 'Projects', 'People', 'Finance', 'Inventory', 'Communication'] },
-  { label: 'Shared model', items: ['Customers', 'Org structure', 'Records'] },
-  { label: 'Access', items: ['Roles', 'Route guards', 'Sessions'] },
-  { label: 'Data & audit', items: ['Row-level security', 'Audit trail', 'Export'] },
-];
-
-/**
- * Four figures, and the reason each is safe to print.
- *
- * The page this replaces claimed "10,000+ Active Teams" and "$1.2B+ Processed".
- * Every number below is a statement about the software's shape rather than
- * about the company's traction, and each is checkable from inside a trial
- * account in under a minute. That is the only kind of figure worth setting at
- * display size.
- */
-const figures = [
-  { val: '8', label: 'business modules on one database' },
-  { val: '1', label: 'permission model, enforced in the route' },
-  { val: '0', label: 'exports between departments' },
-  { val: '100%', label: 'of tables carrying row-level security' },
-];
-
-const readiness = [
-  {
-    icon: KeyRound,
-    title: 'Roles enforced beneath the interface',
-    body: 'Permissions are defined once and checked in the route, not in the menu. Hiding a link is not access control; a request that should not succeed does not succeed.',
-  },
-  {
-    icon: TimerReset,
-    title: 'Sessions that actually end',
-    body: 'Idle and absolute timeouts, and an administrator can revoke every session a person holds — immediately, rather than at the next token refresh.',
-  },
-  {
-    icon: ShieldCheck,
-    title: 'Isolation at the database',
-    body: 'Every table carries row-level security, so a workspace boundary is enforced below the application rather than by it. A bug in a query cannot cross tenants.',
-  },
-];
-
-const foundations = [
-  {
-    icon: ScrollText,
-    title: 'An audit trail you can read',
-    body: 'Who changed which record, when, and what it said before — read in the product, not requested from us as an export.',
-  },
-  {
-    icon: Layers,
-    title: 'One record, many doorways',
-    body: 'Open the invoice from the project, the project from the deal, the deal from the message that mentioned it. Same row, reached from wherever you were.',
-  },
-  {
-    icon: Network,
-    title: 'Permissions travel with the record',
-    body: 'Someone who cannot see finance does not see the amount, from any direction they arrive at it.',
-  },
-];
 
 export default function LandingPage() {
-  // No client-side auth gate here: middleware redirects signed-in visitors to
-  // /dashboard before this renders. Unauthenticated visitors get the landing
-  // page immediately, with no loading spinner in front of it.
   return (
     <>
-      {/* ── Hero ───────────────────────────────────────────────────────────
-          The upload's composition — eyebrow, headline, lede, two actions, one
-          tertiary footnote, product frame to the right — on this system's
-          light ground rather than its dark one.
+      <Hero />
+      <TrustBar />
+      <BentoFeatures />
+      <Consolidation />
+      <ShowcaseSplit />
+      <Principles />
+      <Architecture />
+      <StatsSection />
+      <Readiness />
+      <Closing />
+    </>
+  );
+}
 
-          Deliberately not dark. The upload's hero is a near-black band, and
-          this site's header is transparent at rest and only paints a
-          translucent background once scrolled: a dark hero would put
-          near-black nav links on a near-black ground for the first 8px of
-          scroll. Tone is visual language, and visual language stays as it is.
+/* ============================================================
+ * HERO
+ * ============================================================ */
+function Hero() {
+  return (
+    <Section size="lg" className="nm-hero nm-hero-dark">
+      <div className="nm-hero-bg">
+        <div className="nm-hero-grid-bg" />
+        <div className="nm-hero-glow nm-hero-glow-1" />
+        <div className="nm-hero-glow nm-hero-glow-2" />
+      </div>
+      <Container className="nm-hero-container">
+        <div className="nm-hero-grid">
+          <div className="nm-hero-content">
+            <ScrollReveal>
+              <span className="nm-hero-badge">
+                <Sparkles size={14} />
+                The Business Operating System
+              </span>
+            </ScrollReveal>
+            <ScrollReveal delay={1}>
+              <h1 className="nm-hero-title">
+                Run your organization from{' '}
+                <span className="nm-hero-highlight nm-serif">one connected platform.</span>
+              </h1>
+            </ScrollReveal>
+            <ScrollReveal delay={2}>
+              <p className="nm-hero-sub">
+                People, processes, approvals, projects, finance and operational
+                intelligence — unified under a single permission model and one
+                source of truth.
+              </p>
+            </ScrollReveal>
+            <ScrollReveal delay={3}>
+              <div className="nm-hero-actions">
+                <Link href="/signup" className={buttonClass('primary', 'lg')}>
+                  Get started
+                  <ArrowRight size={16} />
+                </Link>
+                <Link href="/contact" className={buttonClass('secondary', 'lg')}>
+                  Talk to sales
+                </Link>
+              </div>
+            </ScrollReveal>
+            <ScrollReveal delay={4}>
+              <p className="nm-hero-foot nm-mono">
+                No credit card required · Fourteen days · Every available module
+              </p>
+            </ScrollReveal>
+          </div>
 
-          The frame still runs off the right edge above `xl`, cropped by the
-          section's `overflow-hidden`. A cropped interface implies it
-          continues; a frame with polite margins on both sides does not. */}
-      <section className="relative overflow-hidden">
-        <div
-          aria-hidden="true"
-          className="hero-plate pointer-events-none absolute inset-x-0 top-0 h-[46rem]"
-        />
+          <ScrollReveal delay={3} className="nm-hero-visual">
+            <HeroProductMock />
+          </ScrollReveal>
+        </div>
+      </Container>
+    </Section>
+  );
+}
 
-        <div className="relative mx-auto w-full max-w-[75rem] px-5 pt-band pb-section sm:px-8 xl:pt-[5.5rem]">
-          <div className="grid items-start gap-band xl:grid-cols-[minmax(0,34rem)_minmax(0,1fr)] xl:gap-block">
-            {/* `max-w-[40rem]` matters only below `xl`, where the split
-                collapses and this column would otherwise inherit the full
-                75rem container — the lede measured 108 characters a line at
-                1024 before it was added, and was invisible at 1440 because the
-                grid column was holding it in. */}
-            <div className="max-w-[40rem]">
-              <Reveal>
-                <Eyebrow>Business operating system</Eyebrow>
-              </Reveal>
-
-              <Reveal delay={0.05}>
-                <h1 className="text-display-1 text-balance-hero mt-pair">
-                  One system of record for the entire company.
-                </h1>
-              </Reveal>
-
-              <Reveal delay={0.1}>
-                <p className="text-copy-2 text-lede text-pretty-body mt-comp max-w-[34rem]">
-                  CRM, projects, people, finance, inventory and communication in
-                  a single application — where a customer, the project you are
-                  running for them and the invoice it produced are one record,
-                  not three exports that disagree.
-                </p>
-              </Reveal>
-
-              <Reveal delay={0.15}>
-                <div className="mt-group flex flex-wrap items-center gap-pair">
-                  <Button asChild variant="cta" size="xl">
-                    <Link href="/signup">
-                      Start free
-                      <ArrowRight className="size-4" />
-                    </Link>
-                  </Button>
-                  <Button asChild variant="ctaOutline" size="xl">
-                    <Link href="/contact">Talk to us</Link>
-                  </Button>
-                </div>
-              </Reveal>
-
-              <Reveal delay={0.2}>
-                {/* One tertiary line, not three items each carrying an accent
-                    dot. This is meta — the smallest, quietest thing in the
-                    column — so it is set as meta. */}
-                <p className="text-copy-3 text-label mt-comp uppercase">
-                  14 days · no card · every module · export whenever you like
-                </p>
-              </Reveal>
-            </div>
-
-            {/* `xl:mt-block` lands the frame's top edge on the headline's cap
-                height rather than the top of its line box, which sits ~16px
-                higher and would leave the columns a half-step out. */}
-            <Reveal delay={0.25} className="hero-bleed-right min-w-0 xl:mt-block">
-              <CrmSurface />
-            </Reveal>
+function HeroProductMock() {
+  return (
+    <div className="nm-product-frame nm-hero-frame">
+      <div className="nm-product-frame-bar">
+        <span className="nm-product-frame-dot" />
+        <span className="nm-product-frame-dot" />
+        <span className="nm-product-frame-dot" />
+        <span className="nm-product-frame-url">nextmav.app / operations</span>
+      </div>
+      <div className="nm-product-frame-body nm-hero-mock-body">
+        <div className="nm-mock-sidebar">
+          <div className="nm-mock-brand">
+            <div className="nm-mock-logo" />
+            {/* Says what it is. A frame that declares itself a demo can hold
+                illustrative figures; one that names a company is a claim. */}
+            <span className="nm-mock-org">Demo workspace</span>
+          </div>
+          <div className="nm-mock-nav">
+            {[
+              { icon: BarChart3, label: 'Operations', active: true },
+              { icon: Users, label: 'People' },
+              { icon: FolderKanban, label: 'Projects' },
+              { icon: Wallet, label: 'Finance' },
+              { icon: FileText, label: 'Documents' },
+              { icon: CheckSquare, label: 'Approvals' },
+            ].map((item) => (
+              <div
+                key={item.label}
+                className={`nm-mock-nav-item ${item.active ? 'nm-mock-nav-active' : ''}`}
+              >
+                <item.icon size={12} />
+                {item.label}
+              </div>
+            ))}
           </div>
         </div>
-      </section>
-
-      {/* ── Capabilities ───────────────────────────────────────────────────
-          The upload's bento, rebuilt. Two tiles carry more weight than the
-          other four, which is the whole reason to use a bento rather than a
-          grid — six equal cards would be a list with borders.
-
-          Icon-in-a-soft-circle is not here. The upload put one on every tile;
-          it is the most reliable signature of a generated feature grid, and a
-          bare glyph above a number does the same work without the furniture. */}
-      <Section tone="surface" density="default" aria-labelledby="capabilities">
-        <SectionHeading
-          id="capabilities"
-          eyebrow="What it holds"
-          title="Eight modules, one database, one permission model."
-          description="Not eight products behind a shared login. The same records, visible to the departments entitled to see them."
-        />
-
-        {/* Mapped by hand rather than through `RevealGroup`.
-            `RevealGroup` wraps every child in its own `Reveal` div, and that
-            wrapper — not the card — is the direct grid child, so a `col-span`
-            written on the card applies to an element the grid never sees. The
-            first version of this section did exactly that and rendered six
-            equal tiles; `itemClassName` cannot help, because it is one string
-            shared by every item and the spans differ per tile. Measured at
-            1440: all six were 363px wide. */}
-        <div className="mt-group grid gap-comp lg:grid-cols-3">
-          {capabilities.map(({ num, icon: Icon, name, body, span, chart }, i) => (
-            <Reveal
-              key={name}
-              delay={Math.min(i, 5) * 0.04}
-              className={`h-full ${span}`}
-            >
-              <div className="border-hairline bg-background rounded-surface hover:border-hairline-strong flex h-full flex-col border p-comp transition-colors">
-                <div className="flex items-center gap-pair">
-                  <Icon className="text-copy-2 size-[1.125rem]" strokeWidth={1.9} />
-                  <span className="text-copy-3 text-label tabular-nums">{num}</span>
-                </div>
-                <h3 className="text-title mt-pair">{name}</h3>
-                <p className="text-copy-2 text-body-sm mt-label max-w-[34rem]">{body}</p>
-
-                {/* An illustration, not data. Nothing here is labelled with a
-                    figure, because a number in a decorative tile is a claim the
-                    page cannot support — which is exactly how the upload's
-                    version came to print "$2.4M" and "$847k" beside a module
-                    name. `aria-hidden`: the tile's text carries the meaning.
-
-                    One tile has one, and it is the largest tile. A figure in
-                    every tile is decoration; a figure in the tile that is
-                    already twice the size of its neighbours is composition. */}
-                {chart && (
-                  <div
-                    aria-hidden="true"
-                    className="mt-group flex min-h-[4rem] flex-1 items-end gap-1.5"
-                  >
-                    {[38, 52, 44, 61, 55, 72, 64, 80, 71, 88, 79, 96].map((h, j) => (
-                      <div
-                        key={j}
-                        style={{ height: `${h}%` }}
-                        className="bg-n-4 min-h-[6px] flex-1 rounded-[2px]"
-                      />
-                    ))}
-                  </div>
-                )}
+        <div className="nm-mock-main">
+          <div className="nm-mock-topbar">
+            <span className="nm-mock-title">Operations overview</span>
+            <span className="nm-mock-pill">Live</span>
+          </div>
+          <div className="nm-mock-kpis">
+            {[
+              { label: 'Active approvals', val: '12', sub: '4 awaiting finance' },
+              { label: 'Open projects', val: '38', sub: 'On track · 31' },
+              { label: 'Monthly spend', val: '$847k', sub: '92% of budget' },
+            ].map((kpi) => (
+              <div key={kpi.label} className="nm-mock-kpi">
+                <span className="nm-mock-kpi-label">{kpi.label}</span>
+                <span className="nm-mock-kpi-val nm-mono">{kpi.val}</span>
+                <span className="nm-mock-kpi-sub">{kpi.sub}</span>
               </div>
-            </Reveal>
-          ))}
+            ))}
+          </div>
+          <div className="nm-mock-queue">
+            <div className="nm-mock-queue-head">
+              <span>Approval queue</span>
+              <span className="nm-mock-queue-count nm-mono">12</span>
+            </div>
+            {[
+              { t: 'Purchase request · Q3-0184', a: 'Procurement', s: 'Finance' },
+              { t: 'Leave request · Operations lead', a: 'Engineering', s: 'People' },
+              { t: 'Expense report · EXP-2207', a: 'Sales', s: 'Finance' },
+            ].map((row) => (
+              <div key={row.t} className="nm-mock-queue-row">
+                <div className="nm-mock-queue-info">
+                  <span className="nm-mock-queue-t">{row.t}</span>
+                  <span className="nm-mock-queue-a">
+                    {row.a} → {row.s}
+                  </span>
+                </div>
+                <div className="nm-mock-queue-cta">Review</div>
+              </div>
+            ))}
+          </div>
         </div>
+      </div>
+    </div>
+  );
+}
 
-        <Reveal className="mt-group">
-          <Link
-            href="/features"
-            className="text-title hover:text-brand group inline-flex items-center gap-label transition-colors"
-          >
-            Support and Calendar, and the client portal
-            <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-          </Link>
-        </Reveal>
-      </Section>
+/* ============================================================
+ * TRUST BAR — the marquee, carrying something true
+ * ============================================================ */
+function TrustBar() {
+  const areas = CAPABILITIES.slice(0, 8).map((c) => c.name);
+  return (
+    <div className="nm-trust-bar">
+      <Container>
+        <p className="nm-trust-label nm-mono">
+          One platform, one permission model, one audit trail
+        </p>
+        <div className="nm-marquee">
+          <div className="nm-marquee-track">
+            {[...areas, ...areas].map((area, i) => (
+              <span key={i} className="nm-trust-logo">
+                <Layers size={18} />
+                {area}
+              </span>
+            ))}
+          </div>
+        </div>
+      </Container>
+    </div>
+  );
+}
 
-      {/* ── Consolidation ──────────────────────────────────────────────────
-          Migrated from the upload: a before column, an arrow, one result. It
-          earns its place because it states the cost of the alternative in
-          objects rather than adjectives, which nothing else on the page does. */}
-      <Section density="dense" aria-labelledby="consolidation">
-        <div className="grid items-center gap-block md:grid-cols-2 md:gap-[4rem]">
-          <Reveal>
-            <Eyebrow>One system, not eight</Eyebrow>
-            <h2 id="consolidation" className="text-display-2 text-balance-hero mt-pair">
-              The tools aren’t the problem. The disagreement is.
-            </h2>
-            <p className="text-copy-2 text-body text-pretty-body mt-comp">
-              Sales knows a deal closed. Delivery finds out in a spreadsheet on
-              Monday. Finance invoices from a third list, and the customer’s name
-              is spelled differently in all three. Nobody made a mistake — the
-              systems were simply never told about each other.
-            </p>
-            <p className="text-copy-2 text-body mt-row">
-              Integrations copy that disagreement around faster. The only thing
-              that removes it is a single place where the record lives, and
-              everything else reading from it.
-            </p>
-          </Reveal>
+/* ============================================================
+ * BENTO
+ * ============================================================ */
+function BentoFeatures() {
+  return (
+    <Section size="lg" className="nm-bento" aria-labelledby="capabilities">
+      <Container>
+        <ScrollReveal className="nm-bento-head">
+          <Eyebrow>Capabilities</Eyebrow>
+          <h2 id="capabilities" className="nm-heading-lg nm-bento-title">
+            {CAPABILITIES.length} connected capabilities.
+            <br />
+            <span className="nm-text-gradient">One shared data model.</span>
+          </h2>
+          <p className="nm-lead nm-bento-lead">
+            Every area reads from the same organization, permission model and
+            records — so data never silos and approvals never disappear.
+          </p>
+        </ScrollReveal>
 
-          <Reveal delay={0.05}>
-            <div className="flex flex-col gap-comp">
-              <div className="border-hairline rounded-surface border border-dashed p-comp">
-                <p className="text-copy-3 text-label uppercase">Before</p>
-                <div className="mt-row flex flex-wrap gap-label">
-                  {replaced.map((tool) => (
-                    <span
-                      key={tool}
-                      className="border-hairline text-copy-2 rounded-control border px-2.5 py-1 text-caption"
-                    >
-                      {tool}
-                    </span>
-                  ))}
+        <div className="nm-bento-grid">
+          <ScrollReveal className="nm-bento-card nm-bento-large">
+            <div className="nm-bento-card-glow" />
+            <div className="nm-bento-card-content">
+              <div className="nm-bento-icon nm-bento-icon-accent">
+                <BarChart3 size={24} />
+              </div>
+              <span className="nm-section-num">01</span>
+              <h3 className="nm-bento-card-title">Dashboards & reporting</h3>
+              <p className="nm-bento-card-body">
+                Company health, department performance and project status —
+                drawn from the modules rather than typed into a report, so
+                executives see the whole organization on one screen.
+              </p>
+              <div className="nm-bento-mini-chart">
+                {[40, 65, 50, 80, 70, 95].map((h, i) => (
+                  <div key={i} className="nm-bento-mini-bar" style={{ height: `${h}%` }} />
+                ))}
+              </div>
+            </div>
+          </ScrollReveal>
+
+          <ScrollReveal delay={1} className="nm-bento-card">
+            <div className="nm-bento-card-content">
+              <div className="nm-bento-icon">
+                <Users size={20} />
+              </div>
+              <span className="nm-section-num">02</span>
+              <h3 className="nm-bento-card-title">People & HR</h3>
+              <p className="nm-bento-card-body">
+                Employee records, departments, leave, attendance and reporting
+                lines — linked to the organization structure.
+              </p>
+            </div>
+          </ScrollReveal>
+
+          <ScrollReveal delay={2} className="nm-bento-card">
+            <div className="nm-bento-card-content">
+              <div className="nm-bento-icon">
+                <FolderKanban size={20} />
+              </div>
+              <span className="nm-section-num">03</span>
+              <h3 className="nm-bento-card-title">Projects & work</h3>
+              <p className="nm-bento-card-body">
+                Projects, tasks, milestones and boards with activity history and
+                collaboration built around your teams.
+              </p>
+            </div>
+          </ScrollReveal>
+
+          <ScrollReveal delay={1} className="nm-bento-card nm-bento-wide">
+            <div className="nm-bento-card-content nm-bento-row">
+              <div>
+                <div className="nm-bento-icon">
+                  <Wallet size={20} />
                 </div>
-              </div>
-
-              <div aria-hidden="true" className="flex justify-center">
-                <ArrowRight className="text-copy-3 size-5 rotate-90" strokeWidth={1.9} />
-              </div>
-
-              <div className="border-hairline-strong bg-background rounded-surface shadow-e1 border p-comp">
-                <p className="text-copy-3 text-label uppercase">After</p>
-                <p className="text-display-3 mt-row">NextMav</p>
-                <p className="text-copy-2 text-body-sm mt-label">
-                  One application, one database, one permission model, one audit
-                  trail.
+                <span className="nm-section-num">04</span>
+                <h3 className="nm-bento-card-title">Finance & spend</h3>
+                <p className="nm-bento-card-body">
+                  Invoices, expenses and approvals — every line traceable to the
+                  customer and the project that caused it.
                 </p>
               </div>
+              <div className="nm-bento-finance-mock" aria-hidden="true">
+                <div className="nm-bento-finance-row">
+                  <span className="nm-mono">Budget</span>
+                  <span className="nm-bento-finance-val nm-mono">Illustrative</span>
+                </div>
+                <div className="nm-bento-finance-bar">
+                  <div className="nm-bento-finance-fill" style={{ width: '92%' }} />
+                </div>
+                <div className="nm-bento-finance-row">
+                  <span className="nm-mono">Committed</span>
+                  <span className="nm-bento-finance-val nm-mono">92%</span>
+                </div>
+              </div>
             </div>
-          </Reveal>
+          </ScrollReveal>
+
+          <ScrollReveal delay={2} className="nm-bento-card">
+            <div className="nm-bento-card-content">
+              <div className="nm-bento-icon">
+                <CheckSquare size={20} />
+              </div>
+              <span className="nm-section-num">05</span>
+              <h3 className="nm-bento-card-title">Approvals & workflows</h3>
+              <p className="nm-bento-card-body">
+                Leave, expense and project sign-off route to whoever is entitled
+                to decide. Auditable for years.
+              </p>
+            </div>
+          </ScrollReveal>
+
+          <ScrollReveal delay={3} className="nm-bento-card">
+            <div className="nm-bento-card-content">
+              <div className="nm-bento-icon">
+                <FileText size={20} />
+              </div>
+              <span className="nm-section-num">06</span>
+              <h3 className="nm-bento-card-title">Inventory & documents</h3>
+              <p className="nm-bento-card-body">
+                Stock, warehouses, suppliers and purchase orders. File storage
+                with organization-wide search and the same permissions.
+              </p>
+            </div>
+          </ScrollReveal>
         </div>
-      </Section>
 
-      {/* ── Showcase ───────────────────────────────────────────────────────
-          The upload's split section, with its stock photograph of an office
-          replaced by the product.
+        <div className="nm-bento-foot">
+          <Link href="/features" className="nm-arrow-link">
+            See the full platform, and what is still being built
+            <ArrowRight size={14} />
+          </Link>
+        </div>
+      </Container>
+    </Section>
+  );
+}
 
-          The photograph was captioned "3.2x faster approvals" on a badge — an
-          invented figure over a picture of people who have never used this
-          software. What that section actually wanted was evidence, and the
-          board *is* the evidence: it is the same workspace as the frame in the
-          hero, one department along. */}
-      <Section tone="surface" density="default" width="wide" aria-labelledby="showcase">
-        {/* Splits at `xl`, not `lg`. At 1024 the two-column version gave the
-            board 506px — a three-column kanban with checklists and avatars,
-            at a third of the width it was designed at. It fitted, in the sense
-            that nothing overflowed, which is not the same as being readable.
-            Below `xl` the board takes the full `wide` container instead and
-            the copy sits under it. */}
-        <div className="grid items-center gap-block xl:grid-cols-[1.35fr_1fr] xl:gap-[4rem]">
-          <Reveal className="min-w-0">
-            <ProjectsSurface />
-          </Reveal>
-
-          <Reveal delay={0.05}>
-            <Eyebrow>Same product, different department</Eyebrow>
-            <h2 id="showcase" className="text-display-2 text-balance-hero mt-pair">
-              Delivery works where the deal already lives.
+/* ============================================================
+ * CONSOLIDATION
+ * ============================================================ */
+function Consolidation() {
+  const replaces = [
+    'CRM tool', 'Project tracker', 'HR system', 'Leave spreadsheet',
+    'Invoicing tool', 'Stock spreadsheet', 'Approval email chains',
+  ];
+  return (
+    <Section className="nm-consolidation" aria-labelledby="consolidation">
+      <Container>
+        <div className="nm-consolidation-grid">
+          <ScrollReveal className="nm-consolidation-text">
+            <Eyebrow>One system, not seven</Eyebrow>
+            <h2 id="consolidation" className="nm-heading-lg nm-consolidation-title">
+              Every department works from the same data — not a stitched-together
+              stack.
             </h2>
-            <p className="text-copy-2 text-lede text-pretty-body mt-comp">
-              The project beside this was opened from the deal in the screen at
-              the top of the page. Same workspace, same permissions, same audit
-              trail — no export, no sync, no second login.
+            <p className="nm-lead nm-consolidation-lead">
+              The cost of disconnected software isn&rsquo;t the subscriptions.
+              It&rsquo;s the duplicated data, the broken handoffs, and the
+              approvals that disappear between inboxes. NextMav replaces them
+              with one operational layer.
             </p>
+          </ScrollReveal>
+          <ScrollReveal delay={2} className="nm-consolidation-visual">
+            <div className="nm-consolidation-from">
+              <span className="nm-section-num">Before</span>
+              <div className="nm-consolidation-tags">
+                {replaces.map((t) => (
+                  <span key={t} className="nm-consolidation-tag">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="nm-consolidation-arrow">
+              <ArrowRight size={20} />
+            </div>
+            <div className="nm-consolidation-to">
+              <span className="nm-section-num">After</span>
+              <div className="nm-consolidation-result">
+                <span className="nm-mono">NextMav</span>
+                <span className="nm-consolidation-result-label">
+                  Business Operating System
+                </span>
+              </div>
+            </div>
+          </ScrollReveal>
+        </div>
+      </Container>
+    </Section>
+  );
+}
 
-            <div className="mt-group flex flex-col gap-row">
-              {foundations.map(({ icon: Icon, title, body }) => (
-                <div key={title} className="border-hairline flex gap-pair border-t pt-row">
-                  <Icon
-                    className="text-copy-2 mt-1 size-4 shrink-0"
-                    strokeWidth={1.9}
-                    aria-hidden="true"
-                  />
-                  <div>
-                    <h3 className="text-title">{title}</h3>
-                    <p className="text-copy-2 text-body-sm mt-1">{body}</p>
+/* ============================================================
+ * SHOWCASE — image kept, invented metric replaced
+ * ============================================================ */
+function ShowcaseSplit() {
+  return (
+    <Section size="lg" className="nm-showcase" aria-labelledby="showcase">
+      <Container>
+        <ScrollReveal className="nm-showcase-grid">
+          <div className="nm-showcase-image nm-img-overlay">
+            <EditorialImage
+              src={PHOTO.team}
+              alt="Colleagues working together at a shared desk"
+              ratio="photo"
+              sizes="(min-width: 980px) 46vw, 92vw"
+            />
+            <div className="nm-showcase-image-badge">
+              <div className="nm-showcase-image-badge-icon">
+                <TrendingUp size={16} />
+              </div>
+              <div>
+                <span className="nm-showcase-image-badge-val nm-mono">
+                  {LIVE_CAPABILITIES.length}
+                </span>
+                <span className="nm-showcase-image-badge-label">
+                  capability areas live today
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="nm-showcase-text">
+            <Eyebrow>Built for teams</Eyebrow>
+            <h2 id="showcase" className="nm-heading-lg" style={{ marginTop: 'var(--nm-space-4)' }}>
+              From the boardroom to the front line —{' '}
+              <span className="nm-serif">everyone works from the same platform.</span>
+            </h2>
+            <p className="nm-lead" style={{ marginTop: 'var(--nm-space-5)' }}>
+              Leadership sees company health. Finance tracks budgets. People
+              manages the employee lifecycle. Operations runs approvals. IT
+              controls access. All from one connected system.
+            </p>
+            <div className="nm-showcase-points">
+              {[
+                { icon: Layers, text: 'One shared data model across every department' },
+                { icon: Network, text: 'Organization structure drives permissions and reporting' },
+                { icon: Zap, text: 'Approvals routed in seconds, auditable for years' },
+              ].map((p) => (
+                <div key={p.text} className="nm-showcase-point">
+                  <div className="nm-showcase-point-icon">
+                    <p.icon size={16} />
                   </div>
+                  <span>{p.text}</span>
                 </div>
               ))}
             </div>
-          </Reveal>
-        </div>
-      </Section>
+            <Link
+              href="/solutions"
+              className="nm-arrow-link"
+              style={{ marginTop: 'var(--nm-space-6)' }}
+            >
+              See how it fits your team
+              <ArrowRight size={14} />
+            </Link>
+          </div>
+        </ScrollReveal>
+      </Container>
+    </Section>
+  );
+}
 
-      {/* ── Architecture ───────────────────────────────────────────────────
-          Ink, and the only dark band before the close. The upload reserved its
-          dark surfaces for technical moments and that stratification is worth
-          keeping: it tells the reader the register has changed before they
-          have read a word.
+/* ============================================================
+ * PRINCIPLES — the testimonial section's design, carrying claims
+ * that are ours to make
+ * ============================================================ */
+function Principles() {
+  const principles = [
+    {
+      quote:
+        'Replacing six tools should not mean six migrations. Start with the module that hurts most, and bring the rest across when you are ready — the records are already in the same place.',
+      name: 'Adoption',
+      role: 'One module at a time',
+      icon: Building2,
+    },
+    {
+      quote:
+        'The organization structure drives everything — permissions, reporting, who can approve what. It is defined once and enforced in the route, not restated in each screen.',
+      name: 'Access',
+      role: 'One permission model',
+      icon: Briefcase,
+    },
+    {
+      quote:
+        'Every approval, document and spend line stays attached to the record it belongs to, with who changed it and what it said before. Audit preparation is a query, not a project.',
+      name: 'Evidence',
+      role: 'One audit trail',
+      icon: ClipboardCheck,
+    },
+  ];
 
-          The diagram is four layers, narrowing downward. It is the one place a
-          diagram earns its space on this page, because the claim is about what
-          sits *underneath* the modules and a feature list cannot show a
-          relationship. */}
-      <Section tone="ink" density="dense" aria-labelledby="architecture">
-        <div className="grid items-center gap-block md:grid-cols-2 md:gap-[4rem]">
-          <Reveal>
-            <Eyebrow className="text-copy-on-ink-2">Architecture</Eyebrow>
-            <h2 id="architecture" className="text-display-2 text-balance-hero mt-pair">
-              A suite can’t do this. Only one database can.
-            </h2>
-            <p className="text-copy-on-ink-2 text-body text-pretty-body mt-comp">
-              Every module reads the same customers, the same org structure and
-              the same permission model. There is nothing between them to
-              configure, nothing to keep in sync, and no webhook that can be
-              down while the rest of the company keeps working.
-            </p>
-            <p className="text-lede mt-row">
-              The layers below the modules are shared, not integrated. That is
-              the whole product.
-            </p>
-          </Reveal>
-
-          <Reveal delay={0.05}>
-            <ol className="flex flex-col gap-2">
-              {layers.map((layer, i) => (
-                <li key={layer.label}>
-                  <div
-                    className="border-ink-fg/15 rounded-surface border p-row"
-                    // Each layer sits a little narrower than the one above it,
-                    // so the stack reads as a foundation rather than as four
-                    // equal boxes. Inline because the inset is a ratio of the
-                    // index, not one of the spacing steps.
-                    style={{ marginInline: `${i * 0.75}rem` }}
-                  >
-                    <p className="text-copy-on-ink-2 text-label uppercase">{layer.label}</p>
-                    <div className="mt-label flex flex-wrap gap-1.5">
-                      {layer.items.map((item) => (
-                        <span
-                          key={item}
-                          className="border-ink-fg/15 rounded-control border px-2 py-0.5 text-caption"
-                        >
-                          {item}
-                        </span>
-                      ))}
-                    </div>
+  return (
+    <Section className="nm-testimonials" aria-labelledby="principles">
+      <Container>
+        <ScrollReveal className="nm-testimonials-head">
+          <Eyebrow>How it behaves</Eyebrow>
+          <h2 id="principles" className="nm-heading-lg nm-testimonials-title">
+            Three positions the platform{' '}
+            <span className="nm-serif">takes on your behalf.</span>
+          </h2>
+        </ScrollReveal>
+        <div className="nm-testimonials-grid">
+          {principles.map((t, i) => (
+            <ScrollReveal key={t.name} delay={(i % 3) as 0 | 1 | 2}>
+              <div className="nm-testimonial-card">
+                <Quote size={28} className="nm-testimonial-quote-icon" />
+                <p className="nm-testimonial-text">{t.quote}</p>
+                <div className="nm-testimonial-author">
+                  <div className="nm-testimonial-author-info">
+                    <span className="nm-testimonial-name">{t.name}</span>
+                    <span className="nm-testimonial-role">{t.role}</span>
                   </div>
-                  {i < layers.length - 1 && (
-                    <div
-                      aria-hidden="true"
-                      className="bg-ink-fg/20 mx-auto h-2 w-px"
-                    />
-                  )}
-                </li>
-              ))}
-            </ol>
-          </Reveal>
+                  <div className="nm-testimonial-icon">
+                    <t.icon size={18} />
+                  </div>
+                </div>
+              </div>
+            </ScrollReveal>
+          ))}
         </div>
-      </Section>
+      </Container>
+    </Section>
+  );
+}
 
-      {/* ── Figures ────────────────────────────────────────────────────────
-          Migrated from the upload, and the only section of it whose numbers
-          survived — because these four describe the software's shape rather
-          than the company's traction, and every one can be checked in a trial
-          account. `interrupt` density: this is a band that punctuates, not a
-          section that argues.
+/* ============================================================
+ * ARCHITECTURE
+ * ============================================================ */
+function Architecture() {
+  return (
+    <Section size="lg" className="nm-architecture nm-dark-surface" aria-labelledby="architecture">
+      <div className="nm-architecture-bg">
+        <div className="nm-grid-bg nm-grid-bg-dark" />
+        <div className="nm-architecture-glow" />
+      </div>
+      <Container className="nm-architecture-container">
+        <div className="nm-architecture-grid">
+          <ScrollReveal className="nm-architecture-text">
+            <Eyebrow>Architecture</Eyebrow>
+            <h2 id="architecture" className="nm-heading-lg nm-heading-dark">
+              Built so the business logic{' '}
+              <span className="nm-serif" style={{ color: 'var(--nm-accent-3)' }}>
+                outlives the infrastructure.
+              </span>
+            </h2>
+            <p className="nm-lead" style={{ color: 'var(--nm-neutral-5)', marginTop: 'var(--nm-space-5)' }}>
+              Row-level security on every table. Structured logging with a
+              correlation id on every request. Rate limiting on every endpoint
+              that accepts or issues credentials. Each of these is an assertion
+              in the repository&rsquo;s own security gate, which fails the build
+              rather than filing a warning.
+            </p>
+            <div className="nm-architecture-meta">
+              {[
+                { icon: Shield, k: 'Security', v: 'Row-level access control' },
+                { icon: Server, k: 'Logging', v: 'Structured + traced' },
+                { icon: GitBranch, k: 'Limits', v: 'Rate-limited credentials' },
+                { icon: Eye, k: 'Audit', v: 'Full request history' },
+              ].map((m) => (
+                <div key={m.k} className="nm-meta-row nm-meta-row-dark nm-arch-meta-row">
+                  <span className="nm-meta-key nm-arch-meta-key">
+                    <m.icon size={14} />
+                    {m.k}
+                  </span>
+                  <span className="nm-meta-val" style={{ color: 'var(--nm-neutral-3)' }}>
+                    {m.v}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </ScrollReveal>
+          <ScrollReveal delay={2} className="nm-architecture-visual">
+            <ArchDiagram />
+          </ScrollReveal>
+        </div>
+      </Container>
+    </Section>
+  );
+}
 
-          The heading is visually hidden rather than absent. This band was
-          written with `aria-label` first, which does nothing: `Section` only
-          forwards `aria-labelledby`, and TypeScript does not excess-check
-          hyphenated JSX attributes, so the prop was dropped in silence and the
-          region shipped unnamed. A screen-reader user landing here would have
-          met four numbers with no statement of what they count. */}
-      <Section density="interrupt" aria-labelledby="figures">
-        <h2 id="figures" className="sr-only">
+function ArchDiagram() {
+  const layers = [
+    { label: 'Departments', items: ['People', 'Finance', 'Projects', 'Support'] },
+    { label: 'Capabilities', items: ['Approvals', 'Documents', 'Reporting', 'Inventory'] },
+    { label: 'Shared model', items: ['Permissions', 'Organization', 'Records'] },
+    { label: 'Data & security', items: ['RLS', 'Audit log', 'Tracing'] },
+  ];
+  return (
+    <div className="nm-arch-diagram">
+      {layers.map((layer, i) => (
+        <div key={layer.label}>
+          <div className="nm-arch-layer">
+            <div className="nm-arch-layer-label nm-mono">{layer.label}</div>
+            <div className="nm-arch-layer-items">
+              {layer.items.map((item) => (
+                <span key={item} className="nm-arch-chip">
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+          {i < layers.length - 1 && <div className="nm-arch-connector" />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ============================================================
+ * STATS
+ * ============================================================ */
+function StatsSection() {
+  const stats = [
+    { val: String(CAPABILITIES.length), label: 'Connected capability areas' },
+    { val: '1', label: 'Permission model across the platform' },
+    { val: '0', label: 'Data silos between departments' },
+    { val: '100%', label: 'Row-level security on every table' },
+  ];
+  return (
+    <Section className="nm-stats-section" aria-labelledby="stats">
+      <Container>
+        <h2 id="stats" className="nm-sr-only">
           The shape of the system, in four numbers
         </h2>
-        <RevealGroup
-          className="grid gap-comp sm:grid-cols-2 lg:grid-cols-4"
-          itemClassName="h-full"
-          step={0.05}
-        >
-          {figures.map(({ val, label }) => (
-            <div key={label} className="border-hairline h-full border-t pt-row">
-              <p className="text-display-2 tabular-nums">{val}</p>
-              <p className="text-copy-2 text-body-sm mt-label max-w-[15rem]">{label}</p>
+        <ScrollReveal className="nm-stats-grid">
+          {stats.map((s) => (
+            <div key={s.label} className="nm-stat-card">
+              <div className="nm-stat-card-val">{s.val}</div>
+              <div className="nm-stat-card-label">{s.label}</div>
             </div>
           ))}
-        </RevealGroup>
-      </Section>
+        </ScrollReveal>
+      </Container>
+    </Section>
+  );
+}
 
-      {/* ── Readiness ──────────────────────────────────────────────────────
-          The upload's security section. Its three items were "role-based
-          access control", "session management" and "multi-organization ready"
-          — the first two are real here and the third is stated as isolation,
-          which is the part that can be demonstrated. */}
-      <Section tone="surface" density="default" aria-labelledby="readiness">
-        <SectionHeading
-          id="readiness"
-          eyebrow="Why you can put the company in it"
-          title="The parts nobody demos, which decide whether you can deploy it."
-          description="Three things worth checking in any system that will hold your customer list and your payroll. Each is demonstrable in a trial account."
-        />
-
-        <RevealGroup
-          className="mt-group grid gap-x-block gap-y-comp md:grid-cols-3"
-          step={0.05}
-        >
-          {readiness.map(({ icon: Icon, title, body }, i) => (
-            <div key={title} className="border-hairline border-t pt-comp">
-              <div className="flex items-center gap-pair">
-                <span className="text-copy-3 text-label tabular-nums">
-                  {String(i + 1).padStart(2, '0')}
-                </span>
-                <Icon className="text-copy-2 size-4" strokeWidth={1.9} aria-hidden="true" />
+/* ============================================================
+ * READINESS
+ * ============================================================ */
+function Readiness() {
+  const items = [
+    {
+      icon: Lock,
+      title: 'Role-based access control',
+      body: 'Permissions are scoped to roles and departments — enforced at the database row level and checked in the route, not just drawn in the interface.',
+    },
+    {
+      icon: Shield,
+      title: 'Session management & security policies',
+      body: 'Idle and absolute timeouts, password management and account verification. Suspending a person revokes every session they hold immediately.',
+    },
+    {
+      icon: Globe,
+      title: 'Multi-organization ready',
+      body: 'Organizations, departments, teams and reporting lines, with a structure that drives permissions. Business units and branches are in development.',
+    },
+  ];
+  return (
+    <Section className="nm-readiness" aria-labelledby="readiness">
+      <Container>
+        <ScrollReveal className="nm-readiness-head">
+          <Eyebrow>Security & deployment</Eyebrow>
+          <h2 id="readiness" className="nm-heading-lg">
+            Designed for organizations that{' '}
+            <span className="nm-serif">audit their software.</span>
+          </h2>
+        </ScrollReveal>
+        <div className="nm-readiness-grid">
+          {items.map((item, i) => (
+            <ScrollReveal key={item.title} delay={i as 0 | 1 | 2}>
+              <div className="nm-readiness-item">
+                <div className="nm-readiness-icon">
+                  <item.icon size={18} />
+                </div>
+                <h3 className="nm-readiness-title">{item.title}</h3>
+                <p className="nm-readiness-body">{item.body}</p>
               </div>
-              <h3 className="text-title mt-pair">{title}</h3>
-              <p className="text-copy-2 text-body-sm mt-label">{body}</p>
-            </div>
+            </ScrollReveal>
           ))}
-        </RevealGroup>
-      </Section>
-
-      {/* ── Close ─────────────────────────────────────────────────────────
-          Ink again, and the second time is deliberate: the argument opens on
-          ink at the architecture band and closes on it here, so the two dark
-          bands bracket the proof between them.
-
-          The upload closed with five filled stars and "Rated 4.9/5 by
-          operators" under the buttons. There is no rating. */}
-      <Section tone="ink" density="interrupt" aria-labelledby="cta">
-        <div className="flex flex-col items-start gap-group md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 id="cta" className="text-display-2 text-balance-hero max-w-[24rem]">
-              Put one department on it this week.
-            </h2>
-            <p className="text-copy-on-ink-2 text-body mt-pair max-w-[32rem]">
-              Start with the module that hurts most. The rest is already there
-              when you want it, and your data comes back out whenever you ask.
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap gap-pair">
-            <Button asChild variant="onInk" size="xl">
-              <Link href="/signup">
-                Start free
-                <ArrowRight className="size-4" />
-              </Link>
-            </Button>
-            <Button
-              asChild
-              size="xl"
-              variant="ghost"
-              className="text-ink-fg hover:bg-ink-fg/10 hover:text-ink-fg"
-            >
-              <Link href="/contact">Talk to us</Link>
-            </Button>
-          </div>
         </div>
-      </Section>
-    </>
+      </Container>
+    </Section>
+  );
+}
+
+/* ============================================================
+ * CLOSING
+ * ============================================================ */
+function Closing() {
+  return (
+    <Section size="lg" className="nm-closing" aria-labelledby="closing">
+      <div className="nm-closing-bg">
+        <div className="nm-closing-glow" />
+        <div className="nm-grid-bg nm-grid-bg-dot" />
+      </div>
+      <Container width="narrow">
+        <ScrollReveal className="nm-closing-inner">
+          <span className="nm-hero-badge nm-closing-badge">
+            <Calendar size={14} />
+            Get started today
+          </span>
+          <h2 id="closing" className="nm-display-lg nm-closing-title">
+            Open it{' '}
+            <span className="nm-serif nm-text-gradient">before email.</span>
+          </h2>
+          <p className="nm-lead-lg nm-closing-lead">
+            NextMav is the operational command center of the business — the
+            screen an organization opens first thing in the morning to
+            understand what needs attention.
+          </p>
+          <div className="nm-closing-actions">
+            <Link href="/signup" className={buttonClass('primary', 'lg')}>
+              Get started
+              <ArrowRight size={16} />
+            </Link>
+            <Link href="/contact" className={buttonClass('secondary', 'lg')}>
+              Talk to sales
+            </Link>
+          </div>
+          <p className="nm-mono nm-closing-stars-text">
+            Fourteen days · No card · Export your data whenever you like
+          </p>
+        </ScrollReveal>
+      </Container>
+    </Section>
   );
 }
