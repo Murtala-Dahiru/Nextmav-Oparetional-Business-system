@@ -1,251 +1,286 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { ArrowRight, ArrowUpRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Section, Container, SectionHeading, Eyebrow } from '@/components/marketing/section';
-import { Reveal, RevealGroup } from '@/components/marketing/reveal';
+import {
+  ArrowRight, Crown, Wallet, HeartHandshake, Settings, ClipboardList,
+  ShieldCheck, Layers, Check,
+} from 'lucide-react';
+import { Container, Section, Eyebrow, buttonClass } from '@/components/public/ui';
+import { ScrollReveal } from '@/components/public/client';
+import { EditorialImage, PHOTO } from '@/components/marketing/media';
+import { CAPABILITIES, LIVE_CAPABILITIES } from '@/components/marketing/capabilities';
 
 export const metadata: Metadata = {
   title: 'Solutions — NextMav',
   description:
-    'How the modules combine for professional services, distribution and internal operations teams, and which one to start with.',
+    'One platform, six perspectives. Each role sees what matters to them, with access scoped by the organization structure and enforced at the database.',
 };
 
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- *  Solutions
- * ═══════════════════════════════════════════════════════════════════════════
+ * The uploaded project's Solutions page, ported — dark hero, six role cards,
+ * a full-bleed photographic band with organization types, a figures strip, an
+ * implementation split with photography, closing CTA.
  *
- *  ── Why this page did not exist ──────────────────────────────────────────
+ * ── The figures strip ────────────────────────────────────────────────────
  *
- *  The site had Features and Pricing and nothing between them. Features says
- *  what the software contains; Pricing asks for a decision. Nothing connected
- *  the two — nothing said *this is what it looks like for a business shaped
- *  like yours*, which is the question standing between a curious visitor and a
- *  trial they will actually complete.
+ * The upload's version reads "3.2x faster approval cycles", "7→1 tools
+ * consolidated" and "100% audit-ready operations". The first is a performance
+ * claim about customers who do not exist, and the third is a compliance claim
+ * with no auditor behind it. The strip is kept — it is a good piece of
+ * composition — carrying three things that are true about the software.
  *
- *  ── What this page refuses to be ─────────────────────────────────────────
- *
- *  The industry-page template is well known: nine tiles reading Healthcare,
- *  Manufacturing, Retail, Education, Government, Non-profit, each linking to a
- *  page with the product description and the industry's name substituted in.
- *  It is transparently generated, and every reader who checks two of them
- *  learns there is nothing behind any of them.
- *
- *  Three shapes of business, described honestly, with the modules that carry
- *  the weight named — and, more usefully, where to start. Nobody moves a
- *  company onto new software in one weekend, and pretending otherwise is how
- *  a trial stalls in week two.
+ * "Our team handles data migration and onboarding" became a statement about
+ * what the Enterprise plan includes, which is what the pricing page already
+ * commits to, rather than a promise about a services organisation.
  */
 
-const shapes = [
+const ROLES = [
   {
-    name: 'Professional services',
-    who: 'Consultancies, studios, engineering practices — anyone who sells work rather than goods.',
-    problem:
-      'The deal, the delivery and the invoice live in three tools, so nobody can say what a client is actually worth until somebody spends a day in spreadsheets.',
-    modules: ['CRM', 'Projects', 'Finance', 'People'],
-    start:
-      'Start with Projects. It is where the disagreement is most expensive, and the CRM becomes obviously worth connecting the first time somebody opens a project from a deal.',
+    title: 'For CEOs & Founders',
+    icon: Crown,
+    body: 'See the health of your company on one screen. Understand where attention is needed, where spending is trending, and which approvals are blocking progress.',
+    points: ['Executive dashboards', 'Company-wide KPIs', 'Approval oversight', 'Department performance'],
   },
   {
-    name: 'Distribution and light manufacturing',
-    who: 'Businesses that hold stock, buy from suppliers, and promise delivery dates.',
-    problem:
-      'Sales promises from one number and the warehouse works from another. The gap is discovered by a customer.',
-    modules: ['Inventory', 'CRM', 'Finance', 'Support'],
-    start:
-      'Start with Inventory and connect the CRM next. Once a deal can see real stock, the promise and the shelf stop disagreeing.',
+    title: 'For CFOs & Finance teams',
+    icon: Wallet,
+    body: 'Track budgets, approve expenses and monitor department spending — every line traceable to the customer and project that caused it.',
+    points: ['Budget tracking', 'Expense approvals', 'Invoicing & ageing', 'Financial reporting'],
   },
   {
-    name: 'Internal operations',
-    who: 'Growing teams where HR, IT and finance requests all arrive in the same overloaded inbox.',
-    problem:
-      'Requests have no owner and no clock, so the loudest gets handled and the rest are found later, unanswered.',
-    modules: ['People', 'Support', 'Communication', 'Calendar'],
-    start:
-      'Start with People and Support together. Leave requests and internal tickets are the two things everyone in the company touches, so adoption is immediate.',
+    title: 'For HR Managers',
+    icon: HeartHandshake,
+    body: 'Manage the employee lifecycle — profiles, departments, reporting lines, leave, attendance and documents — from one connected record.',
+    points: ['Employee profiles', 'Leave & balances', 'Attendance', 'Onboarding & offboarding'],
+  },
+  {
+    title: 'For Operations Directors',
+    icon: ClipboardList,
+    body: 'Run operations from a command center. Approvals, projects and stock — routed, tracked and auditable across every department.',
+    points: ['Approval routing', 'Project oversight', 'Inventory & suppliers', 'Activity history'],
+  },
+  {
+    title: 'For Project Managers',
+    icon: Settings,
+    body: 'Deliver projects with boards, milestones and team collaboration — with activity history and full context attached to every task.',
+    points: ['Boards & milestones', 'Time tracking', 'Team collaboration', 'Client sign-off'],
+  },
+  {
+    title: 'For IT & Administrators',
+    icon: ShieldCheck,
+    body: 'Control access with role-based permissions, manage sessions, enforce security policies and maintain the organization structure that drives the platform.',
+    points: ['Role-based access control', 'Session management', 'Security policies', 'Audit trail'],
   },
 ];
 
-const roles = [
-  {
-    role: 'Sales',
-    gets: 'A pipeline that reflects what delivery can actually take on, and a customer record that does not end at the signature.',
-  },
-  {
-    role: 'Delivery',
-    gets: 'Work with owners, dependencies and time against it, arriving with the context the deal already captured.',
-  },
-  {
-    role: 'Finance',
-    gets: 'Invoices and expenses attached to the customer and project that produced them, so a figure can be traced rather than defended.',
-  },
-  {
-    role: 'People',
-    gets: 'One directory, one leave process, one attendance record — and offboarding that actually removes access.',
-  },
-  {
-    role: 'Leadership',
-    gets: 'Figures drawn from the same rows every department is working in, rather than four reports compiled separately and reconciled in a meeting.',
-  },
-  {
-    role: 'IT',
-    gets: 'One access model, one audit trail and one vendor, instead of six SaaS admin consoles with six different ideas of what a role is.',
-  },
+const ORG_TYPES = [
+  'Small businesses',
+  'Growing companies',
+  'Mid-sized organizations',
+  'Large enterprises',
+  'Government agencies',
+  'NGOs',
+  'Educational institutions',
+  'Healthcare organizations',
+];
+
+const FIGURES = [
+  { icon: Layers, val: String(CAPABILITIES.length), label: 'connected capability areas' },
+  { icon: Check, val: '1', label: 'permission model across all of them' },
+  { icon: ShieldCheck, val: '100%', label: 'of tables under row-level security' },
 ];
 
 export default function SolutionsPage() {
   return (
     <>
-      <Container className="pt-16 pb-4 sm:pt-24">
-        <div className="max-w-[44rem]">
-          <Reveal>
-            <Eyebrow>Solutions</Eyebrow>
-          </Reveal>
-          <Reveal delay={0.05}>
-            <h1 className="text-display-1 text-balance-hero mt-5">
-              Where to start, depending on what you run.
-            </h1>
-          </Reveal>
-          <Reveal delay={0.1}>
-            <p className="text-muted-foreground text-lede text-pretty-body mt-6">
-              The same eight modules serve very different businesses. What
-              changes is which two you turn on first — and getting that wrong is
-              the most common reason a migration stalls.
-            </p>
-          </Reveal>
+      <section className="nm-page-hero nm-page-hero-dark">
+        <div className="nm-page-hero-bg">
+          <div className="nm-grid-bg nm-grid-bg-dark" />
+          <div className="nm-hero-glow nm-hero-glow-1" />
+          <div className="nm-hero-glow nm-hero-glow-2" />
         </div>
-      </Container>
+        <Container className="nm-page-hero-content">
+          <Eyebrow>Solutions</Eyebrow>
+          <h1 className="nm-page-hero-title nm-page-hero-title-dark">
+            Built for every role that{' '}
+            <span className="nm-serif">runs the organization.</span>
+          </h1>
+          <p className="nm-page-hero-sub nm-page-hero-sub-dark">
+            From the CEO monitoring company health to the HR manager onboarding a
+            new hire — each person works from the same platform, with access
+            scoped to their role.
+          </p>
+        </Container>
+      </section>
 
-      {/* ── By shape of business ───────────────────────────────────────── */}
-      <Container className="py-10 sm:py-14">
-        <div className="divide-hairline divide-y">
-          {shapes.map((s) => (
-            <Reveal key={s.name} as="article">
-              <div className="grid gap-8 py-12 md:grid-cols-[0.9fr_1.1fr] md:gap-16 sm:py-14">
-                <div>
-                  <h2 className="text-display-3">{s.name}</h2>
-                  <p className="text-muted-foreground mt-3 text-[0.9375rem] leading-relaxed">
-                    {s.who}
-                  </p>
-                  <ul className="mt-5 flex flex-wrap gap-2">
-                    {s.modules.map((m) => (
-                      <li
-                        key={m}
-                        className="border-hairline text-muted-foreground rounded-full border px-2.5 py-1 text-[0.75rem] font-medium"
-                      >
-                        {m}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="text-[0.8125rem] font-semibold tracking-[0.02em] uppercase opacity-50">
-                      What goes wrong today
-                    </h3>
-                    <p className="text-pretty-body mt-2 text-[0.9375rem] leading-relaxed">
-                      {s.problem}
-                    </p>
-                  </div>
-                  <div className="border-brand-line bg-brand-soft rounded-xl border p-5">
-                    <h3 className="text-brand text-[0.8125rem] font-semibold tracking-[0.02em] uppercase">
-                      Where to start
-                    </h3>
-                    <p className="text-foreground/80 mt-2 text-[0.9375rem] leading-relaxed">
-                      {s.start}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </Container>
-
-      {/* ── By role ─────────────────────────────────────────────────────── */}
-      <Section tone="surface" aria-labelledby="roles">
-        <SectionHeading
-          id="roles"
-          eyebrow="By team"
-          title="What each department stops doing."
-          description="Adoption fails when a system is worth having for management and a chore for everybody else. This is the answer to “what do I get out of it”, per team."
-        />
-
-        <RevealGroup
-          className="mt-12 grid gap-x-12 gap-y-8 md:grid-cols-2 lg:grid-cols-3"
-          step={0.04}
-        >
-          {roles.map(({ role, gets }) => (
-            <div key={role} className="border-hairline border-t pt-5">
-              <h3 className="text-[0.9375rem] font-semibold tracking-[-0.01em]">
-                {role}
-              </h3>
-              <p className="text-muted-foreground mt-2 text-[0.875rem] leading-relaxed">
-                {gets}
-              </p>
-            </div>
-          ))}
-        </RevealGroup>
-      </Section>
-
-      {/* ── Honest note ─────────────────────────────────────────────────── */}
-      <Section density="tight" width="prose" aria-labelledby="not-for">
-        <Reveal>
-          <Eyebrow>Worth saying</Eyebrow>
-          <h2 id="not-for" className="text-display-3 mt-5">
-            When this is the wrong tool.
-          </h2>
-          <div className="text-muted-foreground mt-5 space-y-4 text-[0.9375rem] leading-relaxed">
-            <p>
-              If one department needs software far deeper than a suite will ever
-              go — a trading desk, a clinical record, a shop floor running MES —
-              a general system of record will not replace it, and a page that
-              claimed otherwise would waste your trial.
-            </p>
-            <p className="text-foreground">
-              The honest version: NextMav is worth adopting when the cost of your
-              tools disagreeing exceeds the depth you would give up by
-              consolidating. For most companies under a few hundred people, it
-              does. Above that, it depends on the department.
-            </p>
-          </div>
-        </Reveal>
-      </Section>
-
-      <Section tone="ink" density="tight" aria-labelledby="solutions-cta">
-        <div className="flex flex-col items-start gap-8 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 id="solutions-cta" className="text-display-3 max-w-xl">
-              Not sure which two modules to start with?
+      <Section aria-labelledby="roles">
+        <Container>
+          <ScrollReveal className="nm-solutions-head">
+            <Eyebrow>By role</Eyebrow>
+            <h2 id="roles" className="nm-heading-lg" style={{ marginTop: 'var(--nm-space-4)' }}>
+              One platform,{' '}
+              <span className="nm-text-gradient">six perspectives.</span>
             </h2>
-            <p className="mt-3 max-w-lg text-[0.9375rem] leading-relaxed opacity-70">
-              Describe what you run today and we will tell you — including if the
-              answer is that you should not move yet.
+            <p className="nm-lead" style={{ marginTop: 'var(--nm-space-5)', maxWidth: 560 }}>
+              Each role sees what matters to them — and nothing they
+              shouldn&rsquo;t. Permissions are scoped by the organization
+              structure and enforced at the database level.
             </p>
+          </ScrollReveal>
+          <div className="nm-role-grid">
+            {ROLES.map((role, i) => (
+              <ScrollReveal key={role.title} delay={(i % 2) as 0 | 1}>
+                <div className="nm-role-card">
+                  <div className="nm-role-card-glow" />
+                  <div className="nm-role-card-head">
+                    <div className="nm-role-icon">
+                      <role.icon size={20} />
+                    </div>
+                    <h3 className="nm-role-card-title">{role.title}</h3>
+                  </div>
+                  <p className="nm-role-card-body">{role.body}</p>
+                  <div className="nm-role-card-points">
+                    {role.points.map((point) => (
+                      <span key={point} className="nm-role-card-point">
+                        <Check size={12} aria-hidden="true" />
+                        {point}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </ScrollReveal>
+            ))}
           </div>
-          <div className="flex shrink-0 flex-wrap gap-3">
-            <Button asChild variant="onInk" size="xl">
-              <Link href="/contact">
-                Ask us
-                <ArrowUpRight className="size-4" />
-              </Link>
-            </Button>
-            <Button
-              asChild
-              size="xl"
-              variant="ghost"
-              className="text-ink-fg hover:bg-ink-fg/10 hover:text-ink-fg"
+        </Container>
+      </Section>
+
+      <ScrollReveal>
+        <Section className="nm-solutions-image nm-dark-surface" aria-labelledby="orgs">
+          <div className="nm-solutions-image-bg">
+            <EditorialImage
+              src={PHOTO.workshop}
+              alt="Colleagues working together around a table"
+              tone="deep"
+              sizes="100vw"
+            />
+            <div className="nm-solutions-image-overlay" />
+          </div>
+          <Container className="nm-solutions-image-content">
+            <Eyebrow>Organizations we build for</Eyebrow>
+            <h2
+              id="orgs"
+              className="nm-heading-lg nm-heading-dark"
+              style={{ marginTop: 'var(--nm-space-4)', maxWidth: 520 }}
             >
-              <Link href="/signup">
-                Start free
-                <ArrowRight className="size-4" />
-              </Link>
-            </Button>
-          </div>
+              From small teams to{' '}
+              <span className="nm-serif" style={{ color: 'var(--nm-accent-3)' }}>
+                complex enterprises.
+              </span>
+            </h2>
+            <p
+              className="nm-lead"
+              style={{ color: 'var(--nm-neutral-5)', marginTop: 'var(--nm-space-5)', maxWidth: 480 }}
+            >
+              The platform scales from a ten-person team to a multi-unit
+              organization — the same capabilities, the same permission model,
+              the same connected data.
+            </p>
+            <div className="nm-solutions-orgs">
+              {ORG_TYPES.map((type) => (
+                <span key={type} className="nm-solutions-org">
+                  {type}
+                </span>
+              ))}
+            </div>
+          </Container>
+        </Section>
+      </ScrollReveal>
+
+      <ScrollReveal>
+        <Section className="nm-solutions-stats" aria-labelledby="figures">
+          <Container>
+            <h2 id="figures" className="nm-sr-only">
+              The shape of the platform
+            </h2>
+            <div className="nm-solutions-stats-grid">
+              {FIGURES.map((f) => (
+                <div key={f.label} className="nm-solutions-stat">
+                  <div className="nm-solutions-stat-icon">
+                    <f.icon size={20} />
+                  </div>
+                  <span className="nm-solutions-stat-val">{f.val}</span>
+                  <span className="nm-solutions-stat-label">{f.label}</span>
+                </div>
+              ))}
+            </div>
+          </Container>
+        </Section>
+      </ScrollReveal>
+
+      <ScrollReveal>
+        <Section className="nm-solutions-partnership" aria-labelledby="implementation">
+          <Container>
+            <div className="nm-solutions-partnership-grid">
+              <div className="nm-solutions-partnership-image nm-img-overlay">
+                <EditorialImage
+                  src={PHOTO.meeting}
+                  alt="Two people shaking hands across a table"
+                  sizes="(min-width: 980px) 46vw, 92vw"
+                />
+              </div>
+              <div className="nm-solutions-partnership-text">
+                <Eyebrow>Implementation</Eyebrow>
+                <h2
+                  id="implementation"
+                  className="nm-heading-lg"
+                  style={{ marginTop: 'var(--nm-space-4)' }}
+                >
+                  Start with one department,{' '}
+                  <span className="nm-serif">not the whole company.</span>
+                </h2>
+                <p className="nm-lead" style={{ marginTop: 'var(--nm-space-5)' }}>
+                  Import contacts, employees, products and projects from CSV, and
+                  turn modules on in the order that suits you — the order matters
+                  more than the import. Enterprise agreements include onboarding
+                  and migration support and a named account manager.
+                </p>
+                <p className="nm-lead" style={{ marginTop: 'var(--nm-space-4)', fontSize: 'var(--nm-text-sm)' }}>
+                  {LIVE_CAPABILITIES.length} capability areas are available today.
+                </p>
+                <Link
+                  href="/contact"
+                  className="nm-arrow-link"
+                  style={{ marginTop: 'var(--nm-space-6)' }}
+                >
+                  Talk to us about onboarding
+                  <ArrowRight size={14} />
+                </Link>
+              </div>
+            </div>
+          </Container>
+        </Section>
+      </ScrollReveal>
+
+      <Section className="nm-closing" size="lg" aria-labelledby="solutions-cta">
+        <div className="nm-closing-bg">
+          <div className="nm-closing-glow" />
+          <div className="nm-grid-bg nm-grid-bg-dot" />
         </div>
+        <Container width="narrow">
+          <ScrollReveal className="nm-closing-inner">
+            <h2 id="solutions-cta" className="nm-display-lg nm-closing-title">
+              See how it fits{' '}
+              <span className="nm-serif nm-text-gradient">your organization.</span>
+            </h2>
+            <div className="nm-closing-actions">
+              <Link href="/contact" className={buttonClass('primary', 'lg')}>
+                Talk to sales <ArrowRight size={16} />
+              </Link>
+              <Link href="/features" className={buttonClass('secondary', 'lg', 'nm-btn-dark-secondary')}>
+                Explore platform
+              </Link>
+            </div>
+          </ScrollReveal>
+        </Container>
       </Section>
     </>
   );

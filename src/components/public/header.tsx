@@ -37,7 +37,24 @@ export function PublicHeader() {
   const pathname = usePathname();
   const session = useSessionPeek();
   const [scrolled, setScrolled] = useState(false);
-  const [open, setOpen] = useState(false);
+
+  /**
+   * The menu is derived from *where* it was opened, not from a boolean synced
+   * back to the route.
+   *
+   * The obvious version — `useEffect(() => setOpen(false), [pathname])` — sets
+   * state synchronously inside an effect, which cascades an extra render on
+   * every navigation and is what `react-hooks/set-state-in-effect` exists to
+   * catch. Storing the path the panel was opened at makes "a navigation
+   * happened" and "the panel is closed" the same fact, so nothing has to
+   * synchronise them.
+   */
+  const [openedAt, setOpenedAt] = useState<string | null>(null);
+  const open = openedAt !== null && openedAt === pathname;
+  const setOpen = (next: boolean | ((v: boolean) => boolean)) => {
+    const value = typeof next === 'function' ? next(open) : next;
+    setOpenedAt(value ? pathname : null);
+  };
 
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -48,8 +65,6 @@ export function PublicHeader() {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
-
-  useEffect(() => setOpen(false), [pathname]);
 
   useEffect(() => {
     if (!open) return;

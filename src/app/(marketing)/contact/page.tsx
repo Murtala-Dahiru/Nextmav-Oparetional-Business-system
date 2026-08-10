@@ -1,432 +1,252 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
-import Link from 'next/link';
-import { Mail, CheckCircle2, BookOpen, Activity, LifeBuoy, ExternalLink } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Container, Eyebrow } from '@/components/marketing/section';
-import { Field } from '@/components/forms/field';
-import { cn } from '@/lib/utils';
+import { useState } from 'react';
+import { Mail, LifeBuoy, Clock, MapPin, Check, ArrowRight } from 'lucide-react';
+import { Container, Section, Eyebrow, Input, Textarea, buttonClass } from '@/components/public/ui';
+import { ScrollReveal } from '@/components/public/client';
+import { CONTACT_EMAIL } from '@/lib/public-contact';
 
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- *  Contact
- * ═══════════════════════════════════════════════════════════════════════════
+ * The uploaded project's Contact page, ported — dark hero, a channel column
+ * beside the form, the same field set and success state.
  *
- *  ── The form did not work, and still has no server ───────────────────────
+ * ── The submit had to be real ────────────────────────────────────────────
  *
- *  It posted to `/api/support/tickets`, which requires a session and an
- *  organization membership. Everyone who uses this page has neither, so every
- *  submission was refused by middleware and the visitor was shown "Failed to
- *  send message. Please try again." The most motivated ones tried again.
+ * The uploaded implementation calls `setTimeout(800)` and then shows "Message
+ * received. We'll get back to you within one business day." It posts nowhere.
+ * Shipping that means taking somebody's enquiry, telling them it arrived, and
+ * discarding it — the single worst thing a contact page can do, and worse than
+ * having no form at all.
  *
- *  Phase 1 is explicitly fenced out of the backend, so the honest options were
- *  (a) ship a form that silently fails, (b) ship no form, or (c) ship a form
- *  with a transport that needs no server. (a) is what we are removing. (b)
- *  loses the structure that makes an enquiry useful to answer — what they run,
- *  how many people, which problem.
+ * There is no `/api/contact` here yet; the spec for one is CONTENT-NEEDED #11.
+ * So the form composes a mail message and the button says exactly that. The
+ * success state is kept, and now describes something that happened.
  *
- *  So: (c). The form composes a `mailto:` and the button says exactly that.
- *  Nothing is queued, nothing is claimed to have been sent, and nothing
- *  depends on an endpoint that does not exist. When the Phase 2 endpoint
- *  lands, only `handleSubmit` changes — the fields, validation, states and
- *  copy are already the ones a real submission wants.
+ * ── The channel column ───────────────────────────────────────────────────
  *
- *  ── Three things removed from the sidebar ────────────────────────────────
+ * The upload prints `sales@nextmav.com` and `support@nextmav.com`. Neither has
+ * been confirmed to exist, and publishing an address that bounces is worse than
+ * publishing an obvious placeholder — only the second kind gets noticed and
+ * fixed. Both route through `CONTACT_EMAIL` until real ones are supplied.
  *
- *  A phone number: `+1 (555) 123-4567`. The 555 exchange is the one American
- *  film productions use precisely because it cannot be dialled.
- *
- *  An office: "123 Enterprise Blvd, San Francisco, CA 94105" — a placeholder
- *  street on a real financial-district postcode.
- *
- *  A map: a grey rectangle with a pin icon and that same invented address
- *  underneath, spending 256px of page depicting a building that does not exist.
- *
- *  Anybody who checks any of the three learns the site is decorated with
- *  invented facts — on the page they opened specifically to find out whether
- *  there is a real company here.
+ * "Response time — within one business day" is removed for the same reason: it
+ * is a commitment nobody has made. Logged as CONTENT-NEEDED.
  */
 
-/**
- * PLACEHOLDER — see CONTENT-NEEDED.md.
- *
- * One constant, not five literals, so replacing it is a single edit rather
- * than a search. Every intent below falls back to it.
- */
-const CONTACT_EMAIL = 'hello@example.com';
-
-/**
- * Routing by intent.
- *
- * The old form had a free-text "Subject" and nothing else, so a sales enquiry,
- * a security disclosure and a password problem all arrived in the same shape
- * and were triaged by reading them. Asking one question up front is the
- * cheapest possible routing, and it changes the placeholder text so the person
- * writing knows what detail is actually useful.
- */
-const INTENTS = [
+const CHANNELS = [
   {
-    id: 'sales',
-    label: 'Evaluating NextMav',
-    to: CONTACT_EMAIL,
-    hint: 'What you run today, roughly how many people, and what is not working.',
-    subject: 'Evaluating NextMav for ',
-  },
-  {
-    id: 'support',
-    label: 'I’m already a customer',
-    to: CONTACT_EMAIL,
-    hint: 'Your workspace name and what you were doing when it went wrong.',
-    subject: 'Support — ',
-  },
-  {
-    id: 'security',
-    label: 'Security disclosure',
-    to: CONTACT_EMAIL,
-    hint: 'Steps to reproduce, and how you would like to be credited.',
-    subject: 'Security disclosure — ',
-  },
-  {
-    id: 'partnership',
-    label: 'Partnership or press',
-    to: CONTACT_EMAIL,
-    hint: 'Who you are and what you have in mind.',
-    subject: 'Partnership — ',
-  },
-] as const;
-
-type IntentId = (typeof INTENTS)[number]['id'];
-
-const elsewhere = [
-  {
-    icon: BookOpen,
-    title: 'Documentation',
-    body: 'How the modules fit together, and the API.',
-    href: '/docs',
+    icon: Mail,
+    label: 'Sales',
+    val: CONTACT_EMAIL,
+    desc: 'For pricing, demos and platform evaluation.',
   },
   {
     icon: LifeBuoy,
-    title: 'Help centre',
-    body: 'Answers to the questions we are asked most.',
-    href: '/help',
+    label: 'Support',
+    val: CONTACT_EMAIL,
+    desc: 'For existing customers needing technical assistance.',
   },
   {
-    icon: Activity,
-    title: 'System status',
-    body: 'Live availability, and the record of past incidents.',
-    href: '/status',
+    icon: Clock,
+    label: 'How we reply',
+    val: 'A person, not a queue',
+    desc: 'Every enquiry is read by someone who works on the product.',
+  },
+  {
+    icon: MapPin,
+    label: 'Presence',
+    val: 'Remote-first',
+    desc: 'We work with organizations across time zones.',
   },
 ];
 
+type Errors = Partial<Record<'name' | 'email' | 'org' | 'message', string>>;
+
 export default function ContactPage() {
-  const [intent, setIntent] = useState<IntentId>('sales');
-  const [formData, setFormData] = useState({
+  const [sent, setSent] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [form, setForm] = useState({
     name: '',
     email: '',
-    subject: '',
+    org: '',
+    size: '',
     message: '',
   });
-  /**
-   * Which fields the person has finished with.
-   *
-   * Validation runs on blur, never on keystroke — the skill's
-   * `inline-validation` rule, and simple decency: marking an email invalid
-   * while somebody is on the third character of it is the interface telling
-   * them off for not having finished typing yet.
-   */
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
-  const [sent, setSent] = useState(false);
 
-  const active = INTENTS.find((i) => i.id === intent)!;
-
-  const errors = {
-    name: formData.name.trim() ? null : 'Please tell us your name.',
-    email: !formData.email.trim()
+  const errors: Errors = {
+    name: form.name.trim() ? undefined : 'Please tell us your name.',
+    email: !form.email.trim()
       ? 'We need an address to reply to.'
-      : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())
-        ? null
-        : 'That address is missing an @ or a domain.',
-    subject: formData.subject.trim() ? null : 'A short subject helps us route this.',
-    message: formData.message.trim().length >= 10
-      ? null
-      : 'A sentence or two about what you need.',
+      : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())
+        ? undefined
+        : 'That address does not look right.',
+    org: form.org.trim() ? undefined : 'Which organization is this for?',
+    message:
+      form.message.trim().length >= 10
+        ? undefined
+        : 'A sentence or two helps us reply usefully.',
   };
-  const valid = Object.values(errors).every((e) => e === null);
 
-  function updateField(field: string, value: string) {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  }
+  const valid = !errors.name && !errors.email && !errors.org && !errors.message;
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Reveal every outstanding error at once rather than one per attempt, and
-    // move focus to the first of them — `focus-management` in the skill's
-    // forms rules, and the difference between "fix this" and "guess again".
-    if (!valid) {
-      setTouched({ name: true, email: true, subject: true, message: true });
-      const firstBad = ['name', 'email', 'subject', 'message'].find(
-        (f) => errors[f as keyof typeof errors],
-      );
-      if (firstBad) document.getElementById(`contact-${firstBad}`)?.focus();
-      return;
-    }
+    // Validation surfaces on submit as well as on blur, so a keyboard user who
+    // tabs straight to the button is not met with silence.
+    setTouched({ name: true, email: true, org: true, message: true });
+    if (!valid) return;
 
     const body = [
-      formData.message.trim(),
+      form.message.trim(),
       '',
-      '—',
-      formData.name.trim(),
-      formData.email.trim(),
-      `Enquiry type: ${active.label}`,
-    ].join('\r\n');
+      `— ${form.name.trim()}`,
+      form.org.trim(),
+      form.size.trim() ? `Team size: ${form.size.trim()}` : '',
+      form.email.trim(),
+    ]
+      .filter(Boolean)
+      .join('\n');
 
     window.location.href =
-      `mailto:${active.to}` +
-      `?subject=${encodeURIComponent(formData.subject.trim())}` +
+      `mailto:${CONTACT_EMAIL}` +
+      `?subject=${encodeURIComponent(`Enquiry — ${form.org.trim()}`)}` +
       `&body=${encodeURIComponent(body)}`;
 
     setSent(true);
-  }
+  };
 
   return (
-    <Container className="py-16 sm:py-24">
-      <div className="grid gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-20">
-        <div>
-          <Eyebrow>Contact</Eyebrow>
-          <h1 className="text-display-2 text-balance-hero mt-5">
-            Tell us what you’re trying to run.
-          </h1>
-          <p className="text-muted-foreground text-lede text-pretty-body mt-5 max-w-xl">
-            Questions about fit, migration, pricing for a larger team, or
-            anything the documentation doesn’t answer. A person reads these.
-          </p>
-
-          {sent ? (
-            /*
-             * The submitted state, designed as carefully as the form.
-             *
-             * It says what actually happened — a draft was opened — because
-             * claiming "message sent" when the person may have closed their
-             * mail client without pressing send is the kind of small lie that
-             * produces a follow-up email two weeks later asking why nobody
-             * replied.
-             */
-            <div
-              className="border-brand-line bg-brand-soft mt-10 rounded-xl border p-6"
-              role="status"
-            >
-              <CheckCircle2 className="text-brand size-6" strokeWidth={1.9} aria-hidden="true" />
-              <h2 className="mt-4 text-[1.125rem] font-semibold tracking-[-0.02em]">
-                Your email app should be open
-              </h2>
-              <p className="text-foreground/75 mt-2 text-[0.9375rem] leading-relaxed">
-                We’ve filled in a draft to{' '}
-                <span className="font-medium">{active.to}</span> with everything
-                you wrote. Press send there and it reaches us — we reply within
-                one working day.
-              </p>
-              <p className="text-muted-foreground mt-3 text-[0.875rem] leading-relaxed">
-                Nothing opened? Copy the address above and send it manually;
-                some browsers block mail links.
-              </p>
-              <Button
-                variant="ctaOutline"
-                size="xl"
-                className="mt-6"
-                onClick={() => {
-                  setSent(false);
-                  setTouched({});
-                }}
-              >
-                Back to the form
-              </Button>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} noValidate className="mt-10 space-y-6">
-              <fieldset>
-                <legend className="text-[0.875rem] font-medium">
-                  What’s this about?
-                </legend>
-                <p className="text-muted-foreground mt-1 text-[0.8125rem]">
-                  So it reaches the right person first time.
-                </p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {INTENTS.map((i) => (
-                    <label
-                      key={i.id}
-                      className={cn(
-                        'flex cursor-pointer items-center gap-2.5 rounded-lg border px-3.5 py-3 text-[0.875rem] transition-colors',
-                        // ≥44px tall, per the skill's touch-target rule — a
-                        // radio you have to aim at is a radio people mis-tap.
-                        intent === i.id
-                          ? 'border-ink bg-surface font-medium'
-                          : 'border-hairline hover:border-hairline-strong',
-                      )}
-                    >
-                      <input
-                        type="radio"
-                        name="intent"
-                        value={i.id}
-                        checked={intent === i.id}
-                        onChange={() => setIntent(i.id)}
-                        className="accent-brand size-4"
-                      />
-                      {i.label}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-
-              <div className="grid gap-5 sm:grid-cols-2">
-                <Field
-                  id="contact-name"
-                  label="Your name"
-                  error={touched.name ? errors.name : null}
-                >
-                  <Input
-                    id="contact-name"
-                    placeholder="Alex Morgan"
-                    value={formData.name}
-                    onChange={(e) => updateField('name', e.target.value)}
-                    onBlur={() => setTouched((t) => ({ ...t, name: true }))}
-                    maxLength={120}
-                    autoComplete="name"
-                    aria-invalid={!!(touched.name && errors.name)}
-                    className="h-11"
-                  />
-                </Field>
-
-                <Field
-                  id="contact-email"
-                  label="Work email"
-                  error={touched.email ? errors.email : null}
-                >
-                  <Input
-                    id="contact-email"
-                    type="email"
-                    inputMode="email"
-                    placeholder="you@company.com"
-                    value={formData.email}
-                    onChange={(e) => updateField('email', e.target.value)}
-                    onBlur={() => setTouched((t) => ({ ...t, email: true }))}
-                    maxLength={254}
-                    autoComplete="email"
-                    aria-invalid={!!(touched.email && errors.email)}
-                    className="h-11"
-                  />
-                </Field>
-              </div>
-
-              <Field
-                id="contact-subject"
-                label="Subject"
-                error={touched.subject ? errors.subject : null}
-              >
-                <Input
-                  id="contact-subject"
-                  placeholder={`${active.subject}60 people across three tools`}
-                  value={formData.subject}
-                  onChange={(e) => updateField('subject', e.target.value)}
-                  onBlur={() => setTouched((t) => ({ ...t, subject: true }))}
-                  maxLength={200}
-                  aria-invalid={!!(touched.subject && errors.subject)}
-                  className="h-11"
-                />
-              </Field>
-
-              <Field
-                id="contact-message"
-                label="Message"
-                hint={active.hint}
-                error={touched.message ? errors.message : null}
-              >
-                <Textarea
-                  id="contact-message"
-                  rows={6}
-                  value={formData.message}
-                  onChange={(e) => updateField('message', e.target.value)}
-                  onBlur={() => setTouched((t) => ({ ...t, message: true }))}
-                  maxLength={5000}
-                  aria-invalid={!!(touched.message && errors.message)}
-                  className="min-h-[9rem] resize-y"
-                />
-              </Field>
-
-              {/*
-                The button says what pressing it does. "Send message" would be
-                a small lie — it opens a draft, and a person who expects a
-                confirmation screen and gets Outlook is a person who thinks
-                the site is broken.
-              */}
-              <Button type="submit" variant="cta" size="xl" className="w-full sm:w-auto">
-                <Mail className="size-4" />
-                Open this in your email app
-              </Button>
-            </form>
-          )}
+    <>
+      <section className="nm-page-hero nm-page-hero-dark">
+        <div className="nm-page-hero-bg">
+          <div className="nm-grid-bg nm-grid-bg-dark" />
+          <div className="nm-hero-glow nm-hero-glow-1" />
+          <div className="nm-hero-glow nm-hero-glow-2" />
         </div>
+        <Container className="nm-page-hero-content">
+          <Eyebrow>Contact</Eyebrow>
+          <h1 className="nm-page-hero-title nm-page-hero-title-dark">
+            Talk to us about running your{' '}
+            <span className="nm-serif">organization on NextMav.</span>
+          </h1>
+          <p className="nm-page-hero-sub nm-page-hero-sub-dark">
+            Whether you&rsquo;re evaluating platforms or ready to get started,
+            we&rsquo;ll help you understand how NextMav fits your organization —
+            including where it doesn&rsquo;t.
+          </p>
+        </Container>
+      </section>
 
-        <aside className="lg:pt-[7.5rem]">
-          <div className="border-hairline bg-surface rounded-xl border p-6">
-            <h2 className="text-[0.9375rem] font-semibold tracking-[-0.01em]">
-              What to expect
-            </h2>
-            <dl className="mt-4 space-y-3 text-[0.875rem]">
-              <div className="flex items-baseline justify-between gap-4">
-                <dt className="text-muted-foreground">First reply</dt>
-                <dd className="font-medium">One working day</dd>
+      <Section aria-labelledby="contact">
+        <Container>
+          <h2 id="contact" className="nm-sr-only">
+            Contact us
+          </h2>
+          <div className="nm-contact-grid">
+            <ScrollReveal className="nm-contact-info">
+              <div className="nm-contact-channels">
+                {CHANNELS.map((channel) => (
+                  <div key={channel.label} className="nm-contact-channel">
+                    <div className="nm-contact-channel-icon">
+                      <channel.icon size={18} aria-hidden="true" />
+                    </div>
+                    <div className="nm-contact-channel-content">
+                      <span className="nm-contact-channel-label">{channel.label}</span>
+                      <span className="nm-contact-channel-val">{channel.val}</span>
+                      <span className="nm-contact-channel-desc">{channel.desc}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="flex items-baseline justify-between gap-4">
-                <dt className="text-muted-foreground">Who answers</dt>
-                <dd className="font-medium">A person, not a bot</dd>
-              </div>
-            </dl>
-            <p className="text-muted-foreground border-hairline mt-4 border-t pt-4 text-[0.8125rem] leading-relaxed">
-              Already using NextMav? Raising a ticket inside the product reaches
-              the same people with your workspace attached, which is usually the
-              difference between one reply and three.
-            </p>
-            <a
-              href={`mailto:${CONTACT_EMAIL}`}
-              className="text-brand mt-4 inline-flex items-center gap-1.5 text-[0.875rem] font-medium hover:underline"
-            >
-              {CONTACT_EMAIL}
-              <ExternalLink className="size-3.5" aria-hidden="true" />
-            </a>
-          </div>
+            </ScrollReveal>
 
-          <div className="mt-6 space-y-3">
-            {elsewhere.map(({ icon: Icon, title, body, href }) => (
-              <Link
-                key={title}
-                href={href}
-                className="border-hairline hover:border-hairline-strong hover:bg-surface block rounded-xl border p-5 transition-colors"
-              >
-                <div className="flex items-start gap-3.5">
-                  <Icon
-                    className="text-brand mt-0.5 size-[1.0625rem] shrink-0"
-                    strokeWidth={1.9}
-                    aria-hidden="true"
-                  />
-                  <div>
-                    <h3 className="text-[0.9375rem] font-semibold tracking-[-0.01em]">
-                      {title}
-                    </h3>
-                    <p className="text-muted-foreground mt-1 text-[0.875rem] leading-relaxed">
-                      {body}
+            <ScrollReveal delay={1}>
+              {sent ? (
+                <div className="nm-contact-form nm-contact-success">
+                  <div className="nm-contact-success-icon">
+                    <Check size={28} aria-hidden="true" />
+                  </div>
+                  <h3 className="nm-heading-sm">Your email app should be open.</h3>
+                  <p className="nm-lead" style={{ fontSize: 'var(--nm-text-sm)' }}>
+                    Send the message it has drafted and it will reach us. If
+                    nothing opened, write to {CONTACT_EMAIL} directly.
+                  </p>
+                </div>
+              ) : (
+                <form className="nm-contact-form" onSubmit={onSubmit} noValidate>
+                  <div className="nm-contact-form-head">
+                    <h3 className="nm-contact-form-title">Send us a message</h3>
+                    <p className="nm-contact-form-sub">
+                      This opens in your email app — we have no server-side form
+                      yet, and would rather say so than lose your message.
                     </p>
                   </div>
-                </div>
-              </Link>
-            ))}
+                  <div className="nm-contact-form-row">
+                    <Input
+                      label="Your name"
+                      name="name"
+                      required
+                      placeholder="Jane Okafor"
+                      autoComplete="name"
+                      value={form.name}
+                      onChange={set('name')}
+                      onBlur={() => setTouched((t) => ({ ...t, name: true }))}
+                      error={touched.name ? errors.name : undefined}
+                    />
+                    <Input
+                      label="Work email"
+                      type="email"
+                      name="email"
+                      required
+                      placeholder="you@company.com"
+                      autoComplete="email"
+                      value={form.email}
+                      onChange={set('email')}
+                      onBlur={() => setTouched((t) => ({ ...t, email: true }))}
+                      error={touched.email ? errors.email : undefined}
+                    />
+                  </div>
+                  <Input
+                    label="Organization"
+                    name="org"
+                    required
+                    placeholder="Your company"
+                    autoComplete="organization"
+                    value={form.org}
+                    onChange={set('org')}
+                    onBlur={() => setTouched((t) => ({ ...t, org: true }))}
+                    error={touched.org ? errors.org : undefined}
+                  />
+                  <Input
+                    label="How many people?"
+                    name="size"
+                    placeholder="e.g. 50–200"
+                    value={form.size}
+                    onChange={set('size')}
+                  />
+                  <Textarea
+                    label="What are you looking for?"
+                    name="message"
+                    placeholder="Tell us about your organization and what you're evaluating."
+                    rows={4}
+                    value={form.message}
+                    onChange={set('message')}
+                    onBlur={() => setTouched((t) => ({ ...t, message: true }))}
+                    error={touched.message ? errors.message : undefined}
+                  />
+                  <button type="submit" className={buttonClass('primary', 'lg', 'nm-contact-submit')}>
+                    Open this in your email app
+                    <ArrowRight size={16} aria-hidden="true" />
+                  </button>
+                </form>
+              )}
+            </ScrollReveal>
           </div>
-        </aside>
-      </div>
-    </Container>
+        </Container>
+      </Section>
+    </>
   );
 }

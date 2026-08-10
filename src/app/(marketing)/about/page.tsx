@@ -1,19 +1,10 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import {
-  ArrowRight,
-  Layers,
-  Network,
-  ShieldCheck,
-  Eye,
-  Sparkles,
-  Target,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Section, Container, SectionHeading, Eyebrow } from '@/components/marketing/section';
-import { Reveal, RevealGroup } from '@/components/marketing/reveal';
+import { ArrowRight, Layers, Network, ShieldCheck, Eye, Sparkles, Target } from 'lucide-react';
+import { Container, Section, Eyebrow, buttonClass } from '@/components/public/ui';
+import { ScrollReveal } from '@/components/public/client';
 import { EditorialImage, PHOTO } from '@/components/marketing/media';
-import { CAPABILITIES, LIVE_CAPABILITIES } from '@/components/marketing/capabilities';
+import { CAPABILITIES } from '@/components/marketing/capabilities';
 
 export const metadata: Metadata = {
   title: 'Company — NextMav',
@@ -22,35 +13,26 @@ export const metadata: Metadata = {
 };
 
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- *  Company
- * ═══════════════════════════════════════════════════════════════════════════
+ * The uploaded project's About page, ported — hero, the problem beside three
+ * mission cards, four principle cards, a dark engineering band with photography
+ * and four figures, closing statement.
  *
- *  Structure taken wholesale from the uploaded public-experience project:
- *  hero, the problem beside three mission cards, four principles, an
- *  engineering band on a dark surface with a photograph and four figures, and
- *  a closing statement. The page it replaces had no visual content at all.
+ * Three claims in the upload's copy could not be carried and were rewritten
+ * rather than dropped: "cost centres" as a shipped concept (in development, and
+ * `capabilities.ts` says so), "audit prep goes from weeks to days" (a result
+ * claimed for customers nobody has asked), and "can migrate to another cloud
+ * provider with minimal disruption" (an assertion about work nobody has done).
+ * Every section they sat in is still here.
  *
- *  ── What changed on the way across ───────────────────────────────────────
- *
- *  Three claims in the upload's copy could not be carried:
- *
- *    · "cost centres" as a shipped concept — they are in development, and
- *      `capabilities.ts` says so
- *    · "audit prep goes from weeks to days" — a result claimed on behalf of
- *      customers who have not been asked
- *    · "can migrate to another cloud provider with minimal disruption" — an
- *      assertion about work nobody has done
- *
- *  The figures are drawn from `capabilities.ts` rather than typed in, so the
- *  page cannot drift out of step with the platform page next door.
+ * The figures derive from `capabilities.ts` rather than being typed in, so this
+ * page and the platform page cannot drift apart on how many areas exist.
  */
 
-const missionPoints = [
+const MISSION_POINTS = [
   {
     icon: Network,
     title: 'Connected by design',
-    body: 'Every capability shares the same organization, the same permission model and the same records. There are no integrations to maintain between two halves of your own company.',
+    body: 'Every capability shares the same organization, permission model and records. No integrations to maintain between two halves of your own company.',
   },
   {
     icon: ShieldCheck,
@@ -60,15 +42,15 @@ const missionPoints = [
   {
     icon: Target,
     title: 'Purposeful, not bloated',
-    body: 'Each area has to earn its place against the org model everything else already shares. What is built is stated plainly, and so is what is not.',
+    body: 'Each area earns its place against the model everything else already shares. What is built is stated plainly, and so is what is not.',
   },
 ];
 
-const values = [
+const VALUES = [
   {
     icon: Sparkles,
     title: 'Clarity over complexity',
-    body: 'Software that runs an organization should reduce the amount somebody has to hold in their head, not add to it. Every screen, every workflow and every notification should make the work clearer rather than noisier.',
+    body: 'Enterprise software should reduce the amount somebody has to hold in their head, not add to it. Every screen, every workflow and every notification should make the work clearer — not noisier.',
   },
   {
     icon: Layers,
@@ -78,225 +60,198 @@ const values = [
   {
     icon: ShieldCheck,
     title: 'Security as architecture',
-    body: 'Permissions are enforced at the database row level and checked in the route, not drawn in the interface. Built for organizations that will audit the software before they adopt it.',
+    body: 'Permissions are enforced at the database row level and checked in the route, not drawn in the interface. The platform is designed for organizations that audit their software before adopting it.',
   },
   {
     icon: Eye,
     title: 'Calm software for serious work',
-    body: 'The system a company opens first thing in the morning should never feel anxious, trendy or experimental. It should feel like infrastructure, and it should still feel that way in five years.',
+    body: 'Software that runs an organization should never feel anxious, trendy or experimental. It should feel like infrastructure you can trust for years — and still feel that way in five.',
   },
 ];
 
-/**
- * Derived, not typed. The platform page and this page disagreeing about how
- * many capability areas exist is the kind of small inconsistency a careful
- * reader notices and a careless one is damaged by.
- */
-const figures = [
-  { val: '100%', label: 'of tables carrying row-level security' },
-  { val: '0', label: 'exports needed between departments' },
-  { val: String(CAPABILITIES.length), label: 'capability areas, with each one’s status published' },
-  { val: '1', label: 'permission model across all of them' },
+const STATS = [
+  { val: '100%', label: 'Row-level security on every table' },
+  { val: '0', label: 'Data silos between departments' },
+  { val: String(CAPABILITIES.length), label: 'Capability areas, each with a published status' },
+  { val: '1', label: 'Permission model across the platform' },
 ];
 
 export default function AboutPage() {
   return (
     <>
-      {/* ── Hero ─────────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden">
-        <div
-          aria-hidden="true"
-          className="grid-substrate pointer-events-none absolute inset-x-0 top-0 h-[32rem]"
-        />
-        <Container className="relative pt-band pb-block sm:pt-[6rem]">
-          <div className="max-w-[46rem]">
-            <Reveal>
-              <Eyebrow>Company</Eyebrow>
-            </Reveal>
-            <Reveal delay={0.05}>
-              <h1 className="text-display-1 text-balance-hero mt-pair">
-                We build the operating system for modern organizations.
-              </h1>
-            </Reveal>
-            <Reveal delay={0.1}>
-              <p className="text-copy-2 text-lede text-pretty-body mt-comp max-w-[38rem]">
-                NextMav exists because running an organization should not require
-                dozens of disconnected products. One connected platform — shared
-                data, shared permissions, shared workflows — is a better way to
-                work, and a much easier one to trust.
-              </p>
-            </Reveal>
-            <Reveal delay={0.15}>
-              <div className="mt-group flex flex-wrap items-center gap-pair">
-                <Button asChild variant="cta" size="xl">
-                  <Link href="/signup">
-                    Start free
-                    <ArrowRight className="size-4" />
-                  </Link>
-                </Button>
-                <Button asChild variant="ctaOutline" size="xl">
-                  <Link href="/contact">Talk to us</Link>
-                </Button>
-              </div>
-            </Reveal>
+      <section className="nm-page-hero nm-page-hero-dark">
+        <div className="nm-page-hero-bg">
+          <div className="nm-grid-bg nm-grid-bg-dark" />
+          <div className="nm-hero-glow nm-hero-glow-1" />
+          <div className="nm-hero-glow nm-hero-glow-2" />
+        </div>
+        <Container className="nm-page-hero-content">
+          <Eyebrow>Company</Eyebrow>
+          <h1 className="nm-page-hero-title nm-page-hero-title-dark">
+            We build the operating system{' '}
+            <span className="nm-serif">for modern organizations.</span>
+          </h1>
+          <p className="nm-page-hero-sub nm-page-hero-sub-dark">
+            NextMav exists because running an organization shouldn&rsquo;t require
+            dozens of disconnected software products. One connected platform —
+            with shared data, permissions and workflows — is a better way to work,
+            and a much easier one to trust.
+          </p>
+          <div className="nm-page-hero-actions">
+            <Link href="/signup" className={buttonClass('primary', 'lg')}>
+              Get started <ArrowRight size={16} />
+            </Link>
+            <Link href="/contact" className={buttonClass('secondary', 'lg', 'nm-btn-dark-secondary')}>
+              Talk to us
+            </Link>
           </div>
         </Container>
       </section>
 
-      {/* ── The problem ──────────────────────────────────────────────────── */}
-      <Section tone="surface" density="default" aria-labelledby="problem">
-        <div className="grid gap-block lg:grid-cols-[1.05fr_1fr] lg:gap-[4rem]">
-          <Reveal>
-            <Eyebrow>The problem</Eyebrow>
-            <h2 id="problem" className="text-display-2 text-balance-hero mt-pair">
-              Software sprawl is a tax on every organization.
-            </h2>
-            <p className="text-copy-2 text-lede text-pretty-body mt-comp">
-              Most organizations stitch together seven or more tools to run their
-              operations. The cost is not the subscriptions — it is the duplicated
-              records, the broken handoffs, the approvals lost between inboxes, and
-              the impossibility of seeing the whole company in one place.
-            </p>
-            <p className="text-copy-2 text-body mt-row">
-              NextMav replaces that sprawl with one operational layer, where every
-              department works from the same rows under the same permissions.
-            </p>
-          </Reveal>
+      <ScrollReveal>
+        <Section className="nm-about-mission" aria-labelledby="problem">
+          <Container>
+            <div className="nm-about-mission-grid">
+              <div className="nm-about-mission-text">
+                <Eyebrow>The problem</Eyebrow>
+                <h2 id="problem" className="nm-heading-lg" style={{ marginTop: 'var(--nm-space-4)' }}>
+                  Software sprawl is a{' '}
+                  <span className="nm-serif">tax on every organization.</span>
+                </h2>
+                <p className="nm-lead" style={{ marginTop: 'var(--nm-space-5)' }}>
+                  Most organizations stitch together seven or more tools to run
+                  their operations. The cost isn&rsquo;t just the subscriptions —
+                  it&rsquo;s the duplicated data, the broken handoffs, the
+                  approvals lost between inboxes, and the impossibility of seeing
+                  the whole organization in one place.
+                </p>
+                <p className="nm-lead" style={{ marginTop: 'var(--nm-space-4)' }}>
+                  NextMav replaces that sprawl with one operational layer. Every
+                  department works from the same data, the same permissions and
+                  the same workflows — inside one connected system.
+                </p>
+              </div>
+              <div className="nm-about-mission-cards">
+                {MISSION_POINTS.map((point) => (
+                  <div key={point.title} className="nm-about-mission-card">
+                    <div className="nm-about-mission-card-icon">
+                      <point.icon size={18} />
+                    </div>
+                    <div>
+                      <span className="nm-about-mission-card-title">{point.title}</span>
+                      <p className="nm-about-mission-card-body">{point.body}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Container>
+        </Section>
+      </ScrollReveal>
 
-          <RevealGroup className="flex flex-col gap-comp" step={0.05}>
-            {missionPoints.map(({ icon: Icon, title, body }) => (
-              <div
-                key={title}
-                className="border-hairline bg-background rounded-surface shadow-e1 flex gap-pair border p-comp"
-              >
-                <Icon
-                  className="text-copy-2 mt-0.5 size-[1.125rem] shrink-0"
-                  strokeWidth={1.9}
-                  aria-hidden="true"
+      <ScrollReveal>
+        <Section className="nm-about-values" aria-labelledby="values">
+          <Container>
+            <ScrollReveal className="nm-about-values-head">
+              <Eyebrow>What we believe</Eyebrow>
+              <h2 id="values" className="nm-heading-lg" style={{ marginTop: 'var(--nm-space-4)' }}>
+                Principles that{' '}
+                <span className="nm-text-gradient">shape every decision.</span>
+              </h2>
+            </ScrollReveal>
+            <div className="nm-about-values-grid">
+              {VALUES.map((value, i) => (
+                <ScrollReveal key={value.title} delay={(i % 2) as 0 | 1}>
+                  <div className="nm-about-value-card">
+                    <div className="nm-about-value-icon">
+                      <value.icon size={20} />
+                    </div>
+                    <h3 className="nm-about-value-title">{value.title}</h3>
+                    <p className="nm-about-value-body">{value.body}</p>
+                  </div>
+                </ScrollReveal>
+              ))}
+            </div>
+          </Container>
+        </Section>
+      </ScrollReveal>
+
+      <ScrollReveal>
+        <Section className="nm-about-engineering nm-dark-surface" aria-labelledby="engineering">
+          <div className="nm-about-engineering-bg">
+            <div className="nm-grid-bg nm-grid-bg-dark" />
+            <div className="nm-about-engineering-glow" />
+          </div>
+          <Container className="nm-about-engineering-container">
+            <div className="nm-about-engineering-grid">
+              <div className="nm-about-engineering-text">
+                <Eyebrow>Engineering</Eyebrow>
+                <h2
+                  id="engineering"
+                  className="nm-heading-lg nm-heading-dark"
+                  style={{ marginTop: 'var(--nm-space-4)', maxWidth: 460 }}
+                >
+                  Built to be trusted with{' '}
+                  <span className="nm-serif" style={{ color: 'var(--nm-accent-3)' }}>
+                    critical operations.
+                  </span>
+                </h2>
+                <p
+                  className="nm-lead"
+                  style={{ color: 'var(--nm-neutral-5)', marginTop: 'var(--nm-space-5)' }}
+                >
+                  Row-level security on every table. Structured logging and a
+                  correlation id on every request. Rate limiting on every endpoint
+                  that accepts or issues credentials. Sessions that actually end.
+                  None of it is a badge — each is an assertion in the
+                  repository&rsquo;s own security gate, which fails the build
+                  rather than filing a warning.
+                </p>
+              </div>
+              <div className="nm-about-engineering-image nm-img-overlay">
+                <EditorialImage
+                  src={PHOTO.architecture}
+                  alt="A concrete facade in flat daylight, seen from below"
+                  tone="deep"
+                  sizes="(min-width: 980px) 44vw, 92vw"
                 />
-                <div>
-                  <h3 className="text-title">{title}</h3>
-                  <p className="text-copy-2 text-body-sm mt-label">{body}</p>
+              </div>
+            </div>
+            <div className="nm-about-stats">
+              {STATS.map((stat) => (
+                <div key={stat.label} className="nm-about-stat">
+                  <span className="nm-about-stat-val">{stat.val}</span>
+                  <span className="nm-about-stat-label">{stat.label}</span>
                 </div>
-              </div>
-            ))}
-          </RevealGroup>
+              ))}
+            </div>
+          </Container>
+        </Section>
+      </ScrollReveal>
+
+      <Section className="nm-closing" size="lg" aria-labelledby="about-cta">
+        <div className="nm-closing-bg">
+          <div className="nm-closing-glow" />
+          <div className="nm-grid-bg nm-grid-bg-dot" />
         </div>
-      </Section>
-
-      {/* ── Principles ───────────────────────────────────────────────────── */}
-      <Section density="default" aria-labelledby="values">
-        <SectionHeading
-          id="values"
-          eyebrow="What we believe"
-          title="Principles that shape every decision."
-          description="Four positions we have taken deliberately, each of which costs us something and is worth it."
-        />
-
-        <RevealGroup
-          className="mt-group grid gap-comp md:grid-cols-2"
-          itemClassName="h-full"
-          step={0.05}
-        >
-          {values.map(({ icon: Icon, title, body }, i) => (
-            <div
-              key={title}
-              className="border-hairline bg-background rounded-surface hover:border-hairline-strong flex h-full flex-col border p-comp transition-colors sm:p-7"
-            >
-              <div className="flex items-center gap-pair">
-                <span className="text-copy-3 text-label tabular-nums">
-                  {String(i + 1).padStart(2, '0')}
-                </span>
-                <Icon className="text-copy-2 size-4" strokeWidth={1.9} aria-hidden="true" />
-              </div>
-              <h3 className="text-display-3 mt-pair">{title}</h3>
-              <p className="text-copy-2 text-body mt-row">{body}</p>
-            </div>
-          ))}
-        </RevealGroup>
-      </Section>
-
-      {/* ── Engineering ──────────────────────────────────────────────────
-          The upload's dark band, kept — it is the one change of register on
-          the page, and the figures belong on it rather than floating in a
-          light section of their own. */}
-      <Section tone="ink" density="default" aria-labelledby="engineering">
-        <div className="grid items-center gap-block lg:grid-cols-[1fr_1fr] lg:gap-[4rem]">
-          <Reveal>
-            <Eyebrow className="text-copy-on-ink-2">Engineering</Eyebrow>
-            <h2 id="engineering" className="text-display-2 text-balance-hero mt-pair">
-              Built to be trusted with critical operations.
+        <Container width="narrow">
+          <ScrollReveal className="nm-closing-inner">
+            <h2 id="about-cta" className="nm-display-lg nm-closing-title">
+              We&rsquo;re building the platform{' '}
+              <span className="nm-serif nm-text-gradient">
+                organizations open every morning.
+              </span>
             </h2>
-            <p className="text-copy-on-ink-2 text-lede text-pretty-body mt-comp">
-              Row-level security on every table. Structured logging and a
-              correlation id on every request. Rate limiting on every endpoint
-              that accepts or issues credentials. Sessions that actually end.
-            </p>
-            <p className="text-body mt-row">
-              None of it is a badge. Each is an assertion in the repository’s own
-              security gate, which fails the build rather than filing a warning.
-            </p>
-            <div className="mt-group">
-              <Button asChild variant="onInk" size="xl">
-                <Link href="/features#platform">
-                  See the platform guarantees
-                  <ArrowRight className="size-4" />
-                </Link>
-              </Button>
-            </div>
-          </Reveal>
-
-          <Reveal delay={0.05}>
-            <EditorialImage
-              src={PHOTO.architecture}
-              alt="A concrete facade in flat daylight, seen from below"
-              ratio="photo"
-              tone="deep"
-              sizes="(min-width: 1024px) 44vw, 92vw"
-              className="border-ink-fg/15"
-            />
-          </Reveal>
-        </div>
-
-        <RevealGroup
-          className="border-ink-fg/15 mt-open grid gap-comp border-t pt-group sm:grid-cols-2 lg:grid-cols-4"
-          step={0.05}
-        >
-          {figures.map(({ val, label }) => (
-            <div key={label}>
-              <p className="text-display-2 tabular-nums">{val}</p>
-              <p className="text-copy-on-ink-2 text-body-sm mt-label max-w-[16rem]">
-                {label}
-              </p>
-            </div>
-          ))}
-        </RevealGroup>
-      </Section>
-
-      {/* ── Close ────────────────────────────────────────────────────────── */}
-      <Section tone="surface" density="interrupt" aria-labelledby="about-cta">
-        <div className="flex flex-col items-start gap-group md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 id="about-cta" className="text-display-2 text-balance-hero max-w-[30rem]">
-              The platform an organization opens every morning.
-            </h2>
-            <p className="text-copy-2 text-body mt-pair max-w-lg">
-              {LIVE_CAPABILITIES.length} capability areas are available today.
-              Start with the one that hurts most.
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-wrap gap-pair">
-            <Button asChild variant="cta" size="xl">
-              <Link href="/signup">
-                Start free
-                <ArrowRight className="size-4" />
+            <div className="nm-closing-actions">
+              <Link href="/signup" className={buttonClass('primary', 'lg')}>
+                Get started <ArrowRight size={16} />
               </Link>
-            </Button>
-            <Button asChild variant="ctaOutline" size="xl">
-              <Link href="/contact">Talk to us</Link>
-            </Button>
-          </div>
-        </div>
+              <Link href="/contact" className={buttonClass('secondary', 'lg', 'nm-btn-dark-secondary')}>
+                Talk to us
+              </Link>
+            </div>
+          </ScrollReveal>
+        </Container>
       </Section>
     </>
   );
