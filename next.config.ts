@@ -76,6 +76,24 @@ const nextConfig: NextConfig = {
    */
   distDir: process.env.NEXT_DIST_DIR || '.next',
 
+  /**
+   * Editorial photography on the public surface.
+   *
+   * Scoped to one host and one path prefix rather than a wildcard: a permissive
+   * `remotePatterns` turns the image optimiser into an open proxy that will
+   * fetch and re-serve anything a crafted URL points it at, on this origin's
+   * reputation and this origin's bandwidth.
+   *
+   * These images are editorial — they set register and give a section a ground.
+   * None of them is presented as a customer, an employee or a testimonial
+   * author, which is the line that actually matters; see `EditorialImage`.
+   */
+  images: {
+    remotePatterns: [
+      { protocol: 'https', hostname: 'images.pexels.com', pathname: '/photos/**' },
+    ],
+  },
+
   typescript: {
     // Previously true, which let type errors through the build and turned them
     // into runtime failures on the host. The project typechecks cleanly, so

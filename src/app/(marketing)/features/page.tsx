@@ -25,61 +25,54 @@ import { Button } from '@/components/ui/button';
 import { Section, Container, SectionHeading, Eyebrow } from '@/components/marketing/section';
 import { Reveal, RevealGroup } from '@/components/marketing/reveal';
 import { AttendanceSurface, FinanceSurface } from '@/components/marketing/surfaces';
+import { EditorialImage, PHOTO } from '@/components/marketing/media';
+import {
+  CAPABILITIES,
+  LIVE_CAPABILITIES,
+  FORTHCOMING_CAPABILITIES,
+} from '@/components/marketing/capabilities';
+import { CapabilityCards, CapabilityRoadmap } from '@/components/marketing/capability-grid';
 import { cn } from '@/lib/utils';
 
 export const metadata: Metadata = {
-  title: 'Product — NextMav',
+  title: 'Platform — NextMav',
   description:
-    'Eight modules on one database and one permission model: CRM, projects, people, finance, inventory, communication, support and calendar.',
+    'Sixteen capability areas on one database and one permission model — CRM, projects, people, finance, inventory, communication, support and more, with what is live and what is being built stated plainly.',
 };
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- *  Product
+ *  Platform
  * ═══════════════════════════════════════════════════════════════════════════
  *
- *  ── What this page already had right, and keeps ──────────────────────────
+ *  ── The two questions this page answers, in order ────────────────────────
  *
- *  Eight real modules with four concrete specifics each — thirty-two lines
- *  drawn from tables and routes that exist. The second uploaded public-
- *  experience project offers twelve capability cards in their place, of which
- *  **seven describe software this product does not have** (procurement, an
- *  asset register, documents-as-a-module, a configurable approvals engine,
- *  predictive analytics, cost centres, SSO). A features page is the promise a
- *  trial gets measured against, so the truthful list wins and is not up for
- *  negotiation. The jump-link contents nav and the `#platform` anchor the
- *  footer depends on are kept for the same reason.
+ *  A buyer evaluating an operating system for their company asks *breadth*
+ *  first — does this cover what my company does — and only then asks *depth*
+ *  — is the part I care about any good. An earlier version of this page
+ *  answered only the second, with eight modules in sequence; the uploaded
+ *  public-experience project answered only the first, with sixteen cards of
+ *  equal weight. Neither alone is the page.
  *
- *  ── What the upload genuinely improved, and what came across ─────────────
+ *  So: pillars, then the whole capability map with its status stated, then the
+ *  core modules in depth with the product actually rendered, then the
+ *  engineering the whole thing rests on.
  *
- *  Two things, both structural:
+ *  ── On the capabilities that are not built yet ───────────────────────────
  *
- *    · **A pillar trio ahead of the detail.** Three statements of *why* one
- *      platform differs, before eight modules of *what*. Argument order, and
- *      it was the missing rung — the page used to go from a headline straight
- *      into a list. The upload's own three cite cost centres and a
- *      procurement-to-budget check, so the structure came and the copy did not.
+ *  They are on the page, and each says where the line falls. The reasoning is
+ *  in `capabilities.ts`; the short version is that deleting them made the
+ *  product look smaller than it is, and printing them as shipped would be a
+ *  promise a trial cannot keep. A stated roadmap is the normal artefact here —
+ *  it is how a buyer plans a rollout — and it is the only version of this that
+ *  is both rich and true.
  *
- *    · **An architecture band with a checklist.** The one place the upload's
- *      copy is verifiable *here*: structured logging, request tracing, rate
- *      limiting. Each item below is asserted by `scripts/security-check.mjs`,
- *      which is why the section can name the command that proves it.
+ *  ── On the photography ───────────────────────────────────────────────────
  *
- *  Rejected: two more hotlinked stock photographs ("analytics dashboard",
- *  "code on a dark screen"), gradient headline text, and the glow orbs.
- *
- *  ── The craft pass, which is independent of the upload ───────────────────
- *
- *  This page was the last one still carrying the pre-token treatment: an
- *  accent icon tile on all eight modules, thirty-two accent ticks beside
- *  them, `opacity-70` and `text-foreground/85` doing the work of a text ramp,
- *  and about twenty arbitrary `text-[0.9375rem]` values where nine type tokens
- *  exist. Accent census on the old page ran past forty; the rule is three per
- *  viewport.
- *
- *  It also showed no product at all, while `AttendanceSurface` and
- *  `FinanceSurface` sat in `surfaces.tsx` with no importer anywhere in the
- *  repository. They belong here, and they are here now.
+ *  Editorial, and graded through one treatment so six shoots read as one
+ *  publication — see `media.tsx`. No photograph on this page is captioned with
+ *  a person, a company or a result. That is the line, and it is a different
+ *  line from "no photographs", which is what an earlier pass mistakenly drew.
  */
 
 type Module = {
@@ -90,6 +83,15 @@ type Module = {
   holds: string[];
 };
 
+/**
+ * The eight in depth.
+ *
+ * These are the core operational areas, not an exhaustive list of what the
+ * workspace contains — the dashboard, personal work lists, the client portal
+ * and administration are all real and are simply not what this section is for.
+ * The heading says "core", which is why it can say eight without the number
+ * becoming a claim about the whole product.
+ */
 const modules: Module[] = [
   {
     id: 'crm',
@@ -197,29 +199,21 @@ const modules: Module[] = [
   },
 ];
 
-/**
- * The pillar trio, structure taken from the second upload.
- *
- * Three statements of the mechanism, before eight modules of inventory. Each
- * one is about something the reader can check rather than something they have
- * to believe, which is the same test every other proof block on this site is
- * held to.
- */
 const pillars = [
   {
     icon: Database,
     title: 'One database, not one login',
-    body: 'Every module reads the same rows. There is no synchronisation step because there is nothing to synchronise, and no integration to maintain between two halves of your own company.',
+    body: 'Every capability reads the same rows. There is no synchronisation step because there is nothing to synchronise, and no integration to maintain between two halves of your own company.',
   },
   {
     icon: Network,
-    title: 'Permissions come from the org, not the screen',
+    title: 'Permissions come from the org',
     body: 'Roles are declared once and checked in the route on every request. What a person can see follows them into every module, and into the API, without being restated in each one.',
   },
   {
     icon: Link2,
     title: 'The link is the point',
-    body: 'A deal opens the project it became; the project opens the invoice it produced. Those are relationships between rows, not exports between products — which is the one thing a suite of separate applications cannot reproduce.',
+    body: 'A deal opens the project it became; the project opens the invoice it produced. Those are relationships between rows, not exports between products — the one thing a suite of separate applications cannot reproduce.',
   },
 ];
 
@@ -257,23 +251,25 @@ const platform = [
 ];
 
 /**
- * The architecture checklist.
- *
- * Structure and subject taken from the second upload; every line rewritten to
- * something this repository actually asserts. Each of the four is a named check
- * in `scripts/security-check.mjs`, which is what makes it printable — the
- * difference between this and a trust badge is that a reader can run the
- * command.
- *
- * `Row-level security` is deliberately not repeated here. It is the second item
- * in `platform` above, and a proof list that restates the section before it
- * reads as padding.
+ * Each line is a named assertion in `scripts/security-check.mjs`, which is what
+ * makes it printable — the difference between this and a trust badge is that a
+ * reader can run the command. Row-level security is deliberately absent: it is
+ * the second item in `platform` above, and a proof list that restates the
+ * section beside it reads as padding.
  */
 const architecture = [
   'Structured logging throughout, never console — and every request carries a correlation id from the proxy inward',
   'Rate limiting on all eight endpoints that accept or issue credentials, switchable by configuration rather than by deployment',
   'Unhandled failures captured framework-wide and recorded, and never described back to the caller in a 5xx',
   'Security headers on every response: framing denied outright, MIME sniffing off, referrer and permissions policies set',
+];
+
+const contents = [
+  { href: '#capabilities', label: 'Capabilities' },
+  { href: '#roadmap', label: 'What we’re building' },
+  { href: '#modules', label: 'The core modules' },
+  { href: '#architecture', label: 'Architecture' },
+  { href: '#platform', label: 'Platform' },
 ];
 
 export default function FeaturesPage() {
@@ -283,59 +279,57 @@ export default function FeaturesPage() {
       <Container className="pt-band pb-pair sm:pt-[6rem]">
         <div className="max-w-[44rem]">
           <Reveal>
-            <Eyebrow>Product</Eyebrow>
+            <Eyebrow>Platform</Eyebrow>
           </Reveal>
           <Reveal delay={0.05}>
             <h1 className="text-display-1 text-balance-hero mt-pair">
-              Eight modules. One database.
+              Sixteen capability areas. One database.
             </h1>
           </Reveal>
           <Reveal delay={0.1}>
             <p className="text-copy-2 text-lede text-pretty-body mt-comp">
               Not a suite of products behind a shared login. The same records,
               the same permissions, the same audit trail — visible to the
-              departments entitled to see them, and to nobody else.
+              departments entitled to see them, and to nobody else. Ten areas are
+              available today; the rest say exactly where they are.
             </p>
           </Reveal>
         </div>
 
-        {/* A contents list, because this is a long page and a reader
-            evaluating software arrives wanting one specific module. */}
         <Reveal delay={0.15}>
           <nav
-            aria-label="Modules"
+            aria-label="On this page"
             className="border-hairline mt-block flex flex-wrap gap-x-comp gap-y-label border-t pt-comp"
           >
-            {modules.map((m) => (
+            {contents.map((c, i) => (
               <a
-                key={m.id}
-                href={`#${m.id}`}
-                className="text-copy-2 hover:text-copy text-body-sm rounded-sm transition-colors"
+                key={c.href}
+                href={c.href}
+                className={cn(
+                  'text-body-sm rounded-sm transition-colors',
+                  // One accent on this screen, on the section a technical
+                  // reader skips straight to.
+                  i === contents.length - 1
+                    ? 'text-brand font-medium'
+                    : 'text-copy-2 hover:text-copy',
+                )}
               >
-                {m.name}
+                {c.label}
               </a>
             ))}
-            {/* The one accent on this screen. It is the destination the rest of
-                the nav is not: a section rather than a module. */}
-            <a href="#platform" className="text-brand text-body-sm rounded-sm font-medium">
-              Platform
-            </a>
           </nav>
         </Reveal>
       </Container>
 
       {/* ── Pillars ──────────────────────────────────────────────────────
-          Structure from the second upload. The page used to go from its
-          headline straight into an eight-item inventory, which asks the reader
-          to hold the *why* in their head while being given the *what*. */}
+          Three statements of mechanism before any inventory. The page used to
+          go from its headline straight into a list, which asks the reader to
+          hold the *why* in their head while being handed the *what*. */}
       <Section tone="surface" density="dense" aria-labelledby="pillars">
         <h2 id="pillars" className="sr-only">
           Why one platform behaves differently from a suite
         </h2>
-        <RevealGroup
-          className="grid gap-x-block gap-y-comp md:grid-cols-3"
-          step={0.05}
-        >
+        <RevealGroup className="grid gap-x-block gap-y-comp md:grid-cols-3" step={0.05}>
           {pillars.map(({ icon: Icon, title, body }, i) => (
             <div key={title} className="border-hairline border-t pt-comp">
               <div className="flex items-center gap-pair">
@@ -351,24 +345,98 @@ export default function FeaturesPage() {
         </RevealGroup>
       </Section>
 
-      {/* ── Modules, first four ──────────────────────────────────────────
-          Alternating. The point is not decoration — it is that a reader cannot
-          fall into a rhythm and stop reading, which is exactly what the
-          eighteen identical cards this page began life as produced.
+      {/* ── How it works ─────────────────────────────────────────────────
+          Migrated from the second upload, whose version of this split carried
+          a photograph and three pillars. The pillars moved above; the image
+          stays, because a page of pure text between here and the module list
+          is where an enterprise site starts reading as documentation. */}
+      <Section density="default" aria-labelledby="how">
+        <div className="grid items-center gap-block lg:grid-cols-2 lg:gap-[4rem]">
+          <Reveal>
+            <EditorialImage
+              src={PHOTO.analytics}
+              alt="A wall of screens showing charts and operational readouts"
+              ratio="photo"
+              eyebrow="One operational layer"
+              caption="Every figure on this page comes out of the same rows the work is done in."
+              sizes="(min-width: 1024px) 46vw, 92vw"
+            />
+          </Reveal>
+          <Reveal delay={0.05}>
+            <Eyebrow>How it fits together</Eyebrow>
+            <h2 id="how" className="text-display-2 text-balance-hero mt-pair">
+              One system where the departments already agree.
+            </h2>
+            <p className="text-copy-2 text-lede text-pretty-body mt-comp">
+              Most organisations run seven or more tools that each hold a partial
+              copy of the same company. The cost is not the licences — it is the
+              duplicated records, the broken handoffs, and the approvals that
+              disappear between inboxes.
+            </p>
+            <p className="text-copy-2 text-body mt-row">
+              NextMav replaces them with one operational layer, where a person, a
+              customer, a project and the money attached to them are the same
+              rows seen from different angles.
+            </p>
+          </Reveal>
+        </div>
+      </Section>
 
-          The accent icon tile that used to sit above each name is gone. An
-          icon in a soft coloured circle is the most reliable signature of a
-          generated feature grid, and eight of them put the accent eight times
-          on a page whose rule is three per viewport. */}
-      <Container className="pb-block">
-        <ModuleList items={modules.slice(0, 4)} offset={0} />
+      {/* ── Capability map ───────────────────────────────────────────────
+          Breadth, with status. Available first as cards, then what is being
+          built as a denser register — the difference in density is the
+          hierarchy, and it is why sixteen items do not read as sixteen
+          identical boxes. */}
+      <Section tone="surface" density="default" aria-labelledby="capabilities">
+        <SectionHeading
+          id="capabilities"
+          eyebrow={`Available today · ${LIVE_CAPABILITIES.length} of ${CAPABILITIES.length}`}
+          title="What a workspace can do the day you open it."
+          description="Every area below is usable in a trial account, by anyone with the role for it, without contacting us first."
+        />
+        <CapabilityCards items={LIVE_CAPABILITIES} className="mt-group" />
+
+        <div className="mt-open">
+          <Reveal>
+            <Eyebrow>In development</Eyebrow>
+            <h2 id="roadmap" className="text-display-3 mt-pair max-w-[34rem]">
+              What we’re building, and where each one currently stands.
+            </h2>
+            <p className="text-copy-2 text-body text-pretty-body mt-row max-w-[42rem]">
+              Published because a rollout has to be planned against something.
+              Four of the six below are already partly usable — approvals,
+              organization structure, purchase orders and file storage all exist
+              today inside other modules — and each entry says which part.
+            </p>
+          </Reveal>
+          <CapabilityRoadmap items={FORTHCOMING_CAPABILITIES} className="mt-group" />
+        </div>
+      </Section>
+
+      {/* ── The core modules, in depth ────────────────────────────────────
+          Alternating, so a reader cannot fall into a rhythm and stop reading —
+          which is exactly what the eighteen identical cards this page began
+          life as produced. */}
+      <Container className="pt-open pb-block">
+        <Reveal>
+          <Eyebrow>In depth</Eyebrow>
+          <h2 id="modules" className="text-display-2 text-balance-hero mt-pair max-w-[34rem]">
+            The eight core modules, and what each one actually holds.
+          </h2>
+          <p className="text-copy-2 text-lede text-pretty-body mt-comp max-w-[42rem]">
+            The operational centre of the workspace. The dashboard, personal work
+            lists, the client portal and administration sit alongside these and
+            are covered in the capability map above.
+          </p>
+        </Reveal>
+        <div className="mt-group">
+          <ModuleList items={modules.slice(0, 4)} offset={0} />
+        </div>
       </Container>
 
       {/* ── The product, mid-page ────────────────────────────────────────
-          A long list needs a place to stop, and the two screens below are the
-          ones the People and Finance entries above have just described. Until
-          this landed, both components existed in `surfaces.tsx` with no
-          importer anywhere in the repository. */}
+          A long list needs a place to stop, and these are the two screens the
+          People and Finance entries have just described. */}
       <Section tone="surface" density="dense" width="wide" aria-labelledby="surfaces">
         <SectionHeading
           id="surfaces"
@@ -382,16 +450,68 @@ export default function FeaturesPage() {
         </RevealGroup>
       </Section>
 
-      {/* ── Modules, remaining four ──────────────────────────────────────── */}
+      {/* ── Remaining four ───────────────────────────────────────────────── */}
       <Container className="py-block">
         <ModuleList items={modules.slice(4)} offset={4} />
       </Container>
 
-      {/* ── Platform ─────────────────────────────────────────────────────
+      {/* ── Architecture ─────────────────────────────────────────────────
+          Ink, and a change of register: this is the section written for
+          whoever the buyer forwards the page to. */}
+      <Section tone="ink" density="dense" aria-labelledby="architecture">
+        <div className="grid items-center gap-block lg:grid-cols-[1.1fr_1fr] lg:gap-[4rem]">
+          <Reveal>
+            <Eyebrow className="text-copy-on-ink-2">Architecture</Eyebrow>
+            <h2 id="architecture" className="text-display-2 text-balance-hero mt-pair">
+              Written down, and checked on every commit.
+            </h2>
+            <p className="text-copy-on-ink-2 text-body text-pretty-body mt-comp">
+              The four below are not aspirations and they are not a badge. Each is
+              a named assertion in the repository’s own security gate, which fails
+              the build rather than filing a warning.
+            </p>
+
+            <div className="mt-group flex flex-col">
+              {architecture.map((line) => (
+                <div
+                  key={line}
+                  className="border-ink-fg/15 flex gap-pair border-b py-row last:border-b-0"
+                >
+                  {/* Tertiary on ink, not accent. Four coloured marks in a
+                      column is a texture, and a texture emphasises nothing. */}
+                  <Check
+                    className="text-copy-on-ink-2 mt-1 size-4 shrink-0"
+                    strokeWidth={2.4}
+                    aria-hidden="true"
+                  />
+                  <span className="text-body">{line}</span>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-copy-on-ink-2 text-label mt-comp uppercase">
+              npm run security:check
+            </p>
+          </Reveal>
+
+          <Reveal delay={0.05}>
+            <EditorialImage
+              src={PHOTO.engineering}
+              alt="Source code on a dark screen"
+              ratio="photo"
+              tone="deep"
+              sizes="(min-width: 1024px) 44vw, 92vw"
+              className="border-ink-fg/15"
+            />
+          </Reveal>
+        </div>
+      </Section>
+
+      {/* ── Platform guarantees ─────────────────────────────────────────
           `id="platform"` is the destination of the footer's "Security" link.
           Named here rather than promised by a link to a page that does not
           exist, which is what the old footer did four separate times. */}
-      <Section id="platform" tone="surface" aria-labelledby="platform-heading">
+      <Section id="platform" density="default" aria-labelledby="platform-heading">
         <SectionHeading
           id="platform-heading"
           eyebrow="Platform"
@@ -419,52 +539,6 @@ export default function FeaturesPage() {
         </RevealGroup>
       </Section>
 
-      {/* ── Architecture ─────────────────────────────────────────────────
-          Migrated from the second upload, on ink because it is a change of
-          register — this is the section written for whoever the buyer forwards
-          the page to. Its four claims are the four the upload made and the
-          only ones of them that are true here, each rewritten against what the
-          gate script actually asserts. */}
-      <Section tone="ink" density="dense" aria-labelledby="architecture">
-        <div className="grid gap-block md:grid-cols-[1fr_1.15fr] md:gap-[4rem]">
-          <Reveal>
-            <Eyebrow className="text-copy-on-ink-2">Architecture</Eyebrow>
-            <h2 id="architecture" className="text-display-2 text-balance-hero mt-pair">
-              Written down, and checked on every commit.
-            </h2>
-            <p className="text-copy-on-ink-2 text-body text-pretty-body mt-comp">
-              The four below are not aspirations and they are not a badge. Each
-              is a named assertion in the repository’s own security gate, which
-              fails the build rather than filing a warning.
-            </p>
-            <p className="text-copy-on-ink-2 text-label mt-comp uppercase">
-              npm run security:check
-            </p>
-          </Reveal>
-
-          <RevealGroup className="flex flex-col" step={0.05}>
-            {architecture.map((line) => (
-              <div
-                key={line}
-                className="border-ink-fg/15 flex gap-pair border-b py-row last:border-b-0"
-              >
-                {/* Tertiary on ink, not `text-accent-on-ink`. Four of these
-                    sit in one viewport, and the accent rule is three — the
-                    same reason the module ticks two sections above are not
-                    accent either. Four coloured marks in a column read as a
-                    texture, and a texture emphasises nothing. */}
-                <Check
-                  className="text-copy-on-ink-2 mt-1 size-4 shrink-0"
-                  strokeWidth={2.4}
-                  aria-hidden="true"
-                />
-                <span className="text-body">{line}</span>
-              </div>
-            ))}
-          </RevealGroup>
-        </div>
-      </Section>
-
       {/* ── Close ────────────────────────────────────────────────────────── */}
       <Section tone="surface" density="interrupt" aria-labelledby="features-cta">
         <div className="flex flex-col items-start gap-group md:flex-row md:items-center md:justify-between">
@@ -473,8 +547,8 @@ export default function FeaturesPage() {
               See it against your own data.
             </h2>
             <p className="text-copy-2 text-body mt-pair max-w-lg">
-              Fourteen days, every module, no card. Import a customer list and
-              judge it on that rather than on this page.
+              Fourteen days, every available module, no card. Import a customer
+              list and judge it on that rather than on this page.
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-pair">
@@ -497,10 +571,10 @@ export default function FeaturesPage() {
 /**
  * A run of module rows.
  *
- * Extracted because the list is now interrupted by the product surfaces at its
+ * Extracted because the list is interrupted by the product surfaces at its
  * midpoint, and `offset` keeps the left/right alternation continuous across the
- * break — restarting it at the second run would put two identical orientations
- * either side of the interruption, which is the one place it would be visible.
+ * break — restarting it would put two identical orientations either side of the
+ * interruption, which is the one place it would be visible.
  */
 function ModuleList({ items, offset }: { items: Module[]; offset: number }) {
   return (
@@ -520,7 +594,7 @@ function ModuleList({ items, offset }: { items: Module[]; offset: number }) {
                 strokeWidth={1.9}
                 aria-hidden="true"
               />
-              <h2 className="text-display-3 mt-pair">{name}</h2>
+              <h3 className="text-display-3 mt-pair">{name}</h3>
               <p className="text-copy-2 text-body text-pretty-body mt-row max-w-md">
                 {summary}
               </p>
@@ -529,8 +603,6 @@ function ModuleList({ items, offset }: { items: Module[]; offset: number }) {
             <ul className="space-y-pair md:pt-2">
               {holds.map((line) => (
                 <li key={line} className="text-body flex gap-pair">
-                  {/* Tertiary, not accent. Thirty-two accent ticks on one page
-                      is not emphasis, it is a texture. */}
                   <Check
                     className="text-copy-3 mt-[0.35rem] size-3.5 shrink-0"
                     strokeWidth={2.6}
