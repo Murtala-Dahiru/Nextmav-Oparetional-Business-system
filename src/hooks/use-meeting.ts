@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createClient, type SupabaseClient } from '@/lib/supabase/client';
+import { log } from '@/lib/logger';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -44,6 +45,171 @@ import { createClient, type SupabaseClient } from '@/lib/supabase/client';
  */
 
 export type MeetingConnection = 'idle' | 'requesting-media' | 'connecting' | 'connected' | 'failed';
+
+/**
+ * Why this browser is not sending what it was asked to send.
+ *
+ * Named rather than described, because the right thing to *do* about each of
+ * these is different and a single sentence cannot carry that. `denied` asks
+ * somebody to change a browser setting; `blocked-by-policy` is this
+ * application's own configuration and nothing the person can act on at all;
+ * `no-devices` is not a fault anybody can fix by clicking anything.
+ */
+export type MediaFault =
+  | 'blocked-by-policy'
+  | 'denied'
+  | 'no-devices'
+  | 'in-use'
+  | 'unsupported'
+  | 'failed';
+
+interface MediaOutcome {
+  stream: MediaStream | null;
+  fault: MediaFault | null;
+  /** Kept for the console in development; never rendered. */
+  detail: string | null;
+}
+
+/**
+ * Is the feature switched off for this document before anybody is asked?
+ *
+ * A `Permissions-Policy` refusal and a user clicking Block both arrive as
+ * `NotAllowedError`, which is how a header in `next.config.ts` came to be
+ * reported to users as "allow it in the address bar" — advice for a prompt
+ * that was never shown. This is the one way to tell the two apart, and it is
+ * checked *before* `getUserMedia` so the diagnosis does not depend on
+ * interpreting an ambiguous error.
+ *
+ * `featurePolicy` is the older name for the same object and is what Chrome
+ * still ships; where neither exists this cannot tell, and says so by
+ * answering `true` rather than inventing a fault.
+ */
+function policyAllows(feature: 'camera' | 'microphone'): boolean {
+  if (typeof document === 'undefined') return true;
+  const api = (document as unknown as {
+    permissionsPolicy?: { allowsFeature(f: string): boolean };
+    featurePolicy?: { allowsFeature(f: string): boolean };
+  });
+  const policy = api.permissionsPolicy ?? api.featurePolicy;
+  if (!policy?.allowsFeature) return true;
+  try { return policy.allowsFeature(feature); } catch { return true; }
+}
+
+function faultOf(err: unknown): MediaFault {
+  const name = (err as { name?: string } | null)?.name;
+  switch (name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return 'denied';
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return 'no-devices';
+    // The device exists and something else on the machine already holds it.
+    case 'NotReadableError':
+    case 'AbortError':
+      return 'in-use';
+    default:
+      return 'failed';
+  }
+}
+
+/**
+ * Take the microphone and camera, and settle for what is actually available.
+ *
+ * ── Why this is three attempts and not one call ───────────────────────────
+ *
+ * `getUserMedia({ audio, video })` is all-or-nothing: one refused camera
+ * rejects the whole request, and the microphone that *was* granted is lost
+ * with it. So somebody who blocks their camera and keeps their microphone —
+ * a completely ordinary thing to do — used to join a meeting silent as well
+ * as invisible, for no reason anybody could see.
+ *
+ * The combined request is still tried first, because when it succeeds it is
+ * one permission prompt rather than two. Only its failure costs the extra
+ * calls, and only then are the two devices asked for separately to find out
+ * which of them was the problem.
+ */
+async function acquireMedia(wantVideo: boolean): Promise<MediaOutcome> {
+  const audio = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  const video = { width: { ideal: 1280 }, height: { ideal: 720 } };
+
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+    // Also the branch a non-HTTPS origin lands in: the whole API is absent
+    // outside a secure context rather than present and failing.
+    return {
+      stream: null,
+      fault: 'unsupported',
+      detail: typeof window !== 'undefined' && !window.isSecureContext
+        ? 'insecure context — getUserMedia is only exposed over HTTPS or on localhost'
+        : 'navigator.mediaDevices.getUserMedia is unavailable',
+    };
+  }
+
+  // Asked before the browser is, so a policy refusal is never mistaken for a
+  // person's decision.
+  const micByPolicy = policyAllows('microphone');
+  const camByPolicy = policyAllows('camera');
+  if (!micByPolicy && (!wantVideo || !camByPolicy)) {
+    return {
+      stream: null,
+      fault: 'blocked-by-policy',
+      detail: 'Permissions-Policy on this document disallows microphone'
+        + (wantVideo ? ' and camera' : ''),
+    };
+  }
+
+  const wantCamera = wantVideo && camByPolicy;
+  const attempts: MediaStreamConstraints[] = [];
+  if (micByPolicy && wantCamera) attempts.push({ audio, video });
+  if (micByPolicy) attempts.push({ audio, video: false });
+  if (wantCamera) attempts.push({ audio: false, video });
+
+  let last: unknown = null;
+  for (const constraints of attempts) {
+    try {
+      return { stream: await navigator.mediaDevices.getUserMedia(constraints), fault: null, detail: null };
+    } catch (err) {
+      last = err;
+    }
+  }
+
+  return {
+    stream: null,
+    fault: faultOf(last),
+    detail: `${(last as { name?: string })?.name ?? 'Error'}: ${(last as { message?: string })?.message ?? ''}`,
+  };
+}
+
+/**
+ * What to tell somebody, given what actually went wrong and what they got.
+ *
+ * Every branch ends in something the reader can either act on or stop waiting
+ * for. None of them is a spinner.
+ */
+function mediaMessage(fault: MediaFault, hasAudio: boolean, hasVideo: boolean): string {
+  // Partial success: the sentence is about what is missing, not about failure.
+  if (hasAudio && !hasVideo) {
+    return 'Your camera could not be started, so you are joining with audio only. Everyone can still hear you.';
+  }
+  if (hasVideo && !hasAudio) {
+    return 'Your microphone could not be started. You can be seen but not heard — check that no other app is using it, then try again.';
+  }
+
+  switch (fault) {
+    case 'blocked-by-policy':
+      return 'This page is not permitted to use the camera or microphone. That is a setting on the site, not on your device — please report it to your administrator.';
+    case 'denied':
+      return 'Camera and microphone access is blocked. Allow access in your browser settings, then try again.';
+    case 'no-devices':
+      return 'No microphone or camera was found. You can still see and hear everyone else.';
+    case 'in-use':
+      return 'Your microphone or camera is already in use by another application. Close it, then try again.';
+    case 'unsupported':
+      return 'This browser cannot start a meeting. Chrome, Edge, Firefox or Safari on a secure (https) connection is required.';
+    default:
+      return 'Your microphone and camera could not be started. You can still see and hear everyone else.';
+  }
+}
 
 export interface PeerStream {
   memberId: string;
@@ -238,6 +404,11 @@ export function useMeeting({
   const [camOn, setCamOn] = useState(!audioOnly);
   const [sharing, setSharing] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
+  /** The same failure as a value, for callers that need to branch rather than print. */
+  const [mediaFault, setMediaFault] = useState<MediaFault | null>(null);
+  /** What was actually obtained, which is not the same as what was asked for. */
+  const [hasAudio, setHasAudio] = useState(false);
+  const [hasVideo, setHasVideo] = useState(false);
   /** A connection to rebuild after a failure. See the effect below `connect`. */
   const [rebuild, setRebuild] = useState<{ peerId: string; at: number } | null>(null);
   /** Whether the signalling channel is actually carrying anything yet. */
@@ -341,14 +512,70 @@ export function useMeeting({
     // already going wrong.
     mark(peerId, (rebuilds.current.get(peerId) ?? 0) > 0 ? 'reconnecting' : 'connecting');
 
+    const sending = new Set<string>();
     for (const track of localRef.current?.getTracks() ?? []) {
       const sender = pc.addTrack(track, localRef.current!);
+      sending.add(track.kind);
       if (track.kind === 'video') {
         void shapeSender(
           sender,
           sharingRef.current ? SHARE_BITRATE : videoBitrateFor(admittedRef.current.length),
           sharingRef.current ? 'maintain-resolution' : 'maintain-framerate',
         );
+      }
+    }
+
+    /**
+     * ── A connection that sends nothing must still ask to receive ──────────
+     *
+     * This is the other half of the blocked-permission bug, and on its own it
+     * is the more serious one: it is reachable by anybody who simply declines
+     * the prompt.
+     *
+     * `addTrack` is the only thing above that creates a media section, so a
+     * browser whose `getUserMedia` failed built a peer connection with no
+     * tracks — and an offer from a connection with no tracks contains no `m=`
+     * lines at all.
+     *
+     * `RTC_CONFIG` sets `bundlePolicy: 'max-bundle'`, and an SDP with no media
+     * sections has no BUNDLE group to satisfy it, so this does not merely fail
+     * to connect. `setLocalDescription` *throws*:
+     *
+     *     OperationError: Failed to set local offer sdp:
+     *     max-bundle configured but session description has no BUNDLE group
+     *
+     * That throw lands in the `catch` below, whose entire body is
+     * `dropPeer(peerId)` — the error is discarded, no offer is ever sent, and
+     * the connection is deleted. Two and a half seconds later the sweep sees a
+     * roster entry with no connection and calls this function again, which
+     * throws again, for the length of the meeting. It never reaches `failed`,
+     * so `onconnectionstatechange` never runs, so `rebuilds` is never
+     * incremented and the peer is never written off as `lost` either: `mark()`
+     * above has already set the tile to `connecting`, and nothing will ever
+     * move it. That is the spinner that spins for ever, and in a mesh one
+     * silent browser puts it on everybody's grid at once.
+     *
+     * Measured, not assumed. With this configuration and no tracks the offer
+     * carries zero m-lines and the call throws; with the two transceivers
+     * below and nothing else changed, both ends reach `connected` and the far
+     * side's media arrives — which is what finally makes the sentence the
+     * catch block has always printed, "You can still see and hear everyone
+     * else", true.
+     *
+     * `recvonly` is exactly what this browser means — it has nothing to send
+     * and wants everything the others have — and it is what makes the promise
+     * the catch block has always printed ("You can still see and hear everyone
+     * else") true for the first time.
+     *
+     * Only on the offering side. The answering side gets its transceivers from
+     * `setRemoteDescription`, which builds them from the offer's own m-lines;
+     * adding them here as well would risk answering with sections the offer
+     * never contained.
+     */
+    if (initiate) {
+      const wanted: ('audio' | 'video')[] = audioOnly ? ['audio'] : ['audio', 'video'];
+      for (const kind of wanted) {
+        if (!sending.has(kind)) pc.addTransceiver(kind, { direction: 'recvonly' });
       }
     }
 
@@ -436,14 +663,31 @@ export function useMeeting({
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
           post('offer', { from: memberId, to: peerId, sdp: pc.localDescription });
-        } catch {
+        } catch (err) {
+          /**
+           * This catch was empty, and it is what hid the bug above for the
+           * whole of the regression: the one place that knew the offer could
+           * not be built threw the reason away and left a tile spinning.
+           *
+           * `lost` rather than silence, because a peer that cannot be offered
+           * to is not one that is still arriving — and the sweep would
+           * otherwise call this again every few seconds for ever, since
+           * nothing else here marks the attempt as having happened.
+           */
+          if (process.env.NODE_ENV !== 'production') {
+            log.warn('meeting offer failed', {
+              peerId, err, connectionState: pc.connectionState,
+            });
+          }
           dropPeer(peerId);
+          mark(peerId, 'lost');
+          lostAt.current.set(peerId, Date.now());
         }
       })();
     }
 
     return pc;
-  }, [memberId, post, dropPeer, mark]);
+  }, [memberId, post, dropPeer, mark, audioOnly]);
 
   /**
    * Rebuild one connection, shortly.
@@ -592,6 +836,21 @@ export function useMeeting({
         }
       }
 
+      /**
+       * The room's own status, which had no way to stop saying `connecting`.
+       *
+       * It was only ever set to `connected` by a peer connection reaching
+       * `connected` — so the host who opens a meeting and is briefly the only
+       * person in it was, according to this value, connecting for as long as
+       * they were alone, and so was anybody left behind when the last other
+       * participant hung up. Neither is true: the signalling channel is
+       * subscribed, the room is joined, and there is simply nobody to connect
+       * *to*. An empty roster is a resolved state, not a pending one.
+       */
+      const anyConnected = [...connections.current.values()]
+        .some(pc => pc.connectionState === 'connected');
+      setStatus(roster.length === 0 || anyConnected ? 'connected' : 'connecting');
+
       // Nobody who has left keeps a status on a tile that is no longer drawn.
       setHealth(prev => {
         const next: Record<string, PeerHealth> = {};
@@ -633,47 +892,63 @@ export function useMeeting({
 
     const start = async () => {
       setStatus('requesting-media');
-      try {
-        /**
-         * Audio is always requested; video only for a video meeting.
-         *
-         * `echoCancellation` and `noiseSuppression` are on because a laptop
-         * speaker feeding a laptop microphone in a room of five is the single
-         * most common reason a call is abandoned.
-         */
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          video: audioOnly ? false : { width: { ideal: 1280 }, height: { ideal: 720 } },
-        });
-        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
-        localRef.current = stream;
-        cameraTrack.current = stream.getVideoTracks()[0] ?? null;
+
+      /**
+       * Audio is always wanted; video only for a video meeting — so a voice
+       * call never asks for a camera it will not use, and never provokes a
+       * permission prompt somebody would be right to find suspicious.
+       *
+       * `acquireMedia` never throws and never hangs on a decision: every path
+       * through it ends in a stream, a fault, or both. Nothing below is
+       * conditional on it having succeeded, which is the property that keeps a
+       * refused microphone from stopping the join.
+       */
+      const outcome = await acquireMedia(!audioOnly);
+      if (cancelled) { outcome.stream?.getTracks().forEach(t => t.stop()); return; }
+
+      const gotAudio = !!outcome.stream?.getAudioTracks().length;
+      const gotVideo = !!outcome.stream?.getVideoTracks().length;
+
+      if (outcome.stream) {
+        localRef.current = outcome.stream;
+        cameraTrack.current = outcome.stream.getVideoTracks()[0] ?? null;
         // The counterpart of the 'detail' hint on a shared screen: a face is
         // motion, and should lose pixels before it loses smoothness.
         try {
           if (cameraTrack.current) cameraTrack.current.contentHint = 'motion';
         } catch { /* not everywhere */ }
-        setLocalStream(stream);
-        setMediaError(null);
-      } catch (err: any) {
+        setLocalStream(outcome.stream);
+      }
+
+      /**
+       * The controls reflect what was actually obtained.
+       *
+       * These used to be switched off together on any failure, so somebody who
+       * kept their microphone and lost only their camera was shown as muted
+       * while their microphone was open — the button lying in the direction
+       * that matters most.
+       */
+      setMicOn(gotAudio);
+      setCamOn(gotVideo);
+      setMediaFault(outcome.fault);
+      setHasAudio(gotAudio);
+      setHasVideo(gotVideo);
+
+      if (outcome.fault || !gotAudio || (!audioOnly && !gotVideo)) {
+        setMediaError(mediaMessage(outcome.fault ?? 'failed', gotAudio, gotVideo));
         /**
-         * A refused camera does not end the meeting.
-         *
-         * Somebody who declines the permission prompt, or has no camera, can
-         * still listen and still be heard once they allow the microphone —
-         * and a meeting that refuses to open at all because a webcam is
-         * missing is a meeting people stop using. The failure is reported and
-         * the room is joined without a local stream.
+         * The detail stays in the console and out of the interface. Which
+         * constraint or which device failed is what an engineer needs and is
+         * also a description of somebody's hardware, so it is logged where a
+         * developer is looking and never rendered.
          */
-        setMediaError(
-          err?.name === 'NotAllowedError'
-            ? 'Your browser blocked the microphone and camera. Allow them in the address bar to be seen and heard.'
-            : err?.name === 'NotFoundError'
-              ? 'No microphone or camera was found. You can still see and hear everyone else.'
-              : 'Your microphone and camera could not be started.',
-        );
-        setMicOn(false);
-        setCamOn(false);
+        if (process.env.NODE_ENV !== 'production' && outcome.detail) {
+          log.warn('meeting media unavailable', {
+            fault: outcome.fault, detail: outcome.detail, audioOnly: !!audioOnly,
+          });
+        }
+      } else {
+        setMediaError(null);
       }
 
       setStatus('connecting');
@@ -741,7 +1016,13 @@ export function useMeeting({
               const answer = await pc.createAnswer();
               await pc.setLocalDescription(answer);
               post('answer', { from: memberId, to: from, sdp: pc.localDescription });
-            } catch {
+            } catch (err) {
+              // Same reasoning as the offer path: the sweep will try this pair
+              // again, and without a record of why it failed the only evidence
+              // is a tile that never settles.
+              if (process.env.NODE_ENV !== 'production') {
+                log.warn('meeting answer failed', { peerId: from, err });
+              }
               dropPeer(from);
             }
           })();
@@ -755,7 +1036,12 @@ export function useMeeting({
             try {
               await pc.setRemoteDescription(payload.sdp);
               await flushIce(from, pc);
-            } catch { dropPeer(from); }
+            } catch (err) {
+              if (process.env.NODE_ENV !== 'production') {
+                log.warn('meeting could not apply answer', { peerId: from, err });
+              }
+              dropPeer(from);
+            }
           })();
         })
         .on('broadcast', { event: 'ice' }, ({ payload }: any) => {
@@ -828,6 +1114,12 @@ export function useMeeting({
       setLocalStream(null);
       setPeers([]);
       setStatus('idle');
+      // Or a retry inherits the last attempt's verdict and reports a fault
+      // that has just been fixed.
+      setMediaError(null);
+      setMediaFault(null);
+      setHasAudio(false);
+      setHasVideo(false);
       channelRef.current = null;
       void supabase.removeChannel(chan);
     };
@@ -971,6 +1263,14 @@ export function useMeeting({
     camOn,
     sharing,
     mediaError,
+    /**
+     * The failure as a value rather than a sentence, so the room can offer the
+     * right recovery: a browser setting to change, an administrator to tell,
+     * or nothing at all.
+     */
+    mediaFault,
+    hasAudio,
+    hasVideo,
     /**
      * How each connection is doing, by membership id.
      *

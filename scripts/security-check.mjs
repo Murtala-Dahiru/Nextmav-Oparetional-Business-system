@@ -713,6 +713,67 @@ check(readiness.includes('HEALTH_TOKEN'),
   'readiness detail is gated, since the endpoint is pre-authentication');
 
 // ───────────────────────────────────────────────────────────────────────────
+section('10. The meeting may use the devices a meeting needs');
+/**
+ * Section 7 asserts the headers are *present*. This asserts one of them is
+ * not so strict that it switches a feature off, which is how the Communication
+ * module came to be broken by a security change.
+ *
+ * `Permissions-Policy: camera=(), microphone=()` was added on the stated
+ * belief that "nothing here uses the camera, the microphone or geolocation".
+ * Two of those three are exactly what `useMeeting` calls `getUserMedia` and
+ * `getDisplayMedia` for. An empty allowlist is not "no third party may ask" —
+ * it is nobody, the document's own origin included — so every meeting failed
+ * with `NotAllowedError` before any prompt could be shown, and the room, which
+ * had no way to tell that apart from a user clicking Block, told people to
+ * allow it in an address bar that was never going to offer them the choice.
+ *
+ * Both directions are checked, because both can rot silently and neither
+ * announces itself at runtime:
+ *
+ *   · the grant disappearing again breaks every meeting, and nothing in the
+ *     application would say so — the browser refuses before any code runs;
+ *   · the grant widening to `*` hands the camera to any embedded document,
+ *     which is the thing the original header was right to want to prevent.
+ */
+const mediaFeatures = ['camera', 'microphone', 'display-capture'];
+
+const grantsSelf = mediaFeatures.filter(f => !nextConfig.includes(`${f}=(self)`));
+check(grantsSelf.length === 0,
+  'the app shell is permitted the camera, microphone and screen share',
+  grantsSelf.length ? `${grantsSelf.join(', ')} — a meeting cannot start without these` : '');
+
+const stillDenied = mediaFeatures.filter(f => !new RegExp(`${f}=\\(\\)`).test(nextConfig));
+check(stillDenied.length === 0,
+  'and every other route still refuses them by default',
+  stillDenied.join(', '));
+
+const wildcarded = mediaFeatures.filter(f => new RegExp(`${f}=\\*|${f}=\\(\\s*\\*`).test(nextConfig));
+check(wildcarded.length === 0,
+  'no media feature is opened to every origin',
+  wildcarded.join(', '));
+
+/**
+ * The grant is worth nothing if it is not on the document that holds a
+ * meeting. `/dashboard` renders `AppShell`, which is what lazy-loads the
+ * Communication module; nothing else in the product does.
+ */
+check(/source:\s*'\/dashboard'/.test(nextConfig) && /source:\s*'\/dashboard\/:path\*'/.test(nextConfig),
+  'and it is scoped to the route that actually renders the meeting');
+
+/**
+ * The other half of the same regression, in the client. A peer connection
+ * built with no local tracks produces an offer with no media sections, which
+ * `bundlePolicy: 'max-bundle'` rejects outright — so the browser that lost its
+ * microphone took every tile in the room down with it. The recvonly
+ * transceivers are what make a participant with no devices a spectator rather
+ * than a spinner.
+ */
+const meetingHook = stripComments(readFileSync('src/hooks/use-meeting.ts', 'utf8'));
+check(/addTransceiver\(\s*kind\s*,\s*\{\s*direction:\s*'recvonly'/.test(meetingHook),
+  'a participant with no camera or microphone still negotiates, rather than offering nothing');
+
+// ───────────────────────────────────────────────────────────────────────────
 console.log('');
 if (findings.length) {
   console.log('  Findings');

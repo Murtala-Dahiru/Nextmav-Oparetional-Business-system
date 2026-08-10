@@ -43,17 +43,43 @@ const SECURITY_HEADERS = [
    * structure to people with no relationship to them.
    */
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-
-  /**
-   * Nothing here uses the camera, the microphone or geolocation, and an
-   * embedded third-party script asking for them should be refused by the
-   * browser rather than by the user.
-   */
-  {
-    key: 'Permissions-Policy',
-    value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
-  },
 ];
+
+/**
+ * ── Permissions-Policy, and the meeting it used to switch off ──────────────
+ *
+ * This header was written as `camera=(), microphone=()` under the belief,
+ * recorded in the commit that added it, that "nothing here uses the camera,
+ * the microphone or geolocation". The Communication module uses two of the
+ * three: `useMeeting` calls `getUserMedia`, and screen sharing calls
+ * `getDisplayMedia`.
+ *
+ * An empty allowlist is not "no third party may ask" — it is *nobody*, this
+ * document's own origin included. So `getUserMedia` was rejected by the
+ * browser before any permission prompt could be shown, with `NotAllowedError`
+ * — the same name a user gets for clicking Block. The room reported the only
+ * thing that error usually means, "allow them in the address bar", which was
+ * advice nobody could act on: there was no prompt to answer and no address-bar
+ * control to change, because the refusal was this header and not the user.
+ *
+ * Verified rather than reasoned about: the same page, in the same browser,
+ * with a fake camera and microphone auto-granted, returns two media tracks
+ * without this header and `NotAllowedError: Permission denied` with it.
+ *
+ * The fix is a narrower allowlist, not a shorter one. `(self)` permits this
+ * origin's own documents and continues to refuse every embedded third party —
+ * which was the actual intent — and the grant is scoped by path on top of
+ * that, so it exists only on the one route that can hold a meeting.
+ */
+const MEDIA_DENIED = 'camera=(), microphone=(), display-capture=()';
+const MEDIA_SELF = 'camera=(self), microphone=(self), display-capture=(self)';
+/** Genuinely unused, everywhere, and denied outright. */
+const NEVER_USED = 'geolocation=(), payment=(), usb=()';
+
+const permissionsPolicy = (media: string) => ({
+  key: 'Permissions-Policy',
+  value: `${media}, ${NEVER_USED}`,
+});
 
 const nextConfig: NextConfig = {
   output: "standalone",
@@ -104,7 +130,36 @@ const nextConfig: NextConfig = {
 
   async headers() {
     return [
-      { source: '/:path*', headers: SECURITY_HEADERS },
+      /**
+       * The app shell, and the only document in the product that can hold a
+       * meeting: `/dashboard` renders `AppShell`, which lazy-loads the
+       * Communication module, and nothing else does. Scoping the grant here
+       * rather than at the origin means the marketing pages, the auth screens
+       * and every API route keep the flat refusal — so a script that ever runs
+       * on one of those cannot reach a camera even though the same origin has
+       * a route that may.
+       *
+       * Listed before the catch-all and written so the two cannot both match;
+       * two `Permissions-Policy` headers on one response are intersected by
+       * the browser, and the intersection of these two is the denial.
+       */
+      {
+        source: '/dashboard',
+        headers: [...SECURITY_HEADERS, permissionsPolicy(MEDIA_SELF)],
+      },
+      {
+        source: '/dashboard/:path*',
+        headers: [...SECURITY_HEADERS, permissionsPolicy(MEDIA_SELF)],
+      },
+      {
+        source: '/:path((?!dashboard$|dashboard/).*)',
+        headers: [...SECURITY_HEADERS, permissionsPolicy(MEDIA_DENIED)],
+      },
+      /** `/:path(...)` above cannot match an empty path; the root is its own rule. */
+      {
+        source: '/',
+        headers: [...SECURITY_HEADERS, permissionsPolicy(MEDIA_DENIED)],
+      },
       /**
        * Authenticated JSON must never be cached — not by the browser, not by a
        * CDN, and above all not by a shared proxy that could hand one tenant's

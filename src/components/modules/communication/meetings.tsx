@@ -1118,9 +1118,26 @@ function Room({
     setSeat('joining');
     setJoinError(null);
     try {
+      /**
+       * A join that never comes back is the last way this screen could spin
+       * for ever.
+       *
+       * `fetch` has no timeout of its own: a request that is neither answered
+       * nor refused — a captive portal, a proxy holding the connection, a
+       * laptop that suspended mid-flight — leaves this promise pending for as
+       * long as the tab is open, and the `joining` spinner with it. Twenty
+       * seconds is far longer than the endpoint has ever needed and still
+       * short enough to be a wait rather than a hang, and the abort lands in
+       * the catch below as an ordinary failure with a Try again beside it.
+       */
       const res = await fetch(
         `/api/communication/meetings/${meeting.meetingId}/participants`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+          signal: AbortSignal.timeout(20_000),
+        },
       );
       const json = await res.json().catch(() => ({
         error: { message: 'The server did not answer. Check your connection and try again.' },
@@ -1135,7 +1152,13 @@ function Room({
        * only screen that could explain what happened or offer another go — and
        * a meeting is exactly the moment somebody cannot afford to guess.
        */
-      setJoinError(err?.message || 'Could not join that meeting.');
+      // A timeout arrives as `signal timed out`, which is a sentence for a
+      // console and not for somebody who is late to a meeting.
+      setJoinError(
+        err?.name === 'TimeoutError' || err?.name === 'AbortError'
+          ? 'The server did not answer in time. Check your connection and try again.'
+          : err?.message || 'Could not join that meeting.',
+      );
       setSeat('failed');
     }
   }, [meeting.meetingId, loadParticipants]);
@@ -1638,11 +1661,20 @@ function Room({
                 permission had to leave the meeting and come back. Asking for a
                 seat again is the full restart: it takes the microphone and
                 camera from scratch and rebuilds every connection.
+
+                Withheld for the two faults retrying cannot resolve. A policy
+                that forbids this document the camera will forbid it again a
+                second later, and so will a browser that has no `getUserMedia`
+                — offering the button there is an invitation to press it until
+                somebody concludes the product is broken, when the honest
+                answer is that this particular thing is not going to work.
               */}
-              <Button size="sm" variant="secondary" className="h-6 shrink-0 gap-1 px-2 text-[11px]"
-                onClick={() => void requestSeat()}>
-                <RefreshCw className="size-3" /> Try again
-              </Button>
+              {media.mediaFault !== 'blocked-by-policy' && media.mediaFault !== 'unsupported' && (
+                <Button size="sm" variant="secondary" className="h-6 shrink-0 gap-1 px-2 text-[11px]"
+                  onClick={() => void requestSeat()}>
+                  <RefreshCw className="size-3" /> Try again
+                </Button>
+              )}
             </div>
           )}
 
@@ -1820,23 +1852,36 @@ function Room({
               layout that made this whole section necessary. */}
           <div className="flex shrink-0 flex-wrap items-center justify-center gap-1.5 border-t border-white/10 px-2 py-2.5 sm:gap-2 sm:px-4 sm:py-3">
             <TooltipProvider delayDuration={300}>
+              {/* A control with no track behind it did nothing when pressed —
+                  `toggleMic` returns early when there is no audio track — so
+                  the button for the device somebody had just been told was
+                  unavailable stayed lit and stayed silent. Disabled, and the
+                  tooltip says which of the two it is. */}
               <ControlButton
                 active={media.micOn}
                 warnWhenOff
-                disabled={!!me?.isMuted}
+                disabled={!!me?.isMuted || !media.hasAudio}
                 onClick={media.toggleMic}
                 on={<Mic className="size-4" />}
                 off={<MicOff className="size-4" />}
-                label={me?.isMuted ? 'The host has muted you' : media.micOn ? 'Mute' : 'Unmute'}
+                label={
+                  !media.hasAudio ? 'No microphone available'
+                    : me?.isMuted ? 'The host has muted you'
+                      : media.micOn ? 'Mute' : 'Unmute'
+                }
               />
               {meeting.mode !== 'audio' && (
                 <ControlButton
                   active={media.camOn}
                   warnWhenOff
+                  disabled={!media.hasVideo}
                   onClick={media.toggleCam}
                   on={<Video className="size-4" />}
                   off={<VideoOff className="size-4" />}
-                  label={media.camOn ? 'Turn camera off' : 'Turn camera on'}
+                  label={
+                    !media.hasVideo ? 'No camera available'
+                      : media.camOn ? 'Turn camera off' : 'Turn camera on'
+                  }
                 />
               )}
               {/* Hidden where the browser cannot do it at all — iOS Safari has
