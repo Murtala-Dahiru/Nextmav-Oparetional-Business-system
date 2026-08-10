@@ -4,11 +4,15 @@ import { Suspense, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, Eye, EyeOff, MailCheck, Check } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { AuthShell } from '@/components/auth/auth-shell';
+import { AuthShell, AuthLoading, ASIDES } from '@/components/auth/auth-shell';
 import { Notice } from '@/components/auth/notice';
-import { Field } from '@/components/forms/field';
+import {
+  AuthField,
+  AuthInput,
+  AuthPasswordInput,
+  AuthSubmit,
+  PasswordRules,
+} from '@/components/auth/fields';
 import { useFieldErrors } from '@/components/forms/use-field-errors';
 import { cn } from '@/lib/utils';
 
@@ -198,7 +202,7 @@ function SignupForm() {
         description={
           <>
             We sent a link to{' '}
-            <span className="text-foreground font-medium">{formData.email}</span>.
+            <strong style={{ color: 'var(--nm-ink)' }}>{formData.email}</strong>.
             {joining
               ? ' Opening it brings you straight back to your invitation.'
               : ' Open it to activate the account, then sign in to finish setting up your workspace.'}
@@ -210,22 +214,18 @@ function SignupForm() {
             <button
               type="button"
               onClick={() => setConfirmationSent(false)}
-              className="text-foreground font-medium underline decoration-[1.5px] underline-offset-[3px] hover:no-underline"
+              className="nm-link"
             >
               Go back and change it
             </button>
           </p>
         }
       >
-        <div className="border-hairline bg-surface flex gap-4 rounded-xl border p-5">
-          <MailCheck
-            className="text-brand mt-0.5 size-5 shrink-0"
-            strokeWidth={1.9}
-            aria-hidden="true"
-          />
-          <div className="space-y-1.5 text-[0.875rem] leading-relaxed">
-            <p className="font-medium">The link is valid for one use.</p>
-            <p className="text-muted-foreground">
+        <div className="nm-auth-panel" style={{ marginTop: 'var(--nm-space-8)' }}>
+          <MailCheck className="nm-auth-panel-icon" size={20} aria-hidden="true" />
+          <div className="nm-auth-panel-body">
+            <strong>The link is valid for one use.</strong>
+            <p>
               If nothing arrives within a few minutes, check the spam folder —
               confirmation mail from a new domain is filtered more often than
               anything else we send.
@@ -233,9 +233,15 @@ function SignupForm() {
           </div>
         </div>
 
-        <Button asChild variant="cta" size="xl" className="mt-6 w-full">
-          <Link href="/login">Go to sign in</Link>
-        </Button>
+        {/* An anchor, not a button inside a link: nesting the two gives the
+            control two conflicting roles in the accessibility tree. */}
+        <Link
+          href="/login"
+          className="nm-btn nm-btn-primary nm-btn-lg"
+          style={{ width: '100%', marginTop: 'var(--nm-space-6)' }}
+        >
+          Go to sign in
+        </Link>
       </AuthShell>
     );
   }
@@ -248,15 +254,13 @@ function SignupForm() {
           ? 'Create an account to join. Use the email address the invitation was sent to.'
           : 'Free for 14 days. Every module included, and no card required.'
       }
+      // An invitee is joining an organisation that already exists, so the
+      // trial pitch — which is for somebody founding one — is the wrong panel
+      // to put beside their form.
+      aside={joining ? ASIDES.invite : ASIDES.signUp}
       footer={
         <p>
-          Already have an account?{' '}
-          <Link
-            href="/login"
-            className="text-foreground font-medium underline decoration-[1.5px] underline-offset-[3px] hover:no-underline"
-          >
-            Sign in
-          </Link>
+          Already have an account? <Link href="/login">Sign in</Link>
         </p>
       }
     >
@@ -268,14 +272,11 @@ function SignupForm() {
             them re-reading the form.
           */}
           <p>
-            <Link href="/login" className="font-medium underline underline-offset-2">
+            <Link href="/login" className="nm-link">
               Sign in instead
             </Link>
             , or{' '}
-            <Link
-              href="/forgot-password"
-              className="font-medium underline underline-offset-2"
-            >
+            <Link href="/forgot-password" className="nm-link">
               set a new password
             </Link>{' '}
             if you’ve forgotten it.
@@ -302,97 +303,76 @@ function SignupForm() {
         </Notice>
       )}
 
-      <form onSubmit={handleSubmit} noValidate className="space-y-5">
-        <div className="grid grid-cols-2 gap-3">
-          <Field
+      <form onSubmit={handleSubmit} noValidate className="nm-auth-form">
+        <div className="nm-auth-row-2">
+          <AuthField
             id="signup-firstName"
             label="First name"
             error={showing('firstName', errors.firstName)}
           >
-            <Input
+            <AuthInput
               id="signup-firstName"
-              placeholder=""
               value={formData.firstName}
               onChange={(e) => updateField('firstName', e.target.value)}
               onBlur={() => blur('firstName')}
               autoComplete="given-name"
               autoFocus
               disabled={isLoading}
-              aria-invalid={!!showing('firstName', errors.firstName)}
-              className="h-11"
+              invalid={!!showing('firstName', errors.firstName)}
             />
-          </Field>
+          </AuthField>
 
-          <Field
+          <AuthField
             id="signup-lastName"
             label="Last name"
             error={showing('lastName', errors.lastName)}
           >
-            <Input
+            <AuthInput
               id="signup-lastName"
-              placeholder=""
               value={formData.lastName}
               onChange={(e) => updateField('lastName', e.target.value)}
               onBlur={() => blur('lastName')}
               autoComplete="family-name"
               disabled={isLoading}
-              aria-invalid={!!showing('lastName', errors.lastName)}
-              className="h-11"
+              invalid={!!showing('lastName', errors.lastName)}
             />
-          </Field>
+          </AuthField>
         </div>
 
-        <Field id="signup-email" label="Work email" error={showing('email', errors.email)}>
-          <Input
+        <AuthField id="signup-email" label="Work email" error={showing('email', errors.email)}>
+          <AuthInput
             id="signup-email"
             type="email"
             inputMode="email"
-            placeholder=""
             value={formData.email}
             onChange={(e) => updateField('email', e.target.value)}
             onBlur={() => blur('email')}
             autoComplete="email"
             disabled={isLoading}
-            aria-invalid={!!showing('email', errors.email)}
-            className="h-11"
+            invalid={!!showing('email', errors.email)}
           />
-        </Field>
+        </AuthField>
 
-        <Field
+        <AuthField
           id="signup-password"
           label="Password"
           error={showing('password', errors.password)}
         >
-          {/* Function form: the input is wrapped for the show/hide button, so
-              the description has to be threaded onto the control. See `Field`. */}
+          {/* Function form: the input is wrapped for the reveal toggle, so the
+              description has to be threaded onto the control. See `AuthField`. */}
           {(a11y) => (
-            <div className="relative">
-              <Input
-                id="signup-password"
-                type={showPassword ? 'text' : 'password'}
-                placeholder=""
-                value={formData.password}
-                onChange={(e) => updateField('password', e.target.value)}
-                onBlur={() => blur('password')}
-                autoComplete="new-password"
-                disabled={isLoading}
-                aria-invalid={!!showing('password', errors.password)}
-                {...a11y}
-                className="h-11 pr-12"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 grid size-10 -translate-y-1/2 place-items-center rounded-md transition-colors"
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-                aria-pressed={showPassword}
-                tabIndex={-1}
-              >
-                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
+            <AuthPasswordInput
+              id="signup-password"
+              value={formData.password}
+              onChange={(e) => updateField('password', e.target.value)}
+              onBlur={() => blur('password')}
+              autoComplete="new-password"
+              disabled={isLoading}
+              invalid={!!showing('password', errors.password)}
+              {...a11y}
+            />
           )}
-        </Field>
+        </AuthField>
 
         {/*
           Sits outside `Field` on purpose. It is neither a hint nor an error:
@@ -400,25 +380,21 @@ function SignupForm() {
           error is showing rather than being replaced by it.
         */}
         {!showing('password', errors.password) && (
-          <div className="-mt-3 space-y-1">
-            <p
-              className={cn(
-                'flex items-center gap-1.5 text-[0.75rem] transition-colors',
-                meetsRequirement(formData.password) ? 'text-brand' : 'text-muted-foreground',
-              )}
-            >
-              <Check
-                className={cn(
-                  'size-3 transition-opacity',
-                  meetsRequirement(formData.password) ? 'opacity-100' : 'opacity-30',
-                )}
-                strokeWidth={3}
-                aria-hidden="true"
-              />
-              At least 8 characters
-            </p>
+          <div
+            style={{
+              marginTop: 'calc(var(--nm-space-3) * -1)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 'var(--nm-space-1)',
+            }}
+          >
+            <PasswordRules
+              rules={[
+                { label: 'At least 8 characters', met: meetsRequirement(formData.password) },
+              ]}
+            />
             {meetsRequirement(formData.password) && isWeak(formData.password) && (
-              <p className="text-muted-foreground text-[0.75rem]">
+              <p className="nm-field-help">
                 Accepted — though a longer passphrase, or a number in the mix,
                 would be considerably harder to guess.
               </p>
@@ -427,55 +403,36 @@ function SignupForm() {
         )}
 
         {!joining && (
-          <Field
+          <AuthField
             id="signup-organization"
             label="Company name"
             hint="This names your workspace. You can change it later."
             error={showing('organization', errors.organization)}
           >
-            <Input
+            <AuthInput
               id="signup-organization"
-              placeholder=""
               value={formData.organization}
               onChange={(e) => updateField('organization', e.target.value)}
               onBlur={() => blur('organization')}
               autoComplete="organization"
               disabled={isLoading}
-              aria-invalid={!!showing('organization', errors.organization)}
-              className="h-11"
+              invalid={!!showing('organization', errors.organization)}
             />
-          </Field>
+          </AuthField>
         )}
 
-        <Button
+        <AuthSubmit
           type="submit"
-          variant="cta"
-          size="xl"
-          className="w-full"
-          disabled={isLoading}
+          className="nm-auth-submit"
+          busy={isLoading}
+          busyLabel="Creating account…"
         >
-          {isLoading ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              Creating account…
-            </>
-          ) : joining ? (
-            'Create account and join'
-          ) : (
-            'Create account'
-          )}
-        </Button>
+          {joining ? 'Create account and join' : 'Create account'}
+        </AuthSubmit>
 
-        <p className="text-muted-foreground text-center text-[0.75rem] leading-relaxed">
-          By creating an account you agree to our{' '}
-          <Link href="/terms" className="hover:text-foreground underline underline-offset-2">
-            Terms
-          </Link>{' '}
-          and{' '}
-          <Link href="/privacy" className="hover:text-foreground underline underline-offset-2">
-            Privacy Policy
-          </Link>
-          .
+        <p className="nm-auth-legal">
+          By creating an account you agree to our <Link href="/terms">Terms</Link> and{' '}
+          <Link href="/privacy">Privacy Policy</Link>.
         </p>
       </form>
     </AuthShell>
@@ -490,9 +447,7 @@ export default function SignupPage() {
   return (
     <Suspense
       fallback={
-        <div className="bg-background flex min-h-screen items-center justify-center">
-          <Loader2 className="text-muted-foreground size-5 animate-spin" />
-        </div>
+        <AuthLoading />
       }
     >
       <SignupForm />

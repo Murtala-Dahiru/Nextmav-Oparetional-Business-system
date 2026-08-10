@@ -2,11 +2,9 @@
 
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
-import { Loader2, ArrowLeft, MailCheck } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { AuthShell } from '@/components/auth/auth-shell';
+import { ArrowLeft, MailCheck } from 'lucide-react';
+import { AuthShell, ASIDES } from '@/components/auth/auth-shell';
+import { AuthField, AuthInput, AuthSubmit } from '@/components/auth/fields';
 import { toast } from 'sonner';
 
 export default function ForgotPasswordPage() {
@@ -59,50 +57,45 @@ export default function ForgotPasswordPage() {
       <AuthShell
         eyebrow="Check your inbox"
         title="If that address has an account, the link is on its way"
+        // A sentence, not a label — see `.nm-auth-title-sm`.
+        titleSize="compact"
+        aside={ASIDES.recovery}
         description={
           <>
             {/* No expiry stated. The lifetime is Supabase's setting, not this
                 application's, so any duration printed here would be a number
                 the page cannot actually know. */}
-            We sent it to{' '}
-            <span className="text-foreground font-medium">{email}</span>. The
+            We sent it to <strong style={{ color: 'var(--nm-ink)' }}>{email}</strong>. The
             link can be used once.
           </>
         }
         footer={
-          <Link
-            href="/login"
-            className="hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
-          >
-            <ArrowLeft className="size-3.5" />
+          <Link href="/login" className="nm-arrow-link">
+            <ArrowLeft size={14} aria-hidden="true" />
             Back to sign in
           </Link>
         }
       >
-        <div className="border-hairline bg-surface flex gap-4 rounded-xl border p-5">
-          <MailCheck
-            className="text-brand mt-0.5 size-5 shrink-0"
-            strokeWidth={1.9}
-            aria-hidden="true"
-          />
-          <p className="text-muted-foreground text-[0.875rem] leading-relaxed">
+        <div className="nm-auth-panel" style={{ marginTop: 'var(--nm-space-8)' }}>
+          <MailCheck className="nm-auth-panel-icon" size={20} aria-hidden="true" />
+          <p className="nm-auth-panel-body">
             Nothing after a few minutes? Check the spam folder, then confirm the
             address is the one you signed up with — a typo produces exactly this
             screen.
           </p>
         </div>
 
-        <Button
-          variant="ctaOutline"
-          size="xl"
-          className="mt-6 w-full"
+        <AuthSubmit
+          type="button"
+          variant="secondary"
+          style={{ marginTop: 'var(--nm-space-6)' }}
           onClick={() => {
             setIsSubmitted(false);
             setEmail('');
           }}
         >
           Try a different address
-        </Button>
+        </AuthSubmit>
       </AuthShell>
     );
   }
@@ -111,49 +104,37 @@ export default function ForgotPasswordPage() {
     <AuthShell
       title="Reset your password"
       description="Enter the address you sign in with and we'll send a link to set a new password."
+      aside={ASIDES.recovery}
       footer={
-        <Link
-          href="/login"
-          className="hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
-        >
-          <ArrowLeft className="size-3.5" />
+        <Link href="/login" className="nm-arrow-link">
+          <ArrowLeft size={14} aria-hidden="true" />
           Back to sign in
         </Link>
       }
     >
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="space-y-2">
-          <Label htmlFor="reset-email">Email address</Label>
-          <Input
+      <form onSubmit={handleSubmit} className="nm-auth-form">
+        <AuthField id="reset-email" label="Email address">
+          <AuthInput
             id="reset-email"
             type="email"
-            placeholder=""
+            inputMode="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="email"
             autoFocus
             disabled={isLoading}
-            className="h-11"
           />
-        </div>
+        </AuthField>
 
-        <Button
+        <AuthSubmit
           type="submit"
-          variant="cta"
-          size="xl"
-          className="w-full"
-          disabled={isLoading}
+          className="nm-auth-submit"
+          busy={isLoading}
+          busyLabel="Sending…"
         >
-          {isLoading ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              Sending…
-            </>
-          ) : (
-            'Send reset link'
-          )}
-        </Button>
+          Send reset link
+        </AuthSubmit>
       </form>
     </AuthShell>
   );

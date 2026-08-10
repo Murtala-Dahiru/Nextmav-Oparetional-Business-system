@@ -2,15 +2,17 @@
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Eye, EyeOff, Check } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { AuthShell } from '@/components/auth/auth-shell';
+import { AuthShell, AuthLoading, ASIDES } from '@/components/auth/auth-shell';
 import { Notice } from '@/components/auth/notice';
-import { Field } from '@/components/forms/field';
+import {
+  AuthField,
+  AuthInput,
+  AuthPasswordInput,
+  AuthSubmit,
+  PasswordRules,
+} from '@/components/auth/fields';
 import { useAppStore } from '@/store/app-store';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 
 /**
  * Replace a temporary password.
@@ -34,7 +36,6 @@ export default function ChangePasswordPage() {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [show, setShow] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -99,9 +100,7 @@ export default function ChangePasswordPage() {
 
   if (checking) {
     return (
-      <div className="bg-background flex min-h-screen items-center justify-center">
-        <Loader2 className="text-muted-foreground size-5 animate-spin" />
-      </div>
+      <AuthLoading />
     );
   }
 
@@ -124,13 +123,14 @@ export default function ChangePasswordPage() {
           ? 'This account is using a temporary password set by an administrator. Pick your own to continue — nobody else can see what you choose.'
           : 'Enter your current password, then the one you would like to use instead.'
       }
+      aside={ASIDES.recovery}
       footer={
         forced ? (
           <button
             type="button"
             onClick={() => logout()}
             disabled={saving}
-            className="hover:text-foreground underline decoration-[1.5px] underline-offset-[3px] transition-colors disabled:opacity-50"
+            className="nm-link"
           >
             Sign out instead
           </button>
@@ -139,7 +139,7 @@ export default function ChangePasswordPage() {
             type="button"
             onClick={() => router.push('/dashboard')}
             disabled={saving}
-            className="hover:text-foreground underline decoration-[1.5px] underline-offset-[3px] transition-colors disabled:opacity-50"
+            className="nm-link"
           >
             Back to dashboard
           </button>
@@ -159,101 +159,81 @@ export default function ChangePasswordPage() {
         </Notice>
       )}
 
-      <form onSubmit={handleSubmit} noValidate className="space-y-5">
-        <Field id="current" label={forced ? 'Temporary password' : 'Current password'}>
-          <Input
-            id="current"
-            type={show ? 'text' : 'password'}
-            value={current}
-            onChange={(e) => setCurrent(e.target.value)}
-            autoFocus
-            autoComplete="current-password"
-            disabled={saving}
-            className="h-11"
-          />
-        </Field>
+      {/*
+        Each field now owns its own reveal toggle rather than sharing one
+        "Show passwords" control for all three. The shared switch read well
+        on this screen in particular — comparing a temporary password against
+        a new one is exactly when you want both visible — but it carried
+        `tabIndex={-1}`, so the only people who could use it were the ones who
+        could already see the field. A per-field toggle in the tab order is
+        worth more than the convenience it costs.
+      */}
+      <form onSubmit={handleSubmit} noValidate className="nm-auth-form">
+        <AuthField id="current" label={forced ? 'Temporary password' : 'Current password'}>
+          {(a11y) => (
+            <AuthPasswordInput
+              id="current"
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+              autoFocus
+              autoComplete="current-password"
+              disabled={saving}
+              {...a11y}
+            />
+          )}
+        </AuthField>
 
-        <Field
+        <AuthField
           id="next"
           label="New password"
           error={unchanged ? 'This is the password you are replacing.' : null}
         >
           {(a11y) => (
-            <div className="relative">
-              <Input
-                id="next"
-                type={show ? 'text' : 'password'}
-                value={next}
-                onChange={(e) => setNext(e.target.value)}
-                autoComplete="new-password"
-                disabled={saving}
-                aria-invalid={unchanged}
-                {...a11y}
-                className="h-11 pr-12"
-              />
-              <button
-                type="button"
-                onClick={() => setShow(!show)}
-                className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 grid size-10 -translate-y-1/2 place-items-center rounded-md transition-colors"
-                aria-label={show ? 'Hide passwords' : 'Show passwords'}
-                aria-pressed={show}
-                tabIndex={-1}
-              >
-                {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-              </button>
-            </div>
+            <AuthPasswordInput
+              id="next"
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              autoComplete="new-password"
+              disabled={saving}
+              invalid={unchanged}
+              {...a11y}
+            />
           )}
-        </Field>
+        </AuthField>
 
         {!unchanged && (
-          <p
-            className={cn(
-              '-mt-3 flex items-center gap-1.5 text-[0.75rem] transition-colors',
-              longEnough ? 'text-brand' : 'text-muted-foreground',
-            )}
-          >
-            <Check
-              className={cn('size-3', longEnough ? 'opacity-100' : 'opacity-30')}
-              strokeWidth={3}
-              aria-hidden="true"
-            />
-            At least 8 characters
-          </p>
+          <div style={{ marginTop: 'calc(var(--nm-space-3) * -1)' }}>
+            <PasswordRules rules={[{ label: 'At least 8 characters', met: longEnough }]} />
+          </div>
         )}
 
-        <Field
+        <AuthField
           id="confirm"
           label="Confirm new password"
           error={mismatch ? 'These don’t match yet.' : null}
         >
-          <Input
-            id="confirm"
-            type={show ? 'text' : 'password'}
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            autoComplete="new-password"
-            disabled={saving}
-            aria-invalid={mismatch}
-            className="h-11"
-          />
-        </Field>
-
-        <Button
-          type="submit"
-          variant="cta"
-          size="xl"
-          className="w-full"
-          disabled={saving || !current || !longEnough || mismatch || unchanged}
-        >
-          {saving ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              Saving…
-            </>
-          ) : (
-            'Change password'
+          {(a11y) => (
+            <AuthPasswordInput
+              id="confirm"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              autoComplete="new-password"
+              disabled={saving}
+              invalid={mismatch}
+              {...a11y}
+            />
           )}
-        </Button>
+        </AuthField>
+
+        <AuthSubmit
+          type="submit"
+          className="nm-auth-submit"
+          busy={saving}
+          busyLabel="Saving…"
+          disabled={!current || !longEnough || mismatch || unchanged}
+        >
+          Change password
+        </AuthSubmit>
       </form>
     </AuthShell>
   );

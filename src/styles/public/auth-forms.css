@@ -1,0 +1,359 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  Auth form controls
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  ── Hand-maintained. Not generated. ──────────────────────────────────────
+ *
+ *  Every other file in this directory is written by
+ *  `scripts/import-public-css.mjs` from the uploaded project and carries a
+ *  "do not edit by hand" header. This one is ours: the script only writes
+ *  basenames it finds in its source directory, so a name that does not exist
+ *  there survives a re-run untouched. That is the whole reason for a separate
+ *  file rather than additions to `auth.css`.
+ *
+ *  ── What it is for ───────────────────────────────────────────────────────
+ *
+ *  The uploaded design system styles a field, a label and an input. The auth
+ *  screens need six things it never had to describe, because the uploaded
+ *  project's auth screens were a static mock with no states:
+ *
+ *    · a message slot that reserves its own height
+ *    · a password toggle a keyboard can reach
+ *    · an information panel that is not a semantic alert
+ *    · a legal footnote
+ *    · a password requirement meter
+ *    · a submit button that reads as busy rather than as broken
+ *
+ *  Everything here composes with `components.css` rather than overriding it.
+ *  Where a value repeats one already in the system it references the token, so
+ *  the two cannot drift.
+ *
+ *  Scoped `.nm-public <sel>` to match the generated files — and deliberately
+ *  never on the same element as `.nm-public` itself, which is the mistake that
+ *  silently disabled the entire split-screen layout. See `auth-shell.tsx`.
+ */
+
+/* ── One left edge ──────────────────────────────────────────────────────────
+
+   The form column is 400px centred in the 640px panel, so it starts at 120px.
+   The logo and the back-link sit in bars that fill the panel, so they start at
+   the 24px padding edge. Three elements on one surface, two left edges, 96px
+   apart — measured, not guessed.
+
+   Nobody looking at that page would say "the logo is misaligned with the form".
+   They would say it looks unfinished, which is the same observation arriving
+   without a vocabulary. Constraining the bars to the same measure as the form
+   gives the panel a single edge to read down.
+
+   `--nm-auth-measure` so the three cannot drift apart again. */
+
+.nm-public .nm-auth {
+  --nm-auth-measure: 400px;
+}
+
+.nm-public .nm-auth-form-wrap,
+.nm-public .nm-auth-top,
+.nm-public .nm-auth-bottom {
+  width: 100%;
+  max-width: var(--nm-auth-measure);
+  margin-inline: auto;
+}
+
+/* The two standalone links on the panel — the brand mark and the back link —
+   are the only tap targets outside the form, and both measured under 44px tall
+   (30px and 22px). Inline links inside a sentence are exempt from the target
+   size rule and are left alone; these are not inside a sentence. Stretching
+   them to the height of the bar they already sit in costs no layout. */
+
+.nm-public .nm-auth-top > a,
+.nm-public .nm-auth-bottom > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+/* Room to breathe once there is a whole half-viewport to work with. The
+   uploaded padding was 24px at every width, which on a 720px-wide panel puts
+   the brand mark almost in the corner. */
+@media (min-width: 1024px) {
+  .nm-public .nm-auth-form-side {
+    padding-inline: var(--nm-space-10);
+  }
+}
+
+/* ── Title scale ────────────────────────────────────────────────────────────
+
+   36px is right for "Sign in" and wrong for "If that address has an account,
+   the link is on its way", which at 36px/1.05 runs to four lines in a 400px
+   column and swamps the screen it is supposed to be introducing. State screens
+   opt down a step; the entry screens keep the display size. */
+
+.nm-public .nm-auth-title-sm {
+  font-size: var(--nm-text-2xl);
+  line-height: var(--nm-leading-snug);
+}
+
+/* ── Mobile composition ─────────────────────────────────────────────────────
+
+   Below 880px `auth.css` hides the aside, which leaves a form centred on a
+   blank white page — the single most generic screen on the internet, and the
+   one most visitors will actually see.
+
+   It stays hidden: a dark brand panel stacked under a sign-in form is a second
+   screenful nobody scrolls to, which is what this whole pass just finished
+   fixing on desktop. Instead the mobile screen is composed as its own thing —
+   the form anchored to the top rather than floating in the vertical middle,
+   the title stepped down, and the brand mark given real presence at the top
+   where it is the only brand signal left. */
+
+@media (max-width: 880px) {
+  .nm-public .nm-auth-form-side {
+    padding-inline: var(--nm-space-5);
+  }
+
+  .nm-public .nm-auth-form-wrap {
+    justify-content: flex-start;
+    padding-block: var(--nm-space-8) var(--nm-space-10);
+  }
+
+  .nm-public .nm-auth-title {
+    font-size: var(--nm-text-2xl);
+    line-height: var(--nm-leading-snug);
+  }
+
+  .nm-public .nm-auth-title-sm {
+    font-size: var(--nm-text-xl);
+  }
+
+  /* The bars keep the form's measure but stop being 64px of empty on a screen
+     where vertical space is the scarce thing. */
+  .nm-public .nm-auth-top {
+    height: 56px;
+  }
+
+  .nm-public .nm-auth-bottom {
+    height: 56px;
+  }
+}
+
+/* ── Field message slot ─────────────────────────────────────────────────────
+
+   The slot holds a line whether or not it has content. Without it a field
+   grows by a line-height at the exact moment an error appears, which moves
+   every field below it — and the submit button — while the user is reaching
+   for them. */
+
+.nm-public .nm-field-msg {
+  min-height: 1.05rem;
+}
+
+.nm-public .nm-field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--nm-space-2);
+  line-height: var(--nm-leading-snug);
+}
+
+.nm-public .nm-field-error svg {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  margin-top: 2px;
+}
+
+/* ── The reveal toggle's focus ring ─────────────────────────────────────────
+
+   `base.css` gives every focusable a 3px outset ring. On this control that is
+   wrong: the button is 40px inside a 46px field, so an outset ring lands on
+   top of the field's own border and reads as the *field* being focused rather
+   than the toggle. Inset keeps the ring inside the button it belongs to.
+
+   The error and hover states are not restated here. They are already correct
+   in `components.css` — `.nm-public .nm-input-error` is (0,2,0) and the
+   element-level `:where(input…)` fallback is (0,1,0), so the error colour wins
+   on specificity regardless of the order the two generated sheets land in. */
+
+.nm-public .nm-input-toggle:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--nm-accent);
+}
+
+/* ── Password toggle ────────────────────────────────────────────────────────
+
+   `.nm-input-icon-btn` in the uploaded system is a 28px decorative badge — it
+   was never a control, because the uploaded screens never toggled anything.
+   This is a real button: 40px inside the 46px field, which clears the 24px
+   minimum for a control this size, and reachable by keyboard.
+
+   The version being replaced carried `tabIndex={-1}`. The argument for that is
+   that it keeps Tab going straight from password to submit. The argument
+   against is that "reveal what I typed" is precisely the affordance a person
+   who cannot see the field needs most, and taking it out of the tab order is
+   how it becomes unavailable to them. It stays in the order. */
+
+.nm-public .nm-input-wrap-toggle .nm-input {
+  padding-right: 48px;
+}
+
+.nm-public .nm-input-toggle {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--nm-radius-sm);
+  color: var(--nm-ink-subtle);
+  cursor: pointer;
+  transition:
+    color var(--nm-dur-base) var(--nm-ease),
+    background-color var(--nm-dur-base) var(--nm-ease);
+}
+
+.nm-public .nm-input-toggle:hover {
+  color: var(--nm-ink);
+  background: var(--nm-bg-inset);
+}
+
+.nm-public .nm-input-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ── Information panel ──────────────────────────────────────────────────────
+
+   Distinct from `.nm-auth-alert`, which is an alert: it has a role, it
+   interrupts a screen reader, and it means something has happened. This is
+   standing guidance — "check spam, then check the address" — that is true
+   before anything goes wrong. Giving it alert styling taught people to read
+   the alert colour as decoration. */
+
+.nm-public .nm-auth-panel {
+  display: flex;
+  gap: var(--nm-space-4);
+  padding: var(--nm-space-5);
+  background: var(--nm-bg-subtle);
+  border: 1px solid var(--nm-border);
+  border-radius: var(--nm-radius-lg);
+}
+
+.nm-public .nm-auth-panel-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--nm-accent);
+}
+
+.nm-public .nm-auth-panel-body {
+  font-size: var(--nm-text-sm);
+  color: var(--nm-ink-muted);
+  line-height: var(--nm-leading-relaxed);
+  display: flex;
+  flex-direction: column;
+  gap: var(--nm-space-1);
+}
+
+.nm-public .nm-auth-panel-body strong {
+  color: var(--nm-ink);
+  font-weight: var(--nm-weight-medium);
+}
+
+/* ── Legal footnote ─────────────────────────────────────────────────────── */
+
+.nm-public .nm-auth-legal {
+  font-size: var(--nm-text-xs);
+  color: var(--nm-ink-subtle);
+  line-height: var(--nm-leading-relaxed);
+  text-align: center;
+}
+
+.nm-public .nm-auth-legal a {
+  color: var(--nm-ink-muted);
+  text-decoration: underline;
+  text-decoration-color: var(--nm-border-strong);
+  text-underline-offset: 2px;
+  transition: color var(--nm-dur-base) var(--nm-ease);
+}
+
+.nm-public .nm-auth-legal a:hover {
+  color: var(--nm-ink);
+}
+
+/* ── Password requirements ──────────────────────────────────────────────────
+
+   A list of rules with their state, not a strength score. A score answers
+   "how good is this password" with a number nobody can act on; a rule list
+   answers "what is still missing", which is the only question being asked at
+   the moment somebody is stuck on this field. */
+
+.nm-public .nm-auth-rules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nm-space-1);
+}
+
+.nm-public .nm-auth-rule {
+  display: flex;
+  align-items: center;
+  gap: var(--nm-space-2);
+  font-size: var(--nm-text-xs);
+  color: var(--nm-ink-subtle);
+  transition: color var(--nm-dur-base) var(--nm-ease);
+}
+
+.nm-public .nm-auth-rule svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.nm-public .nm-auth-rule-met {
+  color: var(--nm-success);
+}
+
+/* ── Row of two fields ──────────────────────────────────────────────────────
+
+   Collapses early. Two 46px inputs side by side stop being two fields and
+   start being one cramped one somewhere around 380px of column. */
+
+.nm-public .nm-auth-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--nm-space-3);
+}
+
+@media (max-width: 400px) {
+  .nm-public .nm-auth-row-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Busy submit ────────────────────────────────────────────────────────────
+
+   `:disabled` in the uploaded system drops opacity to 0.45, which for a button
+   that is mid-request reads as "this control is unavailable" rather than "this
+   is working". A submit awaiting a response holds its colour and shows a
+   spinner; only a genuinely unavailable control fades. */
+
+.nm-public .nm-btn[aria-busy='true'] {
+  opacity: 1;
+  cursor: progress;
+}
+
+.nm-public .nm-btn[aria-busy='true'] .nm-spin {
+  animation: nm-auth-spin 0.7s linear infinite;
+}
+
+@keyframes nm-auth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nm-public .nm-btn[aria-busy='true'] .nm-spin {
+    animation-duration: 2s;
+  }
+}

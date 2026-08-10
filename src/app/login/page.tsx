@@ -3,12 +3,15 @@
 import { Suspense, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Loader2, Eye, EyeOff } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { AuthShell } from '@/components/auth/auth-shell';
+import { Loader2 } from 'lucide-react';
+import { AuthShell, AuthLoading, ASIDES } from '@/components/auth/auth-shell';
 import { Notice } from '@/components/auth/notice';
-import { Field } from '@/components/forms/field';
+import {
+  AuthField,
+  AuthInput,
+  AuthPasswordInput,
+  AuthSubmit,
+} from '@/components/auth/fields';
 import { useFieldErrors } from '@/components/forms/use-field-errors';
 
 /**
@@ -32,7 +35,6 @@ function LoginForm() {
   const nextPath = safeNext(searchParams.get('next'));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
@@ -180,15 +182,10 @@ function LoginForm() {
     <AuthShell
       title="Sign in"
       description="Welcome back. Enter your details to reach your workspace."
+      aside={ASIDES.signIn}
       footer={
         <p>
-          New here?{' '}
-          <Link
-            href="/signup"
-            className="text-foreground font-medium underline decoration-[1.5px] underline-offset-[3px] hover:no-underline"
-          >
-            Create an account
-          </Link>
+          New here? <Link href="/signup">Create an account</Link>
         </p>
       }
     >
@@ -248,35 +245,38 @@ function LoginForm() {
               We sent a link when the account was created. Opening it activates
               the account, then you can sign in.
             </p>
-            <Button
+            <button
               type="button"
-              variant="outline"
-              size="sm"
-              className="mt-3"
+              className="nm-btn nm-btn-secondary nm-btn-sm"
+              style={{ marginTop: 'var(--nm-space-3)' }}
               onClick={resendConfirmation}
               disabled={resending || !email}
+              aria-busy={resending || undefined}
             >
               {resending ? (
                 <>
-                  <Loader2 className="size-3.5 animate-spin" />
+                  <Loader2 className="nm-spin" size={14} aria-hidden="true" />
                   Sending…
                 </>
               ) : (
                 'Send a new link'
               )}
-            </Button>
+            </button>
           </Notice>
         ))}
 
       {/* `noValidate`: the browser's own bubbles are unstyled, unlocalised,
           and disappear on the next click. The form validates itself. */}
-      <form onSubmit={handleSubmit} noValidate className="space-y-5">
-        <Field id="login-email" label="Email address" error={showing('email', errors.email)}>
-          <Input
+      <form onSubmit={handleSubmit} noValidate className="nm-auth-form">
+        <AuthField
+          id="login-email"
+          label="Email address"
+          error={showing('email', errors.email)}
+        >
+          <AuthInput
             id="login-email"
             type="email"
             inputMode="email"
-            placeholder=""
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             onBlur={() => blur('email')}
@@ -285,76 +285,49 @@ function LoginForm() {
             // Nobody arrives here to read.
             autoFocus
             disabled={isLoading}
-            aria-invalid={!!showing('email', errors.email)}
-            className="h-11"
+            invalid={!!showing('email', errors.email)}
           />
-        </Field>
+        </AuthField>
 
-        <Field
+        <AuthField
           id="login-password"
           label="Password"
           error={showing('password', errors.password)}
         >
-          {/* Function form: the input is wrapped, so the description has to be
-              threaded onto the control explicitly. See `Field`. */}
+          {/* Function form: the input is wrapped by the reveal toggle, so the
+              description has to be threaded onto the control explicitly.
+              See `AuthField`. */}
           {(a11y) => (
-          <div className="relative">
-            <Input
+            <AuthPasswordInput
               id="login-password"
-              type={showPassword ? 'text' : 'password'}
-              placeholder=""
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onBlur={() => blur('password')}
               autoComplete="current-password"
               disabled={isLoading}
-              aria-invalid={!!showing('password', errors.password)}
+              invalid={!!showing('password', errors.password)}
               {...a11y}
-              className="h-11 pr-12"
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              // 44px hit area on a control that sits inside a 44px field.
-              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-1 grid size-10 -translate-y-1/2 place-items-center rounded-md transition-colors"
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-              aria-pressed={showPassword}
-              tabIndex={-1}
-            >
-              {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-            </button>
-          </div>
           )}
-        </Field>
+        </AuthField>
 
         {/* Below the password field, not beside its label: at 360px a link
             sharing a row with the label crowds it, and this is the control
             somebody reaches for when they are already frustrated. */}
-        <div className="-mt-1">
-          <Link
-            href="/forgot-password"
-            className="text-muted-foreground hover:text-foreground text-[0.8125rem] underline decoration-[1.5px] underline-offset-[3px] transition-colors"
-          >
+        <div style={{ marginTop: 'calc(var(--nm-space-3) * -1)' }}>
+          <Link href="/forgot-password" className="nm-link" style={{ fontSize: 'var(--nm-text-sm)' }}>
             Forgot your password?
           </Link>
         </div>
 
-        <Button
+        <AuthSubmit
           type="submit"
-          variant="cta"
-          size="xl"
-          className="w-full"
-          disabled={isLoading}
+          className="nm-auth-submit"
+          busy={isLoading}
+          busyLabel="Signing in…"
         >
-          {isLoading ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              Signing in…
-            </>
-          ) : (
-            'Sign in'
-          )}
-        </Button>
+          Sign in
+        </AuthSubmit>
       </form>
     </AuthShell>
   );
@@ -364,13 +337,7 @@ export default function LoginPage() {
   // `useSearchParams` needs a Suspense boundary to avoid opting the whole
   // route into client-side rendering.
   return (
-    <Suspense
-      fallback={
-        <div className="bg-background flex min-h-screen items-center justify-center">
-          <Loader2 className="text-muted-foreground size-5 animate-spin" />
-        </div>
-      }
-    >
+    <Suspense fallback={<AuthLoading />}>
       <LoginForm />
     </Suspense>
   );

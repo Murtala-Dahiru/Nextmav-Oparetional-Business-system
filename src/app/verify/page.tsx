@@ -136,6 +136,7 @@ function VerifyBody() {
             type="button"
             onClick={resend}
             disabled={sending || sent}
+            aria-busy={sending || undefined}
             className={buttonClass('primary', 'lg')}
           >
             {sending ? 'Sending…' : sent ? 'Link sent' : 'Send another link'}

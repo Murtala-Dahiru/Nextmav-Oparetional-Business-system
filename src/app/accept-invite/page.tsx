@@ -4,8 +4,8 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, MailCheck, TriangleAlert, LogIn } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { AuthShell } from '@/components/auth/auth-shell';
+import { AuthSubmit } from '@/components/auth/fields';
+import { AuthShell, AuthLoading, ASIDES } from '@/components/auth/auth-shell';
 import { toast } from 'sonner';
 
 /**
@@ -107,15 +107,23 @@ function AcceptInvite() {
    */
   if (phase === 'checking') {
     return (
-      <AuthShell title="Checking your invitation" description="One moment.">
+      <AuthShell
+        title="Checking your invitation"
+        description="One moment."
+        aside={ASIDES.invite}
+      >
         <div
-          className="border-hairline bg-surface flex items-center gap-3 rounded-xl border p-5"
+          className="nm-auth-panel"
+          style={{ marginTop: 'var(--nm-space-8)', alignItems: 'center' }}
           role="status"
         >
-          <Loader2 className="text-muted-foreground size-4 animate-spin" aria-hidden="true" />
-          <p className="text-muted-foreground text-[0.875rem]">
-            Confirming the link is still valid…
-          </p>
+          <Loader2
+            className="nm-spin nm-auth-panel-icon"
+            size={18}
+            aria-hidden="true"
+            style={{ color: 'var(--nm-ink-subtle)', marginTop: 0 }}
+          />
+          <p className="nm-auth-panel-body">Confirming the link is still valid…</p>
         </div>
       </AuthShell>
     );
@@ -127,14 +135,24 @@ function AcceptInvite() {
         eyebrow="You’ve been invited"
         title="Sign in to accept"
         description="An invitation can only be accepted by the account it was sent to. Sign in — or create an account with that same address — and you’ll come straight back here."
+        aside={ASIDES.invite}
       >
-        <div className="flex flex-col gap-2.5">
-          <Button asChild variant="cta" size="xl" className="w-full">
-            <Link href={signInHref}>
-              <LogIn className="size-4" />
-              Sign in
-            </Link>
-          </Button>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--nm-space-3)',
+            marginTop: 'var(--nm-space-8)',
+          }}
+        >
+          <Link
+            href={signInHref}
+            className="nm-btn nm-btn-primary nm-btn-lg"
+            style={{ width: '100%' }}
+          >
+            <LogIn size={16} aria-hidden="true" />
+            Sign in
+          </Link>
           {/*
             The token travels with them.
 
@@ -144,13 +162,15 @@ function AcceptInvite() {
             With it, signup recognises the invitation, skips that question, and
             the confirmation email lands back on this page.
           */}
-          <Button asChild variant="ctaOutline" size="xl" className="w-full">
-            <Link href={`/signup?invite=${encodeURIComponent(token ?? '')}`}>
-              Create an account
-            </Link>
-          </Button>
+          <Link
+            href={`/signup?invite=${encodeURIComponent(token ?? '')}`}
+            className="nm-btn nm-btn-secondary nm-btn-lg"
+            style={{ width: '100%' }}
+          >
+            Create an account
+          </Link>
         </div>
-        <p className="text-muted-foreground mt-4 text-[0.8125rem] leading-relaxed">
+        <p className="nm-auth-panel-body" style={{ marginTop: 'var(--nm-space-4)' }}>
           Use the address the invitation was sent to. A different one will
           create an account that cannot accept it.
         </p>
@@ -164,15 +184,25 @@ function AcceptInvite() {
         eyebrow="Done"
         title={organization ? `Welcome to ${organization}` : 'Invitation accepted'}
         description="You now have access with the role you were given."
+        aside={ASIDES.invite}
       >
         <div
-          className="border-brand-line bg-brand-soft flex items-center gap-3 rounded-xl border p-5"
+          className="nm-auth-panel"
+          style={{
+            marginTop: 'var(--nm-space-8)',
+            alignItems: 'center',
+            background: 'var(--nm-accent-soft)',
+            borderColor: 'transparent',
+          }}
           role="status"
         >
-          <Loader2 className="text-brand size-4 animate-spin" aria-hidden="true" />
-          <p className="text-foreground/80 text-[0.875rem]">
-            Taking you to your dashboard…
-          </p>
+          <Loader2
+            className="nm-spin nm-auth-panel-icon"
+            size={18}
+            aria-hidden="true"
+            style={{ marginTop: 0 }}
+          />
+          <p className="nm-auth-panel-body">Taking you to your dashboard…</p>
         </div>
       </AuthShell>
     );
@@ -183,23 +213,26 @@ function AcceptInvite() {
       <AuthShell
         title="This invitation didn’t work"
         description={message}
+        titleSize="compact"
+        aside={ASIDES.invite}
         footer={
           <button
             type="button"
             onClick={() => router.replace('/login')}
-            className="hover:text-foreground underline decoration-[1.5px] underline-offset-[3px] transition-colors"
+            className="nm-link"
           >
             Back to sign in
           </button>
         }
       >
-        <div className="border-hairline bg-surface flex gap-4 rounded-xl border p-5">
+        <div className="nm-auth-panel" style={{ marginTop: 'var(--nm-space-8)' }}>
           <TriangleAlert
-            className="text-muted-foreground mt-0.5 size-5 shrink-0"
-            strokeWidth={1.9}
+            className="nm-auth-panel-icon"
+            size={20}
             aria-hidden="true"
+            style={{ color: 'var(--nm-ink-subtle)' }}
           />
-          <p className="text-muted-foreground text-[0.875rem] leading-relaxed">
+          <p className="nm-auth-panel-body">
             Ask whoever invited you to send a fresh one. Issuing a new
             invitation replaces the old link, so an expired one cannot be
             revived — only replaced.
@@ -215,26 +248,17 @@ function AcceptInvite() {
       eyebrow="You’ve been invited"
       title="Join this workspace"
       description="Accepting adds your account to the organization that invited you, with the role they chose for you."
+      aside={ASIDES.invite}
     >
-      <Button
+      <AuthSubmit
         onClick={accept}
-        disabled={phase === 'joining'}
-        variant="cta"
-        size="xl"
-        className="w-full"
+        busy={phase === 'joining'}
+        busyLabel="Joining…"
+        style={{ marginTop: 'var(--nm-space-8)' }}
       >
-        {phase === 'joining' ? (
-          <>
-            <Loader2 className="size-4 animate-spin" />
-            Joining…
-          </>
-        ) : (
-          <>
-            <MailCheck className="size-4" />
-            Accept invitation
-          </>
-        )}
-      </Button>
+        <MailCheck size={16} aria-hidden="true" />
+        Accept invitation
+      </AuthSubmit>
     </AuthShell>
   );
 }
@@ -244,9 +268,7 @@ export default function AcceptInvitePage() {
   return (
     <Suspense
       fallback={
-        <div className="bg-background flex min-h-screen items-center justify-center">
-          <Loader2 className="size-6 animate-spin text-emerald-500" />
-        </div>
+        <AuthLoading />
       }
     >
       <AcceptInvite />
