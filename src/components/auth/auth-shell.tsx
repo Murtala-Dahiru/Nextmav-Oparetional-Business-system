@@ -79,7 +79,26 @@ export function AuthShell({
   aside?: AuthAside;
 }) {
   return (
-    <div className={`nm-public nm-auth ${publicFontVars} ${className ?? ''}`.trim()}>
+    /*
+      ── Why `nm-auth` is on a child and not on this element ──────────────────
+
+      `scripts/import-public-css.mjs` rewrites every rule to `.nm-public <sel>`
+      — a *descendant* selector. So a class that also sits on the wrapper itself
+      is styled by nothing: `.nm-public .nm-auth` cannot match an element that
+      is `.nm-public.nm-auth`.
+
+      That is not a subtle loss. `.nm-auth` is the entire split-screen: the
+      `grid-template-columns: 1fr 1fr` that puts the form beside the dark brand
+      panel. Without it the wrapper fell back to `display: block`, so the form
+      column rendered 400px wide inside 1265px of empty white and the aside —
+      still `min-height: 100vh` — was pushed a full screen below the fold, where
+      nobody signing in will ever scroll to find it. Every auth screen has been
+      rendering as a bare form on an empty page.
+
+      Nesting fixes it without touching a generated stylesheet.
+    */
+    <div className={`nm-public ${publicFontVars}`}>
+      <div className={`nm-auth ${className ?? ''}`.trim()}>
       <div className="nm-auth-form-side">
         <div className="nm-auth-top">
           <Link href="/" aria-label="NextMav — home">
@@ -132,6 +151,7 @@ export function AuthShell({
           NextMav · Business Operating System
         </div>
       </aside>
+      </div>
     </div>
   );
 }

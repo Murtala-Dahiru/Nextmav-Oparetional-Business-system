@@ -47,9 +47,20 @@ import '@/styles/public-fonts.css';
 
 export default function MarketingLayout({ children }: { children: ReactNode }) {
   return (
-    <div
-      className={`nm-public nm-app ${publicFontVars}`}
-    >
+    /*
+      `nm-app` sits on a child, not on this element, for the same reason as in
+      `components/auth/auth-shell.tsx`: the import script scopes every rule as
+      `.nm-public <sel>`, a descendant selector, which cannot match a class on
+      the wrapper itself.
+
+      What was lost here is the sticky footer — `.nm-app { min-height: 100vh;
+      display: flex; flex-direction: column }` with `> main { flex: 1 }`. With
+      the wrapper falling back to `display: block` the footer simply ends where
+      the content ends: measured on `/blog` at a 1400px-tall viewport, 342px of
+      bare white below it.
+    */
+    <div className={`nm-public ${publicFontVars}`}>
+      <div className="nm-app">
       {/*
         The reveal system ships its hidden state in the server HTML to avoid a
         flash on load, which puts content behind JavaScript. This hands it back
@@ -67,6 +78,7 @@ export default function MarketingLayout({ children }: { children: ReactNode }) {
       <PublicHeader />
       <main id="main">{children}</main>
       <PublicFooter />
+      </div>
     </div>
   );
 }
