@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
-import { Plus_Jakarta_Sans, Instrument_Serif, JetBrains_Mono } from 'next/font/google';
 import { PublicHeader } from '@/components/public/header';
 import { PublicFooter } from '@/components/public/footer';
+import { publicFontVars } from '@/components/public/fonts';
 
 // The uploaded project's stylesheets, scoped to `.nm-public` by
 // `scripts/import-public-css.mjs`. `base.css` pulls in `tokens.css` itself.
@@ -45,31 +45,10 @@ import '@/styles/public-fonts.css';
  *  themselves render on the server and prerender static, as they did before.
  */
 
-const jakarta = Plus_Jakarta_Sans({
-  variable: '--font-jakarta',
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  display: 'swap',
-});
-
-const instrument = Instrument_Serif({
-  variable: '--font-instrument',
-  subsets: ['latin'],
-  weight: ['400'],
-  display: 'swap',
-});
-
-const jetbrains = JetBrains_Mono({
-  variable: '--font-jetbrains',
-  subsets: ['latin'],
-  weight: ['400', '500'],
-  display: 'swap',
-});
-
 export default function MarketingLayout({ children }: { children: ReactNode }) {
   return (
     <div
-      className={`nm-public nm-app ${jakarta.variable} ${instrument.variable} ${jetbrains.variable}`}
+      className={`nm-public nm-app ${publicFontVars}`}
     >
       {/*
         The reveal system ships its hidden state in the server HTML to avoid a

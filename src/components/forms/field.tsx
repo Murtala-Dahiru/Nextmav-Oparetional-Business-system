@@ -111,10 +111,16 @@ export function Field({
   const describedBy = error ? errorId : hint ? hintId : undefined;
 
   return (
-    <div className={cn('flex flex-col gap-label', className)}>
+    // `nm-field` / `nm-label` are the uploaded design system's, so a field
+    // rendered inside `.nm-public` matches the screens around it. Outside that
+    // wrapper the classes match nothing and the Tailwind fallbacks apply, which
+    // is what keeps this component usable in the authenticated application.
+    <div className={cn('nm-field flex flex-col gap-label', className)}>
       <div className="flex items-baseline justify-between gap-pair">
-        <Label htmlFor={id}>{label}</Label>
-        {optional && <span className="text-copy-3 text-caption">Optional</span>}
+        <Label htmlFor={id} className="nm-label">
+          {label}
+        </Label>
+        {optional && <span className="nm-label-hint text-copy-3 text-caption">Optional</span>}
       </div>
 
       {/*
@@ -166,7 +172,7 @@ export function Field({
             <p
               id={errorId}
               role="alert"
-              className="text-destructive text-caption flex items-start gap-control leading-snug"
+              className="nm-field-error text-destructive text-caption flex items-start gap-control leading-snug"
             >
               <AlertCircle
                 className="mt-[0.15rem] size-3 shrink-0"
@@ -175,7 +181,7 @@ export function Field({
               {error}
             </p>
           ) : hint ? (
-            <p id={hintId} className="text-copy-3 text-caption leading-snug">
+            <p id={hintId} className="nm-field-help text-copy-3 text-caption leading-snug">
               {hint}
             </p>
           ) : null}

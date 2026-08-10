@@ -34,19 +34,21 @@ export function Notice({
   return (
     <div
       role={tone === 'warning' ? 'alert' : 'status'}
+      // The uploaded design system's alert, so these read as part of the auth
+      // screens they sit on rather than as a survivor of the previous one.
+      // `nm-auth-alert-*` are defined in `styles/public/auth.css`; the semantics
+      // above are unchanged, because they were never presentation.
       className={cn(
-        'mb-6 rounded-lg border px-4 py-3.5 text-[0.875rem] leading-relaxed',
-        tone === 'neutral' && 'border-hairline bg-surface text-muted-foreground',
-        tone === 'warning' &&
-          'border-amber-300/70 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200',
-        tone === 'success' && 'border-brand-line bg-brand-soft text-brand',
+        'nm-auth-alert',
+        tone === 'warning' && 'nm-auth-alert-error',
+        tone === 'success' && 'nm-auth-alert-success',
         className,
       )}
     >
-      {/* Inherits the tone's colour rather than forcing `foreground`, which
-          would put near-black text on the amber panel and break it. */}
-      {title && <p className="mb-1 font-semibold">{title}</p>}
-      {children}
+      <div>
+        {title && <strong style={{ display: 'block' }}>{title}</strong>}
+        {children}
+      </div>
     </div>
   );
 }

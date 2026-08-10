@@ -39,6 +39,147 @@
 }
 
 /**
+ * ── The bridge: old token utilities, new palette ───────────────────────────
+ *
+ * Seven public pages — blog, privacy, terms, cookies, help, docs, status — are
+ * long-form documents built from the previous design system's Tailwind
+ * utilities (`text-copy-2`, `bg-surface`, `border-hairline`, `text-display-2`).
+ * Their content is real, carefully written, and in the case of the three legal
+ * pages contains clauses that should not be retyped by anyone who is not a
+ * lawyer. Rewriting their markup to swap class names would have risked all of
+ * that for a colour change.
+ *
+ * Those utilities resolve through custom properties. Re-pointing the properties
+ * inside `.nm-public` re-colours every one of them at once, so the documents
+ * inherit the uploaded palette without a single line of their markup changing —
+ * and they inherit the typeface already, from the wrapper.
+ *
+ * Scoped, so the authenticated application still reads the originals at
+ * `:root`. This is the same mechanism `.phase1` used, pointed at the new
+ * system.
+ */
+.nm-public {
+  --nm-n-0: var(--nm-bg);
+  --nm-n-1: var(--nm-bg-subtle);
+  --nm-n-2: var(--nm-bg-inset);
+  --nm-n-3: var(--nm-neutral-3);
+  --nm-n-4: var(--nm-neutral-4);
+  --nm-n-5: var(--nm-neutral-5);
+  --nm-n-6: var(--nm-neutral-6);
+  --nm-n-7: var(--nm-neutral-7);
+  --nm-n-8: var(--nm-ink-subtle);
+  --nm-n-9: var(--nm-ink-muted);
+  --nm-n-10: var(--nm-neutral-10);
+  --nm-n-11: var(--nm-ink);
+
+  --background: var(--nm-bg);
+  --foreground: var(--nm-ink);
+  --card: var(--nm-bg-raised);
+  --card-foreground: var(--nm-ink);
+  --muted: var(--nm-bg-inset);
+  --muted-foreground: var(--nm-ink-muted);
+  --secondary: var(--nm-bg-inset);
+  --secondary-foreground: var(--nm-ink);
+  --border: var(--nm-border);
+  --input: var(--nm-border-strong);
+  --ring: var(--nm-accent);
+
+  --ink: var(--nm-ink);
+  --ink-hover: var(--nm-neutral-10);
+  --ink-fg: var(--nm-bg);
+  --brand: var(--nm-accent);
+  --brand-hover: var(--nm-accent-hover);
+  --brand-fg: var(--nm-ink-on-accent);
+  --brand-soft: var(--nm-accent-soft);
+  --brand-line: var(--nm-accent-2);
+  --surface: var(--nm-bg-subtle);
+  --surface-2: var(--nm-bg-inset);
+  --hairline: var(--nm-border);
+  --hairline-strong: var(--nm-border-strong);
+}
+
+/**
+ * ── Auth screens: shadcn controls, uploaded appearance ─────────────────────
+ *
+ * The four auth pages carry logic that is genuinely worth protecting — four
+ * distinguished sign-in failures, blur-then-reveal validation, a resend call,
+ * non-enumerating reset copy, and a full-document navigation after login
+ * because the session cookie is httpOnly. Rewriting their markup to swap class
+ * names would have put all of that at risk for a visual change.
+ *
+ * So the controls keep their components and pick up the uploaded appearance
+ * from here instead. Scoped to `.nm-public`, so the identical components in the
+ * authenticated application are untouched.
+ *
+ * `:where()` keeps these at zero specificity, which matters: a caller passing
+ * `className` to override something must still win, and Tailwind utilities on
+ * the element must still win. This sets the base, not the last word.
+ */
+.nm-public :where(input[type='text'], input[type='email'], input[type='password'], input[type='tel'], input[type='url'], input[type='search'], input:not([type]), textarea, select) {
+  width: 100%;
+  font-family: var(--nm-font-sans);
+  font-size: var(--nm-text-sm);
+  color: var(--nm-ink);
+  background: var(--nm-bg);
+  border: 1px solid var(--nm-border-strong);
+  border-radius: var(--nm-radius-md);
+  padding: 0 var(--nm-space-3);
+  min-height: 44px;
+  transition: border-color var(--nm-dur-fast) var(--nm-ease),
+    box-shadow var(--nm-dur-fast) var(--nm-ease);
+}
+.nm-public :where(textarea) {
+  padding: var(--nm-space-3);
+  min-height: 120px;
+  resize: vertical;
+}
+.nm-public :where(input, textarea, select):hover {
+  border-color: var(--nm-neutral-5);
+}
+.nm-public :where(input, textarea, select):focus-visible {
+  outline: none;
+  border-color: var(--nm-accent);
+  box-shadow: var(--nm-focus-ring);
+}
+.nm-public :where(input, textarea)::placeholder {
+  color: var(--nm-ink-subtle);
+}
+.nm-public :where(input[aria-invalid='true'], textarea[aria-invalid='true']) {
+  border-color: var(--nm-danger);
+}
+
+/**
+ * The auth screens' primary action.
+ *
+ * `.bg-ink` is the Tailwind utility the `cta` button variant is built from, so
+ * these need a class more than it has to win — hence the descendant selector
+ * rather than `:where()`. Confined to `.nm-public`, and the public pages
+ * themselves use `nm-btn`, so nothing else is in range.
+ */
+.nm-public .bg-ink {
+  background: var(--nm-accent) !important;
+  color: var(--nm-ink-on-accent) !important;
+  border-radius: var(--nm-radius-md);
+  box-shadow: var(--nm-shadow-sm);
+  font-family: var(--nm-font-sans);
+  font-weight: var(--nm-weight-semibold);
+}
+.nm-public .bg-ink:hover:not(:disabled) {
+  background: var(--nm-accent-hover) !important;
+}
+.nm-public .bg-ink:disabled {
+  opacity: 0.45;
+}
+
+/* Checkboxes keep their own sizing — the rule above would stretch them. */
+.nm-public :where(input[type='checkbox'], input[type='radio']) {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  accent-color: var(--nm-accent);
+}
+
+/**
  * The photography component renders `next/image` with `fill`, which needs a
  * positioned ancestor with a resolved height. The uploaded layout styles size
  * the wrapper and expect a plain `<img>` inside it, so the figure is stretched
