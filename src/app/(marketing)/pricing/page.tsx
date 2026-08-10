@@ -240,7 +240,15 @@ export default function PricingPage() {
                   <div className="nm-price-card-name">{plan.name}</div>
                   <div className="nm-price-card-desc">{plan.desc}</div>
                   <div className="nm-price-card-amount">
-                    <span className="nm-price-card-amount-val">{plan.price}</span>
+                    {/* A price that is a word takes the smaller of the two
+                        sizes — see `.nm-price-card-amount-val-word`. */}
+                    <span
+                      className={`nm-price-card-amount-val ${
+                        /^[^\d]/.test(plan.price) ? 'nm-price-card-amount-val-word' : ''
+                      }`.trim()}
+                    >
+                      {plan.price}
+                    </span>
                     <span className="nm-price-card-amount-unit">{plan.unit}</span>
                   </div>
                   <div className="nm-price-card-desc" style={{ marginTop: 'calc(-1 * var(--nm-space-2))' }}>
@@ -259,7 +267,11 @@ export default function PricingPage() {
                     className={buttonClass(
                       plan.featured ? 'primary' : 'secondary',
                       'lg',
-                      'nm-price-card-cta nm-auth-submit',
+                      // `nm-auth-submit` was here too. It is an auth-screen
+                      // class — `margin-top` plus `width: 100%` — and the width
+                      // is the only part this needed, which `nm-price-card-cta`
+                      // now sets itself.
+                      'nm-price-card-cta',
                     )}
                   >
                     {plan.cta}

@@ -271,6 +271,39 @@
   }
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Pricing — craft pass
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── The plan buttons were not centring their labels ────────────────────────
+
+   `.nm-price-card-cta` sets `display: block`, which overrides the
+   `inline-flex` that `.nm-btn` relies on — so `justify-content: center` had
+   nothing to centre and the label fell back to `text-align: start`. All three
+   plan buttons rendered with their text jammed against the left edge.
+
+   On the page where a visitor decides whether to pay, three misaligned buttons
+   is the detail that makes the rest look unconsidered. `flex` restores the
+   centring; the full width is what `display: block` was there for. */
+
+.nm-public .nm-price-card-cta {
+  display: flex;
+  width: 100%;
+}
+
+/* ── The Enterprise price is a word, not a number ───────────────────────────
+
+   `.nm-price-card-amount-val` is 60px mono, tuned for "$29". "Custom" in the
+   same slot measures 203px against their 102px — twice the width, so it
+   crowded its own qualifier into a wrap and broke the baseline the three cards
+   otherwise share. A word does not need the size a figure does; it is not
+   being compared digit for digit. */
+
+.nm-public .nm-price-card-amount-val-word {
+  font-size: var(--nm-text-3xl);
+  letter-spacing: var(--nm-tracking-tight);
+}
+
 /* ── /blog — the three destinations ─────────────────────────────────────────
 
    A card grid rather than a list because the three are alternatives, not
