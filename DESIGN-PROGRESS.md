@@ -43,13 +43,49 @@ docs 0 │ help 0 │ status 0 │ blog 0        ← still the previous website
 3. **`b84b583` — `/blog`.** The last page importing
    `components/marketing/section`. Content unchanged; system swapped.
 
-### Not done — the remaining Tier 1
+4. **`e147e32` — `/help`.** Not just un-migrated: 118 articles that do not
+   exist, counted precisely per category, plus six "popular articles" with
+   view counts linking to `href="#"`, a 24/7 support claim, a Live Chat button
+   with no handler, and a search field over zero articles.
 
-`/docs`, `/help`, `/status` are still at **0** adoption. They import `Card`,
-`Badge`, `Breadcrumb`, `Separator` and `ScrollArea` from `@/components/ui/*`.
-`/docs` is the largest at 657 lines and 99 Tailwind class attributes. These
-are the next unit, and they are the last of the "looks like an older version
-of the website" problem.
+5. **`a370303` — `/status`.** The most dangerous page on the site. Six services
+   with invented uptime to two decimal places, four complete incidents with
+   issued identifiers and minute-by-minute update logs, one service showing
+   "Degraded Performance" for an incident that was not happening — all dated
+   January 2024, so it was decaying from a fabrication into "this product is
+   abandoned". There is now no number anywhere on the page.
+
+6. **`ec001c7` — `/docs`.** An API reference for an API that does not exist,
+   for a company that no longer exists: 17 `NexusCorp` references across ten
+   copyable code blocks, `npm install @nexuscorp/sdk`, `api.nexuscorp.io` as
+   the base URL, a bearer-token format with no API-key table behind it, and
+   full OAuth and webhook sections for infrastructure that is not built.
+
+### Adoption after the pass
+
+```
+landing 241 │ features 89 │ pricing 87 │ solutions 79 │ about 77
+help 43 │ docs 40 │ status 38 │ contact 37 │ blog 31
+privacy 22 │ terms 17 │ cookies 16
+```
+
+The four zeros are gone, and **no `@/components/ui/*` import remains anywhere
+on the public or auth surface**. `/docs`, `/help` and `/status` also became
+server components again — they only held client state for a sidebar, a search
+box and a tab strip — so every public route prerenders static.
+
+### Not done
+
+- **The already-converted pages have not had a second craft pass.** Landing,
+  features, pricing, about, solutions and contact were migrated and are
+  internally consistent, but this pass did not re-examine their section
+  rhythm, copy or composition. They are the remaining upside.
+- **Two core-application files still say NexusCorp** —
+  `components/layout/header.tsx` and `components/modules/support/index.tsx`.
+  Left alone deliberately: out of the public-surface scope fence.
+- **`CONTENT-NEEDED.md` gained three entries in spirit** and should be updated:
+  a real status feed, help-centre articles, and an API reference. Each page
+  says in its header where its content is tracked.
 
 Note for whoever picks this up: not everything in `components/marketing/` is
 legacy. `capabilities.ts`, `media.tsx` and `use-session-peek.ts` are data and
