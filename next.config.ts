@@ -57,6 +57,25 @@ const SECURITY_HEADERS = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+
+  /**
+   * Normally `.next`. Overridable so two dev servers can run against this
+   * checkout at once.
+   *
+   * Next 16 takes an exclusive lock on `<distDir>/dev/lock` for the lifetime of
+   * `next dev`, in both Turbopack and webpack. The lock is per *directory*, not
+   * per port — so a second session running `next dev` here exits immediately
+   * with "Unable to acquire lock" however many ports are free, and no amount of
+   * `-p` or `autoPort` changes that. Giving the second server its own dist
+   * directory gives it its own lock.
+   *
+   * Unset in every normal path, so `npm run build`, the standalone copy step
+   * and CI are all untouched and still read and write `.next`.
+   *
+   *   NEXT_DIST_DIR=.next-preview npx next dev
+   */
+  distDir: process.env.NEXT_DIST_DIR || '.next',
+
   typescript: {
     // Previously true, which let type errors through the build and turned them
     // into runtime failures on the host. The project typechecks cleanly, so
