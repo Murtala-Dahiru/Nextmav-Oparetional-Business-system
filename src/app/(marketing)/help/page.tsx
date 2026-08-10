@@ -1,280 +1,231 @@
-'use client';
-
-import { useState } from 'react';
+import Link from 'next/link';
+import type { Metadata } from 'next';
 import {
-  Search,
-  Rocket,
-  UserCircle,
-  Users,
-  FolderKanban,
-  CreditCard,
-  Puzzle,
-  ShieldCheck,
-  Code2,
-  BookOpen,
-  ArrowRight,
-  MessageCircle,
   Mail,
-  ChevronRight,
+  MessageSquare,
+  Activity,
+  BookOpen,
+  ArrowUpRight,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Container, Eyebrow, Section } from '@/components/public/ui';
+import { ScrollReveal } from '@/components/public/client';
+import { LIVE_CAPABILITIES } from '@/components/marketing/capabilities';
+import { SUPPORT_EMAIL } from '@/lib/public-contact';
 
-const categories = [
-  {
-    icon: Rocket,
-    title: 'Getting Started',
-    description: 'Learn the basics and set up your workspace in minutes.',
-    articleCount: 12,
-    color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-  },
-  {
-    icon: UserCircle,
-    title: 'Account',
-    description: 'Manage your profile, preferences, and account settings.',
-    articleCount: 8,
-    color: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
-  },
-  {
-    icon: Users,
-    title: 'CRM',
-    description: 'Contacts, leads, deals, and pipeline management.',
-    articleCount: 24,
-    color: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
-  },
-  {
-    icon: FolderKanban,
-    title: 'Projects',
-    description: 'Task boards, time tracking, and project planning.',
-    articleCount: 18,
-    color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-  },
-  {
-    icon: CreditCard,
-    title: 'Billing',
-    description: 'Invoices, subscriptions, payment methods, and receipts.',
-    articleCount: 10,
-    color: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
-  },
-  {
-    icon: Puzzle,
-    title: 'Integrations',
-    description: 'Connect with third-party tools and customize workflows.',
-    articleCount: 15,
-    color: 'bg-orange-500/10 text-orange-600 dark:text-orange-400',
-  },
-  {
-    icon: ShieldCheck,
-    title: 'Security',
-    description: 'SSO, 2FA, audit logs, and data protection policies.',
-    articleCount: 9,
-    color: 'bg-teal-500/10 text-teal-600 dark:text-teal-400',
-  },
-  {
-    icon: Code2,
-    title: 'API',
-    description: 'REST API reference, webhooks, and developer guides.',
-    articleCount: 22,
-    color: 'bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400',
-  },
-];
+export const metadata: Metadata = {
+  title: 'Help centre — NextMav',
+  description:
+    'How to get an answer about NextMav: support, the documentation, and what the platform covers today.',
+};
 
-const popularArticles = [
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  Help centre
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ *  ── What was here ───────────────────────────────────────────────────────
+ *
+ *  A knowledge base for a knowledge base that does not exist. Specifically:
+ *
+ *    · **118 articles**, counted precisely — "12 articles", "24 articles",
+ *      "22 articles" — across eight categories. None of them exist.
+ *    · **Six "popular articles" with view counts.** "Configuring SSO with
+ *      SAML 2.0 — 7.2k views". Every one linked to `href="#"`. A view count is
+ *      a particularly bad fabrication because it is a claim about other
+ *      customers, not just about the product.
+ *    · **"Our support team is available 24/7."** A service-level commitment,
+ *      on a marketing page, that nothing backs.
+ *    · **A "Live Chat" button with no handler**, beside an "Email Support"
+ *      button with no handler.
+ *    · **A search field** over a body of zero articles, which returns nothing
+ *      for every query anybody will ever type into it.
+ *    · Eight category tints — emerald, sky, violet, amber, rose, orange, teal,
+ *      fuchsia — none of them from the palette.
+ *
+ *  The article counts are the giveaway. Nobody invents "9 articles" for a
+ *  category that has content; you invent it for one that does not, because a
+ *  round number would look invented. The precision is the tell.
+ *
+ *  ── What replaced it ────────────────────────────────────────────────────
+ *
+ *  The pattern `/blog` already established here: an honest page beats a
+ *  convincing one, and an empty state with a next action costs a visitor five
+ *  seconds while a fabrication costs the credibility of every other page.
+ *
+ *  So this page answers the question somebody actually arrives with — "how do
+ *  I get an answer" — with the three routes that genuinely work today, and
+ *  then says what the platform covers so a reader can tell whether their
+ *  question is even in scope. The capability list is not written for this
+ *  page: it is `LIVE_CAPABILITIES`, the same vetted source the landing,
+ *  features and solutions pages read from, so it cannot drift from what the
+ *  product actually ships.
+ *
+ *  The search field is gone rather than restyled. A control that looks like it
+ *  works and returns nothing is worse than its own absence — and removing it
+ *  took the last piece of state off the page, so this is a server component
+ *  again and prerenders static, which is what the marketing layout's note asks
+ *  every page here to be.
+ *
+ *  When articles exist, this page grows a search field and a category index.
+ *  Tracked in `CONTENT-NEEDED.md`.
+ */
+
+const routes = [
   {
-    title: 'How to set up your first project',
-    category: 'Getting Started',
-    views: '12.4k',
+    icon: Mail,
+    label: 'Email support',
+    value: SUPPORT_EMAIL,
+    href: `mailto:${SUPPORT_EMAIL}`,
+    desc: 'For customers with a technical problem. Include your organisation name and, if you have one, the request id shown on the error.',
   },
   {
-    title: 'Creating and managing deal pipelines',
-    category: 'CRM',
-    views: '9.8k',
+    icon: MessageSquare,
+    label: 'Talk to us',
+    value: 'Contact form',
+    href: '/contact',
+    desc: 'Evaluating the platform, or a question that is not a fault. Goes to the same people.',
   },
   {
-    title: 'Configuring SSO with SAML 2.0',
-    category: 'Security',
-    views: '7.2k',
-  },
-  {
-    title: 'Using the REST API for custom integrations',
-    category: 'API',
-    views: '6.5k',
-  },
-  {
-    title: 'Understanding billing and invoicing',
-    category: 'Billing',
-    views: '5.9k',
-  },
-  {
-    title: 'Managing team roles and permissions',
-    category: 'Account',
-    views: '5.1k',
+    icon: Activity,
+    label: 'System status',
+    value: 'Live availability',
+    href: '/status',
+    desc: 'Check here first if something is slow or unreachable — an incident will be posted before support can answer individually.',
   },
 ];
 
 export default function HelpCenterPage() {
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const filteredCategories = searchQuery
-    ? categories.filter(
-        (c) =>
-          c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          c.description.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : categories;
-
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
-      {/* Hero */}
-      <section className="text-center max-w-2xl mx-auto mb-16">
-        <Badge variant="secondary" className="mb-4">
-          <BookOpen className="size-3 mr-1" />
-          Help Center
-        </Badge>
-        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-4">
-          How can we{' '}
-          <span className="text-emerald-500">help you</span>?
-        </h1>
-        <p className="text-lg text-muted-foreground mb-8">
-          Search our knowledge base or browse by category to find the answers you need.
-        </p>
-        <div className="relative max-w-lg mx-auto">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            placeholder="Search the help centre"
-            className="pl-10 h-12 text-base rounded-xl border-gray-200 dark:border-gray-800 focus-visible:ring-emerald-500/30 focus-visible:border-emerald-500"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            aria-label="Search help articles"
-          />
+    <>
+      <section className="nm-page-hero nm-page-hero-dark">
+        <div className="nm-page-hero-bg">
+          <div className="nm-grid-bg nm-grid-bg-dark" />
+          <div className="nm-hero-glow nm-hero-glow-1" />
+          <div className="nm-hero-glow nm-hero-glow-2" />
         </div>
-      </section>
-
-      {/* Categories Grid */}
-      <section aria-labelledby="categories-heading" className="mb-20">
-        <h2 id="categories-heading" className="sr-only">Help Categories</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {filteredCategories.map((category) => {
-            const Icon = category.icon;
-            return (
-              <Card
-                key={category.title}
-                className="group cursor-pointer hover:border-emerald-500/50 hover:shadow-md hover:shadow-emerald-500/5 transition-all py-0 gap-0"
-              >
-                <CardHeader className="pb-0">
-                  <div className={`rounded-lg w-10 h-10 flex items-center justify-center mb-3 ${category.color} group-hover:scale-110 transition-transform`}>
-                    <Icon className="size-5" />
-                  </div>
-                  <CardTitle className="text-base group-hover:text-emerald-500 transition-colors flex items-center justify-between">
-                    {category.title}
-                    <ChevronRight className="size-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <CardDescription className="leading-relaxed mb-3">
-                    {category.description}
-                  </CardDescription>
-                  <Badge variant="secondary" className="text-xs">
-                    {category.articleCount} articles
-                  </Badge>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-        {filteredCategories.length === 0 && (
-          <div className="text-center py-16">
-            <Search className="size-10 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">
-              No categories match &ldquo;{searchQuery}&rdquo;
-            </p>
-          </div>
-        )}
-      </section>
-
-      {/* Popular Articles */}
-      <section aria-labelledby="popular-heading" className="mb-20">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 id="popular-heading" className="text-2xl font-bold tracking-tight">
-              Popular Articles
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Most viewed articles by our community
-            </p>
-          </div>
-          <Badge variant="outline" className="hidden sm:flex items-center gap-1.5">
-            <BookOpen className="size-3" />
-            118 total articles
-          </Badge>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {popularArticles.map((article) => (
-            <a
-              key={article.title}
-              href="#"
-              className="group flex items-start gap-4 rounded-xl border border-gray-200 dark:border-gray-800 p-4 hover:border-emerald-500/50 hover:shadow-sm hover:shadow-emerald-500/5 transition-all"
-            >
-              <div className="rounded-lg bg-emerald-500/10 w-9 h-9 flex items-center justify-center shrink-0 mt-0.5">
-                <BookOpen className="size-4 text-emerald-500" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-medium group-hover:text-emerald-500 transition-colors line-clamp-1">
-                  {article.title}
-                </h3>
-                <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
-                  <Badge variant="secondary" className="text-[11px] px-1.5 py-0">
-                    {article.category}
-                  </Badge>
-                  <span>{article.views} views</span>
-                </div>
-              </div>
-              <ArrowRight className="size-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-1 shrink-0" />
-            </a>
-          ))}
-        </div>
-      </section>
-
-      {/* Contact Support CTA */}
-      <section aria-labelledby="support-heading">
-        <div className="rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 p-8 sm:p-12 text-center">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <MessageCircle className="size-6 text-white" />
-            <h2 id="support-heading" className="text-2xl sm:text-3xl font-bold text-white">
-              Still need help?
-            </h2>
-          </div>
-          <p className="text-emerald-100 mb-8 max-w-lg mx-auto">
-            Our support team is available 24/7 to assist you. Get in touch and we&apos;ll resolve your issue as quickly as possible.
+        <Container className="nm-page-hero-content">
+          <Eyebrow>Help centre</Eyebrow>
+          <h1 className="nm-page-hero-title nm-page-hero-title-dark">
+            How to get an <span className="nm-serif">answer.</span>
+          </h1>
+          <p className="nm-page-hero-sub nm-page-hero-sub-dark">
+            The written guides are still being put together. Until they are
+            here, these are the three routes that will actually get you a reply
+            — and below them, what the platform covers today.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Button
-              size="lg"
-              className="bg-white text-emerald-600 hover:bg-emerald-50 h-11 px-6"
-            >
-              <MessageCircle className="size-4 mr-2" />
-              Live Chat
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="border-white/30 text-white hover:bg-white/10 h-11 px-6 bg-transparent"
-            >
-              <Mail className="size-4 mr-2" />
-              Email Support
-            </Button>
-          </div>
-        </div>
+        </Container>
       </section>
-    </div>
+
+      {/* ── The three routes that work ───────────────────────────────────── */}
+      <Section aria-labelledby="routes">
+        <Container width="narrow">
+          <ScrollReveal>
+            <h2 id="routes" className="nm-heading">
+              Getting in touch
+            </h2>
+          </ScrollReveal>
+
+          <ScrollReveal delay={1}>
+            <div className="nm-contact-channels" style={{ marginTop: 'var(--nm-space-8)' }}>
+              {routes.map(({ icon: Icon, label, value, href, desc }) => (
+                <Link key={label} href={href} className="nm-contact-channel nm-help-route">
+                  <span className="nm-contact-channel-icon">
+                    <Icon size={18} aria-hidden="true" />
+                  </span>
+                  <span className="nm-contact-channel-content">
+                    <span className="nm-contact-channel-label">{label}</span>
+                    <span className="nm-contact-channel-val">{value}</span>
+                    <span className="nm-contact-channel-desc">{desc}</span>
+                  </span>
+                  <ArrowUpRight
+                    size={16}
+                    aria-hidden="true"
+                    className="nm-help-route-arrow"
+                  />
+                </Link>
+              ))}
+            </div>
+          </ScrollReveal>
+        </Container>
+      </Section>
+
+      {/* ── What the platform covers ─────────────────────────────────────── */}
+      <Section
+        size="sm"
+        aria-labelledby="covers"
+        className="nm-section-surface"
+      >
+        <Container>
+          <ScrollReveal>
+            <h2 id="covers" className="nm-heading">
+              What the platform covers
+            </h2>
+            <p className="nm-help-lede">
+              {/*
+                No article counts. The honest version of "how much is there" is
+                the list of what the product does, which is a fact rather than
+                an inventory of documents nobody has written.
+              */}
+              Every area below is live today. If your question is about one of
+              them, support can answer it — if it is about something not listed,
+              the answer is probably &ldquo;not yet&rdquo;, and{' '}
+              <Link href="/features" className="nm-link-accent">
+                the features page
+              </Link>{' '}
+              says which of those are planned.
+            </p>
+          </ScrollReveal>
+
+          <div className="nm-help-grid">
+            {LIVE_CAPABILITIES.map((capability, i) => (
+              <ScrollReveal
+                key={capability.id}
+                delay={(Math.min(i, 4) % 3) as 0 | 1 | 2}
+              >
+                <div className="nm-card nm-help-card">
+                  <capability.icon
+                    size={18}
+                    aria-hidden="true"
+                    style={{ color: 'var(--nm-accent)' }}
+                  />
+                  <h3 className="nm-help-card-title">{capability.name}</h3>
+                  <p className="nm-help-card-body">{capability.summary}</p>
+                </div>
+              </ScrollReveal>
+            ))}
+          </div>
+        </Container>
+      </Section>
+
+      {/* ── Documentation ────────────────────────────────────────────────── */}
+      <Section size="sm" aria-labelledby="docs">
+        <Container width="narrow">
+          <ScrollReveal>
+            <div className="nm-card-inset nm-help-docs">
+              <span className="nm-contact-channel-icon" aria-hidden="true">
+                <BookOpen size={18} />
+              </span>
+              <div>
+                <h2 id="docs" className="nm-help-docs-title">
+                  Looking for the technical detail?
+                </h2>
+                <p className="nm-help-docs-body">
+                  The documentation covers how the modules fit together, the
+                  data model, and the API.
+                </p>
+                <Link
+                  href="/docs"
+                  className="nm-arrow-link"
+                  style={{ marginTop: 'var(--nm-space-4)' }}
+                >
+                  Read the documentation
+                  <ArrowUpRight size={14} aria-hidden="true" />
+                </Link>
+              </div>
+            </div>
+          </ScrollReveal>
+        </Container>
+      </Section>
+    </>
   );
 }

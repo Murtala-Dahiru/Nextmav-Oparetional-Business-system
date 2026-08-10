@@ -75,3 +75,118 @@
   background: var(--nm-bg-subtle);
   border-top: 1px solid var(--nm-border);
 }
+
+/* ── /help ──────────────────────────────────────────────────────────────────
+
+   The three routes reuse `.nm-contact-channel`, which was written as a static
+   row on the contact page. Here each row is a link, so it needs the affordance
+   the static version never had: the whole row responds, and an arrow appears
+   on the side you are travelling towards.
+
+   The indent on hover is the system's own idiom — `.nm-contact-channel`
+   already declares `transition: padding-left`, and nothing was ever using it. */
+
+.nm-public .nm-help-route {
+  align-items: center;
+  text-decoration: none;
+}
+
+.nm-public .nm-help-route:hover {
+  padding-left: var(--nm-space-3);
+}
+
+/* The arrow is always present, not revealed on hover.
+   A reveal-on-hover affordance does not exist at all on touch, and `(hover:
+   none)` is the wrong thing to gate it on — it reports the *primary* pointer,
+   so a laptop with a touchscreen still gets `hover: hover` and a hidden
+   control. Measured: at a 375px touch viewport the gated arrow computed
+   `opacity: 0`. Always visible, strengthened on hover, is one behaviour rather
+   than two, and it cannot be wrong on a device nobody tested. */
+.nm-public .nm-help-route-arrow {
+  flex-shrink: 0;
+  margin-left: auto;
+  align-self: center;
+  color: var(--nm-ink-subtle);
+  opacity: 0.4;
+  transition:
+    opacity var(--nm-dur-base) var(--nm-ease),
+    color var(--nm-dur-base) var(--nm-ease),
+    transform var(--nm-dur-base) var(--nm-ease);
+}
+
+.nm-public .nm-help-route:hover .nm-help-route-arrow,
+.nm-public .nm-help-route:focus-visible .nm-help-route-arrow {
+  opacity: 1;
+  color: var(--nm-accent);
+  transform: translate(2px, -2px);
+}
+
+.nm-public .nm-help-lede {
+  margin-top: var(--nm-space-4);
+  max-width: 640px;
+  font-size: var(--nm-text-base);
+  color: var(--nm-ink-muted);
+  line-height: var(--nm-leading-relaxed);
+}
+
+/* `auto-fit` rather than a fixed column count: the capability list is read
+   from `LIVE_CAPABILITIES` and its length changes as modules ship. A hardcoded
+   `repeat(4, 1fr)` leaves a ragged final row the day an eleventh goes live. */
+.nm-public .nm-help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--nm-space-4);
+  margin-top: var(--nm-space-8);
+}
+
+.nm-public .nm-help-grid > * {
+  height: 100%;
+}
+
+.nm-public .nm-help-card {
+  height: 100%;
+  background: var(--nm-bg);
+}
+
+.nm-public .nm-help-card-title {
+  margin-top: var(--nm-space-3);
+  font-size: var(--nm-text-base);
+  font-weight: var(--nm-weight-semibold);
+  letter-spacing: var(--nm-tracking-tight);
+  color: var(--nm-ink);
+}
+
+.nm-public .nm-help-card-body {
+  margin-top: var(--nm-space-2);
+  font-size: var(--nm-text-sm);
+  color: var(--nm-ink-muted);
+  line-height: var(--nm-leading-relaxed);
+}
+
+.nm-public .nm-help-docs {
+  display: flex;
+  gap: var(--nm-space-5);
+  align-items: flex-start;
+}
+
+.nm-public .nm-help-docs-title {
+  font-size: var(--nm-text-lg);
+  font-weight: var(--nm-weight-semibold);
+  letter-spacing: var(--nm-tracking-tight);
+  color: var(--nm-ink);
+}
+
+.nm-public .nm-help-docs-body {
+  margin-top: var(--nm-space-2);
+  font-size: var(--nm-text-sm);
+  color: var(--nm-ink-muted);
+  line-height: var(--nm-leading-relaxed);
+  max-width: 52ch;
+}
+
+@media (max-width: 560px) {
+  .nm-public .nm-help-docs {
+    flex-direction: column;
+    gap: var(--nm-space-4);
+  }
+}
