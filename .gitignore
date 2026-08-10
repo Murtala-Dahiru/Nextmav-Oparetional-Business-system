@@ -69,3 +69,6 @@ test.txt
 # ─── Local runtime artifacts ──────────────────────────────────────────────
 dev.out.log
 *.tsbuildinfo
+
+# Isolated dist dir for verification builds — see scripts/dev-preview.mjs
+/.next-build/

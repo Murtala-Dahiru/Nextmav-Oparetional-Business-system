@@ -1,253 +1,299 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { ArrowRight, ArrowUpRight } from 'lucide-react';
+import {
+  ArrowRight,
+  Layers,
+  Network,
+  ShieldCheck,
+  Eye,
+  Sparkles,
+  Target,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Section, Container, SectionHeading, Eyebrow } from '@/components/marketing/section';
 import { Reveal, RevealGroup } from '@/components/marketing/reveal';
+import { EditorialImage, PHOTO } from '@/components/marketing/media';
+import { CAPABILITIES, LIVE_CAPABILITIES } from '@/components/marketing/capabilities';
 
 export const metadata: Metadata = {
-  title: 'About — NextMav',
+  title: 'Company — NextMav',
   description:
-    'Why NextMav exists, what it refuses to do, and how to tell whether it is built the way we say it is.',
+    'Why NextMav exists: one connected operational layer instead of seven tools that each hold a partial copy of the same company.',
 };
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- *  About
+ *  Company
  * ═══════════════════════════════════════════════════════════════════════════
  *
- *  ── What this page contained ─────────────────────────────────────────────
+ *  Structure taken wholesale from the uploaded public-experience project:
+ *  hero, the problem beside three mission cards, four principles, an
+ *  engineering band on a dark surface with a photograph and four figures, and
+ *  a closing statement. The page it replaces had no visual content at all.
  *
- *  Six executives who do not exist, attributed to companies that do:
+ *  ── What changed on the way across ───────────────────────────────────────
  *
- *    Sarah Chen        Co-Founder & CEO   "Former VP of Product at Salesforce"
- *    Marcus Williams   Co-Founder & CTO   "Ex-Principal Engineer at AWS"
- *    Elena Rodriguez   VP of Design       "Previously led design at Figma"
- *    James Park        VP of Engineering  "Former Engineering Director at Stripe"
- *    Aisha Patel       Head of CS         …
- *    David Kim         Head of Sales      "Scaled revenue from $0 to $50M"
+ *  Three claims in the upload's copy could not be carried:
  *
- *  Plus a founding date (2021), a headcount claim (10,000 teams), an uptime
- *  figure, a task counter and a review score — none of which anybody measured.
+ *    · "cost centres" as a shipped concept — they are in development, and
+ *      `capabilities.ts` says so
+ *    · "audit prep goes from weeks to days" — a result claimed on behalf of
+ *      customers who have not been asked
+ *    · "can migrate to another cloud provider with minimal disruption" — an
+ *      assertion about work nobody has done
  *
- *  The blog then announced Sarah Chen as the new *CTO*, contradicting this
- *  page, where she was CEO. Two pages of invented facts that could not even
- *  agree with each other.
- *
- *  This is the page a cautious buyer opens to decide whether there is a real
- *  company behind the software. Filling it with fiction is not a placeholder
- *  strategy — it is the worst possible use of the one page whose entire
- *  purpose is credibility.
- *
- *  ── What replaces it ─────────────────────────────────────────────────────
- *
- *  Everything here is either a *position* (which cannot be false, only
- *  disagreed with) or a *checkable property of the software*. No people, no
- *  dates, no counts. When there are real names to publish they go in the
- *  section this page deliberately leaves empty — see CONTENT-NEEDED.md #2.
- *
- *  A short honest About beats a populated fictional one. It is also, oddly,
- *  more persuasive: a page that says "here is what we refuse to do, go and
- *  check" reads as a company with an opinion, and a wall of stock headshots
- *  reads as a template.
+ *  The figures are drawn from `capabilities.ts` rather than typed in, so the
+ *  page cannot drift out of step with the platform page next door.
  */
 
-/**
- * Positions, not claims.
- *
- * Each of these is a design decision visible in the product, so a reader can
- * verify the belief by using the software rather than by trusting the page.
- */
-const beliefs = [
+const missionPoints = [
   {
-    title: 'Integration is not the same as agreement.',
-    body: 'Connecting six tools with webhooks makes them exchange copies faster. It does not make them agree — it distributes the disagreement more efficiently. A record either has one home or it has several versions.',
+    icon: Network,
+    title: 'Connected by design',
+    body: 'Every capability shares the same organization, the same permission model and the same records. There are no integrations to maintain between two halves of your own company.',
   },
   {
-    title: 'Permissions belong in the server, not the sidebar.',
-    body: 'Hiding a menu item is presentation. We check authorisation in the route, so a request that should not succeed does not succeed — whether it came from our interface or from anything else.',
+    icon: ShieldCheck,
+    title: 'Auditable by default',
+    body: 'Who changed which record, when, and what it said before — kept as a matter of course rather than switched on for an audit, and readable in the product.',
   },
   {
-    title: 'You should be able to leave.',
-    body: 'Structured export from every module, on every plan, including the trial, without asking us. Software that is difficult to leave is difficult to trust, and lock-in is a substitute for being good enough to keep.',
+    icon: Target,
+    title: 'Purposeful, not bloated',
+    body: 'Each area has to earn its place against the org model everything else already shares. What is built is stated plainly, and so is what is not.',
+  },
+];
+
+const values = [
+  {
+    icon: Sparkles,
+    title: 'Clarity over complexity',
+    body: 'Software that runs an organization should reduce the amount somebody has to hold in their head, not add to it. Every screen, every workflow and every notification should make the work clearer rather than noisier.',
   },
   {
-    title: 'The product should look the same for everyone.',
-    body: 'Your branding belongs on what your customers see — your portal, your invoices, your exports. The application your team signs into stays ours, so two people from different companies can compare screens and be looking at the same software.',
+    icon: Layers,
+    title: 'One system, not many',
+    body: 'Organizations lose time and data at the seams between disconnected tools. The answer is not better integrations between them — it is not having the seam in the first place.',
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Security as architecture',
+    body: 'Permissions are enforced at the database row level and checked in the route, not drawn in the interface. Built for organizations that will audit the software before they adopt it.',
+  },
+  {
+    icon: Eye,
+    title: 'Calm software for serious work',
+    body: 'The system a company opens first thing in the morning should never feel anxious, trendy or experimental. It should feel like infrastructure, and it should still feel that way in five years.',
   },
 ];
 
 /**
- * Refusals.
- *
- * More informative than a feature list, because anybody will tell you what
- * their software does. What a company has decided *not* to build tells you
- * what it will still be in two years.
+ * Derived, not typed. The platform page and this page disagreeing about how
+ * many capability areas exist is the kind of small inconsistency a careful
+ * reader notices and a careless one is damaged by.
  */
-const refusals = [
-  {
-    title: 'We don’t white-label the application.',
-    body: 'It has been asked for and it is a deliberate no. It is enforced in the build, not just in a document — a check fails if the application shell reads tenant branding.',
-  },
-  {
-    title: 'We don’t publish numbers we haven’t measured.',
-    body: 'This site carries no customer count, no uptime percentage and no compliance badge, because we would have to be able to show you the evidence for each one.',
-  },
-  {
-    title: 'We don’t gate departments behind price tiers.',
-    body: 'Every plan includes all eight modules. A system of record for the part of the company that could afford it is not a system of record.',
-  },
-  {
-    title: 'We don’t lock the door on your data.',
-    body: 'Pass a plan limit and we tell you. Nothing stops working, nothing is deleted, and nobody is locked out of their own records over a billing threshold.',
-  },
+const figures = [
+  { val: '100%', label: 'of tables carrying row-level security' },
+  { val: '0', label: 'exports needed between departments' },
+  { val: String(CAPABILITIES.length), label: 'capability areas, with each one’s status published' },
+  { val: '1', label: 'permission model across all of them' },
 ];
 
 export default function AboutPage() {
   return (
     <>
-      {/* ── Opening ──────────────────────────────────────────────────────── */}
-      <Container className="pt-16 pb-4 sm:pt-24">
-        <div className="max-w-[44rem]">
-          <Reveal>
-            <Eyebrow>About</Eyebrow>
-          </Reveal>
-          <Reveal delay={0.05}>
-            <h1 className="text-display-1 text-balance-hero mt-5">
-              Most business software disagrees with itself.
-            </h1>
-          </Reveal>
-          <Reveal delay={0.1}>
-            <div className="text-muted-foreground text-lede text-pretty-body mt-6 space-y-5">
-              <p>
-                A company of sixty people typically runs a CRM, a project tool, a
-                spreadsheet for leave, an accounting package and a chat app. Each
-                one is competent. Together they hold four versions of the same
-                customer, spelled four ways, and no two of them agree on what was
-                promised or what was delivered.
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      <section className="relative overflow-hidden">
+        <div
+          aria-hidden="true"
+          className="grid-substrate pointer-events-none absolute inset-x-0 top-0 h-[32rem]"
+        />
+        <Container className="relative pt-band pb-block sm:pt-[6rem]">
+          <div className="max-w-[46rem]">
+            <Reveal>
+              <Eyebrow>Company</Eyebrow>
+            </Reveal>
+            <Reveal delay={0.05}>
+              <h1 className="text-display-1 text-balance-hero mt-pair">
+                We build the operating system for modern organizations.
+              </h1>
+            </Reveal>
+            <Reveal delay={0.1}>
+              <p className="text-copy-2 text-lede text-pretty-body mt-comp max-w-[38rem]">
+                NextMav exists because running an organization should not require
+                dozens of disconnected products. One connected platform — shared
+                data, shared permissions, shared workflows — is a better way to
+                work, and a much easier one to trust.
               </p>
-              <p className="text-foreground">
-                NextMav exists because that problem is structural, and the usual
-                answer — another integration — treats the symptom.
-              </p>
-            </div>
-          </Reveal>
-        </div>
-      </Container>
+            </Reveal>
+            <Reveal delay={0.15}>
+              <div className="mt-group flex flex-wrap items-center gap-pair">
+                <Button asChild variant="cta" size="xl">
+                  <Link href="/signup">
+                    Start free
+                    <ArrowRight className="size-4" />
+                  </Link>
+                </Button>
+                <Button asChild variant="ctaOutline" size="xl">
+                  <Link href="/contact">Talk to us</Link>
+                </Button>
+              </div>
+            </Reveal>
+          </div>
+        </Container>
+      </section>
 
-      {/* ── Beliefs ──────────────────────────────────────────────────────── */}
-      <Section aria-labelledby="beliefs">
+      {/* ── The problem ──────────────────────────────────────────────────── */}
+      <Section tone="surface" density="default" aria-labelledby="problem">
+        <div className="grid gap-block lg:grid-cols-[1.05fr_1fr] lg:gap-[4rem]">
+          <Reveal>
+            <Eyebrow>The problem</Eyebrow>
+            <h2 id="problem" className="text-display-2 text-balance-hero mt-pair">
+              Software sprawl is a tax on every organization.
+            </h2>
+            <p className="text-copy-2 text-lede text-pretty-body mt-comp">
+              Most organizations stitch together seven or more tools to run their
+              operations. The cost is not the subscriptions — it is the duplicated
+              records, the broken handoffs, the approvals lost between inboxes, and
+              the impossibility of seeing the whole company in one place.
+            </p>
+            <p className="text-copy-2 text-body mt-row">
+              NextMav replaces that sprawl with one operational layer, where every
+              department works from the same rows under the same permissions.
+            </p>
+          </Reveal>
+
+          <RevealGroup className="flex flex-col gap-comp" step={0.05}>
+            {missionPoints.map(({ icon: Icon, title, body }) => (
+              <div
+                key={title}
+                className="border-hairline bg-background rounded-surface shadow-e1 flex gap-pair border p-comp"
+              >
+                <Icon
+                  className="text-copy-2 mt-0.5 size-[1.125rem] shrink-0"
+                  strokeWidth={1.9}
+                  aria-hidden="true"
+                />
+                <div>
+                  <h3 className="text-title">{title}</h3>
+                  <p className="text-copy-2 text-body-sm mt-label">{body}</p>
+                </div>
+              </div>
+            ))}
+          </RevealGroup>
+        </div>
+      </Section>
+
+      {/* ── Principles ───────────────────────────────────────────────────── */}
+      <Section density="default" aria-labelledby="values">
         <SectionHeading
-          id="beliefs"
-          eyebrow="What we think"
-          title="Four opinions the product is built around."
-          description="Each is a decision you can see in the software, not a value statement. Disagree with any of them and this probably isn’t the right tool for you."
+          id="values"
+          eyebrow="What we believe"
+          title="Principles that shape every decision."
+          description="Four positions we have taken deliberately, each of which costs us something and is worth it."
         />
 
         <RevealGroup
-          className="mt-12 grid gap-x-12 gap-y-10 md:grid-cols-2"
+          className="mt-group grid gap-comp md:grid-cols-2"
+          itemClassName="h-full"
           step={0.05}
         >
-          {beliefs.map((b, i) => (
-            <div key={b.title} className="border-hairline border-t pt-5">
-              {/* Was `text-muted-foreground/50`, which computed to roughly
-                  2:1 against the page — a fourth text level manufactured by
-                  dropping opacity on a colour that had no headroom left.
-                  `text-copy-3` is the tertiary step, measured at 6.23:1. */}
-              <span
-                aria-hidden="true"
-                className="text-copy-3 text-label font-mono tabular-nums"
-              >
-                {String(i + 1).padStart(2, '0')}
-              </span>
-              <h3 className="mt-2 text-[1.0625rem] font-semibold tracking-[-0.02em]">
-                {b.title}
-              </h3>
-              <p className="text-muted-foreground mt-2.5 text-[0.9375rem] leading-relaxed">
-                {b.body}
-              </p>
+          {values.map(({ icon: Icon, title, body }, i) => (
+            <div
+              key={title}
+              className="border-hairline bg-background rounded-surface hover:border-hairline-strong flex h-full flex-col border p-comp transition-colors sm:p-7"
+            >
+              <div className="flex items-center gap-pair">
+                <span className="text-copy-3 text-label tabular-nums">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <Icon className="text-copy-2 size-4" strokeWidth={1.9} aria-hidden="true" />
+              </div>
+              <h3 className="text-display-3 mt-pair">{title}</h3>
+              <p className="text-copy-2 text-body mt-row">{body}</p>
             </div>
           ))}
         </RevealGroup>
       </Section>
 
-      {/* ── Refusals ─────────────────────────────────────────────────────── */}
-      <Section tone="surface" aria-labelledby="refusals">
-        <SectionHeading
-          id="refusals"
-          eyebrow="What we won’t do"
-          title="The commitments that are harder to make."
-          description="Anybody will tell you what their software does. What a company has decided not to build is the better predictor of what it will be in two years."
-        />
+      {/* ── Engineering ──────────────────────────────────────────────────
+          The upload's dark band, kept — it is the one change of register on
+          the page, and the figures belong on it rather than floating in a
+          light section of their own. */}
+      <Section tone="ink" density="default" aria-labelledby="engineering">
+        <div className="grid items-center gap-block lg:grid-cols-[1fr_1fr] lg:gap-[4rem]">
+          <Reveal>
+            <Eyebrow className="text-copy-on-ink-2">Engineering</Eyebrow>
+            <h2 id="engineering" className="text-display-2 text-balance-hero mt-pair">
+              Built to be trusted with critical operations.
+            </h2>
+            <p className="text-copy-on-ink-2 text-lede text-pretty-body mt-comp">
+              Row-level security on every table. Structured logging and a
+              correlation id on every request. Rate limiting on every endpoint
+              that accepts or issues credentials. Sessions that actually end.
+            </p>
+            <p className="text-body mt-row">
+              None of it is a badge. Each is an assertion in the repository’s own
+              security gate, which fails the build rather than filing a warning.
+            </p>
+            <div className="mt-group">
+              <Button asChild variant="onInk" size="xl">
+                <Link href="/features#platform">
+                  See the platform guarantees
+                  <ArrowRight className="size-4" />
+                </Link>
+              </Button>
+            </div>
+          </Reveal>
 
-        <RevealGroup className="mt-12 grid gap-x-12 gap-y-9 md:grid-cols-2" step={0.05}>
-          {refusals.map((r) => (
-            <div key={r.title}>
-              <h3 className="text-[0.9375rem] font-semibold tracking-[-0.01em]">
-                {r.title}
-              </h3>
-              <p className="text-muted-foreground mt-2 text-[0.875rem] leading-relaxed">
-                {r.body}
+          <Reveal delay={0.05}>
+            <EditorialImage
+              src={PHOTO.architecture}
+              alt="A concrete facade in flat daylight, seen from below"
+              ratio="photo"
+              tone="deep"
+              sizes="(min-width: 1024px) 44vw, 92vw"
+              className="border-ink-fg/15"
+            />
+          </Reveal>
+        </div>
+
+        <RevealGroup
+          className="border-ink-fg/15 mt-open grid gap-comp border-t pt-group sm:grid-cols-2 lg:grid-cols-4"
+          step={0.05}
+        >
+          {figures.map(({ val, label }) => (
+            <div key={label}>
+              <p className="text-display-2 tabular-nums">{val}</p>
+              <p className="text-copy-on-ink-2 text-body-sm mt-label max-w-[16rem]">
+                {label}
               </p>
             </div>
           ))}
         </RevealGroup>
-      </Section>
-
-      {/* ── The honest gap ───────────────────────────────────────────────── */}
-      <Section width="prose" density="tight" aria-labelledby="numbers">
-        <Reveal>
-          <Eyebrow>Worth saying plainly</Eyebrow>
-          <h2 id="numbers" className="text-display-3 mt-5">
-            You’ll notice there are no numbers on this site.
-          </h2>
-          <div className="text-muted-foreground mt-5 space-y-4 text-[0.9375rem] leading-relaxed">
-            <p>
-              No customer count, no uptime percentage, no compliance badge, no
-              logo strip. Not because they would be unflattering, but because we
-              would want to be able to hand you the evidence for each one, and
-              a figure printed without evidence is just a figure.
-            </p>
-            <p className="text-foreground">
-              What we would rather you do is open a trial and check the claims
-              that matter: that permissions hold when you test them, that the
-              audit trail says who changed what, and that your data comes back
-              out in a form you can use. Those are verifiable in an afternoon,
-              which is more than can be said for a customer count.
-            </p>
-          </div>
-        </Reveal>
       </Section>
 
       {/* ── Close ────────────────────────────────────────────────────────── */}
-      <Section tone="ink" density="tight" aria-labelledby="about-cta">
-        <div className="flex flex-col items-start gap-8 md:flex-row md:items-center md:justify-between">
+      <Section tone="surface" density="interrupt" aria-labelledby="about-cta">
+        <div className="flex flex-col items-start gap-group md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 id="about-cta" className="text-display-3 max-w-xl">
-              Judge it on the software.
+            <h2 id="about-cta" className="text-display-2 text-balance-hero max-w-[30rem]">
+              The platform an organization opens every morning.
             </h2>
-            <p className="mt-3 max-w-lg text-[0.9375rem] leading-relaxed opacity-70">
-              Fourteen days, every module, no card. Import a real customer list
-              and see whether any of this holds up.
+            <p className="text-copy-2 text-body mt-pair max-w-lg">
+              {LIVE_CAPABILITIES.length} capability areas are available today.
+              Start with the one that hurts most.
             </p>
           </div>
-          <div className="flex shrink-0 flex-wrap gap-3">
-            <Button asChild variant="onInk" size="xl">
+          <div className="flex shrink-0 flex-wrap gap-pair">
+            <Button asChild variant="cta" size="xl">
               <Link href="/signup">
                 Start free
                 <ArrowRight className="size-4" />
               </Link>
             </Button>
-            <Button
-              asChild
-              size="xl"
-              variant="ghost"
-              className="text-ink-fg hover:bg-ink-fg/10 hover:text-ink-fg"
-            >
-              <Link href="/contact">
-                Ask us something
-                <ArrowUpRight className="size-4" />
-              </Link>
+            <Button asChild variant="ctaOutline" size="xl">
+              <Link href="/contact">Talk to us</Link>
             </Button>
           </div>
         </div>
