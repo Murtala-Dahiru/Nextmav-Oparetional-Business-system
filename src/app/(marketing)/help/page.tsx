@@ -88,9 +88,9 @@ const routes = [
   {
     icon: Activity,
     label: 'System status',
-    value: 'Live availability',
+    value: 'Incident policy',
     href: '/status',
-    desc: 'Check here first if something is slow or unreachable — an incident will be posted before support can answer individually.',
+    desc: 'How we communicate when a shared component is affected, and what to include when you report something.',
   },
 ];
 

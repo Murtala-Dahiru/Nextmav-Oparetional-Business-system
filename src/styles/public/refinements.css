@@ -190,3 +190,91 @@
     gap: var(--nm-space-4);
   }
 }
+
+/* ── /status ────────────────────────────────────────────────────────────────
+
+   The opening statement is a callout, not a card and not an alert. It is the
+   most important sentence on the page — "this reports nothing automatically" —
+   and it has to read as deliberate rather than as an apology, so it takes the
+   accent rule the system already uses for `.nm-callout` rather than a warning
+   colour. There is nothing wrong; there is simply nothing being measured. */
+
+.nm-public .nm-status-note {
+  display: flex;
+  gap: var(--nm-space-5);
+  align-items: flex-start;
+  padding: var(--nm-space-6);
+  background: var(--nm-bg-subtle);
+  border: 1px solid var(--nm-border);
+  border-left: 3px solid var(--nm-accent);
+  border-radius: var(--nm-radius-lg);
+}
+
+.nm-public .nm-status-note-icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--nm-radius-md);
+  background: var(--nm-accent-soft);
+  color: var(--nm-accent-6);
+}
+
+.nm-public .nm-status-note-title {
+  font-size: var(--nm-text-lg);
+  font-weight: var(--nm-weight-semibold);
+  letter-spacing: var(--nm-tracking-tight);
+  color: var(--nm-ink);
+}
+
+.nm-public .nm-status-note-body {
+  margin-top: var(--nm-space-3);
+  font-size: var(--nm-text-sm);
+  color: var(--nm-ink-muted);
+  line-height: var(--nm-leading-relaxed);
+}
+
+@media (max-width: 560px) {
+  .nm-public .nm-status-note {
+    flex-direction: column;
+    gap: var(--nm-space-4);
+  }
+}
+
+.nm-public .nm-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--nm-space-4);
+  margin-top: var(--nm-space-8);
+}
+
+@media (max-width: 860px) {
+  .nm-public .nm-status-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.nm-public .nm-status-grid > * {
+  height: 100%;
+}
+
+.nm-public .nm-status-card {
+  height: 100%;
+  background: var(--nm-bg);
+}
+
+.nm-public .nm-status-card-title {
+  margin-top: var(--nm-space-4);
+  font-size: var(--nm-text-base);
+  font-weight: var(--nm-weight-semibold);
+  letter-spacing: var(--nm-tracking-tight);
+  color: var(--nm-ink);
+}
+
+.nm-public .nm-status-card-body {
+  margin-top: var(--nm-space-2);
+  font-size: var(--nm-text-sm);
+  color: var(--nm-ink-muted);
+  line-height: var(--nm-leading-relaxed);
+}

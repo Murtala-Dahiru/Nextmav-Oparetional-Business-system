@@ -76,7 +76,7 @@ const meanwhile = [
   {
     icon: Activity,
     title: 'System status',
-    body: 'Live availability, and the written record of past incidents.',
+    body: 'How we communicate incidents, and where to report one.',
     href: '/status',
   },
 ];
