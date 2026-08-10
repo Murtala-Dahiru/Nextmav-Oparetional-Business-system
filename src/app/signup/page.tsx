@@ -311,7 +311,7 @@ function SignupForm() {
           >
             <Input
               id="signup-firstName"
-              placeholder="Alex"
+              placeholder=""
               value={formData.firstName}
               onChange={(e) => updateField('firstName', e.target.value)}
               onBlur={() => blur('firstName')}
@@ -330,7 +330,7 @@ function SignupForm() {
           >
             <Input
               id="signup-lastName"
-              placeholder="Morgan"
+              placeholder=""
               value={formData.lastName}
               onChange={(e) => updateField('lastName', e.target.value)}
               onBlur={() => blur('lastName')}
@@ -347,7 +347,7 @@ function SignupForm() {
             id="signup-email"
             type="email"
             inputMode="email"
-            placeholder="you@company.com"
+            placeholder=""
             value={formData.email}
             onChange={(e) => updateField('email', e.target.value)}
             onBlur={() => blur('email')}
@@ -370,7 +370,7 @@ function SignupForm() {
               <Input
                 id="signup-password"
                 type={showPassword ? 'text' : 'password'}
-                placeholder="Create a strong password"
+                placeholder=""
                 value={formData.password}
                 onChange={(e) => updateField('password', e.target.value)}
                 onBlur={() => blur('password')}
@@ -435,7 +435,7 @@ function SignupForm() {
           >
             <Input
               id="signup-organization"
-              placeholder="Harlow Manufacturing"
+              placeholder=""
               value={formData.organization}
               onChange={(e) => updateField('organization', e.target.value)}
               onBlur={() => blur('organization')}

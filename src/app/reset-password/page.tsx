@@ -119,7 +119,7 @@ export default function ResetPasswordPage() {
             <Input
               id="new-password"
               type={showPassword ? 'text' : 'password'}
-              placeholder="Enter new password"
+              placeholder=""
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -163,7 +163,7 @@ export default function ResetPasswordPage() {
             <Input
               id="confirm-password"
               type={showConfirm ? 'text' : 'password'}
-              placeholder="Repeat the new password"
+              placeholder=""
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required

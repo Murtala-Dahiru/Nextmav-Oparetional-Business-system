@@ -180,6 +180,136 @@
 }
 
 /**
+ * ── Radius discipline ──────────────────────────────────────────────────────
+ *
+ * Measured on the landing page: **eight distinct corner radii** in use at once
+ * — 4, 6, 10, 14, 20, 28, 999px and 50%. Every one of them is a token, so
+ * nothing was "wrong"; the scale simply offers more steps than a page can use
+ * coherently, and the result is that no two adjacent objects agree about how
+ * round a corner is. That reads as assembled rather than designed, and it is
+ * the single most visible inconsistency on the surface.
+ *
+ * Three steps and a pill is what the page actually needs: controls, cards, and
+ * the large framed objects. `xl`, `2xl` and `3xl` collapse onto `lg`, which
+ * removes 20px and 28px from circulation without touching a single component.
+ *
+ * Scoped, like everything else here — the application's own radii are its own.
+ */
+.nm-public {
+  --nm-radius-xl: var(--nm-radius-lg);
+  --nm-radius-2xl: var(--nm-radius-lg);
+  --nm-radius-3xl: var(--nm-radius-lg);
+
+  /* Same argument for elevation. `3xl` is a 120px blur — at that size a shadow
+     stops reading as depth and starts reading as fog, and it was only ever used
+     to make one card look more important than its neighbours, which is a job
+     for hierarchy rather than for blur. */
+  --nm-shadow-3xl: var(--nm-shadow-2xl);
+}
+
+/**
+ * ── Section rhythm ─────────────────────────────────────────────────────────
+ *
+ * The trust bar sat on white directly above the bento, which also sits on
+ * white — so the two ran together into one undifferentiated band and the
+ * marquee lost the separation it needs to read as a divider rather than as
+ * content. Putting it on the subtle ground gives the page an actual seam
+ * there, and restores the alternation the rest of the page keeps.
+ */
+.nm-public .nm-trust-bar {
+  background: var(--nm-bg-subtle);
+  border-block: 1px solid var(--nm-border);
+}
+
+/**
+ * ── Long-form documents ────────────────────────────────────────────────────
+ *
+ * Privacy, terms and cookies were the last pages still rendering raw utility
+ * classes — `text-3xl font-bold`, `prose prose-gray`, `bg-gray-50` — which is
+ * why they read as a different website from the one around them. Hardcoded
+ * greys in particular are the tell: every other surface here derives its
+ * neutrals from the palette.
+ *
+ * Their clauses are untouched. Only the classes changed, so the text a lawyer
+ * would need to review is byte-identical.
+ *
+ * The measure is capped at 68 characters. Legal text is the one content type
+ * people genuinely have to read closely, and a 100-character line is where
+ * they stop.
+ */
+.nm-public .nm-legal {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: var(--nm-space-24) var(--nm-container-pad) var(--nm-space-32);
+}
+@media (min-width: 768px) {
+  .nm-public .nm-legal {
+    padding-inline: var(--nm-container-pad-lg);
+  }
+}
+.nm-public .nm-legal-title {
+  font-family: var(--nm-font-sans);
+  font-size: var(--nm-text-4xl);
+  font-weight: var(--nm-weight-semibold);
+  letter-spacing: var(--nm-tracking-tighter);
+  line-height: var(--nm-leading-tight);
+  color: var(--nm-ink);
+  margin-bottom: var(--nm-space-3);
+}
+.nm-public .nm-legal-meta {
+  font-family: var(--nm-font-mono);
+  font-size: var(--nm-text-xs);
+  letter-spacing: var(--nm-tracking-wide);
+  text-transform: uppercase;
+  color: var(--nm-ink-subtle);
+  padding-bottom: var(--nm-space-8);
+  margin-bottom: var(--nm-space-12);
+  border-bottom: 1px solid var(--nm-border);
+}
+.nm-public .nm-legal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nm-space-12);
+  font-size: var(--nm-text-base);
+  line-height: var(--nm-leading-relaxed);
+  color: var(--nm-ink-muted);
+  max-width: 68ch;
+}
+.nm-public .nm-legal-body p + p {
+  margin-top: var(--nm-space-4);
+}
+.nm-public .nm-legal-h2 {
+  font-size: var(--nm-text-xl);
+  font-weight: var(--nm-weight-semibold);
+  letter-spacing: var(--nm-tracking-tight);
+  color: var(--nm-ink);
+  margin-bottom: var(--nm-space-4);
+}
+.nm-public .nm-legal-h3 {
+  font-size: var(--nm-text-base);
+  font-weight: var(--nm-weight-semibold);
+  color: var(--nm-ink);
+  margin: var(--nm-space-6) 0 var(--nm-space-2);
+}
+.nm-public .nm-legal-list {
+  list-style: disc;
+  padding-left: var(--nm-space-6);
+  margin-top: var(--nm-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--nm-space-2);
+}
+.nm-public .nm-legal-callout {
+  margin-top: var(--nm-space-4);
+  padding: var(--nm-space-4);
+  background: var(--nm-bg-subtle);
+  border: 1px solid var(--nm-border);
+  border-radius: var(--nm-radius-md);
+  color: var(--nm-ink-muted);
+  font-size: var(--nm-text-sm);
+}
+
+/**
  * The photography component renders `next/image` with `fill`, which needs a
  * positioned ancestor with a resolved height. The uploaded layout styles size
  * the wrapper and expect a plain `<img>` inside it, so the figure is stretched

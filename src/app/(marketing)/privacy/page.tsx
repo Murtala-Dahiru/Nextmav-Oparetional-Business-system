@@ -1,14 +1,16 @@
 'use client';
 
+import { PRIVACY_EMAIL } from '@/lib/public-contact';
+
 export default function PrivacyPage() {
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-2">Privacy Policy</h1>
-        <p className="text-sm text-muted-foreground mb-12">Last updated: January 1, 2025</p>
+    <div className="nm-legal">
+        <h1 className="nm-legal-title">Privacy Policy</h1>
+        <p className="nm-legal-meta">Last updated: January 1, 2025</p>
 
-        <div className="prose prose-gray dark:prose-invert max-w-none space-y-8 text-sm leading-relaxed">
+        <div className="nm-legal-body">
           <section>
-            <h2 className="text-xl font-semibold mb-3">1. Introduction</h2>
+            <h2 className="nm-legal-h2">1. Introduction</h2>
             <p>
               NextMav Inc. (&quot;NextMav,&quot; &quot;we,&quot; &quot;us,&quot; or
               &quot;our&quot;) is committed to protecting your privacy. This Privacy Policy
@@ -18,16 +20,16 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">2. Information We Collect</h2>
-            <h3 className="font-medium mt-4 mb-2">Information You Provide</h3>
-            <ul className="list-disc pl-6 space-y-1">
+            <h2 className="nm-legal-h2">2. Information We Collect</h2>
+            <h3 className="nm-legal-h3">Information You Provide</h3>
+            <ul className="nm-legal-list">
               <li>Account information: name, email address, password, organization name</li>
               <li>Profile information: job title, department, phone number, profile photo</li>
               <li>Business data: contacts, deals, projects, tasks, financial records, and other content you create within the Service</li>
               <li>Communications: support tickets, feedback, and correspondence with us</li>
             </ul>
-            <h3 className="font-medium mt-4 mb-2">Information Collected Automatically</h3>
-            <ul className="list-disc pl-6 space-y-1">
+            <h3 className="nm-legal-h3">Information Collected Automatically</h3>
+            <ul className="nm-legal-list">
               <li>Usage data: pages visited, features used, time spent, click patterns</li>
               <li>Device information: browser type, operating system, device type, IP address</li>
               <li>Log data: access times, referring URLs, and error logs</li>
@@ -35,9 +37,9 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">3. How We Use Your Information</h2>
+            <h2 className="nm-legal-h2">3. How We Use Your Information</h2>
             <p>We use the information we collect to:</p>
-            <ul className="list-disc pl-6 mt-2 space-y-1">
+            <ul className="nm-legal-list">
               <li>Provide, maintain, and improve the Service</li>
               <li>Process transactions and send related information</li>
               <li>Send technical notices, updates, security alerts, and support messages</li>
@@ -49,12 +51,12 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">4. Data Sharing & Disclosure</h2>
+            <h2 className="nm-legal-h2">4. Data Sharing & Disclosure</h2>
             <p>
               We do not sell your personal information. We may share your information in the
               following circumstances:
             </p>
-            <ul className="list-disc pl-6 mt-2 space-y-1">
+            <ul className="nm-legal-list">
               <li><strong>With your organization:</strong> Account administrators may access data within their organization&apos;s workspace as permitted by their role.</li>
               <li><strong>Service providers:</strong> We share information with trusted third-party service providers who assist us in operating the Service (e.g., hosting, analytics, payment processing).</li>
               <li><strong>Legal requirements:</strong> We may disclose information if required by law, regulation, legal process, or governmental request.</li>
@@ -63,7 +65,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">5. Data Security</h2>
+            <h2 className="nm-legal-h2">5. Data Security</h2>
             <p>
               We implement industry-standard security measures to protect your data, including
               encryption at rest and in transit, regular security audits, access controls, and
@@ -73,7 +75,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">6. Data Retention</h2>
+            <h2 className="nm-legal-h2">6. Data Retention</h2>
             <p>
               We retain your personal information for as long as your account is active or as
               needed to provide the Service. If you delete your account, we will delete your
@@ -83,9 +85,9 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">7. Your Rights</h2>
+            <h2 className="nm-legal-h2">7. Your Rights</h2>
             <p>Depending on your jurisdiction, you may have the right to:</p>
-            <ul className="list-disc pl-6 mt-2 space-y-1">
+            <ul className="nm-legal-list">
               <li>Access the personal information we hold about you</li>
               <li>Request correction of inaccurate data</li>
               <li>Request deletion of your personal information</li>
@@ -94,12 +96,12 @@ export default function PrivacyPage() {
               <li>Withdraw consent at any time (where processing is based on consent)</li>
             </ul>
             <p className="mt-2">
-              To exercise any of these rights, please contact us at privacy@example.com.
+              To exercise any of these rights, please contact us at {PRIVACY_EMAIL}.
             </p>
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">8. International Data Transfers</h2>
+            <h2 className="nm-legal-h2">8. International Data Transfers</h2>
             <p>
               If you are accessing the Service from outside the United States, please be aware
               that your information may be transferred to, stored, and processed in the United
@@ -109,7 +111,7 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">9. Children&apos;s Privacy</h2>
+            <h2 className="nm-legal-h2">9. Children&apos;s Privacy</h2>
             <p>
               The Service is not intended for children under the age of 13. We do not knowingly
               collect personal information from children under 13. If we become aware that we
@@ -119,13 +121,13 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">10. Contact Us</h2>
+            <h2 className="nm-legal-h2">10. Contact Us</h2>
             <p>
               If you have questions about this Privacy Policy, please contact us:
             </p>
-            <div className="mt-2 p-4 rounded-lg bg-gray-50 dark:bg-gray-900 text-muted-foreground">
+            <div className="nm-legal-callout">
               <p>NextMav Inc. — Privacy Team</p>
-              <p>Email: privacy@example.com</p>
+              <p>Email: {PRIVACY_EMAIL}</p>
             </div>
           </section>
         </div>

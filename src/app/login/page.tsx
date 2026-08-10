@@ -276,7 +276,7 @@ function LoginForm() {
             id="login-email"
             type="email"
             inputMode="email"
-            placeholder="you@company.com"
+            placeholder=""
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             onBlur={() => blur('email')}
@@ -302,7 +302,7 @@ function LoginForm() {
             <Input
               id="login-password"
               type={showPassword ? 'text' : 'password'}
-              placeholder="Enter your password"
+              placeholder=""
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onBlur={() => blur('password')}

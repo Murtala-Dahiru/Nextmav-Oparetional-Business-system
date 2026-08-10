@@ -189,7 +189,7 @@ export default function ContactPage() {
                       label="Your name"
                       name="name"
                       required
-                      placeholder="Jane Okafor"
+                      placeholder=""
                       autoComplete="name"
                       value={form.name}
                       onChange={set('name')}
@@ -201,7 +201,7 @@ export default function ContactPage() {
                       type="email"
                       name="email"
                       required
-                      placeholder="you@company.com"
+                      placeholder=""
                       autoComplete="email"
                       value={form.email}
                       onChange={set('email')}
@@ -213,7 +213,7 @@ export default function ContactPage() {
                     label="Organization"
                     name="org"
                     required
-                    placeholder="Your company"
+                    placeholder=""
                     autoComplete="organization"
                     value={form.org}
                     onChange={set('org')}
@@ -223,7 +223,7 @@ export default function ContactPage() {
                   <Input
                     label="How many people?"
                     name="size"
-                    placeholder="e.g. 50–200"
+                    placeholder="Approximate headcount"
                     value={form.size}
                     onChange={set('size')}
                   />

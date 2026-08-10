@@ -149,7 +149,7 @@ export default function HelpCenterPage() {
         <div className="relative max-w-lg mx-auto">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
-            placeholder="Search for articles, guides, and tutorials..."
+            placeholder="Search the help centre"
             className="pl-10 h-12 text-base rounded-xl border-gray-200 dark:border-gray-800 focus-visible:ring-emerald-500/30 focus-visible:border-emerald-500"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}

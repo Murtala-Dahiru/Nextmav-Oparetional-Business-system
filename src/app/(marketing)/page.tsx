@@ -146,9 +146,14 @@ function HeroProductMock() {
         <div className="nm-mock-sidebar">
           <div className="nm-mock-brand">
             <div className="nm-mock-logo" />
-            {/* Says what it is. A frame that declares itself a demo can hold
-                illustrative figures; one that names a company is a claim. */}
-            <span className="nm-mock-org">Demo workspace</span>
+            {/* The product's own chrome, not a customer's name.
+                This read "Demo workspace" — honest, but the word "demo" on the
+                first screen of a marketing site suggests the software is a
+                prototype rather than that the figures are illustrative. The
+                workspace switcher showing the module the frame is open on says
+                the same thing about scope and nothing at all about who uses
+                it. */}
+            <span className="nm-mock-org">Operations</span>
           </div>
           <div className="nm-mock-nav">
             {[

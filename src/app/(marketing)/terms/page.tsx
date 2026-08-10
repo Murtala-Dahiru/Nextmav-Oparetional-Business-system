@@ -1,14 +1,16 @@
 'use client';
 
+import { LEGAL_EMAIL } from '@/lib/public-contact';
+
 export default function TermsPage() {
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-2">Terms of Service</h1>
-        <p className="text-sm text-muted-foreground mb-12">Last updated: January 1, 2025</p>
+    <div className="nm-legal">
+        <h1 className="nm-legal-title">Terms of Service</h1>
+        <p className="nm-legal-meta">Last updated: January 1, 2025</p>
 
-        <div className="prose prose-gray dark:prose-invert max-w-none space-y-8 text-sm leading-relaxed">
+        <div className="nm-legal-body">
           <section>
-            <h2 className="text-xl font-semibold mb-3">1. Acceptance of Terms</h2>
+            <h2 className="nm-legal-h2">1. Acceptance of Terms</h2>
             <p>
               By accessing or using the NextMav platform (&quot;Service&quot;), you agree to be
               bound by these Terms of Service (&quot;Terms&quot;). If you do not agree to these
@@ -24,7 +26,7 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">2. Description of Service</h2>
+            <h2 className="nm-legal-h2">2. Description of Service</h2>
             <p>
               NextMav provides a cloud-based business operating system that includes customer
               relationship management (CRM), project management, human resources management,
@@ -34,13 +36,13 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">3. User Accounts</h2>
+            <h2 className="nm-legal-h2">3. User Accounts</h2>
             <p>
               To use certain features of the Service, you must create an account. You are
               responsible for maintaining the confidentiality of your account credentials and for
               all activities that occur under your account. You agree to:
             </p>
-            <ul className="list-disc pl-6 mt-2 space-y-1">
+            <ul className="nm-legal-list">
               <li>Provide accurate, current, and complete information during registration</li>
               <li>Maintain and promptly update your account information</li>
               <li>Notify us immediately of any unauthorized use of your account</li>
@@ -49,7 +51,7 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">4. Subscription & Payments</h2>
+            <h2 className="nm-legal-h2">4. Subscription & Payments</h2>
             <p>
               The Service is offered on a subscription basis with various plan tiers. By
               subscribing, you authorize us to charge the applicable fees to your payment method.
@@ -64,9 +66,9 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">5. Acceptable Use</h2>
+            <h2 className="nm-legal-h2">5. Acceptable Use</h2>
             <p>You agree not to use the Service to:</p>
-            <ul className="list-disc pl-6 mt-2 space-y-1">
+            <ul className="nm-legal-list">
               <li>Violate any applicable laws or regulations</li>
               <li>Infringe upon the rights of any third party</li>
               <li>Distribute spam, malware, or other harmful content</li>
@@ -77,7 +79,7 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">6. Intellectual Property</h2>
+            <h2 className="nm-legal-h2">6. Intellectual Property</h2>
             <p>
               The Service and its original content (excluding content provided by users) remain
               the exclusive property of NextMav and its licensors. The Service is protected by
@@ -93,7 +95,7 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">7. Data Protection</h2>
+            <h2 className="nm-legal-h2">7. Data Protection</h2>
             <p>
               We take data protection seriously. Our collection and use of personal information
               in connection with the Service is as described in our Privacy Policy. By using the
@@ -103,7 +105,7 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">8. Limitation of Liability</h2>
+            <h2 className="nm-legal-h2">8. Limitation of Liability</h2>
             <p>
               In no event shall NextMav, its directors, employees, partners, agents, suppliers,
               or affiliates be liable for any indirect, incidental, special, consequential, or
@@ -113,7 +115,7 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">9. Termination</h2>
+            <h2 className="nm-legal-h2">9. Termination</h2>
             <p>
               We may terminate or suspend your account immediately, without prior notice, for
               conduct that we determine, in our sole discretion, violates these Terms, is harmful
@@ -122,13 +124,13 @@ export default function TermsPage() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold mb-3">10. Contact</h2>
+            <h2 className="nm-legal-h2">10. Contact</h2>
             <p>
               If you have any questions about these Terms, please contact us at:
             </p>
-            <div className="mt-2 p-4 rounded-lg bg-gray-50 dark:bg-gray-900 text-muted-foreground">
+            <div className="nm-legal-callout">
               <p>NextMav Inc.</p>
-              <p>Email: legal@example.com</p>
+              <p>Email: {LEGAL_EMAIL}</p>
             </div>
           </section>
         </div>

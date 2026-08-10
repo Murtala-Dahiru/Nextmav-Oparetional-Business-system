@@ -445,10 +445,10 @@ curl -X POST https://api.nexuscorp.io/oauth/token \\
                   language="json"
                   code={`{
   "data": {
-    "first_name": "Jane",
-    "last_name": "Cooper",
-    "email": "jane@example.com",
-    "company": "Acme Inc",
+    "first_name": "Amara",
+    "last_name": "Ekwueme",
+    "email": "a.ekwueme@northgate-logistics.com",
+    "company": "Northgate Logistics",
     "tags": ["vip", "enterprise"]
   }
 }`}
@@ -466,9 +466,9 @@ curl -X POST https://api.nexuscorp.io/oauth/token \\
   "data": [
     {
       "id": "con_abc123",
-      "first_name": "Jane",
-      "last_name": "Cooper",
-      "email": "jane@example.com",
+      "first_name": "Amara",
+      "last_name": "Ekwueme",
+      "email": "a.ekwueme@northgate-logistics.com",
       "created_at": "2024-01-15T09:30:00Z",
       "updated_at": "2024-01-15T09:30:00Z"
     }
@@ -604,9 +604,9 @@ curl -X POST https://api.nexuscorp.io/v1/webhooks \\
   "timestamp": "2024-01-15T09:30:00Z",
   "data": {
     "id": "con_xyz789",
-    "first_name": "Jane",
-    "last_name": "Cooper",
-    "email": "jane@example.com",
+    "first_name": "Amara",
+    "last_name": "Ekwueme",
+    "email": "a.ekwueme@northgate-logistics.com",
     "workspace_id": "ws_abc123"
   },
   "signature": "sha256=a1b2c3d4e5f6..."

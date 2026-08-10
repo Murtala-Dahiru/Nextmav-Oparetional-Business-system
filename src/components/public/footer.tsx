@@ -97,7 +97,7 @@ export function PublicFooter() {
               <input
                 id="nm-newsletter"
                 type="email"
-                placeholder="you@company.com"
+                placeholder="Work email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
