@@ -4,8 +4,12 @@
 anything else.**
 
 Scope fence: public marketing surface and auth screens only. The authenticated
-application (dashboard, modules, settings, onboarding, app shell) is **Phase 2
-and out of bounds**. If unsure whether something is in scope, it isn't.
+application (dashboard, modules, settings, onboarding, app shell) was **Phase 2
+and out of bounds** for every pass recorded in this file.
+
+> **That fence has since moved.** The application redesign began on 2026-08-22
+> and keeps its own log: [`APP-DESIGN-SYSTEM.md`](APP-DESIGN-SYSTEM.md). This
+> file remains the public surface's history and is still the scope fence for it.
 
 ---
 

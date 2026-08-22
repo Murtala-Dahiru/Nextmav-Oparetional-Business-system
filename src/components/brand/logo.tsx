@@ -73,17 +73,25 @@ export function LogoMark({ className }: { className?: string }) {
 export function Logo({
   className,
   markClassName,
+  /**
+   * The wordmark's own type, for the one surface that needs different type
+   * from the marketing header: the application sidebar, where the name sits
+   * above a 13px navigation column and has to be quieter than it is on a
+   * landing page. Additive — omitted, the mark renders exactly as before.
+   */
+  nameClassName,
   showName = true,
 }: {
   className?: string;
   markClassName?: string;
+  nameClassName?: string;
   showName?: boolean;
 }) {
   return (
     <span className={cn('inline-flex items-center gap-2.5', className)}>
       <LogoMark className={cn('size-7', markClassName)} />
       {showName && (
-        <span className="text-[0.975rem] font-semibold tracking-[-0.02em]">
+        <span className={cn('text-[0.975rem] font-semibold tracking-[-0.02em]', nameClassName)}>
           {PLATFORM.name}
         </span>
       )}

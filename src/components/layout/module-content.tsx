@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
@@ -109,24 +108,43 @@ const lazyModules: Record<ModuleId, React.LazyExoticComponent<React.ComponentTyp
 /* -------------------------------------------------------------------------- */
 function ModuleSkeleton() {
   return (
-    <div className="flex-1 overflow-auto p-6">
-      <div className="max-w-4xl space-y-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-4 w-72" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Skeleton className="h-28 rounded-lg" />
-          <Skeleton className="h-28 rounded-lg" />
-          <Skeleton className="h-28 rounded-lg" />
+    <div className="flex-1 overflow-auto p-4 md:p-6">
+      <div className="space-y-5">
+        <Skeleton className="h-7 w-44" />
+        {/* Four across, because that is what every module's first row of
+            figures actually is. A skeleton whose shape is nothing like the
+            screen it precedes makes the load feel longer than it is: the
+            layout jumps at the moment the content arrives. */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Skeleton className="h-24 rounded-lg" />
+          <Skeleton className="h-24 rounded-lg" />
+          <Skeleton className="h-24 rounded-lg" />
+          <Skeleton className="h-24 rounded-lg" />
         </div>
-        <Skeleton className="h-64 rounded-lg" />
+        <Skeleton className="h-72 rounded-lg" />
       </div>
     </div>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Module content wrapper with transitions                                   */
+/*  Module content                                                            */
 /* -------------------------------------------------------------------------- */
+/**
+ * ── Why the transition went ───────────────────────────────────────────────
+ *
+ * Switching modules ran an `AnimatePresence mode="wait"`: the outgoing module
+ * faded and slid up over 200ms, and only then did the incoming one begin its
+ * own 200ms fade. Four hundred milliseconds of animation on top of whatever
+ * the module itself costs to mount — on the single most repeated interaction
+ * in the product.
+ *
+ * Navigation is not a place to spend motion. A person clicking Finance is not
+ * admiring the transition, they are waiting for the invoice, and a shell that
+ * answers instantly is most of what "fast and expensive" actually feels like.
+ * The content appears when it is ready; the sidebar's own state change is the
+ * feedback that the click registered.
+ */
 export function ModuleContent() {
   const { activeModule } = useAppStore();
 
@@ -134,29 +152,26 @@ export function ModuleContent() {
   const moduleLabel = MODULES.find((m) => m.id === activeModule)?.label ?? 'Module';
 
   return (
-    <main className="flex-1 overflow-hidden flex flex-col">
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={activeModule}
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.2, ease: 'easeInOut' }}
-          className="flex-1 flex flex-col overflow-hidden"
-        >
-          <React.Suspense fallback={<ModuleSkeleton />}>
-            {/*
-              Keyed on the module so switching away from a crashed module and
-              back resets the boundary. Without the key the fallback persists
-              for the rest of the session and every other module the user
-              opens appears broken too.
-            */}
-            <ErrorBoundary key={activeModule} moduleLabel={moduleLabel}>
-              <ModuleComponent />
-            </ErrorBoundary>
-          </React.Suspense>
-        </motion.div>
-      </AnimatePresence>
+    <main
+      id="module-content"
+      // Focusable only as a skip-link destination: -1 keeps it out of the tab
+      // order while letting the browser move focus here, so the next Tab
+      // continues inside the module rather than back at the top of the page.
+      tabIndex={-1}
+      aria-label={moduleLabel}
+      className="flex flex-1 flex-col overflow-hidden outline-none"
+    >
+      <React.Suspense fallback={<ModuleSkeleton />}>
+        {/*
+          Keyed on the module so switching away from a crashed module and back
+          resets the boundary. Without the key the fallback persists for the
+          rest of the session and every other module the user opens appears
+          broken too.
+        */}
+        <ErrorBoundary key={activeModule} moduleLabel={moduleLabel}>
+          <ModuleComponent />
+        </ErrorBoundary>
+      </React.Suspense>
     </main>
   );
 }

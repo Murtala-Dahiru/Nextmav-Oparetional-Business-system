@@ -8,9 +8,14 @@ properties exposed to Tailwind v4 through `@theme inline`.
 this document, the number is wrong or this document is incomplete. Fix one of
 those, not the page.
 
-**Scope.** These tokens are additive. The application shell (Phase 2) still uses
-`emerald-*` literals in 44 files and is untouched. The two surfaces are
-deliberately different right now; reconciling them is Phase 2's first job.
+**Scope.** These tokens are additive, and this document describes the *public*
+surface only.
+
+> **Since 2026-08-22 the authenticated application has its own record:**
+> [`APP-DESIGN-SYSTEM.md`](APP-DESIGN-SYSTEM.md). The reconciliation described
+> below as "Phase 2's first job" has happened — the application's `:root` tokens
+> are now the warm ramp, and `emerald-*` is re-pointed at the brand. Read that
+> file before changing anything inside the product.
 
 ---
 

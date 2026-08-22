@@ -192,41 +192,120 @@
      everywhere is most of what "feels considered" actually is. */
   --ease-brand: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-brand-in: cubic-bezier(0.55, 0, 0.35, 1);
+
+  /* ── The accent, where 610 call sites already point ────────────────────
+     `emerald-*` is Tailwind's palette, and the authenticated application
+     reaches for it six hundred and ten times across thirteen modules: a
+     status pill, an active state, a positive figure, an avatar fallback. It
+     is the product's accent in everything but name.
+
+     The name is the problem. `PLATFORM.accent` and the whole public surface
+     are #2d9572; `emerald-500` is #10b981 — a brighter, cooler, more
+     saturated green that belongs to a framework rather than to this product,
+     and which fails AA on white at 2.5:1 while carrying text and icons that
+     need to be read.
+
+     Re-pointing the scale is how six hundred call sites move onto the brand
+     without six hundred edits — and, more to the point, without thirteen
+     modules being touched by a phase that is meant to be about navigation.
+     The ramp below is the public system's accent ramp, in the same lightness
+     order, so every existing pairing (a -600 label on a -50 fill, a -300 in
+     dark mode) keeps the relationship it was written to have.
+
+     As each module is redesigned it should name the token rather than the
+     Tailwind shade, and this block shrinks. It is a bridge, and it is
+     deliberately one line per shade so it is obvious what it does. */
+  --color-emerald-50: #edf8f4;
+  --color-emerald-100: #ddf0e7;
+  --color-emerald-200: #c8e8da;
+  --color-emerald-300: #6fc9ac;
+  --color-emerald-400: #3fae8a;
+  --color-emerald-500: #2d9572;
+  --color-emerald-600: #237a5d;
+  --color-emerald-700: #1a6149;
+  --color-emerald-800: #0f4a37;
+  --color-emerald-900: #0b3729;
+  --color-emerald-950: #06231a;
 }
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  /* ══ The application's palette ═════════════════════════════════════════
+     Every token below belongs to the authenticated product, and only to it.
+     The public surface reads none of them: `components/public/*` is
+     deliberately separate from `components/ui/*`, and `styles/public/*` is
+     scoped to `.nm-public`. So this block can change without touching a
+     marketing page — which is what makes it safe to change at all.
+
+     ── Why they moved ──────────────────────────────────────────────────────
+
+     They were shadcn's defaults: `oklch(1 0 0)` for the page, `oklch(0.97 0 0)`
+     for every fill, `oklch(0.556 0 0)` for every piece of secondary text.
+     Mathematically pure grey on pure white is the most reliable signature of
+     an untouched framework, and it was carrying every table, card and label
+     inside the product.
+
+     The values are now the warm neutral ramp the public surface already uses
+     (`styles/public/tokens.css`), so the signed-in application and the site
+     that sells it read as one product rather than two. The *roles* are
+     unchanged — `--muted` is still the recessed fill, `--card` still the
+     raised one — so no component had to be edited for this to apply, and
+     reverting is this block and nothing else.
+
+     Contrast, measured on `--background` (#faf9f7):
+       --foreground        #16140f   17.8:1
+       --muted-foreground  #5c544a    7.0:1   (was 4.6:1, with no headroom)
+       --border            #e8e5dd    non-text, a hairline
+     ══════════════════════════════════════════════════════════════════════ */
+
+  /* The page is a warm off-white, not #ffffff. Cards are the white, so a
+     raised surface has somewhere to be raised *to*; on a pure-white page a
+     white card can only be drawn with a border or a shadow. */
+  --background: #faf9f7;
+  --foreground: #16140f;
+  --card: #ffffff;
+  --card-foreground: #16140f;
+  --popover: #ffffff;
+  --popover-foreground: #16140f;
+  /* Ink, not the accent: the primary action is the darkest thing on screen.
+     A saturated primary button competing with a saturated badge and a
+     saturated chart is how a dense screen ends up with no focal point. */
+  --primary: #16140f;
+  --primary-foreground: #faf9f7;
+  --secondary: #f0ede6;
+  --secondary-foreground: #16140f;
+  --muted: #f3f1ec;
+  --muted-foreground: #5c544a;
+  --accent: #edeae2;
+  --accent-foreground: #16140f;
+  --destructive: #c0392b;
+  --border: #e8e5dd;
+  --input: #ddd9cf;
+  --ring: #2d9572;
+
+  /* Five series, in the order a chart should reach for them: the brand, then
+     gold, then two supporting hues distinguishable from both and from each
+     other without colour. */
+  --chart-1: #2d9572;
+  --chart-2: #d4a93f;
+  --chart-3: #2c6fa7;
+  --chart-4: #b8730a;
+  --chart-5: #6fc9ac;
+
+  /* Navigation chrome. One step recessed from the page, so the sidebar reads
+     as the frame around the work rather than as another panel of it. */
+  --sidebar: #f5f3ee;
+  --sidebar-foreground: #16140f;
+  --sidebar-primary: #16140f;
+  --sidebar-primary-foreground: #faf9f7;
+  /* The selected row. A neutral fill and not a tinted one, deliberately: the
+     accent's job in the shell is the mark and the unread counts, and a
+     coloured block behind the current module would outrank both. */
+  --sidebar-accent: #e7e3d9;
+  --sidebar-accent-foreground: #16140f;
+  --sidebar-border: #e5e1d8;
+  --sidebar-ring: #2d9572;
 
   /* ══ Phase 1 neutral ramp ══════════════════════════════════════════════
      Twelve steps on a single hue (255), each with one job. Chroma peaks in
@@ -308,37 +387,58 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* ══ The application's palette, dark ═══════════════════════════════════
+     Not an inversion of the light values. Three things are done deliberately
+     differently:
+
+       — The page is the darkest surface and panels rise from it, rather than
+         a mid-grey page with darker holes cut into it.
+       — Borders are opaque steps on the ramp, not white at 10%. An alpha
+         hairline over a card and the same hairline over the page are two
+         different colours, which is why panel edges used to disappear
+         wherever they crossed a fill.
+       — The accent is lifted. #2d9572 passes on white and reads as very
+         nearly black on #100e0b.
+
+     Contrast on `--background` (#100e0b):
+       --foreground        #f0ede8   16.9:1
+       --muted-foreground  #a8a094    7.5:1
+     ══════════════════════════════════════════════════════════════════════ */
+  --background: #100e0b;
+  --foreground: #f0ede8;
+  --card: #1a1813;
+  --card-foreground: #f0ede8;
+  --popover: #201d18;
+  --popover-foreground: #f0ede8;
+  /* Ink inverts. The token means "the strongest available fill", not "dark":
+     a near-black button on a near-black page is not a button. */
+  --primary: #f0ede8;
+  --primary-foreground: #16140f;
+  --secondary: #23211d;
+  --secondary-foreground: #f0ede8;
+  --muted: #23211d;
+  --muted-foreground: #a8a094;
+  --accent: #2a2721;
+  --accent-foreground: #f7f4ef;
+  --destructive: #e0685c;
+  --border: #2a2721;
+  --input: #363129;
+  --ring: #3fae8a;
+
+  --chart-1: #3fae8a;
+  --chart-2: #e8c97a;
+  --chart-3: #6ca8dd;
+  --chart-4: #d99a4e;
+  --chart-5: #6fc9ac;
+
+  --sidebar: #0b0a07;
+  --sidebar-foreground: #f0ede8;
+  --sidebar-primary: #f0ede8;
+  --sidebar-primary-foreground: #16140f;
+  --sidebar-accent: #23211d;
+  --sidebar-accent-foreground: #f7f4ef;
+  --sidebar-border: #23211d;
+  --sidebar-ring: #3fae8a;
 
   /* ══ Phase 1 ramp, dark ════════════════════════════════════════════════
      Not a mechanical inversion. Chroma is *raised* through the mid-tones,

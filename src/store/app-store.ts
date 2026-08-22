@@ -9,6 +9,15 @@ import { BACKGROUND_HEADER } from '@/lib/session-policy';
 import type { AccountState } from '@/lib/account-state';
 import { log, serializeError } from '@/lib/logger';
 
+/**
+ * Where the collapsed rail is remembered.
+ *
+ * Exported so the sidebar reads back the same key the store writes; two
+ * literals in two files is how a preference comes to be saved and never
+ * restored.
+ */
+export const SIDEBAR_COLLAPSED_KEY = 'nextmav:sidebar-collapsed';
+
 export interface CurrentUser {
   id: string;
   firstName: string;
@@ -419,7 +428,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ focusRequest: { module, type, id } });
   },
   clearFocusRequest: () => set({ focusRequest: null }),
-  setSidebarCollapsed: (c) => set({ sidebarCollapsed: c }),
+  /**
+   * Collapsing the rail is remembered.
+   *
+   * Written here rather than in the sidebar because three surfaces set it —
+   * the sidebar's own control, the `[` shortcut and the command palette — and
+   * a preference that only persists when it was changed from one of them is
+   * worse than one that never persists at all.
+   *
+   * The key is read back by the sidebar after mount; reading it during render
+   * would make the server's markup and the browser's disagree.
+   */
+  setSidebarCollapsed: (c) => {
+    set({ sidebarCollapsed: c });
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, c ? '1' : '0');
+    } catch {
+      // Private mode, or storage disabled. The preference is lost, nothing else.
+    }
+  },
   setSidebarOpen: (o) => set({ sidebarOpen: o }),
   setSearchOpen: (o) => set({ searchOpen: o }),
   

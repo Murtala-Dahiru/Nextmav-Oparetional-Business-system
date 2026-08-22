@@ -1,26 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Menu,
-  Search,
-  Bell,
-  LogOut,
-  User,
-  Settings,
-  ChevronDown,
-  ShieldCheck,
-  CheckCheck,
-  X,
-} from 'lucide-react';
+import { Menu, Search, Bell, CheckCheck, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
-import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
@@ -35,21 +19,44 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useRealtime } from '@/hooks/use-realtime';
-import { MODULES, ROLES } from '@/lib/constants';
+import { MODULES } from '@/lib/constants';
 import { formatRelativeTime } from '@/lib/format';
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  The top bar
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * ── What it now does, and what it stopped doing ───────────────────────────
+ *
+ * It carried seven things at once: a menu button, the module name at 14px, a
+ * workspace badge, a role pill, a search icon, a theme toggle, a notification
+ * bell and a user menu. Six of them were controls and one was information,
+ * which is the wrong ratio for the only strip of the product that is on
+ * screen at all times — and the one piece of information, "where am I", was
+ * the smallest thing in it.
+ *
+ * So the header answers exactly one question now — *which workspace, and
+ * which screen* — and holds the two controls that belong to the screen rather
+ * than to the person: find something, and see what has happened. Identity,
+ * role and appearance moved to the foot of the sidebar, where the person is
+ * described rather than the page.
+ *
+ * ── Which tenant facts may appear here ────────────────────────────────────
+ *
+ * The workspace's *name*, and nothing else. `security:check` names this file
+ * as the one place in `components/layout` that may read it — the sidebar
+ * carries the platform's identity, and a customer's logo in the chrome would
+ * mean every tenant sees a different product.
+ */
 export function Header() {
-  const isMobile = useIsMobile();
-  const router = useRouter();
   const {
     user,
     activeModule,
     sidebarOpen,
     setSidebarOpen,
     setSearchOpen,
-    logout,
     notifications,
     unreadTotal,
     isAuthenticated,
@@ -57,11 +64,10 @@ export function Header() {
     markNotificationsRead,
     dismissNotification,
     setActiveModule,
-    activeRole,
   } = useAppStore();
 
   const unreadCount = unreadTotal;
-  const currentModule = MODULES.find((m) => m.id === activeModule);
+  const currentModule = MODULES.find(m => m.id === activeModule);
 
   /**
    * Notifications arrive over the socket, and polling is now the fallback.
@@ -138,131 +144,124 @@ export function Header() {
     }
   }, [markNotificationsRead, setActiveModule]);
 
-  const userInitials = user
-    ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`.toUpperCase() || 'U'
-    : 'U';
-
-  const userDisplayName = user
-    ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email
-    : 'User';
-
-  const userRole = user?.role || 'employee';
   /**
    * Which workspace this is — the one piece of tenant identity the shell
-   * legitimately shows, and the reason it is a small outline badge next to the
-   * module title rather than the product's name in the corner.
+   * legitimately shows.
    *
    * No fallback to the platform name. It used to read
    * `user?.organizationName || 'NexusCorp'`, so a workspace whose name had not
    * resolved yet displayed the *product's* name as though it were the
    * customer's — the same conflation, in miniature, that put a tenant's logo in
-   * the sidebar. An unnamed workspace shows no badge, which is honest: there is
+   * the sidebar. An unnamed workspace shows no line, which is honest: there is
    * nothing to say yet.
    */
   const workspaceName = user?.organizationName?.trim() || '';
 
-  return (
-    <header className="flex items-center h-14 px-4 border-b border-border bg-card/80 backdrop-blur-sm shrink-0 gap-3">
-      {/* Mobile menu toggle */}
-      {isMobile && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              aria-label="Toggle navigation"
-            >
-              <Menu className="size-5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Toggle menu</TooltipContent>
-        </Tooltip>
-      )}
+  /**
+   * `⌘K` on a Mac, `Ctrl K` everywhere else — resolved after mount, because
+   * the server cannot know which, and a guess renders one and then the other.
+   */
+  const [shortcut, setShortcut] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setShortcut(/Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌘K' : 'Ctrl K');
+  }, []);
 
-      {/* Module title / breadcrumb */}
-      <div className="flex items-center gap-2 min-w-0">
-        <h1 className="text-sm font-semibold text-foreground truncate">
-          {currentModule?.label || 'Dashboard'}
+  return (
+    /* The padding matches what the modules use for their own content
+       (`p-4 md:p-6`), so the page title sits on the same left edge as the
+       first thing below it. Eight pixels out is not noticed as eight pixels —
+       it is noticed as the header belonging to a different screen. */
+    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-background px-4 md:px-6">
+      {/* Below `lg` the sidebar is a sheet, and this is what opens it. Gated
+          in CSS on the same breakpoint the sidebar uses — when this was gated
+          on a 768px JavaScript media query and the sidebar on a 1024px CSS
+          one, every tablet-width viewport had neither. */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="lg:hidden"
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        aria-label="Open navigation"
+      >
+        <Menu className="size-5" />
+      </Button>
+
+      {/* Where am I: the workspace, then the screen. Two lines rather than a
+          badge beside a 14px title — this is the product's only permanent
+          statement of place, and it should read as one. */}
+      <div className="min-w-0 flex-1">
+        {workspaceName && (
+          <p className="truncate text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">
+            {workspaceName}
+          </p>
+        )}
+        <h1 className="truncate text-[17px] font-semibold leading-tight tracking-[-0.018em] text-foreground">
+          {currentModule?.label ?? 'Dashboard'}
         </h1>
-        <AnimatePresence>
-          {workspaceName && (
-            <motion.span
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              className="hidden sm:inline-flex"
-            >
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal text-muted-foreground">
-                {workspaceName}
-              </Badge>
-            </motion.span>
-          )}
-        </AnimatePresence>
       </div>
 
-      {/* Spacer */}
-      <div className="flex-1" />
-
       {/*
-        Role indicator — read-only.
+        Search, as a field rather than a magnifying glass.
 
-        This was a "Switch Operating Role" dropdown that let anyone reassign
-        themselves to Owner and reveal Finance and HR in the sidebar. Role is
-        now resolved server-side from the session and displayed, not chosen.
+        It opens the command palette, which searches customers, projects,
+        tickets and invoices across every module the role may open — the most
+        capable thing in the product, and it was represented by a 16px icon
+        that gave no indication anything would happen. A field says what can
+        be typed into it and shows the shortcut that gets there faster.
       */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          {/*
-            Always visible: what you can and cannot do here depends entirely on
-            this, so it should never be the first thing dropped on a narrow
-            screen. Only the label collapses below `sm`, not the indicator.
-          */}
-          <span className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 text-xs font-semibold text-emerald-600 sm:px-2.5">
-            <ShieldCheck className="size-3.5 shrink-0" />
-            <span className="hidden sm:inline">
-              {ROLES.find((r) => r.id === activeRole)?.name || 'Employee'}
-            </span>
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" className="max-w-xs">
-          <p className="text-xs">
-            {ROLES.find((r) => r.id === activeRole)?.description ||
-              'Standard workplace access.'}
-          </p>
-          <p className="text-muted-foreground mt-1 text-[10px]">
-            Assigned by your administrator. Contact them to change it.
-          </p>
-        </TooltipContent>
-      </Tooltip>
+      <button
+        type="button"
+        onClick={() => setSearchOpen(true)}
+        // The shortcut is drawn in the field; this is the same fact for
+        // somebody who cannot see it.
+        aria-keyshortcuts="Control+K Meta+K"
+        className="hidden h-9 w-56 items-center gap-2 rounded-md border border-input bg-card px-2.5 text-left text-[13px] text-muted-foreground transition-colors hover:border-ring/40 hover:text-foreground md:flex lg:w-64"
+      >
+        <Search className="size-4 shrink-0" strokeWidth={1.75} />
+        <span className="flex-1 truncate">Search…</span>
+        {shortcut && (
+          <kbd className="shrink-0 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
+            {shortcut}
+          </kbd>
+        )}
+      </button>
 
-      {/* Search */}
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             variant="ghost"
             size="icon"
+            className="md:hidden"
             onClick={() => setSearchOpen(true)}
             aria-label="Search"
           >
             <Search className="size-4 text-muted-foreground" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Search (Ctrl+K)</TooltipContent>
+        <TooltipContent>Search</TooltipContent>
       </Tooltip>
-
-      {/* Theme */}
-      <ThemeToggle />
 
       {/* Notifications */}
       <DropdownMenu>
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative" aria-label="Notifications">
-                <Bell className="size-4 text-muted-foreground" />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative"
+                /* The count is in the label, not only in the dot: a badge that
+                   is announced as "Notifications, button" has told a screen
+                   reader user nothing about why it is there. */
+                aria-label={
+                  unreadCount > 0
+                    ? `Notifications, ${unreadCount} unread`
+                    : 'Notifications'
+                }
+              >
+                <Bell className="size-4 text-muted-foreground" strokeWidth={1.75} />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[10px] font-bold text-white">
+                  <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-foreground px-1 text-[10px] font-semibold leading-none tabular-nums text-background">
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
                 )}
@@ -271,9 +270,9 @@ export function Header() {
           </TooltipTrigger>
           <TooltipContent>Notifications</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="end" className="w-96 p-0">
+        <DropdownMenuContent align="end" sideOffset={8} className="w-[22rem] p-0 sm:w-96">
           <DropdownMenuLabel className="flex items-center justify-between px-3 py-2.5">
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-2 text-[13px]">
               Notifications
               {unreadCount > 0 && (
                 <Badge variant="secondary" className="text-[10px]">
@@ -300,10 +299,10 @@ export function Header() {
           <DropdownMenuSeparator className="my-0" />
 
           {notifications.length === 0 ? (
-            <div className="px-3 py-8 text-center">
+            <div className="px-3 py-10 text-center">
               <Bell className="mx-auto mb-2 size-5 text-muted-foreground/40" />
-              <p className="text-sm text-muted-foreground">You are all caught up</p>
-              <p className="mt-0.5 text-xs text-muted-foreground/70">
+              <p className="text-sm text-foreground">You are all caught up</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 Assignments, approvals and mentions appear here.
               </p>
             </div>
@@ -314,36 +313,36 @@ export function Header() {
                   key={notification.id}
                   onSelect={() => openNotification(notification)}
                   className={cn(
-                    'group flex flex-col items-start gap-1 border-b px-3 py-2.5 last:border-b-0 cursor-pointer',
-                    !notification.isRead && 'bg-emerald-500/5',
+                    'group flex cursor-pointer flex-col items-start gap-1 border-b px-3 py-2.5 last:border-b-0',
+                    !notification.isRead && 'bg-muted/50',
                   )}
                 >
-                  <div className="flex w-full items-start gap-2">
+                  <div className="flex w-full items-start gap-2.5">
                     {/* An unread marker that survives greyscale and does not
                         rely on the row tint alone. */}
                     <span
                       className={cn(
                         'mt-1.5 size-1.5 shrink-0 rounded-full',
-                        notification.isRead ? 'bg-transparent' : 'bg-emerald-500',
+                        notification.isRead ? 'bg-transparent' : 'bg-foreground',
                       )}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium leading-snug text-foreground">
+                      <p className="text-[13px] font-medium leading-snug text-foreground">
                         {notification.title}
                       </p>
                       {notification.body && (
-                        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                        <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">
                           {notification.body}
                         </p>
                       )}
-                      <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                      <p className="mt-1 text-[10px] uppercase tracking-[0.06em] text-muted-foreground/70">
                         {formatRelativeTime(notification.createdAt)}
                       </p>
                     </div>
                     <button
                       type="button"
                       aria-label="Dismiss"
-                      className="shrink-0 rounded p-1 text-muted-foreground/50 opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                      className="shrink-0 rounded p-1 text-muted-foreground/50 opacity-0 transition hover:bg-muted hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -357,61 +356,6 @@ export function Header() {
               ))}
             </div>
           )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* User menu */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            className="flex items-center gap-2 px-2 h-9"
-          >
-            <Avatar className="size-7">
-              <AvatarImage src={user?.avatarUrl || undefined} alt={userDisplayName} />
-              <AvatarFallback className="bg-emerald-500/10 text-emerald-600 text-xs font-medium">
-                {userInitials}
-              </AvatarFallback>
-            </Avatar>
-            <span className="hidden sm:inline text-sm font-medium text-foreground truncate max-w-[140px]">
-              {userDisplayName}
-            </span>
-            <ChevronDown className="size-3.5 text-muted-foreground hidden sm:block" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel className="font-normal">
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium text-foreground">{userDisplayName}</p>
-              <p className="text-xs text-muted-foreground">{user?.email || ''}</p>
-              <Badge variant="outline" className="w-fit text-[10px] mt-1">
-                {userRole}
-              </Badge>
-            </div>
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {/*
-            Both of these used to open the Admin module, which almost nobody
-            can: `setActiveModule` refuses a module the role lacks, so for an
-            ordinary employee the menu items simply did nothing. They now go to
-            the account page, which belongs to whoever is signed in.
-          */}
-          <DropdownMenuItem onClick={() => router.push('/settings')}>
-            <User className="mr-2 size-4" />
-            Profile
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => router.push('/change-password')}>
-            <Settings className="mr-2 size-4" />
-            Change password
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={logout}
-            className="text-red-600 focus:text-red-600"
-          >
-            <LogOut className="mr-2 size-4" />
-            Log out
-          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </header>

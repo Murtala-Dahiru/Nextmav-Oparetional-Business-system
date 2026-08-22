@@ -24,6 +24,21 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      {/*
+        The first thing in the tab order, and invisible until it is reached.
+
+        The sidebar is thirteen buttons plus an account menu, and it is on
+        every screen — so without this, reaching the actual work by keyboard
+        means tabbing past the whole of the navigation, every time, on every
+        module. One link, and the cost is a keystroke.
+      */}
+      <a
+        href="#module-content"
+        className="sr-only rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50"
+      >
+        Skip to content
+      </a>
+
       <Sidebar />
       <div className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
         <Header />

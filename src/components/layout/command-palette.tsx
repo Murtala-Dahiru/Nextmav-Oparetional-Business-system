@@ -3,17 +3,12 @@
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  LayoutDashboard,
   Users,
   FolderKanban,
   BookOpen,
-  MessageSquare,
-  LifeBuoy,
-  UserCog,
   DollarSign,
   Package,
-  Calendar,
-  Settings,
+  PanelLeft,
   LogOut,
   User,
   Building2,
@@ -41,14 +36,9 @@ import {
 } from '@/components/ui/command';
 import { useAppStore } from '@/store/app-store';
 import { useDebounce } from '@/hooks/use-debounce';
-import { MODULES, type ModuleId } from '@/lib/constants';
+import { type ModuleId } from '@/lib/constants';
+import { navigationFor } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
-
-const moduleIcons: Record<string, React.ElementType> = {
-  LayoutDashboard, Users, FolderKanban, BookOpen, MessageSquare,
-  LifeBuoy, UserCog, DollarSign, Package, Calendar, Settings,
-  CheckSquare, Building2,
-};
 
 /* -------------------------------------------------------------------------- */
 /*  Cross-module search                                                        */
@@ -112,7 +102,7 @@ export function CommandPalette() {
 
   const {
     activeModule, setActiveModule, setSearchOpen, logout, setSidebarCollapsed,
-    visibleModules, openRecord,
+    visibleModules, openRecord, activeRole,
   } = useAppStore();
 
   // The palette is a navigation surface like any other: it must only offer
@@ -216,7 +206,22 @@ export function CommandPalette() {
     [isSearching, term],
   );
 
-  const navModules = MODULES.filter(m => allowedModuleIds.has(m.id) && matches(m.label));
+  /**
+   * The same navigation the sidebar renders, filtered by what is typed.
+   *
+   * Read from `lib/navigation.ts` rather than from a second copy of the module
+   * list, so a group added there appears in both surfaces or in neither. The
+   * headings are the group names — "Collaboration", "Operations" — which is
+   * also what makes a search for a half-remembered module useful: typing
+   * "port" shows Client Portal under Customers, and the heading is the
+   * confirmation that it is the right one.
+   */
+  const navSections = navigationFor([...allowedModuleIds], activeRole)
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => matches(item.label) || matches(item.summary)),
+    }))
+    .filter(section => section.items.length > 0);
 
   return (
     <CommandDialog open={open} onOpenChange={handleClose} shouldFilter={false}>
@@ -268,27 +273,27 @@ export function CommandPalette() {
 
         {grouped.length > 0 && <CommandSeparator />}
 
-        {/* Navigation */}
-        {navModules.length > 0 && (
-          <CommandGroup heading="Navigation">
-            {navModules.map((mod) => {
-              const Icon = moduleIcons[mod.icon] || LayoutDashboard;
-              const isActive = activeModule === mod.id;
+        {/* Navigation, in the product's own grouping */}
+        {navSections.map((section) => (
+          <CommandGroup key={section.id} heading={section.label ?? 'Go to'}>
+            {section.items.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeModule === item.id;
               return (
                 <CommandItem
-                  key={mod.id}
-                  value={`module-${mod.id}`}
-                  onSelect={() => runCommand(() => setActiveModule(mod.id))}
+                  key={item.id}
+                  value={`module-${item.id}`}
+                  onSelect={() => runCommand(() => setActiveModule(item.id))}
                   className={cn(isActive && 'bg-accent')}
                 >
-                  <Icon className="mr-2 h-4 w-4" />
-                  <span>{mod.label}</span>
+                  <Icon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span>{item.label}</span>
                   {isActive && <span className="ml-auto text-xs text-muted-foreground">Current</span>}
                 </CommandItem>
               );
             })}
           </CommandGroup>
-        )}
+        ))}
 
         {/* Pages, actions and account are commands rather than data, so they
             stay out of the way once the user is plainly searching for a
@@ -316,7 +321,7 @@ export function CommandPalette() {
                   value="action-sidebar"
                   onSelect={() => runCommand(() => setSidebarCollapsed(!useAppStore.getState().sidebarCollapsed))}
                 >
-                  <LayoutDashboard className="mr-2 h-4 w-4" />
+                  <PanelLeft className="mr-2 h-4 w-4" />
                   <span>Toggle Sidebar</span>
                   <CommandShortcut>[</CommandShortcut>
                 </CommandItem>
@@ -328,7 +333,16 @@ export function CommandPalette() {
                 >
                   {theme === 'dark' ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
                   <span>Toggle Theme</span>
-                  <CommandShortcut>⇧D</CommandShortcut>
+                  {/*
+                    The `⇧D` hint that used to be here was for a shortcut
+                    nothing listened for — the same defect as the `[` beside
+                    Toggle Sidebar, which is now implemented in the sidebar.
+                    This one is not worth implementing: a bare letter key is a
+                    poor global binding, and appearance is now a three-way
+                    choice in the account menu rather than a flip. A shortcut
+                    that does nothing is worse than no shortcut, because it
+                    teaches people the product is unreliable.
+                  */}
                 </CommandItem>
               )}
             </CommandGroup>

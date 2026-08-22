@@ -104,6 +104,18 @@ no policy and silently see nothing.
 
 ---
 
+## Design
+
+Two surfaces, two records, both worth reading before changing anything visual:
+
+- **The authenticated application** — [`APP-DESIGN-SYSTEM.md`](APP-DESIGN-SYSTEM.md).
+  Palette, type, shell anatomy, information architecture, and the phase-by-phase
+  redesign log. Start here for anything inside the product.
+- **The public and auth surface** — [`DESIGN-SYSTEM.md`](DESIGN-SYSTEM.md) and
+  [`DESIGN-PROGRESS.md`](DESIGN-PROGRESS.md).
+
+---
+
 ## Layout
 
 ```
@@ -112,6 +124,7 @@ src/
   components/modules/ One directory per business module
   lib/
     permissions.ts    Capability model — the only source of access truth
+    navigation.ts     The sidebar's information architecture — groups and marks
     auth-context.ts   Request identity, authorize() guard, error mapping
     account-state.ts  Where an account stands: active, suspended, terminated…
     session-policy.ts Idle and absolute session windows, enforced in proxy.ts
@@ -139,6 +152,8 @@ Nothing here is asserted without being run:
 - `security:check` — static checks over every route, policy and header
 - `test:rate-limit` — 28 assertions over the limiter, including fail-open
 - `test:observability` — 49 assertions over logging, redaction and tracing
+- `test:navigation` — 40 assertions that the sidebar shows each role exactly
+  what `permissions.ts` allows, and nothing else
 - `npm test` — 30 unit tests over the attendance rules
 
 ---
