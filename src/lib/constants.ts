@@ -1,5 +1,20 @@
 export const MODULES = [
-  { id: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard' },
+  /**
+   * The label changed; the id deliberately did not.
+   *
+   * `dashboard` is the key the whole capability model is written against —
+   * `ROLE_GRANTS`, every `authorize('dashboard', …)` call, the activity-log
+   * module filter, the realtime channel name and the route segment. Renaming
+   * it to match the new label would be a permissions migration wearing the
+   * costume of a copy change, and any grant it missed would fail closed for
+   * every role at once.
+   *
+   * So the screen is presented as the Executive Overview and identified as
+   * `dashboard`. `moduleLabel()` is what surfaces read, so the sidebar, the
+   * header, the command palette and the attention queue's "where does this
+   * belong" column all pick this up without being touched.
+   */
+  { id: 'dashboard', label: 'Executive Overview', icon: 'LayoutDashboard' },
   /**
    * A person's own to-do list.
    *

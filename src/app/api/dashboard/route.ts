@@ -40,13 +40,26 @@ export async function GET() {
   const today = todayIn(ctx.org.timezone);
   const in7 = daysFromTodayIn(ctx.org.timezone, 7);
   const monthStart = startOfMonthIn(ctx.org.timezone);
+  /**
+   * The last calendar day of the organisation's current month.
+   *
+   * Built from `monthStart` rather than from `new Date()` so it lands in the
+   * same month the rest of this handler is reasoning about — on the 1st, in a
+   * workspace east of UTC, those are not always the same month. Day 0 of the
+   * following month is the last day of this one, and `Date` normalises the
+   * December rollover on its own.
+   */
+  const monthEnd = (() => {
+    const [y, m] = monthStart.split('-').map(Number);
+    return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  })();
 
   const none = Promise.resolve({ data: null, error: null } as any);
 
   const [
     statsRes, myTasksRes, notifsRes, eventsRes, activityRes, projectsRes,
     pipelineRes, financeRes, alertsRes, leaveRes, ticketsRes, teamRes,
-    leadsRes, dealsRes, productsRes, attendanceRes,
+    leadsRes, dealsRes, productsRes, attendanceRes, ageingRes, doneTasksRes,
   ] = await Promise.all([
     supabase.from('v_dashboard_stats').select('*').eq('organization_id', orgId).maybeSingle(),
 
@@ -63,7 +76,7 @@ export async function GET() {
     supabase.from('calendar_events')
       .select('id, title, starts_at, ends_at, all_day, location, colour')
       .eq('organization_id', orgId).gte('starts_at', today).lte('starts_at', in7)
-      .order('starts_at', { ascending: true }).limit(6),
+      .order('starts_at', { ascending: true }).limit(10),
 
     /**
      * The activity feed, scoped to the modules this role may open.
@@ -78,21 +91,67 @@ export async function GET() {
           .select('id, module, action, title, entity_type, entity_id, created_at, member:organization_members!activity_log_member_id_fkey(profiles!organization_members_user_id_fkey(first_name, last_name, avatar_url))')
           .eq('organization_id', orgId)
           .in('module', visibleModuleFilter(ctx))
-          .order('created_at', { ascending: false }).limit(8)
+          .order('created_at', { ascending: false }).limit(18)
       : none,
 
+    /**
+     * Project health, over projects that are actually being delivered.
+     *
+     * `v_project_health` has no status filter — it is `FROM projects WHERE
+     * deleted_at IS NULL`, deliberately, because the projects module and the
+     * reports both read it and both want every project. This handler did not
+     * filter either, and ordered the result by `days_remaining` ascending,
+     * which is the one ordering that puts *finished* work at the top: a
+     * project completed in March has a `days_remaining` of about -150, so it
+     * outranked everything genuinely late.
+     *
+     * Two things followed from that, both visible on the screen:
+     *
+     *   · the table listed planning, completed, cancelled and archived
+     *     projects under the heading "Project health", and
+     *   · `delayed` below is computed as `days_remaining < 0` with no status
+     *     test, so every completed project with a past end date was counted
+     *     as past deadline and drawn with a red severity rail. The view's own
+     *     `is_at_risk` excludes those states; this handler's arithmetic did
+     *     not.
+     *
+     * The count beside the heading is `active_projects` from
+     * `v_dashboard_stats`, which is `status = 'active'`. Matching that here is
+     * what makes the section's count, its strip, its bar and its rows all
+     * describe one population.
+     */
     sees('projects')
       ? supabase.from('v_project_health').select('*').eq('organization_id', orgId)
-          .order('days_remaining', { ascending: true, nullsFirst: false }).limit(6)
+          .eq('status', 'active')
+          .order('days_remaining', { ascending: true, nullsFirst: false }).limit(8)
       : none,
 
     sees('crm')
       ? supabase.from('v_pipeline_summary').select('*').eq('organization_id', orgId)
       : none,
 
+    /**
+     * The most recent twelve months — descending, then reversed below.
+     *
+     * This was `.order('period', ascending: true).limit(6)`, which takes the
+     * six OLDEST months on record and then treats the last of them as "this
+     * month". Every figure downstream inherits that: `revenueThisMonth`, the
+     * month-on-month trend, the plate's headline and the whole chart. A
+     * workspace with two years of invoices was being shown its first six
+     * months, labelled as now, with no indication anything was wrong.
+     *
+     * It went unnoticed because it is invisible for exactly the first six
+     * months of a workspace's life, which is how long a demo dataset tends to
+     * be. Ascending + limit is the wrong shape for "latest N" in every case;
+     * descending + limit + reverse is the right one.
+     *
+     * Twelve rather than six because the chart's range control offers the
+     * ladder the data can fill, and a year is the span an executive view is
+     * actually asked for.
+     */
     sees('finance')
       ? supabase.from('v_finance_monthly').select('*').eq('organization_id', orgId)
-          .order('period', { ascending: true }).limit(6)
+          .order('period', { ascending: false }).limit(12)
       : none,
 
     sees('inventory')
@@ -124,8 +183,18 @@ export async function GET() {
           .eq('organization_id', orgId).is('deleted_at', null)
       : none,
 
+    /**
+     * Extra columns, same query.
+     *
+     * `updated_at` is what makes "stalled" a measurement rather than a guess:
+     * a deal nobody has touched in thirty days is a fact the table already
+     * records. `expected_close` and `closed_at` answer "what lands this month"
+     * and "what did we win this month" from rows that were already being read
+     * for their stage and value.
+     */
     sees('crm')
-      ? supabase.from('deals').select('id, stage, value, probability')
+      ? supabase.from('deals')
+          .select('id, name, stage, value, probability, updated_at, expected_close, closed_at')
           .eq('organization_id', orgId).is('deleted_at', null)
       : none,
 
@@ -136,6 +205,41 @@ export async function GET() {
 
     supabase.from('attendance_records').select('*')
       .eq('member_id', org.memberId).eq('work_date', today).maybeSingle(),
+
+    /**
+     * Receivables ageing.
+     *
+     * `v_receivables_ageing` has existed since 0007 and nothing has ever read
+     * it. It already excludes paid, cancelled and draft invoices and buckets
+     * the rest by how late they are, so "how much are we waiting to collect,
+     * and how overdue is it" needs no computation here — only a SELECT.
+     *
+     * This is also what retires `finance.overdueCount` and `overdueValue`,
+     * which have been hard-coded zeros telling every organisation on the
+     * platform that it had nothing overdue.
+     */
+    sees('finance') && orgWide('finance')
+      ? supabase.from('v_receivables_ageing')
+          .select('invoice_id, invoice_number, company_name, balance, due_date, days_overdue, ageing_bucket')
+          .eq('organization_id', orgId)
+          .order('days_overdue', { ascending: false })
+      : none,
+
+    /**
+     * Eight weeks of completions, and nothing else.
+     *
+     * Bounded by `completed_at` rather than by fetching the task table and
+     * counting in memory: an organisation with twenty thousand tasks would
+     * otherwise ship all of them over the wire to draw a bar chart. The status
+     * totals this sits beside come from `v_dashboard_stats`, which already
+     * aggregates them in the database.
+     */
+    sees('projects')
+      ? supabase.from('tasks').select('completed_at')
+          .eq('organization_id', orgId).is('deleted_at', null)
+          .not('completed_at', 'is', null)
+          .gte('completed_at', daysFromTodayIn(ctx.org.timezone, -56))
+      : none,
   ]);
 
   if (statsRes.error) return pgError(statsRes.error);
@@ -143,7 +247,18 @@ export async function GET() {
 
   // ── derived figures ──────────────────────────────────────────────────────
 
-  const monthly = (financeRes.data ?? []) as any[];
+  /**
+   * Back into chronological order.
+   *
+   * The query asks for the *latest* twelve months, which means it has to sort
+   * descending — but every consumer below, and the chart itself, reads this
+   * array left to right as time moving forwards. `.reverse()` on the copy the
+   * client already owns is the whole cost of that.
+   *
+   * `slice()` first: `financeRes.data` is the response object's own array and
+   * reversing it in place would mutate what other readers see.
+   */
+  const monthly = ((financeRes.data ?? []) as any[]).slice().reverse();
   const thisMonth = monthly[monthly.length - 1];
   const prevMonth = monthly[monthly.length - 2];
   const revenueThisMonth = Number(thisMonth?.revenue ?? 0);
@@ -260,6 +375,43 @@ export async function GET() {
       })),
       leadsByStatus: [],
       topDeals: [],
+
+      /**
+       * Momentum, all of it derived from columns on the rows above.
+       *
+       * "Stalled" is deliberately defined as *nobody has touched this record in
+       * thirty days*, not as some judgement about the deal's quality — that is
+       * what `updated_at` actually means, and it is the only claim these rows
+       * support. A deal can be perfectly healthy and stalled by this
+       * definition, which is why the label says "no change in 30 days" rather
+       * than "at risk".
+       */
+      stalled: open.filter(d => {
+        const touched = d.updated_at ? new Date(d.updated_at).getTime() : null;
+        return touched !== null && Date.now() - touched > 30 * 86_400_000;
+      }).length,
+      closingThisMonth: open.filter(
+        d => d.expected_close && String(d.expected_close).slice(0, 10) <= monthEnd
+          && String(d.expected_close).slice(0, 10) >= today,
+      ).length,
+      wonThisMonth: won.filter(
+        d => d.closed_at && String(d.closed_at).slice(0, 10) >= monthStart,
+      ).length,
+      wonValueThisMonth: won
+        .filter(d => d.closed_at && String(d.closed_at).slice(0, 10) >= monthStart)
+        .reduce((sum, d) => sum + Number(d.value ?? 0), 0),
+      /** The five largest open deals, named. */
+      topOpen: [...open]
+        .sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0))
+        .slice(0, 5)
+        .map(d => ({
+          id: d.id,
+          name: d.name,
+          stage: d.stage,
+          value: Number(d.value ?? 0),
+          probability: Number(d.probability ?? 0),
+          expectedClose: d.expected_close ?? null,
+        })),
     };
 
     (payload.company as any).pipelineValue = pipelineValue;
@@ -272,23 +424,96 @@ export async function GET() {
     const revenue = monthly.reduce((sum, m) => sum + Number(m.revenue ?? 0), 0);
     const expenses = monthly.reduce((sum, m) => sum + Number(m.expenses ?? 0), 0);
 
+    /**
+     * Receivables, from the ageing view rather than from a constant.
+     *
+     * `current` is invoiced and not yet due; everything else is late by the
+     * number of days in its bucket name. Both totals are sums of `balance`,
+     * which is `total - amount_paid`, so a part-paid invoice contributes only
+     * what is still owed.
+     */
+    const ageing = (ageingRes.data ?? []) as any[];
+    const overdue = ageing.filter(r => r.ageing_bucket !== 'current');
+    const sumBalance = (rows: any[]) => rows.reduce((sum, r) => sum + Number(r.balance ?? 0), 0);
+
+    const BUCKETS = ['current', '1-30', '31-60', '61-90', '90+'] as const;
+
     payload.finance = {
       revenue,
       revenueThisMonth,
       revenueTrend,
       outstanding: Number(s.receivables ?? 0),
-      overdueCount: 0,
-      overdueValue: 0,
+      overdueCount: overdue.length,
+      overdueValue: sumBalance(overdue),
       totalExpenses: expenses,
       expensesThisMonth: Number(thisMonth?.expenses ?? 0),
       pendingExpenseCount: s.pending_expenses ?? 0,
       pendingExpenseValue: 0,
       netPosition: revenue - expenses,
+      // `invoiced` was already in the view and already fetched. Collected
+      // against invoiced is the difference between "we did the work" and "we
+      // got paid for it", which is the question the chart could not answer.
+      /**
+       * ── `current`, and why the client cannot work it out for itself ──────
+       *
+       * The last row of this series is almost always the month in progress,
+       * and the whole page treats it as a completed measurement: the plate
+       * prints it as "Revenue this month", the trend divides it by a *whole*
+       * previous month, and the chart plots it as the twelfth point of twelve.
+       * On the 28th that is twenty-eight days being compared against
+       * thirty-one, and the resulting "down 34.2%" is arithmetic on two
+       * different-sized things.
+       *
+       * The weekly completion chart in `delivery.tsx` already handles exactly
+       * this — it draws the current week lighter, with a note saying a Tuesday
+       * reading always looks like a collapse. The money chart never did.
+       *
+       * The flag is computed here rather than on the client for two reasons:
+       * the comparison has to happen in the *organisation's* timezone, which
+       * only the server knows, and the label the client receives is "Aug",
+       * which two Augusts a year apart both answer to. `period` is the
+       * month's first day, so the year-and-month prefix is the whole test.
+       */
       revenueByMonth: monthly.map(m => ({
         month: new Date(m.period).toLocaleString('en-US', { month: 'short' }),
         revenue: Number(m.revenue ?? 0),
         expenses: Number(m.expenses ?? 0),
+        invoiced: Number(m.invoiced ?? 0),
+        current: String(m.period).slice(0, 7) === monthStart.slice(0, 7),
       })),
+
+      /**
+       * How far into the current month the organisation is.
+       *
+       * Both bounds already exist above and are already in the organisation's
+       * timezone. It is sent unconditionally — a series that happens to end on
+       * a past month simply has no row flagged `current`, and the client draws
+       * nothing.
+       */
+      monthToDate: {
+        elapsed: Number(today.slice(8, 10)),
+        days: Number(monthEnd.slice(8, 10)),
+      },
+      receivables: {
+        outstanding: sumBalance(ageing),
+        current: sumBalance(ageing.filter(r => r.ageing_bucket === 'current')),
+        overdueValue: sumBalance(overdue),
+        overdueCount: overdue.length,
+        invoiceCount: ageing.length,
+        buckets: BUCKETS.map(bucket => {
+          const rows = ageing.filter(r => r.ageing_bucket === bucket);
+          return { bucket, count: rows.length, value: sumBalance(rows) };
+        }),
+        // The worst few, named — an ageing chart tells you there is a problem
+        // and a list tells you whose.
+        worst: overdue.slice(0, 4).map(r => ({
+          id: r.invoice_id,
+          number: r.invoice_number,
+          company: r.company_name ?? null,
+          balance: Number(r.balance ?? 0),
+          daysOverdue: Number(r.days_overdue ?? 0),
+        })),
+      },
       recentInvoices: [],
     };
 
@@ -298,26 +523,92 @@ export async function GET() {
   }
 
   if (sees('projects')) {
-    const progress = ((projectsRes.data ?? []) as any[]).map(p => ({
-      id: p.project_id,
-      name: p.name,
-      status: p.status,
-      priority: p.priority,
-      totalTasks: Number(p.total_tasks ?? 0),
-      doneTasks: Number(p.completed_tasks ?? 0),
-      progress: Number(p.progress_pct ?? 0),
-      daysLeft: p.days_remaining === null ? null : Number(p.days_remaining),
-      atRisk: !!p.is_at_risk,
-    }));
+    /**
+     * `v_project_health` computes eleven columns and this endpoint used to map
+     * five of them. Blocked tasks, overdue tasks and the milestone counts were
+     * all being fetched over the wire and thrown away — so "why is this project
+     * at risk" was unanswerable on the dashboard even though the database had
+     * already worked it out.
+     */
+    const progress = ((projectsRes.data ?? []) as any[]).map(p => {
+      const daysLeft = p.days_remaining === null ? null : Number(p.days_remaining);
+      return {
+        id: p.project_id,
+        name: p.name,
+        status: p.status,
+        priority: p.priority,
+        totalTasks: Number(p.total_tasks ?? 0),
+        doneTasks: Number(p.completed_tasks ?? 0),
+        blockedTasks: Number(p.blocked_tasks ?? 0),
+        overdueTasks: Number(p.overdue_tasks ?? 0),
+        progress: Number(p.progress_pct ?? 0),
+        daysLeft,
+        endDate: p.end_date ?? null,
+        atRisk: !!p.is_at_risk,
+        // 0015 added these; they are null on a database still at 0007, so the
+        // client must treat a zero total as "this project has no milestones"
+        // rather than as "none are done".
+        milestones: {
+          total: Number(p.total_milestones ?? 0),
+          done: Number(p.completed_milestones ?? 0),
+          overdue: Number(p.overdue_milestones ?? 0),
+        },
+      };
+    });
+
+    const late = progress.filter(p => p.daysLeft !== null && p.daysLeft < 0);
 
     payload.projects = {
       total: progress.length,
       active: s.active_projects ?? 0,
       atRisk: progress.filter(p => p.atRisk).length,
+      // Past its end date is a different condition from flagged at risk, and
+      // the two overlap; counted separately so the client never adds them.
+      delayed: late.length,
+      onTrack: progress.filter(p => !p.atRisk && !(p.daysLeft !== null && p.daysLeft < 0)).length,
       totalBudget: 0,
       overdueTasks: s.overdue_tasks ?? 0,
       tasksDueThisWeek: 0,
       progress,
+    };
+
+    /**
+     * Work: the two totals the database already aggregates, and eight weeks of
+     * completions bucketed by ISO week.
+     *
+     * Bucketing happens here rather than in SQL because the boundary has to be
+     * the organisation's week, not UTC's — the same reason every other date
+     * bound in this file goes through `org-time`.
+     */
+    const completions = ((doneTasksRes.data ?? []) as any[])
+      .map(t => t.completed_at)
+      .filter(Boolean);
+
+    const weeks: { week: string; start: string; count: number }[] = [];
+    for (let i = 7; i >= 0; i--) {
+      const start = new Date(daysFromTodayIn(ctx.org.timezone, -i * 7));
+      // Monday of that week, so the buckets are stable rather than sliding.
+      const day = (start.getUTCDay() + 6) % 7;
+      start.setUTCDate(start.getUTCDate() - day);
+      const end = new Date(start);
+      end.setUTCDate(end.getUTCDate() + 7);
+      const iso = start.toISOString().slice(0, 10);
+      if (weeks.some(w => w.start === iso)) continue;
+      weeks.push({
+        week: start.toLocaleString('en-US', { day: 'numeric', month: 'short', timeZone: 'UTC' }),
+        start: iso,
+        count: completions.filter(c => {
+          const t = new Date(c).getTime();
+          return t >= start.getTime() && t < end.getTime();
+        }).length,
+      });
+    }
+
+    payload.work = {
+      openTasks: s.open_tasks ?? 0,
+      overdueTasks: s.overdue_tasks ?? 0,
+      completedLast8Weeks: completions.length,
+      completionByWeek: weeks,
     };
   }
 

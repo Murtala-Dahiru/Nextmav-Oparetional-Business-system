@@ -287,13 +287,288 @@ the notification socket-plus-poll fallback, badge clearing on module open.
 
 ---
 
+
+---
+
+## 5b. Phase 2 — Executive Overview (2026-08-28)
+
+The screen was already good before this pass: a dark plate, a real money
+chart, an attention queue that decides the right things, honest empty states.
+What it did not have was **structure above the level of the component**, and
+what it did have was a plate that wasted its own best space.
+
+### The composition
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  date · role · online            updated   [Refresh]  [+ New]        │  context
+│                                                                      │
+│  Good evening, Ada               COLLECTED · LAST 12 MONTHS          │
+│  Revenue is down 34.2% … so far   ╱╲    ╱╲   ╱╲                      │  verdict
+│  REVENUE THIS MONTH              ╱  ╲__╱  ╲_╱  ╲╌╌                   │
+│  ₦94,500  ↘34.2%  · 28 of 31 days  Sep     peak · Jul        Aug     │
+├───────────┬───────────┬───────────┬───────────┬──────────────────────┤
+│ PIPELINE  │ RECEIVAB. │ PROJECTS  │ TICKETS   │ ATTENTION            │  readout
+│ ₦578,000  │ ₦125,300  │ 5         │ 6         │ 9                    │
+│ ▓▓▓▓░░░░  │ ▓▓▓▓▓▓▓█  │ ────────  │ ▓█████████│ ████▓▓▓▓░            │
+│ 9 open…   │ ₦24.4k…   │ 1 past…   │ 5 past…   │ 4 critical           │
+└───────────┴───────────┴───────────┴───────────┴──────────────────────┘
+
+  01 POSITION   ──────────────────────────────────────────────────────
+     Financial performance (full width)
+     Receivables (full width, three regions across)
+
+  02 MOMENTUM   ──────────────────────────────────────────────────────
+     Pipeline momentum (5) │ Work & tasks (7)
+
+  03 DELIVERY   ──────────────────────────────────────────────────────
+     Project health (full width)
+     Support (6) │ Stock (6)
+
+  04 RESPONSE   ──────────────────────────────────────────────────────
+     Needs attention (8) │ Upcoming (4)
+     Recent activity (full width)
+```
+
+### What changed, and why
+
+**The plate became three rows.** It was a headline in a narrow left column
+with a grid of `Display`s beside it — which is a KPI strip with a dark
+background, and the file's own notes said it was trying not to be one. Now:
+a context line, the verdict, a divided readout strip. The grid is gone, so
+five instruments can no longer orphan a sixth cell — which they did at every
+width below `2xl`.
+
+**Signals carry their composition.** Each instrument in the strip draws a
+`Bar` of the parts that make up its number: receivables split into inside
+terms and past due, tickets into within SLA and breached, the attention queue
+into its three severities. Every one of those is an exact partition from a
+single source. "Active projects" deliberately has none — `active` is counted
+org-wide by `v_dashboard_stats` while `atRisk` / `delayed` / `onTrack` are
+counted over the six rows of `v_project_health` the route fetches, and a bar
+whose segments do not add up to the number printed above them is worse than no
+bar.
+
+**`Trace` replaced `Spark` in the plate.** 104×32 to the full column at 118px,
+zero-anchored, peak marked, both ends of its range named. A twelve-month
+series at 104px is a texture, not a chart.
+
+**The page got joints.** Four `Band` dividers. One row each, the quietest
+thing on the screen, and the difference between an argument and a stack.
+
+**Receivables moved.** It had been grouped with Support and Stock by
+silhouette; it now sits under the chart it explains, laid out across the page
+in three regions — *how much*, *how late*, *who*.
+
+**One entrance, once.** `nm-enter` in `globals.css`: 8px, 340ms, staggered
+45ms across the movements, fired on mount when the data replaces the skeleton.
+Deliberately **not** the public surface's scroll reveal — on a screen somebody
+opens several times a day, content that fades in as you reach it means waiting
+for information that has already arrived.
+
+### Defects found and fixed
+
+1. **The plate restated the shell header** — "EXECUTIVE OVERVIEW · NORTHWIND
+   STUDIO" forty pixels under "NORTHWIND STUDIO / Executive Overview", then a
+   second uppercase line under that.
+2. **Project health listed projects that were not being delivered.**
+   `v_project_health` has no status filter — correctly, since the projects
+   module and the reports both read it — and `/api/dashboard` did not add one
+   while ordering by `days_remaining` ascending. That ordering puts *finished*
+   work first: a project completed in March has about −150 days remaining.
+   `delayed` was then computed as `days_remaining < 0` with no status test, so
+   completed projects were counted as past deadline and drawn with a red
+   severity rail. The route now filters `status = 'active'`, which is also what
+   `active_projects` counts, so the heading, the strip, the bar and the rows
+   finally describe one population.
+3. **Partial months were compared with whole ones.** The last row of
+   `revenueByMonth` is the month in progress; the page printed it as "Revenue
+   this month", divided it by a complete previous month, and plotted it as the
+   twelfth point of twelve. On the 28th of a 31-day month that reads as a
+   third of the revenue missing. The route now flags the row `current` and
+   sends `monthToDate`; the summary sentence, the headline note, the trace's
+   dashed tail and a shaded band on the chart all say so. `delivery.tsx` had
+   solved exactly this for its own current week two passes ago.
+4. **The attention queue carried the same word twice** — a module column
+   ("Support") beside an action label ("Open support"), taking seven rems from
+   the title. Removed; the queue also moved into a card, so the page's most
+   important list is no longer the one region drawn loose on the background
+   while its neighbour has a surface.
+5. **A `<button>` centres its content**, so the one signal without a
+   composition bar sat eight pixels below its neighbours *and* pulled its note
+   fourteen pixels up. Fixed with `block` and a drawn-but-empty track.
+6. **Day one had a half-width rule** across a full-width plate (`max-w-xl` on
+   the element carrying `border-t`) and reserved an empty second column for a
+   series that does not exist yet.
+
+### Found only once the workspace had a year in it
+
+The dataset in §5c was built to make the design judgeable. It also found six
+faults that an empty database had been hiding — five of them in the UI:
+
+1. **`formatCurrencyCompact` is not compact.** It drops the kobo and nothing
+   else, so ₦149,477,678 arrived as eleven digits — at 21px in a five-across
+   strip, and at 46px as the headline. The page was also contradicting itself:
+   the chart's axis has always abbreviated, so a reader saw "16m" on the
+   gridline and "₦149,477,678" in the figure above it. `money()` in
+   `viz.tsx` now shares `axisTick`'s scale steps; tooltips keep the exact
+   figure, because a reader has deliberately asked for it. The shared helper is
+   untouched — around a hundred callers across thirteen modules want its
+   precision.
+2. **Recent activity was depending on the workspace being quiet.** It made each
+   *day band* a grid cell, which is only correct when the days and the columns
+   happen to be the same number. All eighteen recent events fell inside one day
+   — which is what a busy company looks like — so it rendered one very long
+   column and eight hundred pixels of empty page. It splits by count into three
+   balanced columns now, and hoists the heading out when the whole feed is one
+   day rather than printing "YESTERDAY" three times across the page.
+3. **The plate's readout orphaned a cell at 1180px.** Five instruments in three
+   columns leaves the second row two-thirds full. Flex below `xl`, grid at it:
+   the last row grows to fill whatever the count.
+4. **Two chart labels collided.** "avg collected" sat on a y-axis tick, because
+   the average of a real year lands mid-range where the ticks are; the
+   month-to-date band label sat on the invoiced line's peak. Both moved.
+5. **A year of history inserted in ten seconds raises a year of unread
+   notifications.** The triggers fired 763 and the sidebar read "99+". Settled
+   by the seed — see §5c.
+6. **Project health showed six of eight.** The route fetched six rows while
+   `active_projects` counted eight, so the strip's "8 tracked" described rows
+   the reader could not see. The route fetches eight and the table renders
+   them.
+
+### Changed
+
+`components/modules/dashboard/{index,primitives,money,delivery,sections,viz}.tsx`,
+`types.ts`, `app/api/dashboard/route.ts` (two query filters and two new fields
+— no schema change, no new capability), `app/globals.css` (one keyframe).
+
+New primitives: `Trace`, `Bar`, `Band`, `Signal`, `useWidth`.
+
+### Not changed
+
+No migration, RLS policy, permission grant or business calculation. No new
+action the backend cannot support. Deep links, `openRecord`/`useFocusRequest`,
+the realtime subscription and its debounce are all untouched.
+
+### Still owed by the API, unchanged from before
+
+`finance.pendingExpenseValue`, `hr.newHires`, `projects.totalBudget`,
+`projects.tasksDueThisWeek`, `company.warehouses`, `crm.leadsByStatus`,
+`crm.topDeals`, `finance.recentInvoices` are still pinned to constants in
+`/api/dashboard`, and nothing on this screen renders them. `v_resource_allocation`
+could support a real per-person workload in Work & tasks and is the next thing
+that section could honestly gain.
+
+
+---
+
+## 5c. The demo dataset (2026-08-28)
+
+Every screen in this product is unreadable against an empty workspace, and the
+Executive Overview most of all. Judging a twelve-month revenue chart with two
+months in it, a completion chart whose best week is 2, and a health table where
+every row reads 10% tells you nothing about whether the design works.
+
+```bash
+npm run seed:demo -- --yes            # fill the demo workspace
+npm run seed:demo -- --yes --reset    # empty it again
+```
+
+**The demo workspace ships empty.** The dataset is a development tool, not
+product content: it is written when somebody asks for it and taken out again
+when the review is over, through the same script and the same safety gates. As
+of 2026-08-29 Northwind Studio holds no business data at all — its owner, its
+two real members and its `General` department, and nothing else.
+
+[`scripts/seed-demo.mjs`](scripts/seed-demo.mjs) fills **one** organisation with
+a year of interlinked history. It is idempotent — it clears that organisation's
+own business rows and rebuilds them — and the PRNG is seeded, so two runs
+produce the same dataset.
+
+### The rule it obeys
+
+**It writes no number the application will later display.** It writes the
+records a business would have — invoices with line items, payments against
+them, expenses, deals with close dates, milestones, tasks with completion
+timestamps — and lets `v_finance_monthly`, `v_project_health`,
+`v_receivables_ageing` and `v_dashboard_stats` compute what the dashboard shows.
+If a figure on the Executive Overview is wrong after this runs, the view is
+wrong. That is the entire point of having a dataset at all.
+
+### Safety
+
+It talks to a live Supabase project with the service key, and that project
+holds other organisations, so it is fenced five ways:
+
+1. refuses to run without `--yes`;
+2. refuses when `NODE_ENV=production`;
+3. resolves **exactly one** organisation by id, and every statement it issues is
+   filtered on that `organization_id` — there is no unscoped `DELETE` in the
+   file;
+4. that organisation must carry `settings->demo = true`. One without it is
+   refused unless `--adopt` is passed, which is the single deliberate act that
+   turns a workspace into the demo workspace — and it then stamps the marker and
+   renames it so it cannot afterwards be mistaken for a real one;
+5. it never touches `auth.users`, and never deletes a profile or a membership.
+
+The demo workspace is **Northwind Studio (Demo)**
+(`f90e4fc8-f408-47d3-b4d5-5e00f4133470`), owner `dash-demo-owner@example.com`.
+`industry` reads "Development / demo data" and the org settings carry
+`demoNotice`. **Day One Co** is left empty on purpose, for the day-one screen.
+
+### What it creates
+
+| | |
+|---|---|
+| 12 months | Sep 2025 – Aug 2026, the last one deliberately partial |
+| 96 invoices | 195 line items, 90 payments — paid, part-paid, overdue, draft |
+| 108 expenses | nine categories a month, a few unapproved in the running month |
+| 60 deals | 24 won, 13 lost, 19 open across four stages, 4 gone quiet |
+| 16 projects | 8 active, 2 planning, 1 on hold, 5 completed |
+| 68 milestones | which is what `progress_pct` is actually computed from |
+| 272 tasks | 179 done, weighted into eight weekly buckets for the work chart |
+| 36 tickets | 9 live (5 past SLA, 1 critical), 27 resolved across the year |
+| 18 products | 3 below reorder, 2 at zero, balances derived from the ledger |
+| 150 activity rows | spread over three weeks, every one pointing at a real record |
+| 14 people | 11 of them provisioned profiles with no auth identity |
+
+Money runs ₦9.8m–₦21.3m invoiced a month against ₦8.1m–₦14.7m of spend, with a
+strong December, a January collapse, and a loss-making November where an
+equipment purchase lands.
+
+### Four things the schema forced, and one it revealed
+
+- **Invoice status is derived, never declared.** `recalculate_invoice()` fires on
+  every line-item and payment write. Insert the invoice, then its lines, then
+  its payments, and let the trigger decide.
+- **`trg_set_updated_at` is BEFORE UPDATE**, so a deal that has "gone quiet" has
+  to be INSERTed with an old `updated_at`.
+- **`record_stock_movement` refuses the service key.** It is `SECURITY DEFINER`
+  with an `is_org_member(org)` guard, and `auth.uid()` is null for a seed run.
+  The two statements it performs are performed directly instead, preserving its
+  invariant: every movement carries the running balance, and `products.stock`
+  ends equal to the last one.
+- **Provisioned colleagues need no auth account.** Migration 0025 dropped
+  `profiles.id`'s foreign key to `auth.users` precisely so a profile can outlive
+  its login, which makes a profile with no auth row a state the schema already
+  models. `identity:verify` passes (82/82) with eleven of them present, and
+  nobody can sign in as them.
+- **A year of history inserted in ten seconds raises a year of notifications,
+  all unread.** The triggers fired 763 of them and the sidebar showed "99+"
+  against Finance. They are marked read at the end of the run, with three left
+  unread and backdated, so the bell has a believable count.
+
+### What the populated data then revealed about the UI
+
+Listed in §5b under "Found only once the workspace had a year in it".
+
 ## 6. The phases
 
 | # | Phase | State |
 |---|---|---|
 | 1 | Navigation / sidebar / shell | **done** |
-| 2 | Dashboard | next |
-| 3 | My Work | |
+| 2 | Executive Overview | **done** |
+| 3 | My Work | next |
 | 4 | CRM | |
 | 5 | Projects | |
 | 6 | Finance | |
@@ -328,12 +603,15 @@ the notification socket-plus-poll fallback, badge clearing on module open.
   where its sections should be lifted — and if a shared mechanism is added for
   it, add it *with* its first consumer, never before (this repo's dominant
   defect is complete machinery that nothing calls).
-- **Two `h1`s on the dashboard.** The shell's header holds the page title; the
-  dashboard's greeting should become an `h2` in Phase 2.
+- ~~**Two `h1`s on the dashboard.**~~ Done in Phase 2 — the greeting is an
+  `h2` and the shell's header holds the only `h1`.
 - **A client's navigation still lists Projects.** That is the existing grant
   (read-only, feeding portal endpoints), but the module's UI is built for staff.
   Decide it in Phase 13.
-- **Charts** still pass raw hex to recharts in dashboard, CRM and finance.
+- **Charts** still pass raw hex to recharts in CRM and finance. The dashboard
+  is done: every chart on it reads `--chart-*` through `useViz` in
+  `modules/dashboard/viz.tsx`, which re-reads the tokens when the theme
+  changes. That file is the pattern the other two should follow.
 
 ---
 

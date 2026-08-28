@@ -196,7 +196,7 @@ export function Header() {
           </p>
         )}
         <h1 className="truncate text-[17px] font-semibold leading-tight tracking-[-0.018em] text-foreground">
-          {currentModule?.label ?? 'Dashboard'}
+          {currentModule?.label ?? 'Executive Overview'}
         </h1>
       </div>
 

@@ -25,6 +25,14 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-panel: var(--panel);
+  --color-panel-fg: var(--panel-fg);
+  --color-panel-muted: var(--panel-muted);
+  --color-panel-line: var(--panel-line);
+  --color-panel-accent: var(--panel-accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -280,6 +288,36 @@
   --accent: #edeae2;
   --accent-foreground: #16140f;
   --destructive: #c0392b;
+
+  /* ── Status ────────────────────────────────────────────────────────────
+     Three states the product has to say out loud, and `--destructive` for
+     the fourth. Named rather than reached for as `amber-600` in each screen,
+     because "this is a warning" is a decision the system should make once.
+
+     Measured on `--background`: warning 4.52:1, success 5.12:1, info 4.97:1.
+     The public system's `#b8730a` warning is 3.72:1 and cannot carry small
+     text, so this is that hue, one step darker. */
+  --success: #1a7a4b;
+  --warning: #a8650a;
+  --info: #2c6fa7;
+
+  /* ── The panel ─────────────────────────────────────────────────────────
+     A surface that stays dark in both themes.
+
+     `--ink` cannot do this: it means "the strongest available fill" and
+     therefore inverts, so a panel painted with it is near-black on a light
+     page and near-white on a dark one. This is the other thing — a plate the
+     composition is anchored on, and it is dark on purpose in both modes,
+     because a page with no dominant element has no focal point and reads as
+     a wireframe however carefully the rest of it is set.
+
+     Contrast on `--panel`: fg 15.8:1, muted 6.0:1, accent 8.1:1. */
+  --panel: #16140f;
+  --panel-fg: #f5f2ec;
+  --panel-muted: #a49b8d;
+  --panel-line: oklch(1 0 0 / 0.11);
+  --panel-accent: #6fc9ac;
+
   --border: #e8e5dd;
   --input: #ddd9cf;
   --ring: #2d9572;
@@ -421,6 +459,22 @@
   --accent: #2a2721;
   --accent-foreground: #f7f4ef;
   --destructive: #e0685c;
+
+  /* Lifted, like the accent: the light-mode values are close to invisible on
+     `#100e0b`. 7.5 : 7.7 : 6.6 against the page. */
+  --success: #58c08a;
+  --warning: #e0a13c;
+  --info: #6ca8dd;
+
+  /* Two steps above the page, not one. At #1e1b16 the plate was within a
+     shade of #100e0b and stopped reading as the anchor of the composition —
+     which is its whole job. */
+  --panel: #24211a;
+  --panel-fg: #f5f2ec;
+  --panel-muted: #a49b8d;
+  --panel-line: oklch(1 0 0 / 0.09);
+  --panel-accent: #58c08a;
+
   --border: #2a2721;
   --input: #363129;
   --ring: #3fae8a;
@@ -702,4 +756,47 @@
 }
 .text-pretty-body {
   text-wrap: pretty;
+}
+
+/* ── The Executive Overview's entrance ──────────────────────────────────────
+   One rise, once, when the data replaces the skeleton — not a scroll reveal.
+
+   The public surface uses `[data-reveal]` on an IntersectionObserver, which is
+   right for a page somebody scrolls through once. It is wrong for an
+   operational screen: content that fades in as you reach it means the reader
+   waits for information that is already loaded, every time, on a screen they
+   open several times a day.
+
+   So this fires on mount and never again. A realtime refetch calls `setData`
+   on mounted nodes, which does not restart a CSS animation, so the page
+   updates in place rather than re-performing itself.
+
+   8px and 340ms, staggered 45ms across at most five movements — about 180ms of
+   total offset, which is under the threshold at which a delay is felt as a
+   delay and over the one at which sequence is perceived as intentional.
+
+   `both` so the element is at the start state during its delay; the global
+   `prefers-reduced-motion` block collapses the duration to nothing, which
+   leaves the end state — visible — rather than the start state. */
+@keyframes nm-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.nm-enter {
+  animation: nm-enter 340ms var(--ease-brand) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nm-enter {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
