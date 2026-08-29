@@ -23,6 +23,7 @@ import { TICKET_PRIORITIES, TICKET_STATUSES, PAGE_SIZE } from '@/lib/constants';
 import { createTicketSchema, updateTicketSchema } from '@/lib/validations';
 import { useModuleRealtime } from '@/hooks/use-realtime';
 import { useFocusRequest } from '@/hooks/use-focus-request';
+import { AddToMyWorkItem } from '@/components/shared/add-to-my-work';
 import { cn } from '@/lib/utils';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -762,6 +763,24 @@ export default function SupportModule() {
                     Mark as {s.replace(/-/g, ' ')}
                   </DropdownMenuItem>
                 ))}
+                {/*
+                  Intake. The ticket keeps its own status, its SLA and its
+                  place in the queue; this is a private note to plan around it.
+                */}
+                <AddToMyWorkItem
+                  title={ticket.subject}
+                  source={{
+                    module: 'support',
+                    type: 'ticket',
+                    id: ticket.id,
+                    label: [
+                      ticket.ticketNumber,
+                      ticket.contact
+                        ? `${ticket.contact.firstName} ${ticket.contact.lastName}`.trim()
+                        : null,
+                    ].filter(Boolean).join(' · ') || null,
+                  }}
+                />
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
                   onClick={() => setDeleteTicket(ticket)}

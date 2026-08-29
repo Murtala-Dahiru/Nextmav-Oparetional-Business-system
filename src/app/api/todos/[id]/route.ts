@@ -2,13 +2,14 @@ import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 import { readRecurrence } from '@/lib/todo-recurrence';
+import { readRemindAt } from '@/lib/todo-reminder';
 
 /**
  * One personal to-do.
  *
  * Every query carries `member_id = <caller>` in addition to the RLS policy.
  * Belt and braces on this table specifically, because it is the one place in
- * the schema where an administrator has no override — if a filter were ever
+ * the schema where an administrator has no override - if a filter were ever
  * dropped here, RLS is the only thing standing between a private list and the
  * rest of the company.
  */
@@ -17,7 +18,8 @@ type Params = { params: Promise<{ id: string }> };
 
 const SELECT =
   'id, title, note, is_done, completed_at, due_on, is_starred, sort_order, ' +
-  'list_id, linked_task_id, recurrence, created_at, updated_at, ' +
+  'list_id, linked_task_id, recurrence, remind_at, reminder_sent_at, ' +
+  'source_module, source_type, source_id, source_label, created_at, updated_at, ' +
   'list:todo_lists(id, name, color), ' +
   'linkedTask:tasks(id, title, status, due_date, project:projects(id, name))';
 
@@ -65,6 +67,39 @@ export async function PATCH(req: Request, { params }: Params) {
      */
     if ('is_done' in b) update.is_done = b.is_done === true;
 
+    /**
+     * The reminder.
+     *
+     * `reminder_sent_at` is deliberately not accepted: a client that could
+     * write it could mark a reminder delivered without delivering it, which is
+     * the same class of thing as letting one choose `completed_at`. The trigger
+     * clears it whenever `remind_at` moves, so snoozing re-arms without anyone
+     * having to say so.
+     */
+    if ('remind_at' in b) {
+      const parsed = readRemindAt(b.remind_at);
+      if ('message' in parsed) return error(parsed.message, 422, 'INVALID_REMINDER');
+      update.remind_at = parsed.value;
+    }
+
+    /**
+     * The source is written once, at intake, and is not editable afterwards.
+     *
+     * Where a to-do came from is a fact about its history. Letting it be
+     * changed would allow the chip on the row to point at a record the item
+     * was never taken from, and - because a unique index enforces one personal
+     * item per source - would let somebody move a duplicate onto a source that
+     * already had one. Accepted here only so that a body carrying the fields
+     * is refused loudly rather than silently ignored.
+     */
+    if ('source_module' in b || 'source_type' in b || 'source_id' in b) {
+      return error(
+        'Where a to-do came from cannot be changed after it was added.',
+        422, 'SOURCE_IMMUTABLE',
+      );
+    }
+    if ('source_label' in b) update.source_label = String(b.source_label ?? '').slice(0, 200) || null;
+
     if ('list_id' in b) {
       const listId = b.list_id || null;
       if (listId) {
@@ -93,7 +128,7 @@ export async function PATCH(req: Request, { params }: Params) {
      *
      * These two are validated together because they constrain each other: the
      * database refuses a recurrence with no due date, and clearing a due date
-     * on a repeating item would leave a row the CHECK constraint rejects — a
+     * on a repeating item would leave a row the CHECK constraint rejects - a
      * 23514 the user would see as an unexplained failure.
      *
      * So the effective due date is resolved first, reading the stored one when
@@ -143,7 +178,7 @@ export { PATCH as PUT };
  * Delete a to-do outright.
  *
  * Hard, unlike almost everything else in this schema. Nothing references a
- * to-do, it is not a business record, and it carries no audit obligation —
+ * to-do, it is not a business record, and it carries no audit obligation -
  * keeping a tombstone of someone's deleted private reminder would be a
  * surprising thing for the product to do.
  */

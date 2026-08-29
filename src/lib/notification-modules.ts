@@ -142,6 +142,12 @@ export const EMITTED_TYPES = [
   'expense_submitted', 'expense_approved', 'expense_rejected',
   'leave_request', 'leave_requested', 'leave_approved', 'leave_rejected', 'on_leave',
   'announcement',
+  /**
+   * 0026: `sweep_todo_reminders()`. The only notification anybody sends
+   * themselves — and the only one whose module is My Work, which is why the
+   * `todo` prefix was already in BY_PREFIX with nothing emitting it.
+   */
+  'todo_reminder',
   // 0023: `notify_meeting_invite()`. Without it here the badge would count a
   // meeting invitation and never clear it, because `typesForModule` builds the
   // SQL `IN` clause from this list.

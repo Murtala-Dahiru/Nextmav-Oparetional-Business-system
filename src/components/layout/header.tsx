@@ -4,6 +4,8 @@ import * as React from 'react';
 import { Menu, Search, Bell, CheckCheck, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
+import { intakeFromNotification } from '@/lib/mywork';
+import { AddToMyWorkButton } from '@/components/shared/add-to-my-work';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -335,9 +337,38 @@ export function Header() {
                           {notification.body}
                         </p>
                       )}
-                      <p className="mt-1 text-[10px] uppercase tracking-[0.06em] text-muted-foreground/70">
-                        {formatRelativeTime(notification.createdAt)}
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <p className="text-[10px] uppercase tracking-[0.06em] text-muted-foreground/70">
+                          {formatRelativeTime(notification.createdAt)}
+                        </p>
+
+                        {/*
+                          Incoming work, taken here.
+
+                          The tray is where somebody first hears that a task or
+                          a ticket has landed on them, so it is where the
+                          decision "and when am I doing it?" naturally happens.
+                          Offered only for assignments (see
+                          `intakeFromNotification`): a comment or a completion
+                          is something to read, and a button on every row is
+                          the noise that would make this worth ignoring.
+
+                          The assigned record is untouched. What this creates
+                          is a private item pointing at it.
+                        */}
+                        {(() => {
+                          const intake = intakeFromNotification(notification);
+                          if (!intake) return null;
+                          return (
+                            <AddToMyWorkButton
+                              variant="ghost"
+                              title={intake.title}
+                              source={intake.source}
+                              className="-my-1 h-6 gap-1 px-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                            />
+                          );
+                        })()}
+                      </div>
                     </div>
                     <button
                       type="button"

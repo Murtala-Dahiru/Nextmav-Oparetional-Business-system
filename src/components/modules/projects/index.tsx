@@ -20,6 +20,7 @@ import { TASK_STATUSES, PROJECT_STATUSES } from '@/lib/constants';
 import { createTaskSchema, createProjectSchema } from '@/lib/validations';
 import { useModuleRealtime } from '@/hooks/use-realtime';
 import { useFocusRequest } from '@/hooks/use-focus-request';
+import { AddToMyWorkItem } from '@/components/shared/add-to-my-work';
 import { useAppStore } from '@/store/app-store';
 import { z } from 'zod';
 
@@ -600,6 +601,24 @@ function TasksTab({
             <DropdownMenuItem onClick={() => openEdit(row.original)}>
               <Pencil className="size-4 mr-2" /> Edit
             </DropdownMenuItem>
+            {/*
+              Intake.
+
+              The task stays the team's source of truth. This puts a *personal*
+              item on the reader's own list that points at it, so planning your
+              own week does not mean retyping your assignments into a second
+              place and letting the two drift. Completing the personal item
+              does not complete this task. See `lib/mywork.ts`.
+            */}
+            <AddToMyWorkItem
+              title={row.original.title}
+              source={{
+                module: 'projects',
+                type: 'task',
+                id: row.original.id,
+                label: row.original.project?.name ?? null,
+              }}
+            />
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
               onClick={() => { setDeletingTask(row.original); setDeleteDialogOpen(true); }}

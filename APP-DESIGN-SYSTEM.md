@@ -562,14 +562,575 @@ equipment purchase lands.
 
 Listed in §5b under "Found only once the workspace had a year in it".
 
+---
+
+## 5d. Phase 3 — My Work (2026-08-29)
+
+Everything on the feature list worked. Fast capture, lists, stars, drag
+reordering, a board, a month schedule, focus mode, repeats, and a bridge to
+project tasks in both directions — all of it built, all of it correct. What the
+screen did not have was a **reading** of any of it: it showed twenty-four items
+and never once said how the day stood.
+
+### The composition
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  SATURDAY, 29 AUGUST                    [Focus] [Pin a task] [⌨]     │
+│  3 late, 6 due today                                                 │
+│  ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░                             │
+│  ● 3 done ● 6 due today ● 3 late   10 ahead · 5 no date  [Move 3…]   │
+├──────────────┬───────────────────────────────────────────────────────┤
+│  All open 24 │  + Add something to your list…                  [N]   │
+│  Today     9 │                                                       │
+│  Upcoming    │  All open  24            [search]        [▤ ▥ ▦]      │
+│  Starred   5 │  ⚠ OVERDUE 3 ──────────────────────────────────────   │
+│  Completed   │  ○ Send Henderson the revised quote  4 days late ● ★  │
+│              │  ○ Approve Tobi's expense claim      2 days late ●    │
+│  LISTS     + │  ☀ TODAY  Sat, 29 Aug  6 ──────────────────────────   │
+│  ● Follow-ups│  ○ Call the client back about the timeline       ● ★  │
+│  ● Deep work │  ○ Submit the timesheet        Every week  ● Admin    │
+└──────────────┴───────────────────────────────────────────────────────┘
+```
+
+### What changed, and why
+
+**The header became the day.** Three things used to sit here: a second `<h1>`
+reading "My Work" forty pixels under a shell header already reading "My Work";
+a permanent two-line paragraph explaining that the list is private; and a 24px
+ring in the far corner reading "3 of 12 done today" in the smallest type on the
+screen. So the most valuable band on the page restated the title, taught the
+same lesson every day forever, and buried the one sentence worth reading.
+
+It is now a sentence at the size it deserves, over a **partition** of the day —
+done · due today · late — rather than a percentage. A ratio invites "of what?",
+and on a personal list the denominator changes every time something is added.
+Every segment is a count the API returns and the three sum exactly to the work
+owed today. Behind them, quietly: how much is scheduled ahead and how much has
+no date at all, kept out of the day's own arithmetic so that "6 due today"
+never silently means 24. Nothing is scored, weighted or predicted — there is no
+productivity index, because a number nobody can check is a number nobody should
+be shown. The private-list explanation moved to the day-one empty state, where
+somebody is actually asking the question.
+
+**Rows stopped being cards.** Each to-do was a bordered, rounded, 78px card —
+title, note, metadata strip. Twenty-four of them made a field of identical
+floating boxes (§`primitives.tsx`: "uniformity is the disease; the card was
+only its most obvious symptom"), and **six** filled a 1440×900 laptop. A list
+whose whole job is scanning was showing a quarter of itself. Now: no border, no
+surface, 13.5px, meta right-aligned so the dates form one straight edge, note
+on a second line only when there is one. **Twenty rows** fit where six did.
+
+**The screen stopped repeating itself.** Every row under *Overdue* said
+"Overdue"; every row under *Today* said "Today" — up to six times per group,
+and again on every board card. A row is silent when its heading has already
+spoken, and an overdue row says **how late** instead, which the heading does
+not know. Group headings gained the concrete day (`TODAY · Sat, 29 Aug`).
+
+**One bulk action, and only one.** An overdue pile is not a list of decisions,
+it is one decision made once — *these are today's now* — and making it item by
+item is why people stop opening the list. `Move N overdue to today` is N calls
+to the endpoint that already exists (one to ten rows in practice), not a new
+bulk route: the per-row PATCH already carries the ownership filter and the
+recurrence guard, and a second way to write a due date is a second place for
+those rules to be forgotten. Refusals are reported by count rather than
+swallowed.
+
+**The board names its days.** "Tomorrow" told you the category and left you to
+work out the date; "Tomorrow · Sun 30 Aug" is the fact. Drop targets appear
+only while something is being dragged — six permanent dashed boxes reading
+"Drop here to move it to someday" are six instructions for something nobody is
+doing — and the right edge fades instead of severing the fourth column
+mid-card, which is why "Someday" was, for most readers, a column that did not
+exist.
+
+**The schedule became a planning surface.** Week totals in a leading gutter
+("next week has eleven things in it" is a fact you cannot get by counting
+cells), a per-day load bar relative to the busiest day on screen, three items
+per cell instead of two, and a day panel that shows the chosen day in full.
+Day cells are **dnd-kit droppables** now rather than native HTML5 drag targets:
+the old note said forty-two droppables cost more than the drag was worth, but
+HTML5 drag-and-drop does not fire on iOS or Android at all — so on a phone the
+schedule was a calendar you could look at and not plan with — and two
+coexisting drag systems meant a card in the day panel could not be dropped on
+the grid beside it.
+
+**Focus mode ends when today does.** It queued every open item, so a session
+with nine things due announced "24 to go" and marched on into *Someday*. The
+queue is the day now, with an explicit offer to carry on once today is clear.
+It also gained **Tomorrow** — without it, a person working a list has one way
+to get an item off the screen and no way to say when they will actually do it,
+so it returns tomorrow unmoved and a day later.
+
+**Completed became history.** It listed seven ticked-off titles in the server's
+ordering — starred first, then by the day they had been *due*, an order that
+stops meaning anything the moment work is done — and carried no date at all. It
+is grouped by the day it was finished now, newest first: Today · Yesterday ·
+Wed 26 Aug. `completed_at` has been stamped by a trigger since 0016 and
+returned by the endpoint ever since; nothing had ever read it.
+
+### Defects found and fixed
+
+1. **The day's ring never moved.** `toggleDone` updated `counts.open` and
+   nothing else, and ticking something off in the default view deliberately
+   causes no refetch — so the one number the header exists to show sat frozen
+   through an entire morning's work. Every count the readout uses now moves
+   with the checkbox, and the refetch that follows confirms it.
+2. **Focus mode's "done today" was always zero.** It counted completed rows
+   from `todos`, and the view those come from excludes completed items by
+   design. The progress bar sat at 0% no matter how much had been cleared. It
+   reads the server's count now — the same one the header uses.
+3. **A failed load was drawn as an empty list.** The fetch threw, a toast
+   appeared for four seconds, and the screen rendered "Nothing here — add
+   something above". A person who looked away was told, in the product's own
+   voice, that their to-do list was empty. There is a real error state with a
+   retry, and a failed *silent* refetch leaves the last good data alone.
+4. **The planning layouts were filtered to one view.** Choosing Schedule while
+   *Today* was selected drew a month grid holding nine items and twenty-eight
+   empty days — a calendar filtered to a single day with no way to say so. The
+   board and the schedule widen to "all open", exactly as search already widens
+   to "all"; choosing a view returns to the list.
+5. **Switching list → board tore the screen down for nothing.** Both request
+   the same rows when the view is already "All open", but the fetch depended on
+   `layout`, so an identical request produced a full skeleton. The dependency
+   is the *effective* view now.
+6. **Dates were parsed as UTC.** `formatDate` runs its argument through
+   `new Date(...)`, and a bare `2026-09-03` is UTC midnight by specification —
+   so in any timezone west of UTC every due date in this module rendered as the
+   day before. `due_on` is a `date` precisely because it has no zone;
+   `formatDay` appends `T00:00:00` to say so.
+7. **Search results lost their dates.** A row stays silent about its day only
+   when a heading has said it, and headings are drawn only when there is more
+   than one group — search produces exactly one, so the suppression fired with
+   nothing to suppress it.
+8. **The schedule's day panel truncated to eight characters.** Right-aligning
+   a date against a 300px panel left "Call the client back ab…". Narrow columns
+   stack their meta under the title now.
+9. **Mobile put the first to-do below the fold on every phone.** Roughly 1,150
+   vertical pixels of chrome before row one: a duplicate title, three buttons,
+   a three-line explainer, a ring, a views strip, a "LISTS +" heading, a lists
+   strip, a capture box and a toolbar. Views and lists are one strip now,
+   titles wrap instead of truncating, and the keyboard-shortcuts button and the
+   layout switcher — a six-column board and a seven-column month grid — are not
+   offered on a device that cannot use them.
+
+### On labels, attachments and priority
+
+Reconsidered in this pass and still excluded, for the reasons the module was
+built with. Lists and the star already do what labels would; a file belongs in
+Workspace where it can be found again; and the star **is** the priority scale —
+a private list with four levels of importance is one nobody triages honestly.
+The test each was held to: does it reduce the friction of getting personal work
+done, or does it move this closer to being the task tracker it exists as a
+calmer alternative to?
+
+### Changed
+
+`components/modules/mywork/{index,types,todo-row,views,focus-mode,dialogs}.tsx`,
+and `app/api/todos/route.ts` — two additional `head: true` count queries
+(`overdue`, `someday`) on the endpoint's existing `Promise.all`. No new
+capability, no new route, no new field read or written.
+
+The emerald bridge is retired from this module: `emerald-*` no longer appears
+in `components/modules/mywork/` except as the stored *colour key* a user picks
+for a list.
+
+### Not changed
+
+No migration, RLS policy, permission grant or business calculation. No
+component outside `modules/mywork/`. The shared `PageHeader` and `EmptyState`
+are untouched — this module simply stopped using them, because both drew a
+second `<h1>` and a generic grey circle where the screen needed neither.
+`openRecord`/`useFocusRequest`, the realtime subscription, the reorder endpoint
+and the recurrence trigger all behave exactly as before.
+
+### Carried forward
+
+- **`todos` is not in the `supabase_realtime` publication**, so the module
+  subscribes to `tasks` only — an assignment arrives live, but the same
+  person's own list on a second device does not. Publishing a table only one
+  person ever writes to is a migration for a narrow case; worth deciding, not
+  worth assuming.
+- **The pinned-task path could not be exercised end to end here.** The demo
+  workspace holds no projects, so "Pin a task", the linked-task chip's jump
+  into Projects and the edit dialog's read-only task panel were reviewed as
+  code rather than run. They use `openRecord('projects', 'task', id)`, which
+  `modules/projects/index.tsx` already handles.
+- **Six list colours are literal hex** in `types.ts` rather than tokens,
+  because `--chart-*` holds five hues and two of them contradict the name the
+  user picked (mapping `violet` to `--chart-5` paints a mint dot into a swatch
+  labelled violet). If a content-colour ramp is ever added to `globals.css`,
+  this is its first consumer.
+
+
+---
+
+## 5e. Phase 3b — My Work as a system (2026-08-29)
+
+§5d made My Work a good screen. This makes it a **system**: work arrives on it
+from the rest of the product, it tells you when something is due, and the
+capture that the whole module depends on stops requiring a key half its users
+do not have.
+
+Four capabilities, one migration, and the first schema change any redesign
+phase has made.
+
+### 1. Intake — "Add to My Work" from anywhere
+
+A task assigned to you in Projects, a ticket escalated to you in Support, a
+deal that has gone quiet in CRM. All three are work you owe; none is a plan for
+your afternoon. What people did instead — reliably, in every product with this
+shape — was retype the title into their own list and let the two drift.
+
+One action now, in the row menu every table already has, from **one shared
+component** (`components/shared/add-to-my-work.tsx`). Thirteen modules each
+writing their own would be thirteen chances to send a different payload, forget
+the label or create a duplicate.
+
+What it creates is **not a copy of the record**. It is a personal to-do that
+points at it:
+
+```
+  Book the discovery workshop
+  🔗 Projects · Client Acquisition
+```
+
+The record stays the source of truth. Ticking the personal item off does not
+close the ticket, does not move a burndown and appears on nobody else's screen
+— the guarantee `todos` has carried since 0016, extended to four more modules.
+
+Pressing it twice answers *"Already on your list"* and opens nothing new: a
+unique partial index refuses the second write and the endpoint replies with the
+item that already exists.
+
+### 2. The Inbox
+
+Capture without deciding. **Open, no list, no day** — that is the whole
+definition, and it is why the inbox needed no column.
+
+Deliberately not "everything unfiled": an item dated Thursday has been triaged,
+and an inbox that keeps showing it is one that never empties, which is how
+every abandoned inbox got abandoned. Giving something a day *or* a list takes
+it out, so the count drains as you plan. Intake lands here too, which is
+correct — somebody else decided it was work, you have not yet decided when.
+
+### 3. Reminders, on the product's own infrastructure
+
+`due_on` is *when the work should be done*; `remind_at` is *when I want to be
+told*. Different statements, and deliberately different types: a `date` with no
+time of day, and a `timestamptz` that survives a timezone.
+
+Delivery is a **`pg_cron` job calling `sweep_todo_reminders()` every minute**,
+writing an ordinary row into `notifications` — the table, the realtime
+publication, the bell and the tray all already existed, and the `todo` prefix
+was already mapped to My Work in `notification-modules.ts` with nothing
+emitting it. No external service, no new moving part.
+
+The sweep is a plain function and the schedule is one caller, which is what
+makes the degradation describable rather than silent: where `pg_cron` cannot be
+installed the migration still leaves a working sweep, and
+`/api/todos/reminders/sweep` calls it when the module mounts. Reminders then
+arrive on next use rather than on the minute. Both callers are safe together —
+the sweep claims each row by stamping `reminder_sent_at` in the same statement
+that selects it.
+
+Moving a reminder re-arms it (a trigger clears the stamp), and a repeat carries
+its reminder to the next occurrence at the same offset — 0022's trigger knew
+nothing about reminders, so a weekly item with a Monday-morning reminder would
+have reminded you exactly once, ever.
+
+### 4. Capture that does not depend on the Enter key
+
+**This was the module not existing on mobile.** The only way to commit a to-do
+was Enter. On a desktop that is the fastest capture in the product; on a phone:
+
+- iOS shows **return**, and a bare `<input>` in a `<div>` with no form gives it
+  nothing to do — the keyboard dismisses and the text sits there uncommitted.
+- Android shows **↵** or **✓** depending on the keyboard app, the locale and
+  the input type. Three keyboards, three behaviours.
+- Voice input, a stylus or an accessibility keyboard may have no return key at
+  all.
+
+The composer is now a real `<form>` — which is what makes the on-screen return
+key work at all — with a **visible Add button that is always present**, not
+hover-revealed and not conditional on the field being non-empty, because a
+control that appears only once you have typed cannot be found by somebody
+wondering how to commit what they typed. Disabled while empty says the same
+thing without vanishing.
+
+Measured and fixed on a 390×844 viewport:
+
+| | before | after |
+|---|---|---|
+| Add button | did not exist | **44×44** (was 36 on the first pass) |
+| Field font | 13.5px → iOS zooms the page on focus | **16px** |
+| Reachable with a keyboard open | button at y=478, behind the keyboard on a 667px phone | **sticky at y≈153 once scrolled** |
+
+Sticky below `sm` rather than `100vh` arithmetic: mobile browsers resize their
+own viewport unpredictably when the keyboard opens, and a pinned-to-bottom bar
+ends up behind it. Being pinned to the *top* of the scroll container cannot be
+defeated by a browser's opinion of its own height.
+
+Verified by driving the real UI with **no Enter key anywhere in the test**:
+type, tap Add, field clears, row created.
+
+### 5. Today as the command centre
+
+Today is the landing view now — the question somebody opens this screen with is
+"what do I need to do?", and answering it with a chronological dump of
+twenty-five items answers a different one.
+
+```
+  GOOD MORNING, ADA · SATURDAY, 29 AUGUST
+  3 late, 6 due today
+  ████████░░░░░░░░░░░░░░░░░░░░░░░░
+  ● 3 done  ● 6 due today  ● 3 late     10 ahead · 2 filed · ▤ 4 to sort · [Move 3 overdue]
+  9 items left today   ★ 3 starred   🔗 1 from your work   🔔 2 will remind you
+```
+
+The bar answers *how much*; the line under it answers *of what kind*, and only
+on Today, where the rows on screen genuinely are today. Two of those are facts
+a to-do list has never been able to state: **"1 from your work"** is how much of
+the day arrived from elsewhere in the business rather than from you — the
+number that decides whether your own plans survive the afternoon, and it exists
+only because intake exists — and **"2 will remind you"** is the part of the day
+you can stop holding in your head.
+
+Still no productivity score. Every figure is a count the API returns or a count
+of the rows on screen, and the two are never mixed.
+
+### 6. Focus as an execution environment
+
+`Done · Tomorrow · Not now · Snooze an hour · Open details`, with the origin
+named and openable.
+
+**Snooze** is the one that was missing and is not the same as either
+neighbour: *Tomorrow* moves the work, *Not now* moves your attention for this
+sitting, and neither says "come back to me at three" — which is what somebody
+in the middle of a focused hour most often means. It sets a reminder and leaves
+the plan alone.
+
+**Open details** exists because a person working a queue reaches the item whose
+note they need to read, and the only way to do that was to leave the session
+and find it again in the list.
+
+### 7. Quick entry — shortcuts, not guessed language
+
+`/today`, `/tomorrow`, `/nextweek`, `/someday`, `!` to star. Recognised only as
+a whole word at either end, removed from the title, and **shown as a chip
+before the item is committed**.
+
+Deliberately not natural language. Every implementation of "Call Ahmed
+tomorrow" eventually eats a word somebody meant literally — *"Review the Monday
+report"*, *"Post the Friday numbers"* — and files the item on a day they did
+not choose. A capture box that is occasionally wrong about what you meant is
+one people stop trusting, and an untrusted capture box goes unused, which is
+the one failure this module cannot survive. If real language understanding is
+ever added to the product, it goes behind this same contract, with the parse
+shown before it commits.
+
+### 8. Undo on delete
+
+`DELETE /api/todos/[id]` is a hard delete, deliberately — the route explains
+why. Which made the absence of an undo the real problem: the row was gone the
+instant the dialog was confirmed and the only recovery was to remember what it
+said. The fields are held for as long as the toast is up and re-posted
+verbatim, source included.
+
+### Migration 0026
+
+The first schema change in the redesign, and it earns it:
+
+- `source_module` / `source_type` / `source_id` / `source_label` — polymorphic,
+  the same shape `notifications.entity_type`/`entity_id` has carried since
+  0004, because a foreign key to five tables is not a foreign key. The **label
+  is stored rather than joined** so the to-do outlives its source, which is
+  what `linked_task_id`'s `ON DELETE SET NULL` already promises.
+- Two CHECKs. One makes the source all-or-nothing; the other requires a row
+  carrying `linked_task_id` to *name that task* in the source triple, so the
+  two mechanisms cannot drift into disagreeing about the same record.
+- A unique partial index — one open personal item per source, per person.
+- `remind_at` / `reminder_sent_at`, a partial index on exactly the sweep's
+  predicate, the re-arm trigger, `sweep_todo_reminders()`, and a guarded
+  `pg_cron` install + schedule.
+- `spawn_next_todo_occurrence()` replaced so a repeat carries its reminder and
+  its source forward.
+
+Existing pinned rows are backfilled before the CHECK is added, and the whole
+file is idempotent.
+
+### Verified
+
+`db:check`, `db:apply`, `db:verify` (45), `schema:check`, `security:check`,
+`test:layout` (118), `test:navigation` (40), `test:dashboard` (21), `tsc`,
+eslint and a production build — all pass. Driven through the real UI against
+real records:
+
+- **Intake**: the Projects row menu → *"Added to My Work"* → pressed again →
+  *"Already on your list"* → exactly one row, `projects/task`, label and
+  `linked_task_id` both set.
+- **Reminders**: created through the API → sweep endpoint reports
+  `delivered: 1` → the notification is in the tray with the right type, body
+  and link → a second sweep delivers nothing → moving the time re-arms it → a
+  reminder in the past is refused with *"A reminder has to be in the future."*
+- **Mobile capture**: typed and committed by tapping, no Enter key involved.
+
+### Defects found and fixed on the way
+
+1. **A `<button>` inside a `<button>`.** Making the origin chip openable put a
+   control inside the row's own title button — React reported it as a
+   hydration error, and browsers resolve the nesting by closing the outer
+   element early. The meta is a sibling of the title button now.
+2. **Two overlapping counts in the header.** "6 with no date · 4 to sort"
+   describes ten things to a reader and six to the database — the inbox is a
+   subset of the undated. Every other number on that header is an exact
+   partition, and this one is now too.
+3. **A 36px touch target** on the control the entire mobile capture workflow
+   depends on.
+4. **"Open details" wrapped to a line of its own** in focus mode, pushed there
+   by an `ml-auto` that made one of five equal actions look like a different
+   kind of thing.
+
+### Changed
+
+`supabase/migrations/0026_mywork_intake_and_reminders.sql` (new),
+`lib/{mywork,todo-reminder}.ts` (new),
+`components/shared/add-to-my-work.tsx` (new),
+`app/api/todos/reminders/sweep/route.ts` (new),
+`app/api/todos/route.ts`, `app/api/todos/[id]/route.ts`,
+`lib/notification-modules.ts` (one type),
+`components/modules/mywork/*`, and **three lines in each of**
+`modules/{projects,support,crm}/index.tsx` — an import and one menu entry, no
+other change to those modules.
+
+### Carried forward
+
+- **Intake is wired into three modules of the five that could use it.**
+  Projects tasks, Support tickets and CRM deals. Communication messages and
+  Finance invoices have the vocabulary in `SOURCE_KINDS` and no button yet;
+  each is one menu entry in that module's own phase.
+- **`openRecord` is not received by every module** that can be a source.
+  `sourceOpens()` is the honest list, and a chip whose module cannot receive
+  one draws as a label rather than as a control that lands nowhere.
+- **The sweep runs on one schedule for the whole database.** A tenant with a
+  very large number of reminders due in the same minute would be capped at 500
+  per run and catch up on the next. Worth watching, not worth pre-solving.
+
+---
+
+## 5f. Phase 3c - the finish (2026-08-29)
+
+The pass that closes the loop and takes the AI tell out of the writing.
+
+### Incoming work now completes its own chain
+
+The chain the product was reaching for is: **assigned -> notification -> add to
+my work -> personal execution**. Three of the four steps existed. Two things
+were missing:
+
+1. **`task_assigned` had no `link`.** It has written a row on every assignment
+   since 0004 and never a destination, and the header opens a notification by
+   parsing that field. So the one notification that meant "new work has landed
+   on you" was the one notification in the product that did nothing when
+   clicked. Every other assignment producer already carries one; this was the
+   last on the pre-0016 shape. Migration 0027 fixes the trigger and backfills
+   the unread rows.
+2. **The tray had no way to act.** Each assignment row now carries an inline
+   **Add to My Work**, from the same shared component the module row menus use,
+   so the wording, the duplicate handling and the confirmation cannot drift.
+
+Deliberately narrow: only *assignments* get the action (`task_assigned`,
+`ticket_assigned`, `ticket_escalated`). A completion, a comment or a status
+change is something to read, not something to plan, and a button on every row
+is exactly the noise that makes a tray worth ignoring. `intakeFromNotification`
+in `lib/mywork.ts` is that decision, in one place, and it refuses a row whose
+`entity_type` does not match what its `type` promised.
+
+No new notification architecture. The table, the triggers, the realtime
+publication, the badge, the module mapping and the tray were all already there.
+
+### No em dashes
+
+**191 removed** across everything the module ships: the six module files, the
+three new `lib`/`shared` files, the three API routes and migration 0026. Spaced
+em dashes became spaced hyphens, bare ones became hyphens, and the copy pass
+below removed most of the rest by rewriting the sentence.
+
+Verified at zero, including the lines this work added to `projects`, `support`,
+`crm` and `header`.
+
+Comments in the *other twelve* modules still use them; that is the house voice
+of the whole codebase and changing it belongs to those modules' own phases, not
+to this one.
+
+### Copy
+
+Shorter, and stopped explaining.
+
+| was | now |
+|---|---|
+| "Items you tick off collect here, newest first." | "Newest first." |
+| "The star is this list's only priority - use it for the few things that genuinely cannot wait." | "The star is the only priority here. Keep it for what cannot wait." |
+| "Nothing is due and nothing is overdue. Anything you add here is dated today." | "Nothing due, nothing overdue. Anything you add here is dated today." |
+| "Search looks at titles and notes across every view, including completed items - so this is genuinely not on your list." | "Search covers titles and notes across every view, completed included." |
+| "Puts a copy on your list so you can plan around it. Ticking it off here does not complete the task - do that in Projects, where your team can see it." | "Puts it on your list so you can plan around it. Completing it here does not complete the task." |
+| "A way to group your own to-dos. Only you can see it." | "Your own grouping. Nobody else can see it." |
+| "The list is much faster without the mouse once you know these." | "Faster without the mouse." |
+| "Anything you want to remember about it" | "Anything worth remembering" |
+| "This list is yours alone" | "Your list is private" |
+| "Write the first one" / "Pin a task you have been assigned" | "Add the first one" / "Pin an assigned task" |
+| "Drop here to move it to someday" | "Drop into someday" |
+| Dialog titled "Edit", field labelled "What needs doing" | "Edit to-do", "Task" |
+
+### Craft
+
+Four things that were not earning their place:
+
+- **The board's column fill.** Every column carried a permanent recessed panel,
+  which under a short column drew a tall grey block containing nothing. A drop
+  target is worth showing while something is being dropped; the heading and the
+  cards say where the column is the rest of the time. It appears on drag and
+  goes again.
+- **A `kbd` hint wedged between the capture field and the Add button.** It made
+  one control look like two. The shortcut is in the keyboard dialog.
+- **The disabled Add button** was ink at 50% opacity, which reads as a smudge.
+  It is a recessed fill now: a control waiting for input rather than a faded
+  black block.
+- **"Open details" in focus mode** was pushed to the far end by an `ml-auto`
+  and wrapped to a line of its own, making one of five equal actions look like
+  a different kind of thing.
+
+### The mobile capture loop, tested as specified
+
+Driven at 390x844 with **no Enter key anywhere in the test**:
+
+| step | result |
+|---|---|
+| Tap the field | focused |
+| Type | Add enabled, 16px so iOS does not zoom |
+| Tap Add (44x44) | row appears, field clears, **focus retained** |
+| Type and tap again | second row appears |
+| `/tomorrow !` | chip reads "Sun, 30 Aug - starred" before commit; row lands dated the 30th and starred |
+
+The composer is `sticky` below `sm`, so once the list scrolls it pins at the
+top of the scroll container, clear of the keyboard on a 667px phone as well as
+an 844px one.
+
+### Changed
+
+`supabase/migrations/0027_task_assignment_link.sql` (new),
+`components/layout/header.tsx` (one action in the notification row),
+`lib/mywork.ts` (`intakeFromNotification`), and copy and craft edits across
+`components/modules/mywork/*`.
+
 ## 6. The phases
 
 | # | Phase | State |
 |---|---|---|
 | 1 | Navigation / sidebar / shell | **done** |
 | 2 | Executive Overview | **done** |
-| 3 | My Work | next |
-| 4 | CRM | |
+| 3 | My Work | **done** (3b: intake, inbox, reminders) |
+| 4 | CRM | next |
 | 5 | Projects | |
 | 6 | Finance | |
 | 7 | HR | |
@@ -612,6 +1173,17 @@ Listed in §5b under "Found only once the workspace had a year in it".
   is done: every chart on it reads `--chart-*` through `useViz` in
   `modules/dashboard/viz.tsx`, which re-reads the tokens when the theme
   changes. That file is the pattern the other two should follow.
+- **`formatDate` parses a bare date as UTC** — found in Phase 3 and fixed only
+  inside My Work, which now has a local `formatDay(iso, opts)` that appends
+  `T00:00:00` first. `new Date('2026-09-03')` is UTC midnight by
+  specification, so in any timezone west of UTC a `date` column renders as the
+  day before. `formatDate` is called **53 times outside My Work**, and the ones
+  passing genuine `date` columns are wrong today — `holidays.holiday_date`,
+  `deals.expected_close`, `tasks.due_date`, `invoices.due_date`,
+  `organization_members.terminated_on` among them. Calls passing a
+  `timestamptz` are unaffected. Each module's own phase should convert its
+  own; when the second consumer appears, lift the helper into `lib/format.ts`
+  as `formatDay` — **with** that consumer, not before it.
 
 ---
 

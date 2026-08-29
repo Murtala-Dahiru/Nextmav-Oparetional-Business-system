@@ -3,10 +3,12 @@ import { success, error, serverError } from '@/lib/api-response';
 import { todayIn, startOfDayIn } from '@/lib/org-time';
 import { acceptBody } from '@/lib/case';
 import { readRecurrence } from '@/lib/todo-recurrence';
+import { readRemindAt } from '@/lib/todo-reminder';
+import { readSource } from '@/lib/mywork';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- *  Personal to-dos — "My Work"
+ *  Personal to-dos - "My Work"
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * Deliberately not the tasks endpoint, and deliberately smaller than it.
@@ -14,7 +16,7 @@ import { readRecurrence } from '@/lib/todo-recurrence';
  * A project task is work the organization is tracking: it has an assignee, a
  * reporter, a status the team agreed on, an estimate, a place in a plan, and
  * it moves reports and burndown charts. A to-do is a private note somebody
- * wrote to themselves — "call the client back", "read the contract before
+ * wrote to themselves - "call the client back", "read the contract before
  * Thursday". Those are different objects with different rules, and collapsing
  * them is how you end up with software where ticking off a personal reminder
  * changes a project's reported progress.
@@ -39,7 +41,8 @@ import { readRecurrence } from '@/lib/todo-recurrence';
 
 const SELECT =
   'id, title, note, is_done, completed_at, due_on, is_starred, sort_order, ' +
-  'list_id, linked_task_id, recurrence, created_at, updated_at, ' +
+  'list_id, linked_task_id, recurrence, remind_at, reminder_sent_at, ' +
+  'source_module, source_type, source_id, source_label, created_at, updated_at, ' +
   'list:todo_lists(id, name, color), ' +
   // The linked task is read-only context: what the assigned work is called and
   // where it stands, so the list can show it without a second request.
@@ -62,7 +65,7 @@ export async function GET(req: Request) {
    *
    * These are the four questions anyone asks their own list, expressed as
    * named views rather than left to the client to assemble out of query
-   * parameters — so "today" means the same thing everywhere it appears,
+   * parameters - so "today" means the same thing everywhere it appears,
    * including on the dashboard widget.
    */
   const view = searchParams.get('view');
@@ -71,6 +74,22 @@ export async function GET(req: Request) {
   const today = todayIn(ctx.org.timezone);
 
   switch (view) {
+    /**
+     * ── The inbox ────────────────────────────────────────────────────────
+     *
+     * Open, no list, no day: work that has been *captured* and not yet
+     * *decided*. That is the whole definition, and it is why the inbox needs
+     * no column of its own.
+     *
+     * Deliberately not "everything unfiled". A to-do dated Thursday has been
+     * triaged - you have said when you will do it - and an inbox that keeps
+     * showing it is an inbox that never empties, which is the failure mode of
+     * every inbox anybody has ever abandoned. Giving something a day *or* a
+     * list takes it out of here, so the count drains as you plan.
+     */
+    case 'inbox':
+      q = q.eq('is_done', false).is('list_id', null).is('due_on', null);
+      break;
     case 'today':
       // Due today *or* already overdue: an overdue item that drops off today's
       // list is an item nobody ever does.
@@ -105,7 +124,7 @@ export async function GET(req: Request) {
 
   const { data, error: e } = await q
     // Starred first, then by the day it is due, then by hand-ordering. An
-    // undated item sorts last rather than first — it is the least urgent thing
+    // undated item sorts last rather than first - it is the least urgent thing
     // on the list, not the most.
     .order('is_starred', { ascending: false })
     .order('due_on', { ascending: true, nullsFirst: false })
@@ -122,19 +141,56 @@ export async function GET(req: Request) {
    * otherwise a separate cheap count, because a badge that reflects the
    * current filter rather than the whole list is a badge that lies.
    */
-  const [openCount, todayCount, starredCount, doneTodayCount] = await Promise.all([
+  const [
+    openCount, todayCount, overdueCount, somedayCount, inboxCount,
+    starredCount, doneTodayCount,
+  ] = await Promise.all([
     ctx.supabase.from('todos').select('id', { count: 'exact', head: true })
       .eq('member_id', ctx.org.memberId).eq('is_done', false),
     ctx.supabase.from('todos').select('id', { count: 'exact', head: true })
       .eq('member_id', ctx.org.memberId).eq('is_done', false)
       .lte('due_on', today).not('due_on', 'is', null),
+    /**
+     * The part of `today` that is already late.
+     *
+     * Counted separately rather than derived on the client, because the
+     * client only ever holds the rows of one view: in "Starred" or in a
+     * single list there is no honest way to say how much of the day is
+     * overdue, and a day readout that changes meaning when you click a
+     * filter is a readout nobody trusts. `today` minus this is what is due
+     * today exactly, so the two together partition the day's owed work.
+     */
+    ctx.supabase.from('todos').select('id', { count: 'exact', head: true })
+      .eq('member_id', ctx.org.memberId).eq('is_done', false)
+      .lt('due_on', today).not('due_on', 'is', null),
+    /**
+     * Open with no day on it at all.
+     *
+     * Separated from the rest because it is the one part of a list that is
+     * not a commitment: "read the accessibility guidelines" competes for
+     * nothing. Without this count, `open − today` lumps next month's work
+     * together with work that has no month, and a person reading "18 ahead"
+     * cannot tell whether their fortnight is full.
+     */
+    ctx.supabase.from('todos').select('id', { count: 'exact', head: true })
+      .eq('member_id', ctx.org.memberId).eq('is_done', false).is('due_on', null),
+    /**
+     * Waiting to be triaged - captured with neither a day nor a list.
+     *
+     * A subset of `someday`, and worth its own count because it is the one
+     * number that should reach zero: an inbox is a queue, and a queue with no
+     * visible depth is one nobody clears.
+     */
+    ctx.supabase.from('todos').select('id', { count: 'exact', head: true })
+      .eq('member_id', ctx.org.memberId).eq('is_done', false)
+      .is('due_on', null).is('list_id', null),
     ctx.supabase.from('todos').select('id', { count: 'exact', head: true })
       .eq('member_id', ctx.org.memberId).eq('is_done', false).eq('is_starred', true),
     /**
      * What was finished today, for the day's progress.
      *
      * Counted here rather than from the rows returned, because the default
-     * view excludes completed items — deriving it on the client would show
+     * view excludes completed items - deriving it on the client would show
      * "0 done today" to somebody who had just spent the morning clearing
      * their list, which is the most demoralising possible reading.
      *
@@ -150,6 +206,9 @@ export async function GET(req: Request) {
     counts: {
       open: openCount.count ?? 0,
       today: todayCount.count ?? 0,
+      overdue: overdueCount.count ?? 0,
+      someday: somedayCount.count ?? 0,
+      inbox: inboxCount.count ?? 0,
       starred: starredCount.count ?? 0,
       doneToday: doneTodayCount.count ?? 0,
     },
@@ -159,7 +218,7 @@ export async function GET(req: Request) {
 /**
  * Add something to your own list.
  *
- * `member_id` comes from the session and is never accepted from the body —
+ * `member_id` comes from the session and is never accepted from the body -
  * writing a to-do onto somebody else's list is the one thing this feature must
  * never permit, because the moment it can, it stops being personal and becomes
  * a second, worse task system.
@@ -204,6 +263,52 @@ export async function POST(req: Request) {
     const recurrence = readRecurrence(b.recurrence, dueOn);
     if ('message' in recurrence) return error(recurrence.message, 422, 'INVALID_RECURRENCE');
 
+    const remindAt = readRemindAt(b.remind_at);
+    if ('message' in remindAt) return error(remindAt.message, 422, 'INVALID_REMINDER');
+
+    /**
+     * Where this came from, when it came from somewhere.
+     *
+     * The polymorphic half of intake - see `lib/mywork.ts` and migration 0026.
+     * A project task additionally carries `linked_task_id`, and the database
+     * refuses a row where the two disagree, so this is validated as the pair
+     * it will actually be written as.
+     */
+    const source = readSource(b);
+    if ('message' in source) return error(source.message, 422, 'INVALID_SOURCE');
+
+    if (source.value && linkedTaskId && source.value.source_id !== linkedTaskId) {
+      return error(
+        'The linked task and the source must be the same record.',
+        422, 'SOURCE_MISMATCH',
+      );
+    }
+
+    /**
+     * Already on your list.
+     *
+     * "Add to My Work" is a button somebody presses twice - from the row and
+     * again from the detail panel, or tomorrow having forgotten. A unique
+     * partial index refuses the second write; answering with the existing item
+     * rather than a constraint violation is what lets the caller say "this is
+     * already on your list" and offer to open it, which is the true and useful
+     * response.
+     */
+    if (source.value) {
+      const { data: existing } = await ctx.supabase
+        .from('todos').select(SELECT)
+        .eq('member_id', ctx.org.memberId)
+        .eq('source_module', source.value.source_module)
+        .eq('source_type', source.value.source_type)
+        .eq('source_id', source.value.source_id)
+        .eq('is_done', false)
+        .maybeSingle();
+
+      if (existing) {
+        return success(existing, { alreadyOnList: true }, 200);
+      }
+    }
+
     const { data, error: e } = await ctx.supabase
       .from('todos')
       .insert({
@@ -216,12 +321,22 @@ export async function POST(req: Request) {
         list_id: listId,
         linked_task_id: linkedTaskId,
         recurrence: recurrence.value,
+        remind_at: remindAt.value,
         sort_order: Number(b.sort_order) || 0,
+        ...(source.value ?? {
+          source_module: null, source_type: null, source_id: null, source_label: null,
+        }),
       })
       .select(SELECT)
       .single();
 
-    if (e) return pgError(e);
+    if (e) {
+      // The unique index, in the narrow race where two clicks land together.
+      if (e.code === '23505') {
+        return error('That is already on your list.', 409, 'ALREADY_ON_LIST');
+      }
+      return pgError(e);
+    }
     return success(data, undefined, 201);
   } catch (e: any) {
     return serverError(e, 'Could not add the to-do');

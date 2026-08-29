@@ -28,6 +28,7 @@ import {
 } from '@/lib/validations';
 import { useModuleRealtime } from '@/hooks/use-realtime';
 import { useFocusRequest } from '@/hooks/use-focus-request';
+import { AddToMyWorkItem } from '@/components/shared/add-to-my-work';
 import { CompanyDetail } from '@/components/modules/crm/company-detail';
 import { ExportButton } from '@/components/shared/export-button';
 import { z } from 'zod';
@@ -1057,6 +1058,19 @@ function DealsTab({ focusId, onFocusHandled }: { focusId?: string | null; onFocu
           <DropdownMenuItem onClick={() => openEdit(row.original)}>
             <Pencil className="size-4 mr-2" /> Edit
           </DropdownMenuItem>
+          {/*
+            Intake. The deal stays in the pipeline; this is the private
+            reminder that somebody has to chase it.
+          */}
+          <AddToMyWorkItem
+            title={row.original.name}
+            source={{
+              module: 'crm',
+              type: 'deal',
+              id: row.original.id,
+              label: row.original.company?.name ?? null,
+            }}
+          />
           <DropdownMenuItem onClick={() => { setDeletingItem(row.original); setDeleteOpen(true); }} className="text-red-600 focus:text-red-600">
             <Trash2 className="size-4 mr-2" /> Delete
           </DropdownMenuItem>
