@@ -92,6 +92,7 @@ const lazyModules: Record<ModuleId, React.LazyExoticComponent<React.ComponentTyp
   mywork: React.lazy(() => import('@/components/modules/mywork')),
   portal: React.lazy(() => import('@/components/modules/portal')),
   crm: React.lazy(() => import('@/components/modules/crm')),
+  performance: React.lazy(() => import('@/components/modules/performance')),
   projects: React.lazy(() => import('@/components/modules/projects')),
   workspace: React.lazy(() => import('@/components/modules/workspace')),
   communication: React.lazy(() => import('@/components/modules/communication')),

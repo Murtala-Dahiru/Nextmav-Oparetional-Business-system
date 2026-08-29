@@ -25,6 +25,15 @@ export const MODULES = [
    */
   { id: 'mywork', label: 'My Work', icon: 'CheckSquare' },
   { id: 'crm', label: 'CRM', icon: 'Users' },
+  /**
+   * Achievement, targets and what they earn.
+   *
+   * Sits next to CRM rather than inside it because the question it answers is
+   * about people, not customers, and because two of its audiences - a manager
+   * reviewing a team, Finance approving a payout - have no business in the
+   * pipeline at all.
+   */
+  { id: 'performance', label: 'Performance', icon: 'Target' },
   { id: 'projects', label: 'Projects', icon: 'FolderKanban' },
   { id: 'workspace', label: 'Workspace', icon: 'BookOpen' },
   { id: 'communication', label: 'Communication', icon: 'MessageSquare' },

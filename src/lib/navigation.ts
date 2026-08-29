@@ -12,6 +12,7 @@ import {
   UserCog,
   Package,
   Settings2,
+  Target,
   type LucideIcon,
 } from 'lucide-react';
 import { MODULES, type ModuleId, type RoleId } from '@/lib/constants';
@@ -111,6 +112,10 @@ export const MODULE_META: Record<ModuleId, ModuleMeta> = {
     icon: Wallet,
     summary: 'Invoices, expenses and purchase approvals',
   },
+  performance: {
+    icon: Target,
+    summary: "Targets, achievement and what it earns",
+  },
   hr: {
     icon: UserCog,
     summary: 'People, leave, attendance, cases and payroll',
@@ -160,7 +165,15 @@ const NAV_GROUPS: NavGroupSpec[] = [
   {
     id: 'operations',
     label: 'Operations',
-    modules: ['projects', 'finance', 'hr', 'inventory'],
+    /**
+     * Performance sits beside HR, not beside CRM.
+     *
+     * It is fed by the CRM, but the question it answers is about people:
+     * what somebody committed to, what they achieved, and what that earns.
+     * Its other two audiences - a manager reviewing a team and Finance
+     * approving a payout - have no business in the pipeline.
+     */
+    modules: ['projects', 'finance', 'performance', 'hr', 'inventory'],
   },
   { id: 'administration', label: 'Administration', modules: ['admin'] },
 ];

@@ -689,3 +689,28 @@ export const exportSchema = z.object({
   module: z.string().min(1, 'Module is required'),
   format: z.enum(['csv']).optional().default('csv'),
 });
+// ═══════════════════════════════════════════════════════════════
+//  Performance
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Editing a target.
+ *
+ * `toUpdateSchema` and not `.partial()`, for the reason the note above it
+ * gives: `.partial()` keeps the source schema's defaults, so a field the
+ * client did not send arrives as its default and silently overwrites what was
+ * there. That defect shipped once already.
+ *
+ * `subject_type`, `subject_id` and `metric` are deliberately absent. Changing
+ * who a target belongs to, or what it measures, is not an edit - it is a
+ * different target, and the period it was set for has people measured against
+ * it. Supersede instead.
+ */
+export const updateTargetSchema = z.object({
+  targetValue: z.coerce.number().positive('A target has to be above zero').optional(),
+  periodLabel: z.string().optional(),
+  periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date').optional(),
+  periodEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date').optional(),
+  notes: z.string().optional(),
+  supersededBy: z.string().uuid().nullable().optional(),
+});

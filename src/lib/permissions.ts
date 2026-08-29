@@ -77,6 +77,16 @@ function baseWorkplaceGrants(): RoleGrants {
     calendar: { actions: WRITE, scope: 'own' },
     // Self-service only: own attendance, own leave, own documents.
     hr: { actions: ['view', 'create'], scope: 'own' },
+    /**
+     * Your own numbers, and what they earned.
+     *
+     * `view` only, at `own` scope. A person reads their targets, their
+     * achievement against them and their own incentive entries, and changes
+     * none of it. Not being able to set your own target is the entire reason
+     * this is not `edit`, and the reason every other grant below is narrower
+     * than it first looks.
+     */
+    performance: { actions: READ, scope: 'own' },
   };
 }
 
@@ -102,6 +112,17 @@ export const ROLE_GRANTS: Record<RoleId, RoleGrants> = {
     projects: { actions: [...FULL], scope: 'department' },
     crm: { actions: WRITE, scope: 'department' },
     hr: { actions: ['view', 'approve'], scope: 'department' },
+    /**
+     * Sets their people's targets, and signs off what those people earned.
+     *
+     * `approve` without `manage`: a manager approves a claim, they do not
+     * write the commission rules that produced it. Those two being separate
+     * is what stops a department head inventing their own team's rate.
+     */
+    performance: {
+      actions: ['view', 'create', 'edit', 'approve', 'export'],
+      scope: 'department',
+    },
     finance: { actions: ['view', 'create', 'approve'], scope: 'department' },
     support: { actions: WRITE, scope: 'department' },
     inventory: { actions: READ, scope: 'organization' },
@@ -120,6 +141,13 @@ export const ROLE_GRANTS: Record<RoleId, RoleGrants> = {
     // across the whole organisation.
     hr: { actions: FULL, scope: 'organization' },
     calendar: { actions: WRITE, scope: 'organization' },
+    /**
+     * HR owns the performance cycle: goals, reviews and the targets they are
+     * measured against, for everybody. `manage` because incentive *rules* are
+     * a compensation policy, and compensation policy is HR's, not a
+     * department head's.
+     */
+    performance: { actions: FULL, scope: 'organization' },
   },
 
   finance_staff: {
@@ -130,6 +158,16 @@ export const ROLE_GRANTS: Record<RoleId, RoleGrants> = {
     inventory: { actions: WRITE, scope: 'organization' },
     // Deal values feed revenue forecasting; no ability to edit the pipeline.
     crm: { actions: READ, scope: 'organization' },
+    /**
+     * Finance is the second half of an incentive's life: it approves the
+     * payment after a manager has approved the claim, and needs to see every
+     * entry to do it. No `edit` and no `manage` - Finance pays what the rules
+     * produced, and does not adjust either the rules or the amounts.
+     */
+    performance: {
+      actions: ['view', 'approve', 'export'],
+      scope: 'organization',
+    },
   },
 
   sales_staff: {

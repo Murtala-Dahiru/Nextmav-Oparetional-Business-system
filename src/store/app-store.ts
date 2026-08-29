@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import type { ModuleId, RoleId } from '@/lib/constants';
 import {
-  normalizeRole, canAccessModule, defaultModuleFor, allowedModules,
-  type CapabilitySummary, type Action,
+  normalizeRole, canAccessModule, defaultModuleFor, allowedModules, scopeFor,
+  type CapabilitySummary, type Action, type Scope,
 } from '@/lib/permissions';
 import { configureFormatting } from '@/lib/format';
 import { BACKGROUND_HEADER } from '@/lib/session-policy';
@@ -215,6 +215,19 @@ interface AppState {
   visibleModules: () => ModuleId[];
   /** Whether the current role may perform `action` in `module`. */
   allows: (module: ModuleId, action?: Action) => boolean;
+  /**
+   * How much of a module's data this role resolves.
+   *
+   * `allows` answers "may I", which is not the same question. A screen that
+   * shows a team list needs to know that an employee holding `view` on
+   * Performance still only ever resolves themselves, and rendering an empty
+   * team table for them reads as a fault rather than as an absence.
+   *
+   * A mirror of server truth for rendering, exactly like `allows`. Every
+   * endpoint applies the real scope itself, and the RLS underneath applies it
+   * again.
+   */
+  scopeOf: (module: ModuleId) => Scope | null;
 
   // Actions
   setActiveModule: (m: ModuleId) => void;
@@ -269,6 +282,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const grant = user?.capabilities?.grants?.[module];
     if (grant) return grant.actions.includes(action);
     return canAccessModule(activeRole, module) && action === 'view';
+  },
+
+  scopeOf: (module) => {
+    const { user, activeRole } = get();
+    const grant = user?.capabilities?.grants?.[module];
+    /* Falls back to the static map, and to the narrowest answer, never wider. */
+    return (grant?.scope as Scope | undefined) ?? scopeFor(activeRole, module);
   },
 
   // Navigation
