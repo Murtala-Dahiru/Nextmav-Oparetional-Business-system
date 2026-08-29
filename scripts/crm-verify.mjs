@@ -20,6 +20,7 @@
  * Everything it creates, it deletes.
  */
 import { readFileSync } from 'node:fs';
+import { workbook } from './xlsx-fixture.mjs';
 
 const BASE = process.env.APP_URL ?? 'http://localhost:3100';
 const EMAIL = process.env.CRM_USER ?? 'dash-demo-owner@example.com';
@@ -364,9 +365,101 @@ section('7. Import Center');
   }
 }
 
+/* ── The same journey, from a real workbook ──────────────────────────────── */
+
+section('8. Import Center, from an .xlsx');
+
+{
+  /**
+   * A genuine archive, not a CSV with a different name.
+   *
+   * The reader's hardest parts only exist for XLSX - the ZIP walk, the shared
+   * string table, the cell references that keep a hole in a row from shifting
+   * everything after it left, and the 1899 epoch. `import-sheet.test.mts`
+   * tests them against the reader; this tests them against the endpoint, from
+   * the same bytes, so a unit test cannot pass on a file the API would refuse.
+   */
+  const stamp = Date.now();
+  const bytes = workbook([
+    ['Business Name', 'Full Name', 'Work Email', 'Mobile', 'Sector', 'Deal Value', 'Signed'],
+    [`Sheet Alpha ${stamp} Ltd`, 'Grace Hopper', `grace${stamp}@sheet.test`, '+234 801 000 0001', 'Software', 4500000, new Date(Date.UTC(2026, 2, 15))],
+    // A hole in the middle: no email. The cell is absent from the XML, so a
+    // reader that places by position rather than by reference shifts Mobile
+    // into Email and every column after it.
+    [`Sheet Alpha ${stamp} Limited`, 'Edsger Dijkstra', null, '+234 802 000 0002', 'Software', 2750000, null],
+    [`Sheet Beta ${stamp} Plc`, 'Barbara Liskov', `barbara${stamp}@sheetbeta.test`, '+234 803 000 0003', 'Research', 9000000, null],
+  ], { sheetName: 'Prospects', target: 'worksheets/sheet2.xml' });
+
+  const analyze = await call('/api/crm/import/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream', 'x-filename': 'prospects.xlsx' },
+    body: bytes,
+  });
+
+  check(analyze.status === 200, 'the workbook is read', analyze.json?.error?.message);
+  check(analyze.json?.data?.format === 'xlsx', 'and recognised as xlsx by its bytes, not its name');
+  check(analyze.json?.data?.sheetName === 'Prospects', 'the sheet is named', analyze.json?.data?.sheetName);
+  check(analyze.json?.data?.rowCount === 3, 'three data rows', String(analyze.json?.data?.rowCount));
+
+  const cols = analyze.json?.data?.columns ?? [];
+  const mapped = Object.fromEntries(cols.filter(c => c.field).map(c => [c.field, c.index]));
+  check(mapped.companyName === 0, 'Business Name maps to the company');
+  check(mapped.fullName === 1, 'Full Name maps to the person');
+  check(mapped.email === 2, 'Work Email maps to the email', String(mapped.email));
+  check(mapped.phone === 3, 'Mobile maps to the phone', String(mapped.phone));
+  check(mapped.estimatedValue === 5, 'Deal Value maps to the value', String(mapped.estimatedValue));
+
+  const rows = analyze.json?.data?.rows ?? [];
+  check(rows[1]?.[2] === '', 'a missing cell stays a hole', JSON.stringify(rows[1]));
+  check(rows[1]?.[3] === '+234 802 000 0002',
+    'and the column after it does not shift left', JSON.stringify(rows[1]?.[3]));
+  check(rows[0]?.[6] === '2026-03-15', 'a date-formatted number is a date', rows[0]?.[6]);
+
+  const preview = await call('/api/crm/import/preview', {
+    method: 'POST',
+    body: JSON.stringify({ rows, mapping: mapped, target: 'leads' }),
+  });
+  const plan = preview.json?.data;
+  check(preview.status === 200, 'the workbook previews', preview.json?.error?.message);
+  check(plan?.summary?.companiesCreated === 2,
+    'Ltd and Limited are one company here too', String(plan?.summary?.companiesCreated));
+  check(plan?.rows?.[0]?.candidate?.person?.estimatedValue === 4500000,
+    'a bare number reads as a value', String(plan?.rows?.[0]?.candidate?.person?.estimatedValue));
+
+  const commit = await call('/api/crm/import/commit', {
+    method: 'POST',
+    body: JSON.stringify({ rows, mapping: mapped, target: 'leads' }),
+  });
+  const r = commit.json?.data;
+  check(commit.status === 200, 'the workbook imports', commit.json?.error?.message);
+  check(r?.peopleCreated === 3, 'three leads created', String(r?.peopleCreated));
+  check(r?.companiesCreated === 2, 'two companies created', String(r?.companiesCreated));
+  check((r?.failed ?? []).length === 0, 'nothing failed', JSON.stringify(r?.failed));
+
+  /**
+   * The relationship, checked on the record rather than on the response.
+   *
+   * The commit says it created two companies; what matters is that the two
+   * people who work at the same one both point at it.
+   */
+  const madeLeads = await call(`/api/crm/leads?search=${stamp}&pageSize=50`);
+  const names = (madeLeads.json?.data ?? []).map(l => l.companyName);
+  check(names.filter(n => n === `Sheet Alpha ${stamp} Ltd`
+    || n === `Sheet Alpha ${stamp} Limited`).length === 2,
+    'both Alpha people carry their company name');
+
+  const madeCompanies = await call(`/api/crm/companies?search=Sheet%20&pageSize=50`);
+  const alphas = (madeCompanies.json?.data ?? []).filter(c => c.name.includes(String(stamp)));
+  check(alphas.length === 2, 'and exactly two companies exist for the three rows',
+    alphas.map(c => c.name).join(', '));
+
+  for (const row of madeLeads.json?.data ?? []) created.leads.push(row.id);
+  for (const row of alphas) created.companies.push(row.id);
+}
+
 /* ── Tenancy ─────────────────────────────────────────────────────────────── */
 
-section('8. Boundaries');
+section('9. Boundaries');
 
 {
   const anon = client();
@@ -383,7 +476,7 @@ section('8. Boundaries');
 
 /* ── Clean up ────────────────────────────────────────────────────────────── */
 
-section('9. Clean up');
+section('10. Clean up');
 
 {
   let removed = 0;

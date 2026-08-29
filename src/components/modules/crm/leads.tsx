@@ -13,10 +13,12 @@ import { AddToMyWorkItem } from '@/components/shared/add-to-my-work';
 import { LEAD_STATUSES } from '@/lib/constants';
 import { formatRelativeTime } from '@/lib/format';
 
+import { useAppStore } from '@/store/app-store';
+
 import { useCrmList } from './use-list';
 import { CrmTable, type Column } from './table';
 import {
-  SectionHead, SearchField, FilterRow, Monogram, LeadStatusTag, Gauge, OwnerTag,
+  SectionHead, SearchField, FilterRow, FilterToggle, Monogram, LeadStatusTag, Gauge, OwnerTag,
   Blank, Broken, personName,
 } from './ui';
 import { exact, remove } from './data';
@@ -59,6 +61,8 @@ export function LeadsSection({
   focusId?: string | null;
   onFocusHandled?: () => void;
 }) {
+  const memberId = useAppStore(s => s.user?.memberId ?? null);
+
   const list = useCrmList<Lead>('/api/crm/leads', {
     channel: 'crm-leads',
     watch: ['leads'],
@@ -137,8 +141,13 @@ export function LeadsSection({
     },
   ], []);
 
-  /* Only the statuses the workspace uses, so the filter is not seven words
-     long in a workspace that has never marked anything Negotiation. */
+  /** Any narrowing at all, so the empty state says the right thing. */
+  const filtered = Boolean(list.search || Object.keys(list.filters).length);
+  const clearFilters = () => {
+    list.setSearch('');
+    for (const key of Object.keys(list.filters)) list.setFilter(key, '');
+  };
+
   const statusOptions = React.useMemo(() => [
     { value: '', label: 'All' },
     ...LEAD_STATUSES.map(s => ({ value: s, label: LEAD_STATUS_LABELS[s] ?? s })),
@@ -156,15 +165,23 @@ export function LeadsSection({
         <SearchField
           placeholder="Search by name, email or company"
           onChange={list.setSearch}
-          className="lg:max-w-xs"
+          className="lg:w-80"
         />
-        <FilterRow
-          ariaLabel="Filter by status"
-          options={statusOptions}
-          value={list.filters.status ?? ''}
-          onChange={v => list.setFilter('status', v)}
-          className="lg:ml-auto"
-        />
+        <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
+          {memberId && (
+            <FilterToggle
+              label="Mine"
+              active={list.filters.ownerId === memberId}
+              onChange={on => list.setFilter('ownerId', on ? memberId : '')}
+            />
+          )}
+          <FilterRow
+            ariaLabel="Filter by status"
+            options={statusOptions}
+            value={list.filters.status ?? ''}
+            onChange={v => list.setFilter('status', v)}
+          />
+        </div>
       </div>
 
       {list.error ? (
@@ -221,13 +238,13 @@ export function LeadsSection({
             </>
           )}
           empty={
-            list.search || list.filters.status ? (
+            filtered ? (
               <Blank
                 icon={Target}
                 title="Nothing matches"
-                body="Try a different search, or clear the status filter."
+                body="Try a different search, or clear the filters."
                 action={
-                  <Button variant="outline" size="sm" onClick={() => { list.setSearch(''); list.setFilter('status', ''); }}>
+                  <Button variant="outline" size="sm" onClick={clearFilters}>
                     Clear filters
                   </Button>
                 }

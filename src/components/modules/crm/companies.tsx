@@ -160,7 +160,7 @@ export function CompaniesSection({
       <SearchField
         placeholder="Search by name, industry, city or email"
         onChange={list.setSearch}
-        className="lg:max-w-md"
+        className="lg:w-96"
       />
 
       {list.error ? (

@@ -14,10 +14,12 @@ import { AddToMyWorkItem } from '@/components/shared/add-to-my-work';
 import { DEAL_STAGES } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 
+import { useAppStore } from '@/store/app-store';
+
 import { useCrmList } from './use-list';
 import { CrmTable, type Column } from './table';
 import {
-  SectionHead, SearchField, FilterRow, StageTag, OwnerTag, Blank, Broken, personName,
+  SectionHead, SearchField, FilterRow, FilterToggle, StageTag, OwnerTag, Blank, Broken, personName,
 } from './ui';
 import { exact, remove, formatDayShort, daysUntil, relativeDay } from './data';
 import { DealDialog, CloseDealDialog } from './forms';
@@ -60,6 +62,8 @@ export function DealsSection({
   /** A stage handed over from CRM Home, so a click on a bar arrives filtered. */
   initialStage?: string | null;
 }) {
+  const memberId = useAppStore(s => s.user?.memberId ?? null);
+
   const list = useCrmList<Deal>('/api/crm/deals', {
     channel: 'crm-deals',
     watch: ['deals'],
@@ -125,12 +129,20 @@ export function DealsSection({
     },
     {
       key: 'probability', header: 'Weighted', width: '13%', align: 'right', hide: 'lg',
-      cell: d => (
-        <span className="text-muted-foreground">
-          {exact(d.value * d.probability / 100)}
-          <span className="ml-1.5 text-[11.5px] text-muted-foreground/70">{d.probability}%</span>
-        </span>
-      ),
+      /*
+        A closed deal has no weighted value: it is worth what it is worth, or
+        nothing. Rendering "₦8,000,000 100%" beside "₦8,000,000" and "₦0 0%"
+        under a Lost row was arithmetic nobody asked for, in the column a
+        forecast is read from.
+      */
+      cell: d => (CLOSED_STAGES.includes(d.stage)
+        ? <span className="text-muted-foreground/50">-</span>
+        : (
+          <span className="text-muted-foreground">
+            {exact(d.value * d.probability / 100)}
+            <span className="ml-1.5 text-[11.5px] text-muted-foreground/70">{d.probability}%</span>
+          </span>
+        )),
     },
     {
       key: 'expectedClose', header: 'Close', width: '15%', align: 'right', card: 'meta',
@@ -170,6 +182,13 @@ export function DealsSection({
     },
   ], []);
 
+  /** Any narrowing at all, so the empty state says the right thing. */
+  const filtered = Boolean(list.search || Object.keys(list.filters).length);
+  const clearFilters = () => {
+    list.setSearch('');
+    for (const key of Object.keys(list.filters)) list.setFilter(key, '');
+  };
+
   const stageOptions = React.useMemo(() => [
     { value: '', label: 'All' },
     ...DEAL_STAGES.map(s => ({ value: s, label: STAGE_LABELS[s] ?? s })),
@@ -187,15 +206,28 @@ export function DealsSection({
         <SearchField
           placeholder="Search deals"
           onChange={list.setSearch}
-          className="lg:max-w-xs"
+          className="lg:w-80"
         />
-        <FilterRow
-          ariaLabel="Filter by stage"
-          options={stageOptions}
-          value={list.filters.stage ?? ''}
-          onChange={v => list.setFilter('stage', v)}
-          className="lg:ml-auto"
-        />
+        <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
+          {/*
+            "Mine" is the filter a salesperson reaches for first and no screen
+            offered it. `owner_id` has been filterable on this route since the
+            beginning; nothing was asking.
+          */}
+          {memberId && (
+            <FilterToggle
+              label="Mine"
+              active={list.filters.ownerId === memberId}
+              onChange={on => list.setFilter('ownerId', on ? memberId : '')}
+            />
+          )}
+          <FilterRow
+            ariaLabel="Filter by stage"
+            options={stageOptions}
+            value={list.filters.stage ?? ''}
+            onChange={v => list.setFilter('stage', v)}
+          />
+        </div>
       </div>
 
       {list.error ? (
@@ -257,13 +289,13 @@ export function DealsSection({
             </>
           )}
           empty={
-            list.search || list.filters.stage ? (
+            filtered ? (
               <Blank
                 icon={Handshake}
                 title="Nothing matches"
-                body="Try a different search, or clear the stage filter."
+                body="Try a different search, or clear the filters."
                 action={
-                  <Button variant="outline" size="sm" onClick={() => { list.setSearch(''); list.setFilter('stage', ''); }}>
+                  <Button variant="outline" size="sm" onClick={clearFilters}>
                     Clear filters
                   </Button>
                 }

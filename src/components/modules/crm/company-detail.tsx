@@ -473,8 +473,7 @@ export function CompanyDetail({
                   >
                     {data.contacts.length === 0 ? (
                       <p className="py-1 text-[12.5px] text-muted-foreground">
-                        Nobody is recorded at this customer yet. Without a contact there is no
-                        one to send a proposal to.
+                        Nobody recorded here yet.
                       </p>
                     ) : (
                       <div className="flex flex-col divide-y divide-border">
@@ -693,8 +692,7 @@ export function CompanyDetail({
                         items={history}
                         empty={
                           <p className="py-1 text-[12.5px] text-muted-foreground">
-                            Nothing has been logged against this customer. Record the first
-                            call and it appears here.
+                            Nothing logged against this customer yet.
                           </p>
                         }
                       />

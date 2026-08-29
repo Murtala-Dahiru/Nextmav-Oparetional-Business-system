@@ -365,8 +365,10 @@ export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) 
                     Drop a CSV or XLSX here
                   </p>
                   <p className="mt-1 max-w-sm text-[12.5px] leading-relaxed text-muted-foreground">
-                    Nothing is saved until you have seen exactly what it would do. The
-                    first sheet is read, and the first row is taken as the headings.
+                    Nothing is saved until you have seen what it would do.
+                  </p>
+                  <p className="mt-1 text-[11.5px] text-muted-foreground/80">
+                    First sheet, first row as headings, up to 5,000 rows.
                   </p>
                   <Button
                     size="sm" className="mt-4 gap-1.5"
@@ -391,23 +393,19 @@ export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) 
           </Card>
 
           <Card className="p-4">
-            <h3 className="text-[13px] font-semibold">What it does with the file</h3>
+            <h3 className="text-[13px] font-semibold">How it works</h3>
             <ol className="mt-3 flex flex-col gap-3">
               <Explain n="1" title="Reads the columns">
-                Headings and values both. "Business Name", "Web Address" and "Mobile" are
-                recognised without you saying so.
+                "Business Name", "Web Address" and "Mobile" are recognised on their own.
               </Explain>
-              <Explain n="2" title="Shows you what it guessed">
-                With how sure it is. Anything it is unsure about is marked, and every
-                guess can be changed.
+              <Explain n="2" title="Shows what it guessed">
+                Anything it is unsure about is marked. Change any of it.
               </Explain>
-              <Explain n="3" title="Finds the duplicates">
-                By email, by web domain, and by company name - so "Acme Ltd" in the file
-                finds "Acme Limited" already in the CRM.
+              <Explain n="3" title="Finds duplicates">
+                By email, web domain and company name. "Acme Ltd" finds "Acme Limited".
               </Explain>
               <Explain n="4" title="Never overwrites">
-                An update only fills fields that are empty. Nothing already in the CRM is
-                replaced by the spreadsheet.
+                Updates fill empty fields only. Nothing you already have is replaced.
               </Explain>
             </ol>
           </Card>
@@ -583,9 +581,8 @@ export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) 
               <p className="mt-3 flex items-start gap-2 rounded-md border border-border bg-muted/50 px-3 py-2 text-[12px] text-muted-foreground">
                 <Info className="mt-0.5 size-3.5 shrink-0" />
                 <span>
-                  This workspace holds more records than the duplicate check loads at
-                  once, so it was compared against the first 5,000. Some duplicates may
-                  not have been found.
+                  More records here than the duplicate check loads at once. Compared against the
+                  first 5,000, so a duplicate beyond that may be missed.
                 </span>
               </p>
             )}

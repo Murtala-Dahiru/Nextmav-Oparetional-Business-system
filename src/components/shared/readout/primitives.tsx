@@ -584,6 +584,7 @@ export function Trace({
   className,
   format,
   provisional = false,
+  onPanel = true,
 }: {
   values: number[];
   /** One label per value. The ends are drawn; the rest position the peak. */
@@ -604,6 +605,14 @@ export function Trace({
    * size can carry.
    */
   provisional?: boolean;
+  /**
+   * Whether this sits on the dark plate.
+   *
+   * Defaults to true because the plate was the only caller for two phases and
+   * the label colours were written for it. CRM Home draws one on an ordinary
+   * card and passes false.
+   */
+  onPanel?: boolean;
 }) {
   const [ref, w] = useWidth<HTMLDivElement>();
   const gid = React.useId().replace(/:/g, '');
@@ -692,14 +701,26 @@ export function Trace({
       </div>
 
       {geometry && labels && labels.length === values.length ? (
-        <div className="mt-2 flex items-baseline justify-between gap-3 text-[10.5px] tracking-[0.04em] text-panel-muted">
+        /*
+          ── The labels have to know which surface they are on ──────────────
+          They were written for the plate and hard-coded to `panel-*`, which is
+          an inverting token pair: on a light card `text-panel-fg/70` resolves
+          to near-white at seventy per cent, so the right-hand label was
+          invisible. It went unnoticed while the only caller was the plate.
+        */
+        <div className={cn(
+          'mt-2 flex items-baseline justify-between gap-3 text-[10.5px] tracking-[0.04em]',
+          onPanel ? 'text-panel-muted' : 'text-muted-foreground',
+        )}>
           <span>{labels[0]}</span>
           {format ? (
             <span className="truncate tabular-nums">
               peak {format(geometry.max)} · {labels[geometry.peak]}
             </span>
           ) : null}
-          <span className="text-panel-fg/70">{labels[labels.length - 1]}</span>
+          <span className={onPanel ? 'text-panel-fg/70' : 'text-foreground/75'}>
+            {labels[labels.length - 1]}
+          </span>
         </div>
       ) : null}
     </div>

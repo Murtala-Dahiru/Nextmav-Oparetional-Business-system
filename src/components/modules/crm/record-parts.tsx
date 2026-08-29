@@ -8,7 +8,7 @@ import {
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { formatDateTime, formatRelativeTime } from '@/lib/format';
+import { formatDateTime } from '@/lib/format';
 
 import { patch, remove, relativeDay, formatDayShort } from './data';
 import { activityIcon, memberName, Blank } from './ui';
@@ -263,11 +263,20 @@ export function Timeline({
                 <p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-foreground">
                   {a.subject || a.activityType}
                 </p>
+                {/*
+                  The date appears once per day, not once per row.
+
+                  It used to fall back to a relative time on every row after the
+                  first, so one day's entries read "Aug 13", "13 Aug 2026",
+                  "2 weeks ago" - three formats for one date, in a column whose
+                  job is to be scanned. The full timestamp is still on the
+                  title, for anyone who wants the hour.
+                */}
                 <span
                   className="shrink-0 text-[11px] tabular-nums text-muted-foreground"
                   title={formatDateTime(a.completedAt ?? a.createdAt)}
                 >
-                  {newDay ? day : formatRelativeTime(a.completedAt ?? a.createdAt)}
+                  {newDay ? day : ''}
                 </span>
               </div>
 

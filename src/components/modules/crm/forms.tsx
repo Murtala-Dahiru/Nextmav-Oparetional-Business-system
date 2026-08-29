@@ -530,7 +530,7 @@ export function CompanyDialog({
     <Shell
       open={open} onOpenChange={onOpenChange}
       title={editing ? 'Edit company' : 'Add company'}
-      description="A customer or a prospect. Contacts, deals, projects and invoices hang off it."
+      description="A customer or a prospect. Everything else links to it."
       onSubmit={submit} saving={saving} submitLabel={editing ? 'Save' : 'Add company'}
     >
       <Field label="Name">

@@ -12,14 +12,16 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useModuleRealtime } from '@/hooks/use-realtime';
 import {
-  Plate, Band, Head, Signal, Trace, Bar as Split, Meter, Rail, TRow, THead, Card, Chip,
+  Plate, Band, Head, Signal, Trace, Meter, Rail, TRow, THead, Card, Chip,
 } from '@/components/shared/readout/primitives';
 import {
   useViz, axisTick, tickStyle, GRID_DASH, TipShell, TipRow, money as vizMoney,
 } from '@/components/shared/readout/viz';
 
 import { getOne, money, exact, percent, monthLabel, relativeDay, daysUntil, formatDayShort } from './data';
-import { SectionHead, StageTag, LeadStatusTag, OwnerTag, Blank, Broken, Spinner, personName } from './ui';
+import {
+  SectionHead, StageTag, StageSplit, LeadStatusTag, OwnerTag, Blank, Broken, Spinner, personName,
+} from './ui';
 import { buildCrmAttention } from './attention';
 import { NextActions, Timeline, whenOf } from './record-parts';
 import { ActivityDialog } from './activity-dialog';
@@ -159,25 +161,19 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
             {/*
               The composition of the open book, by stage.
 
-              A single figure says how much is in play; the bar says how much
-              of it is nearly done. A pipeline that is nine tenths prospecting
-              and a pipeline that is nine tenths negotiation are the same number
-              and completely different situations.
+              A single figure says how much is in play; the bar says what shape
+              it is in. A pipeline that is nine tenths prospecting and one that
+              is nine tenths negotiation are the same number and completely
+              different situations, and the ramp is what makes the difference
+              visible without reading a word.
             */}
             <div className="mt-5">
-              <Split
-                onPanel
-                height={4}
-                segments={openStages.map((s, i) => ({
-                  value: s.value,
-                  tone: i >= openStages.length - 1 ? 'accent' : 'quiet',
-                  title: STAGE_LABELS[s.stage] ?? s.stage,
-                }))}
-              />
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-panel-muted">
+              <StageSplit segments={openStages.map(s => ({ stage: s.stage, value: s.value }))} />
+              <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-panel-muted">
                 {openStages.map(s => (
                   <span key={s.stage} className="tabular-nums">
-                    {STAGE_LABELS[s.stage]} {s.count}
+                    {STAGE_LABELS[s.stage]}{' '}
+                    <span className="text-panel-fg/70">{s.count}</span>
                   </span>
                 ))}
               </div>
@@ -205,8 +201,7 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
               />
             ) : (
               <p className="mt-6 text-[12.5px] leading-relaxed text-panel-muted">
-                Nothing has been marked won in the last twelve months, so there is no
-                trend to draw yet. Close a deal and it appears here.
+                Nothing won in the last twelve months yet. Close a deal and the trend starts here.
               </p>
             )}
           </div>
@@ -287,8 +282,7 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
               <CheckCircle2 className="size-5 text-success" />
               <p className="text-[13.5px] font-medium">Nothing is behind</p>
               <p className="max-w-sm text-[12.5px] text-muted-foreground">
-                No overdue follow-ups, no deals past their close date, and nothing has
-                gone quiet. Schedule the next step on something.
+                Nothing overdue, nothing past its close date, nothing gone quiet.
               </p>
               <Button size="sm" variant="outline" className="mt-2 gap-1.5" onClick={() => setFollowOpen(true)}>
                 <CornerUpRight className="size-4" /> Schedule follow-up
@@ -391,43 +385,42 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
                 ))}
               </div>
             )}
+
+            {/*
+              Movement belongs to the pipeline, not beside it.
+
+              As a card of its own it left the stage list short of the column
+              next to it, so the section rendered with a hundred and twenty
+              pixels of empty card under the last stage. It is three numbers
+              about the same subject; it is a footer.
+            */}
+            {r.openCount > 0 && (
+              <div className="mt-4 border-t border-border pt-3">
+                <p className="text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">
+                  Movement, last eight weeks
+                </p>
+                <div className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1.5">
+                  <span className="text-[13px] tabular-nums text-muted-foreground">
+                    <span className="text-[17px] font-semibold text-success">{data.movement.advanced}</span>
+                    {' '}advanced
+                  </span>
+                  <span className="text-[13px] tabular-nums text-muted-foreground">
+                    <span className="text-[17px] font-semibold text-foreground">{data.movement.slipped}</span>
+                    {' '}slipped back
+                  </span>
+                  <span className="text-[13px] tabular-nums text-muted-foreground">
+                    <span className="text-[17px] font-semibold text-foreground">{data.movement.total}</span>
+                    {' '}moves in total
+                  </span>
+                </div>
+                <p className="mt-2 text-[11.5px] text-muted-foreground">
+                  From the stage history, so editing a deal is not counted as progress.
+                </p>
+              </div>
+            )}
           </Card>
 
           <div className="flex flex-col gap-4">
-            <Card className="p-4">
-              <Head title="Movement" note="Last eight weeks" />
-              <div className="mt-3 grid grid-cols-3 divide-x divide-border">
-                <div className="pr-3">
-                  <p className="text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">
-                    Advanced
-                  </p>
-                  <p className="mt-1.5 text-[19px] font-semibold leading-none tabular-nums text-success">
-                    {data.movement.advanced}
-                  </p>
-                </div>
-                <div className="px-3">
-                  <p className="text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">
-                    Slipped back
-                  </p>
-                  <p className="mt-1.5 text-[19px] font-semibold leading-none tabular-nums text-foreground">
-                    {data.movement.slipped}
-                  </p>
-                </div>
-                <div className="pl-3">
-                  <p className="text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">
-                    All moves
-                  </p>
-                  <p className="mt-1.5 text-[19px] font-semibold leading-none tabular-nums text-foreground">
-                    {data.movement.total}
-                  </p>
-                </div>
-              </div>
-              <p className="mt-3 text-[11.5px] leading-relaxed text-muted-foreground">
-                Counted from the stage history, so an edit to a deal's notes is not
-                mistaken for progress.
-              </p>
-            </Card>
-
             <Card className="p-4">
               <Head
                 title="Biggest open"
@@ -472,14 +465,13 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
       <section className="flex flex-col gap-3">
         <Band index="03" title="Revenue" note="Won against lost, and who is winning it" />
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           <Card className="p-4">
             <Head title="Closed by month" note="Twelve months" />
 
             {!anyClosed ? (
               <p className="px-4 py-12 text-center text-[12.5px] text-muted-foreground">
-                Nothing has been closed in the last twelve months, so there is nothing to
-                chart. Mark a deal won or lost and it appears here.
+                Nothing closed in the last twelve months. Mark a deal won or lost and it appears here.
               </p>
             ) : (
               <>
@@ -573,7 +565,7 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
       <section className="flex flex-col gap-3">
         <Band index="04" title="Leads" note="The funnel above the pipeline" />
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <Card className="p-4">
             <Head
               title="Lifecycle"
@@ -607,13 +599,19 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
                       onClick={() => onGo('leads')}
                       className="group rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent/50"
                     >
+                      {/*
+                        Value first, count second - the same order as the stage
+                        list above. They were the other way round here, which
+                        put two numbers of different kinds next to each other in
+                        the reverse of the reading the page had just taught.
+                      */}
                       <div className="flex items-baseline justify-between gap-3">
                         <LeadStatusTag status={s.status} />
-                        <span className="shrink-0 text-[12.5px] tabular-nums text-muted-foreground">
-                          {s.count}
-                          {s.value > 0 && (
-                            <span className="ml-2 text-foreground">{money(s.value, data.currency)}</span>
-                          )}
+                        <span className="shrink-0 text-[13px] font-medium tabular-nums text-foreground">
+                          {s.value > 0 ? money(s.value, data.currency) : ''}
+                          <span className="ml-2 text-[11.5px] font-normal text-muted-foreground">
+                            {s.count}
+                          </span>
                         </span>
                       </div>
                       <Meter
@@ -697,7 +695,18 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
       <section className="flex flex-col gap-3">
         <Band index="05" title="Diary" note="What you owe, and what has been logged" />
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        {/*
+          The volume trace belongs on the left, with the queue.
+
+          Both are about *you*: what you owe and how much you have been logging.
+          Recent belongs on the right because it is about the company. Splitting
+          them that way is also what balances the section - the queue alone is a
+          hundred and thirty pixels next to a five-hundred-pixel timeline, and
+          `items-start` turned that into a visible hole rather than an empty
+          card.
+        */}
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="flex flex-col gap-4">
           <Card className="p-4">
             <Head
               title="Your follow-ups"
@@ -705,17 +714,27 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
               action={{ label: 'Open Activities', onClick: () => onGo('activities') }}
             />
 
+            {/*
+              A compact empty state, not the full-height one.
+
+              `Blank` reserves fifty-six pixels of padding above and below,
+              which is right in the middle of a page and wrong in a card beside
+              another card - the section rendered with a small sentence floating
+              in two hundred pixels of nothing.
+            */}
             {data.followups.length === 0 ? (
-              <Blank
-                icon={CornerUpRight}
-                title="Nothing scheduled"
-                body="A customer with no next action is the commonest way one goes quiet."
-                action={
-                  <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setFollowOpen(true)}>
-                    <CornerUpRight className="size-4" /> Schedule follow-up
-                  </Button>
-                }
-              />
+              <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border pt-3.5">
+                <p className="min-w-0 flex-1 text-[12.5px] leading-relaxed text-muted-foreground">
+                  Nothing scheduled. A customer with no next action is the commonest way
+                  one goes quiet.
+                </p>
+                <Button
+                  size="sm" variant="outline" className="shrink-0 gap-1.5"
+                  onClick={() => setFollowOpen(true)}
+                >
+                  <CornerUpRight className="size-4" /> Schedule one
+                </Button>
+              </div>
             ) : (
               <>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -735,7 +754,7 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
           </Card>
 
           <Card className="p-4">
-            <Head title="Logged" note="Last eight weeks" />
+            <Head title="Activity logged" note="Last eight weeks" />
 
             {data.activityByWeek.every(w => w.count === 0) ? (
               <p className="mt-3 text-[12.5px] text-muted-foreground">
@@ -748,30 +767,35 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
                 labels={data.activityByWeek.map(w => formatDayShort(w.week))}
                 colour={v.cash}
                 height={72}
+                onPanel={false}
                 format={n => String(Math.round(n))}
               />
             )}
+          </Card>
+          </div>
 
-            <div className="mt-4 border-t border-border pt-3">
-              <Head title="Recent" count={data.recentActivity.length} />
-              <div className="mt-2">
-                <Timeline
-                  items={data.recentActivity.slice(0, 6)}
-                  empty={
-                    <p className="py-1 text-[12.5px] text-muted-foreground">
-                      Nothing logged yet. Record a call and it appears here and on the
-                      customer it was with.
-                    </p>
-                  }
-                />
-              </div>
-              <Button
-                size="sm" variant="outline" className="mt-3 gap-1.5"
-                onClick={() => setLogOpen(true)}
-              >
-                <Plus className="size-4" /> Log activity
-              </Button>
+          <Card className="p-4">
+            <Head
+              title="Recent"
+              count={data.recentActivity.length}
+              action={{ label: 'Open Activities', onClick: () => onGo('activities') }}
+            />
+            <div className="mt-2">
+              <Timeline
+                items={data.recentActivity.slice(0, 6)}
+                empty={
+                  <p className="py-1 text-[12.5px] text-muted-foreground">
+                    Nothing logged yet.
+                  </p>
+                }
+              />
             </div>
+            <Button
+              size="sm" variant="outline" className="mt-3 gap-1.5"
+              onClick={() => setLogOpen(true)}
+            >
+              <Plus className="size-4" /> Log activity
+            </Button>
           </Card>
         </div>
       </section>

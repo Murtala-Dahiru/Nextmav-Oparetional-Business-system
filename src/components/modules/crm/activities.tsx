@@ -4,13 +4,14 @@ import * as React from 'react';
 import { Plus, CornerUpRight, Sparkles, CheckCircle2, Inbox } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { useModuleRealtime } from '@/hooks/use-realtime';
 
 import { getList, listQuery } from './data';
 import {
-  SectionHead, SearchField, FilterRow, Blank, Broken, Spinner,
+  SectionHead, SearchField, FilterRow, FilterToggle, Blank, Broken, Spinner,
 } from './ui';
 import { Panel, NextActions, Timeline, useDeleteActivity } from './record-parts';
 import { ActivityDialog } from './activity-dialog';
@@ -45,6 +46,24 @@ import { ACTIVITY_TYPES, type CrmActivity } from './types';
 
 type View = 'overdue' | 'today' | 'upcoming' | 'done' | 'history';
 
+/** The footer under a windowed list: what is shown, and how to see more. */
+function More({
+  shown, total, onMore,
+}: {
+  shown: number; total: number; onMore: () => void;
+}) {
+  return (
+    <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+      <p className="text-[12px] tabular-nums text-muted-foreground">
+        {shown} of {total}
+      </p>
+      <Button size="sm" variant="outline" className="h-7 text-[12px]" onClick={onMore}>
+        Show more
+      </Button>
+    </div>
+  );
+}
+
 const VIEWS: { value: View; label: string }[] = [
   { value: 'overdue', label: 'Overdue' },
   { value: 'today', label: 'Today' },
@@ -55,14 +74,38 @@ const VIEWS: { value: View; label: string }[] = [
 
 export function ActivitiesSection() {
   const [view, setView] = React.useState<View>('today');
+  /**
+   * The first view is chosen from what is actually in there.
+   *
+   * Landing on Today is right when something is due today and wrong the rest
+   * of the time - which, in a workspace with forty-six logged activities and
+   * nothing scheduled, meant the screen opened on an empty box and hid every
+   * thing it had. The order is the order of urgency: what has slipped, then
+   * today, then what is coming, and if none of those exist, the history.
+   *
+   * It runs once. After that the view is the reader's, and a queue emptying
+   * under them must not move the screen.
+   */
+  const chosen = React.useRef(false);
   const [type, setType] = React.useState('');
   const [search, setSearch] = React.useState('');
   const [mine, setMine] = React.useState(true);
 
   const [rows, setRows] = React.useState<CrmActivity[]>([]);
+  const [total, setTotal] = React.useState(0);
   const [counts, setCounts] = React.useState<Record<string, number>>({});
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+
+  /**
+   * How much of the timeline is drawn.
+   *
+   * A history is unbounded by nature, and rendering all of it produced a four
+   * thousand pixel page on a workspace with forty-six entries - which is a
+   * small one. Thirty is about a screen and a half; the rest is one click, and
+   * the footer says how much is left rather than stopping silently.
+   */
+  const [limit, setLimit] = React.useState(30);
 
   const [logOpen, setLogOpen] = React.useState(false);
   const [followOpen, setFollowOpen] = React.useState(false);
@@ -79,7 +122,7 @@ export function ActivitiesSection() {
     setLoading(true);
 
     const query = listQuery({
-      pageSize: 100,
+      pageSize: limit,
       ...(view === 'history'
         ? { logged: 'true', sort: 'created_at', sortDir: 'desc' }
         : view === 'done'
@@ -91,12 +134,21 @@ export function ActivitiesSection() {
     });
 
     getList<CrmActivity>(`/api/crm/activities?${query}`)
-      .then(res => { if (!cancelled) { setRows(res.data); setError(null); } })
+      .then(res => {
+        if (cancelled) return;
+        setRows(res.data);
+        setTotal(res.meta.total);
+        setError(null);
+      })
       .catch((e: Error) => { if (!cancelled) { setRows([]); setError(e.message); } })
       .finally(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
-  }, [view, type, search, mine, nonce]);
+  }, [view, type, search, mine, limit, nonce]);
+
+  // Changing what is shown starts the window again; keeping a reader's depth
+  // across a different question would open the new one part-way down.
+  React.useEffect(() => { setLimit(30); }, [view, type, search, mine]);
 
   /**
    * The three queue counts, so the tabs say how much is behind them.
@@ -120,8 +172,15 @@ export function ActivitiesSection() {
           return [v, -1] as const;
         }
       }));
-      if (!cancelled) {
-        setCounts(Object.fromEntries(found.filter(([, n]) => n >= 0)));
+      if (cancelled) return;
+
+      const next = Object.fromEntries(found.filter(([, n]) => n >= 0));
+      setCounts(next);
+
+      if (!chosen.current) {
+        chosen.current = true;
+        const first = wanted.find(v => (next[v] ?? 0) > 0);
+        setView(first ?? 'history');
       }
     })();
     return () => { cancelled = true; };
@@ -161,22 +220,31 @@ export function ActivitiesSection() {
         <SearchField
           placeholder="Search subjects and notes"
           onChange={setSearch}
-          className="lg:max-w-xs"
+          className="lg:w-80"
         />
 
         <div className="flex flex-1 flex-wrap items-center gap-2 lg:justify-end">
-          <FilterRow
-            ariaLabel="Filter by activity type"
-            value={type}
-            onChange={setType}
-            options={typeOptions}
-            className="max-w-full"
-          />
+          {/*
+            Eleven types as a pill row was a filter people scan past. It is a
+            long closed list that is rarely narrowed, which is exactly what a
+            select is for - and it hands the row back to the two controls that
+            are used constantly.
+          */}
+          <Select value={type || '__all'} onValueChange={v => setType(v === '__all' ? '' : v)}>
+            <SelectTrigger className="h-9 w-[168px] text-[12.5px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {typeOptions.map(t => (
+                <SelectItem key={t.value || '__all'} value={t.value || '__all'} className="text-[13px]">
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           {isQueue && (
-            <label className="flex shrink-0 cursor-pointer items-center gap-2 rounded-md border border-border px-2.5 py-[7px]">
-              <Label className="cursor-pointer text-[12.5px] font-medium">Only mine</Label>
-              <Switch checked={mine} onCheckedChange={setMine} />
-            </label>
+            <FilterToggle label="Only mine" active={mine} onChange={setMine} />
           )}
         </div>
       </div>
@@ -241,16 +309,18 @@ export function ActivitiesSection() {
           )}
         </div>
       ) : isQueue && view !== 'done' ? (
-        <Panel title={VIEWS.find(v => v.value === view)!.label} count={rows.length}>
+        <Panel title={VIEWS.find(v => v.value === view)!.label} count={total}>
           <NextActions
             items={rows}
             onChanged={reload}
             onEdit={a => { setEditing(a); setFollowOpen(true); }}
           />
+          {total > rows.length && <More shown={rows.length} total={total} onMore={() => setLimit(n => n + 30)} />}
         </Panel>
       ) : (
-        <Panel title={view === 'done' ? 'Completed' : 'Everything logged'} count={rows.length}>
+        <Panel title={view === 'done' ? 'Completed' : 'Everything logged'} count={total}>
           <Timeline items={rows} onDelete={deleteActivity} />
+          {total > rows.length && <More shown={rows.length} total={total} onMore={() => setLimit(n => n + 30)} />}
         </Panel>
       )}
 

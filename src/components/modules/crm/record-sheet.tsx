@@ -399,8 +399,7 @@ export function RecordSheet({
                   />
                 ) : (
                   <p className="py-1 text-[12.5px] text-muted-foreground">
-                    Nothing scheduled. A record with no next action is the commonest way
-                    one goes quiet.
+                    Nothing scheduled.
                   </p>
                 )}
               </Panel>

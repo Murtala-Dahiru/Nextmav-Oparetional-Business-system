@@ -269,7 +269,15 @@ export function SearchField({
   React.useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   return (
-    <div className={cn('relative', className)}>
+    /*
+      `w-full` matters more than it looks.
+
+      A bare `<div>` inside a flex row takes its base size from its content,
+      and an `<input>`'s content is its `size` attribute - about twenty
+      characters. Every search field in the module rendered at roughly 215px
+      whatever `max-w-*` said, and clipped its own placeholder.
+    */
+    <div className={cn('relative w-full', className)}>
       <Search
         aria-hidden="true"
         className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
@@ -361,6 +369,96 @@ export function FilterRow({
         );
       })}
     </div>
+  );
+}
+
+/**
+ * The open book, split by stage, on the pipeline's own colour ramp.
+ *
+ * ── Why not the shared `Bar` ─────────────────────────────────────────────
+ *
+ * `Bar` takes a closed set of tones - accent, warn, bad, quiet, claim - which
+ * exist to say what a segment *means*. A pipeline's segments do not mean five
+ * different things; they are one thing at four points along a sequence, and
+ * drawing three of them "quiet" and the last one "accent" reduced the bar to a
+ * single fact: how much is nearly done. That is worth knowing and it is not
+ * what a composition bar is for.
+ *
+ * On the ramp the shape is readable at a glance: a bar that darkens towards
+ * the right is a book about to close, and one that is pale all the way across
+ * is a quarter's work still to do.
+ */
+export function StageSplit({
+  segments, className,
+}: {
+  segments: { stage: string; value: number }[];
+  className?: string;
+}) {
+  const live = segments.filter(s => s.value > 0);
+  const total = live.reduce((sum, s) => sum + s.value, 0);
+  if (!total) return null;
+
+  return (
+    <span
+      role="img"
+      aria-label={live.map(s => `${STAGE_LABELS[s.stage] ?? s.stage}: ${s.value}`).join(', ')}
+      className={cn('flex h-1 w-full overflow-hidden rounded-full bg-panel-fg/10', className)}
+    >
+      {live.map(s => (
+        <span
+          key={s.stage}
+          title={STAGE_LABELS[s.stage] ?? s.stage}
+          className="h-full transition-[width] duration-700 ease-[var(--ease-brand)]"
+          style={{
+            width: `${(s.value / total) * 100}%`,
+            background: `color-mix(in srgb, var(--panel-accent) ${
+              28 + STAGE_ORDER.indexOf(s.stage) * 24
+            }%, transparent)`,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
+/**
+ * A single on/off filter, in the same shape as one `FilterRow` pill.
+ *
+ * A `Switch` in a bordered box was two visual languages on one toolbar: a
+ * segmented control saying "which of these", and a settings toggle saying
+ * "on or off". Both are filters and both should look like filters, so this is
+ * the pill with `aria-pressed` instead of `aria-checked`.
+ */
+export function FilterToggle({
+  label, active, onChange, className,
+}: {
+  label: string;
+  active: boolean;
+  onChange: (next: boolean) => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={() => onChange(!active)}
+      className={cn(
+        'flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-[6px] text-[12.5px] font-medium transition-colors',
+        active
+          ? 'border-foreground/25 bg-accent text-foreground'
+          : 'border-border bg-card text-muted-foreground hover:text-foreground',
+        className,
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          'size-[7px] rounded-full transition-colors',
+          active ? 'bg-[var(--chart-1)]' : 'bg-border',
+        )}
+      />
+      {label}
+    </button>
   );
 }
 

@@ -11,7 +11,9 @@ export const { GET, POST } = collectionHandlers(
   {
     table: 'deals', module: 'crm', select: SELECT, softDelete: true,
     searchColumns: ['name', 'notes'],
-    sortable: ['created_at', 'updated_at', 'name', 'value', 'stage', 'probability', 'expected_close'],
+    // `closed_at` is what the board's Won and Lost columns order by: the useful
+    // Won column is the business just won, not the largest deal of all time.
+    sortable: ['created_at', 'updated_at', 'name', 'value', 'stage', 'probability', 'expected_close', 'closed_at'],
     filterable: ['stage', 'owner_id', 'company_id'],
     // A role granted CRM at `scope: 'own'` sees its own records and no more.
     // See lib/supabase/crm-scope.ts for why this applies here and not to

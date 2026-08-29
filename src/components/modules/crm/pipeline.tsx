@@ -62,6 +62,9 @@ import { STAGE_LABELS, CLOSED_STAGES, type Deal, type CrmOverview } from './type
 
 const CARDS_PER_STAGE = 100;
 
+/** Won and Lost are a recent-closures list, not an archive. */
+const CARDS_PER_CLOSED_STAGE = 15;
+
 /* -------------------------------------------------------------------------- */
 /*  Card                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -88,15 +91,17 @@ function DealCard({
   return (
     <div
       className={cn(
-        'rounded-lg border border-border bg-card p-3 shadow-e1 transition-shadow',
-        dragging ? 'rotate-[1.5deg] cursor-grabbing shadow-e2' : 'hover:border-foreground/20',
+        'group/card rounded-lg border border-border bg-card p-3 shadow-e1 transition-[box-shadow,border-color]',
+        dragging
+          ? 'rotate-[1.5deg] cursor-grabbing shadow-e2'
+          : 'cursor-grab hover:border-foreground/25',
       )}
     >
       <div className="flex items-start gap-2">
         <button
           type="button"
           onClick={onOpen}
-          className="min-w-0 flex-1 text-left"
+          className="min-w-0 flex-1 cursor-pointer text-left"
         >
           <p className="line-clamp-2 text-[13px] font-medium leading-snug text-foreground">
             {deal.name}
@@ -105,9 +110,14 @@ function DealCard({
             <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{deal.company.name}</p>
           )}
         </button>
+        {/*
+          The whole card drags, so the grip is a hint rather than the handle -
+          and a hint that is always on is furniture. It appears on hover, where
+          it answers the only question the card raises: does this move?
+        */}
         <GripVertical
           aria-hidden="true"
-          className="mt-0.5 size-3.5 shrink-0 cursor-grab text-muted-foreground/40"
+          className="mt-0.5 size-3.5 shrink-0 text-muted-foreground/50 opacity-0 transition-opacity group-hover/card:opacity-100"
         />
       </div>
 
@@ -168,10 +178,24 @@ function Draggable({
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      // Hidden rather than removed: keeping the node in the flow stops the
-      // column re-flowing under the pointer mid-drag, which is what makes a
-      // board feel like it is fighting you.
-      className={cn('touch-none', isDragging && 'opacity-30')}
+      /*
+        ── Why the card does not set `touch-action: none` ──────────────────
+        It did, and that is the correct setting for a pointer sensor with a
+        distance constraint - but it also told the browser that no touch
+        gesture starting on a card is a scroll. On a phone the columns scroll
+        and the board scrolls sideways, and with every card opted out the only
+        place left to swipe was the gap between them.
+
+        The touch sensor's 180ms delay is what disambiguates instead: a swipe
+        scrolls, a press-and-hold picks the card up. dnd-kit attaches its move
+        listener non-passively, so it can still take over once the delay has
+        elapsed.
+
+        Faded rather than removed while dragging: keeping the node in the flow
+        stops the column re-flowing under the pointer, which is what makes a
+        board feel like it is fighting you.
+      */
+      className={cn(isDragging && 'opacity-30')}
     >
       <DealCard deal={deal} onOpen={onOpen} />
     </div>
@@ -228,10 +252,28 @@ function Column({
         )}
       </header>
 
+      {/*
+        ── Why the column scrolls rather than growing ──────────────────────
+        Flex rows stretch their items, so the tallest column set the height of
+        every other one - and the tallest is Won, which holds every deal the
+        company has ever closed. A board that was six hundred pixels of content
+        rendered as three and a half thousand pixels of page, with the columns
+        that matter stranded at the top and nothing but whitespace below.
+
+        Capping the body and giving it its own scroll is what a board is
+        supposed to be: a fixed workspace where each column moves
+        independently. `overscroll-contain` stops a flick at the bottom of one
+        column scrolling the page behind it.
+      */}
       <div
         ref={setNodeRef}
         className={cn(
-          'flex min-h-[140px] flex-1 flex-col gap-2 rounded-lg border border-dashed p-1.5 transition-colors',
+          // The cap is measured down from the viewport rather than as a bare
+          // `vh`, because the board sits below the shell header, the section
+          // nav, the page heading and the search field - about nineteen rems
+          // of chrome that a `64vh` column would hang below.
+          'flex max-h-[min(calc(100vh-19rem),620px)] min-h-[140px] flex-1 flex-col gap-2 overflow-y-auto overscroll-contain rounded-lg border border-dashed p-1.5 transition-colors',
+          '[scrollbar-width:thin]',
           over ? 'border-[var(--chart-1)] bg-[color-mix(in_srgb,var(--chart-1)_8%,transparent)]' : 'border-transparent',
         )}
       >
@@ -248,7 +290,9 @@ function Column({
 
         {!loading && total > deals.length && (
           <p className="px-2 pb-1 pt-0.5 text-center text-[11px] text-muted-foreground/70">
-            {total - deals.length} more, not shown
+            {closed
+              ? `${deals.length} most recent of ${total}`
+              : `${total - deals.length} more, not shown`}
           </p>
         )}
       </div>
@@ -287,8 +331,21 @@ export function PipelineSection({ onOpenDeals }: { onOpenDeals?: (stage: string)
        * and each column gets its own honest `total`.
        */
       const stageLists = await Promise.all(DEAL_STAGES.map(async stage => {
+        /**
+         * The open columns are ordered by value, the closed ones by date.
+         *
+         * "The biggest deal we are working" is the question an open column
+         * answers. "The biggest deal we have ever won" is not a question
+         * anybody asks a board - what they want from the Won column is what
+         * has just landed, and a short list of it rather than every closure
+         * since the company started.
+         */
+        const closed = CLOSED_STAGES.includes(stage);
         const q = listQuery({
-          stage, pageSize: CARDS_PER_STAGE, sort: 'value', sortDir: 'desc',
+          stage,
+          pageSize: closed ? CARDS_PER_CLOSED_STAGE : CARDS_PER_STAGE,
+          sort: closed ? 'closed_at' : 'value',
+          sortDir: 'desc',
           search: search || undefined,
         });
         const res = await getList<Deal>(`/api/crm/deals?${q}`);
@@ -414,7 +471,7 @@ export function PipelineSection({ onOpenDeals }: { onOpenDeals?: (stage: string)
       <SearchField
         placeholder="Search the board"
         onChange={setSearch}
-        className="lg:max-w-xs"
+        className="lg:w-80"
       />
 
       {error ? (

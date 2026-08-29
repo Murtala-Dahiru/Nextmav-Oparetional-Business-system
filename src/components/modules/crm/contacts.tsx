@@ -169,7 +169,7 @@ export function ContactsSection({
         <SearchField
           placeholder="Search by name, email or job title"
           onChange={list.setSearch}
-          className="lg:max-w-xs"
+          className="lg:w-80"
         />
         <FilterRow
           ariaLabel="Filter by whether the contact is still there"

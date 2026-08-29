@@ -106,9 +106,23 @@ export default function CrmModule() {
       */}
       <div className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex items-center gap-3 px-4 md:px-6">
+          {/*
+            The fade is the only thing saying there is more.
+
+            Eight sections do not fit on a phone, and a scroller with a hidden
+            scrollbar that happens to end on a whole word reads as the end of
+            the list. The mask is applied only where the row actually
+            overflows - on a desktop it is off, so nothing is dimmed for no
+            reason.
+          */}
           <nav
             aria-label="CRM sections"
-            className="-mb-px flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className={cn(
+              '-mb-px flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto',
+              '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+              '[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]',
+              'lg:[mask-image:none]',
+            )}
           >
             {visible.map(s => {
               const on = s.id === section;

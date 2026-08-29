@@ -373,9 +373,7 @@ export function ActivityDialog({
               )}
 
               <p className="text-[11.5px] leading-relaxed text-muted-foreground">
-                The date is when it is owed. The reminder is when you are told - they are
-                deliberately different, so a follow-up due Friday can reach you on Thursday
-                evening.
+                The date is when it is owed. The reminder is when you are told.
               </p>
             </div>
           )}
