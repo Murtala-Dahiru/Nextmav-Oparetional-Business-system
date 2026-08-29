@@ -1,50 +1,67 @@
 'use client';
 
 import * as React from 'react';
-import {
-  Building2, Users, Handshake, FolderKanban, Receipt, LifeBuoy, CalendarDays,
-  Activity, Globe, Mail, Phone, MapPin, AlertTriangle, Loader2, ExternalLink,
-  Plus, PhoneCall, Send, StickyNote, CalendarClock,
-} from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
-} from '@/components/ui/sheet';
-import { Badge } from '@/components/ui/badge';
+  Building2, Users, Handshake, FolderKanban, Receipt, LifeBuoy, CalendarDays,
+  Globe, Mail, Phone, MapPin, AlertTriangle, ExternalLink, Plus, CornerUpRight,
+  Pencil, Clock, History,
+} from 'lucide-react';
+
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Separator } from '@/components/ui/separator';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-} from '@/components/ui/dialog';
-import { EmptyState } from '@/components/shared/empty-state';
-import { useAppStore } from '@/store/app-store';
-import { formatCurrency, formatDate, formatRelativeTime, initialsOf } from '@/lib/format';
+import { AddToMyWorkButton } from '@/components/shared/add-to-my-work';
 import { cn } from '@/lib/utils';
+import { useAppStore } from '@/store/app-store';
+import { formatDate, formatRelativeTime, initialsOf, formatNumber } from '@/lib/format';
+
+import { getOne, exact, formatDay, relativeDay, daysUntil } from './data';
+import { StageTag, Monogram, Spinner, Broken, Blank, FilterRow } from './ui';
+import { Panel, NextActions, Timeline, whenOf, subjectOf } from './record-parts';
+import { ActivityDialog } from './activity-dialog';
+import { DealDialog, ContactDialog } from './forms';
+import type { CrmActivity } from './types';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- *  The customer, whole.
+ *  The customer, whole
  * ═══════════════════════════════════════════════════════════════════════════
  *
- *  Everything the platform knows about one company, on one screen: the people,
- *  the pipeline, the work in flight and its health, what is owed, what is
- *  broken, what is scheduled, and what anyone has done about it.
+ *  Everything the platform knows about one company: the people, the pipeline,
+ *  the work in flight and its health, what is owed, what is broken, what is
+ *  scheduled, and what anyone has done about it.
  *
- *  Each panel is a live read of the module that owns it — projects come from
+ *  Each panel is a live read of the module that owns it - projects come from
  *  `v_project_health`, the same view the project board reads; invoices are the
  *  Finance rows, not a copy. There is no customer table duplicating any of it,
- *  which is why a project marked at risk this morning is at risk here too,
+ *  which is why a project marked at risk this morning is at risk here too
  *  without anyone synchronising anything.
  *
  *  Panels the caller's role cannot see are absent from the response entirely,
  *  so this component renders what it is given rather than deciding who may see
- *  what — the access decision belongs on the server.
+ *  what - the access decision belongs on the server.
+ *
+ *  ── What this pass changed ──────────────────────────────────────────────
+ *
+ *  The endpoint was already good and is barely touched. The screen was one
+ *  long scroll of seven panels, every one of them open, so the answer to "what
+ *  is happening with this customer" was somewhere in eleven hundred pixels of
+ *  equally weighted lists. Three things changed:
+ *
+ *    · **A relationship summary that leads.** Six figures, and two of them -
+ *      last contact and next follow-up - are the ones somebody about to ring
+ *      this customer actually needs. Neither existed before, because nothing
+ *      read `crm_activities.due_at`.
+ *
+ *    · **Sections, not a scroll.** People, Deals, Work, Money, Support and
+ *      Activity are tabs. Every one keeps its count in the tab, so the shape of
+ *      the relationship is legible without opening any of them.
+ *
+ *    · **It can be worked from.** Log a call, schedule a follow-up, open a
+ *      deal, add a contact - from the customer, without going and finding the
+ *      right list first.
  */
 
 interface Overview {
@@ -55,14 +72,36 @@ interface Overview {
     employeeCount: number | null; annualRevenue: number | null;
     owner: { fullName: string; avatar: string } | null;
   };
-  contacts: { id: string; firstName: string; lastName: string; email: string | null; phone: string | null; jobTitle: string | null; isActive: boolean }[];
-  deals: { id: string; name: string; stage: string; value: number; probability: number; expectedClose: string | null; owner: { fullName: string } | null }[];
-  projects?: { id: string; name: string; status: string; priority: string; endDate: string | null; progressPct: number; totalTasks: number; completedTasks: number; overdueTasks: number; daysRemaining: number | null; isAtRisk: boolean }[];
-  invoices?: { id: string; invoiceNumber: string; status: string; issueDate: string; dueDate: string; total: number; amountPaid: number; currency: string }[];
-  tickets?: { id: string; ticketNumber: string; subject: string; status: string; priority: string; createdAt: string; resolvedAt: string | null }[];
-  meetings?: { id: string; title: string; startsAt: string; endsAt: string; allDay: boolean; location: string | null }[];
-  activities: { id: string; activityType: string; subject: string; body: string; createdAt: string; user: { fullName: string } | null }[];
-  timeline: { id: number; module: string; action: string; title: string; createdAt: string; user: { fullName: string } | null }[];
+  contacts: {
+    id: string; firstName: string; lastName: string; email: string | null;
+    phone: string | null; jobTitle: string | null; isActive: boolean;
+  }[];
+  deals: {
+    id: string; name: string; stage: string; value: number; probability: number;
+    expectedClose: string | null; closedAt: string | null; owner: { fullName: string } | null;
+  }[];
+  projects?: {
+    id: string; name: string; status: string; priority: string; endDate: string | null;
+    progressPct: number; totalTasks: number; completedTasks: number; overdueTasks: number;
+    daysRemaining: number | null; isAtRisk: boolean;
+  }[];
+  invoices?: {
+    id: string; invoiceNumber: string; status: string; issueDate: string;
+    dueDate: string; total: number; amountPaid: number; currency: string;
+  }[];
+  tickets?: {
+    id: string; ticketNumber: string; subject: string; status: string;
+    priority: string; createdAt: string; resolvedAt: string | null;
+  }[];
+  meetings?: {
+    id: string; title: string; startsAt: string; endsAt: string;
+    allDay: boolean; location: string | null;
+  }[];
+  activities: CrmActivity[];
+  timeline: {
+    id: number; module: string; action: string; title: string;
+    createdAt: string; user: { fullName: string } | null;
+  }[];
   summary: {
     contacts: number; openDeals: number; openDealValue: number; wonDealValue: number;
     activeProjects: number; projectsAtRisk: number; outstandingInvoiced: number;
@@ -70,95 +109,86 @@ interface Overview {
   };
 }
 
-const ACTIVITY_ICONS: Record<string, React.ElementType> = {
-  call: PhoneCall, email: Send, meeting: CalendarClock, note: StickyNote,
-};
+type Tab = 'overview' | 'people' | 'deals' | 'work' | 'money' | 'support' | 'activity';
 
-function StatTile({
-  label, value, icon: Icon, tone = 'default',
+/* -------------------------------------------------------------------------- */
+/*  Summary                                                                   */
+/* -------------------------------------------------------------------------- */
+
+function Fig({
+  label, value, note, tone = 'default',
 }: {
-  label: string; value: string; icon: React.ElementType; tone?: 'default' | 'warn';
+  label: string; value: string; note?: string; tone?: 'default' | 'warn' | 'good';
 }) {
   return (
-    <div className="rounded-lg border bg-card p-3">
-      <div className="flex items-center gap-1.5 text-muted-foreground">
-        <Icon className={cn('size-3.5', tone === 'warn' && 'text-amber-600')} />
-        <span className="text-[11px] font-medium uppercase tracking-wide">{label}</span>
-      </div>
-      <p className={cn('mt-1 text-lg font-semibold tabular-nums', tone === 'warn' && 'text-amber-600')}>
+    <div className="min-w-0 px-3.5 py-3">
+      <p className="truncate text-[10px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">
+        {label}
+      </p>
+      <p className={cn(
+        'mt-1.5 truncate text-[15px] font-semibold leading-none tabular-nums tracking-[-0.02em]',
+        tone === 'warn' ? 'text-warning' : tone === 'good' ? 'text-success' : 'text-foreground',
+      )}>
         {value}
       </p>
+      {note && <p className="mt-1 truncate text-[11px] text-muted-foreground">{note}</p>}
     </div>
   );
 }
 
-function Panel({
-  title, icon: Icon, count, action, children,
+function Row({
+  onOpen, children, className,
 }: {
-  title: string; icon: React.ElementType; count?: number;
-  action?: React.ReactNode; children: React.ReactNode;
+  onOpen?: () => void; children: React.ReactNode; className?: string;
 }) {
-  return (
-    <section className="rounded-lg border bg-card">
-      <header className="flex items-center gap-2 border-b px-3.5 py-2.5">
-        <Icon className="size-4 text-muted-foreground" />
-        <h3 className="text-sm font-medium">{title}</h3>
-        {count !== undefined && count > 0 && (
-          <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">{count}</Badge>
-        )}
-        {action && <div className="ml-auto">{action}</div>}
-      </header>
-      <div className="p-3.5">{children}</div>
-    </section>
-  );
-}
-
-/** A row that opens the record it names, in the module that owns it. */
-function LinkRow({
-  onOpen, children,
-}: {
-  onOpen?: () => void; children: React.ReactNode;
-}) {
-  if (!onOpen) return <div className="flex items-center gap-3 py-1.5">{children}</div>;
+  if (!onOpen) return <div className={cn('flex items-center gap-3 py-2', className)}>{children}</div>;
   return (
     <button
       type="button"
       onClick={onOpen}
-      className="group flex w-full items-center gap-3 rounded-md py-1.5 text-left hover:bg-accent/60 focus-visible:bg-accent/60 focus-visible:outline-none"
+      className={cn(
+        'group flex w-full items-center gap-3 rounded-md px-1 py-2 text-left transition-colors hover:bg-accent/60',
+        className,
+      )}
     >
       {children}
-      <ExternalLink className="ml-auto size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+      <ExternalLink className="ml-auto size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
     </button>
   );
 }
 
+/* -------------------------------------------------------------------------- */
+
 export function CompanyDetail({
-  companyId,
-  open,
-  onOpenChange,
-  onEdit,
+  companyId, open, onOpenChange, onEdit, onChanged,
 }: {
   companyId: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onEdit?: (companyId: string) => void;
+  onChanged?: () => void;
 }) {
+  const openRecord = useAppStore(s => s.openRecord);
+
   const [data, setData] = React.useState<Overview | null>(null);
   const [loading, setLoading] = React.useState(false);
-  const [logOpen, setLogOpen] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [tab, setTab] = React.useState<Tab>('overview');
 
-  const openRecord = useAppStore(s => s.openRecord);
+  const [logOpen, setLogOpen] = React.useState(false);
+  const [followOpen, setFollowOpen] = React.useState(false);
+  const [dealOpen, setDealOpen] = React.useState(false);
+  const [contactOpen, setContactOpen] = React.useState(false);
+  const [editingActivity, setEditingActivity] = React.useState<CrmActivity | null>(null);
 
   const load = React.useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`/api/crm/companies/${companyId}/overview`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error?.message || 'Could not load this customer');
-      setData(json.data);
-    } catch (err: any) {
-      toast.error(err.message || 'Could not load this customer');
+      setData(await getOne<Overview>(`/api/crm/companies/${companyId}/overview`));
+    } catch (e: any) {
+      setError(e.message || 'This customer could not be loaded');
       setData(null);
     } finally {
       setLoading(false);
@@ -167,8 +197,10 @@ export function CompanyDetail({
 
   React.useEffect(() => {
     if (open && companyId) void load();
-    if (!open) setData(null);
+    if (!open) { setData(null); setTab('overview'); setError(null); }
   }, [open, companyId, load]);
+
+  const refresh = React.useCallback(() => { void load(); onChanged?.(); }, [load, onChanged]);
 
   const c = data?.company;
   const s = data?.summary;
@@ -179,40 +211,64 @@ export function CompanyDetail({
     openRecord(module, type, id);
   };
 
+  /* ── The two facts nothing used to show ────────────────────────────────── */
+
+  const owed = React.useMemo(
+    () => (data?.activities ?? []).filter(a => a.dueAt && !a.completedAt)
+      .sort((a, b) => (a.dueAt ?? '').localeCompare(b.dueAt ?? '')),
+    [data],
+  );
+  const history = React.useMemo(
+    () => (data?.activities ?? []).filter(a => !a.dueAt || a.completedAt),
+    [data],
+  );
+  const lastContact = history[0]?.completedAt ?? history[0]?.createdAt ?? null;
+  const nextFollowUp = owed[0]?.dueAt ?? null;
+  const overdueCount = owed.filter(a => whenOf(a.dueAt) === 'overdue').length;
+
+  const link = c ? { kind: 'company' as const, id: c.id, label: c.name } : null;
+
+  const tabs: { id: Tab; label: string; count?: number; shown: boolean }[] = [
+    { id: 'overview', label: 'Overview', shown: true },
+    { id: 'people', label: 'People', count: data?.contacts.length, shown: true },
+    { id: 'deals', label: 'Deals', count: data?.deals.length, shown: true },
+    { id: 'work', label: 'Work', count: data?.projects?.length, shown: Boolean(data?.projects) },
+    { id: 'money', label: 'Money', count: data?.invoices?.length, shown: Boolean(data?.invoices) },
+    { id: 'support', label: 'Support', count: data?.tickets?.length, shown: Boolean(data?.tickets) },
+    { id: 'activity', label: 'Activity', count: data?.activities.length, shown: true },
+  ];
+
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-2xl">
-          <SheetHeader className="border-b px-5 py-4">
+        <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-2xl">
+          <SheetHeader className="border-b border-border px-5 py-4 text-left">
             <div className="flex items-start gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                 <Building2 className="size-5" />
-              </div>
+              </span>
               <div className="min-w-0 flex-1">
-                <SheetTitle className="truncate text-left text-base">
-                  {c?.name ?? (loading ? 'Loading…' : 'Customer')}
+                <SheetTitle className="truncate text-[17px] leading-tight">
+                  {c?.name ?? (loading ? 'Loading' : 'Customer')}
                 </SheetTitle>
-                <SheetDescription className="text-left text-xs">
-                  {[c?.industry, [c?.city, c?.country].filter(Boolean).join(', ')]
-                    .filter(Boolean).join(' · ') || 'No industry or location recorded'}
+                <SheetDescription className="mt-0.5 text-[12.5px]">
+                  {c
+                    ? [c.industry, [c.city, c.country].filter(Boolean).join(', ')]
+                      .filter(Boolean).join(' · ') || 'No industry or location recorded'
+                    : ' '}
                 </SheetDescription>
               </div>
-              {companyId && onEdit && (
-                <Button size="sm" variant="outline" onClick={() => onEdit(companyId)}>
-                  Edit
-                </Button>
-              )}
             </div>
 
             {c && (
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] text-muted-foreground">
                 {c.website && (
                   <a
                     href={c.website.startsWith('http') ? c.website : `https://${c.website}`}
                     target="_blank" rel="noreferrer noopener"
                     className="flex items-center gap-1 hover:text-foreground hover:underline"
                   >
-                    <Globe className="size-3.5" /> {c.website}
+                    <Globe className="size-3.5" /> {c.website.replace(/^https?:\/\//, '')}
                   </a>
                 )}
                 {c.email && (
@@ -225,11 +281,13 @@ export function CompanyDetail({
                     <Phone className="size-3.5" /> {c.phone}
                   </a>
                 )}
-                {c.address && (
-                  <span className="flex items-center gap-1"><MapPin className="size-3.5" /> {c.address}</span>
+                {(c.address || c.city) && (
+                  <span className="flex items-center gap-1">
+                    <MapPin className="size-3.5" /> {[c.address, c.city].filter(Boolean).join(', ')}
+                  </span>
                 )}
                 {c.owner?.fullName && (
-                  <span className="flex items-center gap-1">
+                  <span className="flex items-center gap-1.5">
                     <Avatar className="size-4">
                       <AvatarFallback className="bg-muted text-[8px]">{initialsOf(c.owner.fullName)}</AvatarFallback>
                     </Avatar>
@@ -238,392 +296,453 @@ export function CompanyDetail({
                 )}
               </div>
             )}
+
+            {c && (
+              <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
+                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" onClick={() => setLogOpen(true)}>
+                  <Plus className="size-3.5" /> Log activity
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" onClick={() => setFollowOpen(true)}>
+                  <CornerUpRight className="size-3.5" /> Follow up
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" onClick={() => setDealOpen(true)}>
+                  <Handshake className="size-3.5" /> New deal
+                </Button>
+                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" onClick={() => setContactOpen(true)}>
+                  <Users className="size-3.5" /> Add contact
+                </Button>
+                <AddToMyWorkButton
+                  source={{ module: 'crm', type: 'company', id: c.id, label: c.name }}
+                  title={owed[0]?.subject || `Check in with ${c.name}`}
+                  size="sm" variant="ghost" className="h-8 text-[12.5px]"
+                />
+                {onEdit && (
+                  <Button
+                    size="sm" variant="ghost" className="ml-auto h-8 gap-1.5 text-[12.5px]"
+                    onClick={() => { onOpenChange(false); onEdit(c.id); }}
+                  >
+                    <Pencil className="size-3.5" /> Edit
+                  </Button>
+                )}
+              </div>
+            )}
           </SheetHeader>
 
           {loading && !data ? (
-            <div className="space-y-4 p-5">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-lg" />)}
-              </div>
-              <Skeleton className="h-40 rounded-lg" />
-              <Skeleton className="h-40 rounded-lg" />
-            </div>
-          ) : !data ? (
+            <Spinner label="Loading this customer" />
+          ) : error ? (
+            <div className="p-5"><Broken message={error} onRetry={load} /></div>
+          ) : !data || !s ? (
             <div className="p-5">
-              <EmptyState
-                icon={Building2}
-                title="Nothing to show"
-                description="This customer could not be loaded."
-              />
+              <Blank icon={Building2} title="Nothing to show" body="This customer could not be loaded." />
             </div>
           ) : (
-            <div className="flex flex-col gap-4 p-5">
-              {/* ── The relationship at a glance ─────────────────────────── */}
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <StatTile
-                  label="Open pipeline" icon={Handshake}
-                  value={formatCurrency(s!.openDealValue, s!.currency)}
+            <>
+              {/* ── The relationship, in six figures ───────────────────────── */}
+              <div className="grid grid-cols-2 divide-x divide-y divide-border border-b border-border sm:grid-cols-3">
+                <Fig
+                  label="Open pipeline"
+                  value={exact(s.openDealValue, s.currency)}
+                  note={`${s.openDeals} ${s.openDeals === 1 ? 'deal' : 'deals'}`}
                 />
-                {data.projects && (
-                  <StatTile
-                    label="Active work" icon={FolderKanban}
-                    value={`${s!.activeProjects}${s!.projectsAtRisk ? ` · ${s!.projectsAtRisk} at risk` : ''}`}
-                    tone={s!.projectsAtRisk ? 'warn' : 'default'}
-                  />
-                )}
+                <Fig
+                  label="Won to date"
+                  value={exact(s.wonDealValue, s.currency)}
+                  tone={s.wonDealValue > 0 ? 'good' : 'default'}
+                />
+                <Fig
+                  label="Last contact"
+                  value={lastContact ? relativeDay(lastContact) : 'Never'}
+                  note={lastContact ? formatDate(lastContact) : 'Nothing has been logged'}
+                  tone={!lastContact ? 'warn' : 'default'}
+                />
+                <Fig
+                  label="Next follow-up"
+                  value={nextFollowUp ? relativeDay(nextFollowUp) : 'None'}
+                  note={owed[0]?.subject}
+                  tone={overdueCount ? 'warn' : 'default'}
+                />
                 {data.invoices && (
-                  <StatTile
-                    label="Outstanding" icon={Receipt}
-                    value={formatCurrency(s!.outstandingInvoiced, s!.currency)}
-                    tone={s!.overdueInvoices ? 'warn' : 'default'}
+                  <Fig
+                    label="Outstanding"
+                    value={exact(s.outstandingInvoiced, s.currency)}
+                    note={s.overdueInvoices ? `${s.overdueInvoices} overdue` : 'Nothing overdue'}
+                    tone={s.overdueInvoices ? 'warn' : 'default'}
                   />
                 )}
                 {data.tickets && (
-                  <StatTile
-                    label="Open tickets" icon={LifeBuoy}
-                    value={String(s!.openTickets)}
-                    tone={s!.openTickets ? 'warn' : 'default'}
+                  <Fig
+                    label="Open tickets"
+                    value={String(s.openTickets)}
+                    note={s.openTickets ? 'Being worked on' : 'Nothing open'}
+                    tone={s.openTickets ? 'warn' : 'default'}
                   />
                 )}
               </div>
 
-              {/* ── People ───────────────────────────────────────────────── */}
-              <Panel title="Contacts" icon={Users} count={data.contacts.length}>
-                {data.contacts.length === 0 ? (
-                  <p className="py-2 text-sm text-muted-foreground">No contacts recorded for this customer yet.</p>
-                ) : (
-                  <div className="flex flex-col divide-y">
-                    {data.contacts.map(p => (
-                      <LinkRow key={p.id} onOpen={() => go('crm', 'contact', p.id)}>
-                        <Avatar className="size-7 shrink-0">
-                          <AvatarFallback className="bg-emerald-500/10 text-[10px] text-emerald-700">
-                            {initialsOf(`${p.firstName} ${p.lastName}`)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm">{p.firstName} {p.lastName}</p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {[p.jobTitle, p.email].filter(Boolean).join(' · ') || 'No title or email'}
-                          </p>
-                        </div>
-                      </LinkRow>
-                    ))}
-                  </div>
-                )}
-              </Panel>
+              {/* ── Sections ──────────────────────────────────────────────── */}
+              <div className="border-b border-border px-5 py-2.5">
+                <FilterRow
+                  ariaLabel="Section"
+                  value={tab}
+                  onChange={v => setTab(v as Tab)}
+                  options={tabs.filter(t => t.shown).map(t => ({
+                    value: t.id, label: t.label, count: t.count,
+                  }))}
+                />
+              </div>
 
-              {/* ── Pipeline ─────────────────────────────────────────────── */}
-              <Panel title="Deals" icon={Handshake} count={data.deals.length}>
-                {data.deals.length === 0 ? (
-                  <p className="py-2 text-sm text-muted-foreground">No deals with this customer.</p>
-                ) : (
-                  <div className="flex flex-col divide-y">
-                    {data.deals.map(d => (
-                      <LinkRow key={d.id} onOpen={() => go('crm', 'deal', d.id)}>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm">{d.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            <span className="capitalize">{d.stage.replace(/_/g, ' ')}</span>
-                            {d.expectedClose && ` · closes ${formatDate(d.expectedClose)}`}
-                          </p>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <p className="text-sm font-medium tabular-nums">
-                            {formatCurrency(d.value, s!.currency)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{d.probability}%</p>
-                        </div>
-                      </LinkRow>
-                    ))}
-                  </div>
-                )}
-              </Panel>
-
-              {/* ── Delivery ─────────────────────────────────────────────── */}
-              {data.projects && (
-                <Panel title="Projects" icon={FolderKanban} count={data.projects.length}>
-                  {data.projects.length === 0 ? (
-                    <p className="py-2 text-sm text-muted-foreground">
-                      No projects are linked to this customer.
-                    </p>
-                  ) : (
-                    <div className="flex flex-col gap-3">
-                      {data.projects.map(p => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => go('projects', 'project', p.id)}
-                          className="group rounded-md p-1.5 text-left hover:bg-accent/60 focus-visible:bg-accent/60 focus-visible:outline-none"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="truncate text-sm font-medium">{p.name}</span>
-                            {p.isAtRisk && (
-                              <Badge variant="outline" className="h-5 gap-1 border-amber-500/40 px-1.5 text-[10px] text-amber-600">
-                                <AlertTriangle className="size-3" /> At risk
-                              </Badge>
-                            )}
-                            <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
-                              {p.progressPct}%
-                            </span>
-                          </div>
-                          <Progress value={p.progressPct} className="mt-1.5 h-1.5" />
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {p.completedTasks}/{p.totalTasks} tasks
-                            {p.overdueTasks > 0 && ` · ${p.overdueTasks} overdue`}
-                            {p.endDate && ` · due ${formatDate(p.endDate)}`}
-                          </p>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </Panel>
-              )}
-
-              {/* ── Money ────────────────────────────────────────────────── */}
-              {data.invoices && (
-                <Panel title="Invoices" icon={Receipt} count={data.invoices.length}>
-                  {data.invoices.length === 0 ? (
-                    <p className="py-2 text-sm text-muted-foreground">Nothing has been invoiced yet.</p>
-                  ) : (
-                    <div className="flex flex-col divide-y">
-                      {data.invoices.map(i => {
-                        const due = i.dueDate && i.dueDate < new Date().toISOString().slice(0, 10);
-                        const unpaid = i.status !== 'paid' && i.status !== 'cancelled';
-                        return (
-                          <LinkRow key={i.id} onOpen={() => go('finance', 'invoice', i.id)}>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm">{i.invoiceNumber}</p>
-                              <p className="text-xs text-muted-foreground">
-                                Issued {formatDate(i.issueDate)} · due {formatDate(i.dueDate)}
-                              </p>
-                            </div>
-                            <div className="shrink-0 text-right">
-                              <p className="text-sm font-medium tabular-nums">
-                                {formatCurrency(i.total, i.currency || s!.currency)}
-                              </p>
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  'h-5 px-1.5 text-[10px] capitalize',
-                                  due && unpaid && 'border-red-500/40 text-red-600',
-                                )}
-                              >
-                                {due && unpaid ? 'Overdue' : i.status}
-                              </Badge>
-                            </div>
-                          </LinkRow>
-                        );
-                      })}
-                    </div>
-                  )}
-                </Panel>
-              )}
-
-              {/* ── Service ──────────────────────────────────────────────── */}
-              {data.tickets && (
-                <Panel title="Support tickets" icon={LifeBuoy} count={data.tickets.length}>
-                  {data.tickets.length === 0 ? (
-                    <p className="py-2 text-sm text-muted-foreground">No support tickets from this customer.</p>
-                  ) : (
-                    <div className="flex flex-col divide-y">
-                      {data.tickets.map(t => (
-                        <LinkRow key={t.id} onOpen={() => go('support', 'ticket', t.id)}>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm">{t.subject}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {t.ticketNumber} · {formatRelativeTime(t.createdAt)}
-                            </p>
-                          </div>
-                          <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[10px] capitalize">
-                            {t.status.replace(/_/g, ' ')}
-                          </Badge>
-                        </LinkRow>
-                      ))}
-                    </div>
-                  )}
-                </Panel>
-              )}
-
-              {/* ── Diary ────────────────────────────────────────────────── */}
-              {data.meetings && data.meetings.length > 0 && (
-                <Panel title="Upcoming meetings" icon={CalendarDays} count={data.meetings.length}>
-                  <div className="flex flex-col divide-y">
-                    {data.meetings.map(m => (
-                      <div key={m.id} className="flex items-center gap-3 py-1.5">
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm">{m.title}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatDate(m.startsAt)}{m.location ? ` · ${m.location}` : ''}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Panel>
-              )}
-
-              {/* ── What anyone has done about it ────────────────────────── */}
-              <Panel
-                title="Activity" icon={Activity} count={data.activities.length}
-                action={
-                  <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" onClick={() => setLogOpen(true)}>
-                    <Plus className="size-3.5" /> Log
-                  </Button>
-                }
-              >
-                {data.activities.length === 0 ? (
-                  <p className="py-2 text-sm text-muted-foreground">
-                    No calls, emails or notes logged against this customer yet.
-                  </p>
-                ) : (
-                  <ul className="flex flex-col gap-3">
-                    {data.activities.map(a => {
-                      const Icon = ACTIVITY_ICONS[a.activityType] ?? StickyNote;
-                      return (
-                        <li key={a.id} className="flex items-start gap-2.5">
-                          <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                            <Icon className="size-3.5" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm">{a.subject}</p>
-                            {a.body && <p className="text-xs text-muted-foreground">{a.body}</p>}
-                            <p className="text-[11px] text-muted-foreground">
-                              {a.user?.fullName ? `${a.user.fullName} · ` : ''}
-                              {formatRelativeTime(a.createdAt)}
-                            </p>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-
-                {data.timeline.length > 0 && (
+              <div className="flex flex-col gap-4 p-5">
+                {tab === 'overview' && (
                   <>
-                    <Separator className="my-3" />
-                    <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                      Record history
-                    </p>
-                    <ul className="flex flex-col gap-2">
-                      {data.timeline.map(t => (
-                        <li key={t.id} className="flex items-baseline gap-2 text-xs">
-                          <span className="truncate text-muted-foreground">{t.title}</span>
-                          <span className="ml-auto shrink-0 text-muted-foreground/70">
-                            {formatRelativeTime(t.createdAt)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
+                    <Panel
+                      title="Next"
+                      count={owed.length}
+                      action={
+                        <Button size="sm" variant="ghost" className="h-7 gap-1 text-[12px]" onClick={() => setFollowOpen(true)}>
+                          <Plus className="size-3" /> Add
+                        </Button>
+                      }
+                    >
+                      {owed.length ? (
+                        <NextActions
+                          items={owed}
+                          onChanged={refresh}
+                          onEdit={a => { setEditingActivity(a); setFollowOpen(true); }}
+                        />
+                      ) : (
+                        <p className="py-1 text-[12.5px] text-muted-foreground">
+                          Nothing scheduled with this customer.
+                        </p>
+                      )}
+                    </Panel>
+
+                    <Panel title="Recent" count={history.length}>
+                      <Timeline items={history.slice(0, 8)} />
+                      {history.length > 8 && (
+                        <button
+                          type="button"
+                          onClick={() => setTab('activity')}
+                          className="mt-2 text-[12.5px] font-medium text-foreground hover:underline"
+                        >
+                          See all {history.length}
+                        </button>
+                      )}
+                    </Panel>
+
+                    {c?.notes && (
+                      <Panel title="Notes">
+                        <p className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-muted-foreground">
+                          {c.notes}
+                        </p>
+                      </Panel>
+                    )}
+
+                    {(c?.employeeCount || c?.annualRevenue) && (
+                      <Panel title="About">
+                        <dl className="grid grid-cols-2 gap-4">
+                          {c.employeeCount ? (
+                            <div>
+                              <dt className="text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">People</dt>
+                              <dd className="mt-1 text-[13px] tabular-nums">{formatNumber(c.employeeCount)}</dd>
+                            </div>
+                          ) : null}
+                          {c.annualRevenue ? (
+                            <div>
+                              <dt className="text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">Annual revenue</dt>
+                              <dd className="mt-1 text-[13px] tabular-nums">
+                                {exact(c.annualRevenue, s.currency)}
+                              </dd>
+                            </div>
+                          ) : null}
+                        </dl>
+                      </Panel>
+                    )}
                   </>
                 )}
-              </Panel>
-            </div>
+
+                {tab === 'people' && (
+                  <Panel
+                    title="Contacts"
+                    count={data.contacts.length}
+                    action={
+                      <Button size="sm" variant="ghost" className="h-7 gap-1 text-[12px]" onClick={() => setContactOpen(true)}>
+                        <Plus className="size-3" /> Add
+                      </Button>
+                    }
+                  >
+                    {data.contacts.length === 0 ? (
+                      <p className="py-1 text-[12.5px] text-muted-foreground">
+                        Nobody is recorded at this customer yet. Without a contact there is no
+                        one to send a proposal to.
+                      </p>
+                    ) : (
+                      <div className="flex flex-col divide-y divide-border">
+                        {data.contacts.map(p => (
+                          <Row key={p.id} onOpen={() => go('crm', 'contact', p.id)}>
+                            <Monogram name={`${p.firstName} ${p.lastName}`} />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[13px] text-foreground">
+                                {`${p.firstName} ${p.lastName}`.trim()}
+                                {!p.isActive && (
+                                  <span className="ml-2 text-[11.5px] text-muted-foreground">no longer here</span>
+                                )}
+                              </p>
+                              <p className="truncate text-[11.5px] text-muted-foreground">
+                                {[p.jobTitle, p.email].filter(Boolean).join(' · ') || 'No title or email'}
+                              </p>
+                            </div>
+                          </Row>
+                        ))}
+                      </div>
+                    )}
+                  </Panel>
+                )}
+
+                {tab === 'deals' && (
+                  <Panel
+                    title="Deals"
+                    count={data.deals.length}
+                    action={
+                      <Button size="sm" variant="ghost" className="h-7 gap-1 text-[12px]" onClick={() => setDealOpen(true)}>
+                        <Plus className="size-3" /> Add
+                      </Button>
+                    }
+                  >
+                    {data.deals.length === 0 ? (
+                      <p className="py-1 text-[12.5px] text-muted-foreground">
+                        No deals with this customer yet.
+                      </p>
+                    ) : (
+                      <div className="flex flex-col divide-y divide-border">
+                        {data.deals.map(d => {
+                          const left = daysUntil(d.expectedClose);
+                          const late = left !== null && left < 0
+                            && d.stage !== 'closed_won' && d.stage !== 'closed_lost';
+                          return (
+                            <Row key={d.id} onOpen={() => go('crm', 'deal', d.id)}>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-[13px] text-foreground">{d.name}</p>
+                                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11.5px] text-muted-foreground">
+                                  <StageTag stage={d.stage} />
+                                  {d.expectedClose && (
+                                    <span className={cn(late && 'font-medium text-destructive')}>
+                                      closes {formatDay(d.expectedClose)}
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <p className="text-[13px] font-medium tabular-nums">
+                                  {exact(d.value, s.currency)}
+                                </p>
+                                <p className="text-[11.5px] text-muted-foreground">{d.probability}%</p>
+                              </div>
+                            </Row>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Panel>
+                )}
+
+                {tab === 'work' && data.projects && (
+                  <Panel title="Projects" count={data.projects.length}>
+                    {data.projects.length === 0 ? (
+                      <p className="py-1 text-[12.5px] text-muted-foreground">
+                        No projects are linked to this customer.
+                      </p>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        {data.projects.map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => go('projects', 'project', p.id)}
+                            className="group rounded-md p-1.5 text-left transition-colors hover:bg-accent/60"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="truncate text-[13px] font-medium">{p.name}</span>
+                              {p.isAtRisk && (
+                                <span className="inline-flex items-center gap-1 rounded border border-warning/40 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+                                  <AlertTriangle className="size-3" /> At risk
+                                </span>
+                              )}
+                              <span className="ml-auto shrink-0 text-[12px] tabular-nums text-muted-foreground">
+                                {p.progressPct}%
+                              </span>
+                            </div>
+                            <Progress value={p.progressPct} className="mt-1.5 h-1.5" />
+                            <p className="mt-1 text-[11.5px] text-muted-foreground">
+                              {p.completedTasks}/{p.totalTasks} tasks
+                              {p.overdueTasks > 0 && ` · ${p.overdueTasks} overdue`}
+                              {p.endDate && ` · due ${formatDay(p.endDate)}`}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {data.meetings && data.meetings.length > 0 && (
+                      <div className="mt-4 border-t border-border pt-3">
+                        <p className="mb-2 text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">
+                          Coming up
+                        </p>
+                        <div className="flex flex-col divide-y divide-border">
+                          {data.meetings.map(m => (
+                            <Row key={m.id}>
+                              <CalendarDays className="size-3.5 shrink-0 text-muted-foreground" />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-[13px]">{m.title}</p>
+                                <p className="text-[11.5px] text-muted-foreground">
+                                  {formatDate(m.startsAt)}
+                                  {m.location ? ` · ${m.location}` : ''}
+                                </p>
+                              </div>
+                            </Row>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </Panel>
+                )}
+
+                {tab === 'money' && data.invoices && (
+                  <Panel title="Invoices" count={data.invoices.length}>
+                    {data.invoices.length === 0 ? (
+                      <p className="py-1 text-[12.5px] text-muted-foreground">Nothing has been invoiced yet.</p>
+                    ) : (
+                      <div className="flex flex-col divide-y divide-border">
+                        {data.invoices.map(i => {
+                          const overdue = i.dueDate && i.dueDate < new Date().toISOString().slice(0, 10);
+                          const unpaid = i.status !== 'paid' && i.status !== 'cancelled';
+                          return (
+                            <Row key={i.id} onOpen={() => go('finance', 'invoice', i.id)}>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-[13px] text-foreground">{i.invoiceNumber}</p>
+                                <p className={cn(
+                                  'text-[11.5px]',
+                                  unpaid && overdue ? 'font-medium text-destructive' : 'text-muted-foreground',
+                                )}>
+                                  Issued {formatDay(i.issueDate)} · due {formatDay(i.dueDate)}
+                                  {unpaid && overdue ? ' · overdue' : ''}
+                                </p>
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <p className="text-[13px] font-medium tabular-nums">
+                                  {exact(i.total, i.currency || s.currency)}
+                                </p>
+                                <p className="text-[11.5px] capitalize text-muted-foreground">
+                                  {i.status.replace(/_/g, ' ')}
+                                </p>
+                              </div>
+                            </Row>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Panel>
+                )}
+
+                {tab === 'support' && data.tickets && (
+                  <Panel title="Tickets" count={data.tickets.length}>
+                    {data.tickets.length === 0 ? (
+                      <p className="py-1 text-[12.5px] text-muted-foreground">
+                        This customer has raised nothing.
+                      </p>
+                    ) : (
+                      <div className="flex flex-col divide-y divide-border">
+                        {data.tickets.map(t => (
+                          <Row key={t.id} onOpen={() => go('support', 'ticket', t.id)}>
+                            <LifeBuoy className="size-3.5 shrink-0 text-muted-foreground" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[13px] text-foreground">{t.subject}</p>
+                              <p className="text-[11.5px] capitalize text-muted-foreground">
+                                {t.ticketNumber} · {t.status.replace(/_/g, ' ')} · {t.priority}
+                              </p>
+                            </div>
+                            <span className="shrink-0 text-[11.5px] text-muted-foreground">
+                              {formatRelativeTime(t.createdAt)}
+                            </span>
+                          </Row>
+                        ))}
+                      </div>
+                    )}
+                  </Panel>
+                )}
+
+                {tab === 'activity' && (
+                  <>
+                    <Panel
+                      title="History"
+                      count={history.length}
+                      action={
+                        <Button size="sm" variant="ghost" className="h-7 gap-1 text-[12px]" onClick={() => setLogOpen(true)}>
+                          <Plus className="size-3" /> Log
+                        </Button>
+                      }
+                    >
+                      <Timeline
+                        items={history}
+                        empty={
+                          <p className="py-1 text-[12.5px] text-muted-foreground">
+                            Nothing has been logged against this customer. Record the first
+                            call and it appears here.
+                          </p>
+                        }
+                      />
+                    </Panel>
+
+                    {data.timeline.length > 0 && (
+                      <Panel title="Changes" count={data.timeline.length}>
+                        <ul className="flex flex-col divide-y divide-border">
+                          {data.timeline.map(t => (
+                            <li key={t.id} className="flex items-center gap-3 py-2">
+                              <History className="size-3.5 shrink-0 text-muted-foreground" />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-[12.5px] text-foreground">{t.title}</p>
+                                <p className="text-[11.5px] text-muted-foreground">
+                                  {t.user?.fullName ?? 'Someone'} · {formatRelativeTime(t.createdAt)}
+                                </p>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </Panel>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
           )}
         </SheetContent>
       </Sheet>
 
-      <LogActivityDialog
-        open={logOpen}
-        onOpenChange={setLogOpen}
-        companyId={companyId}
-        companyName={c?.name ?? ''}
-        onLogged={() => { setLogOpen(false); void load(); }}
-      />
+      {link && (
+        <>
+          <ActivityDialog
+            open={logOpen} onOpenChange={setLogOpen}
+            mode="log" link={link} onSaved={refresh}
+          />
+          <ActivityDialog
+            open={followOpen}
+            onOpenChange={o => { setFollowOpen(o); if (!o) setEditingActivity(null); }}
+            mode="followup" link={link} editing={editingActivity} onSaved={refresh}
+          />
+          <DealDialog
+            open={dealOpen} onOpenChange={setDealOpen}
+            editing={null}
+            defaultCompany={c ? { id: c.id, name: c.name } : null}
+            onSaved={refresh}
+          />
+          <ContactDialog
+            open={contactOpen} onOpenChange={setContactOpen}
+            editing={null}
+            defaultCompany={c ? { id: c.id, name: c.name } : null}
+            onSaved={refresh}
+          />
+        </>
+      )}
     </>
-  );
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Log a call, email, meeting or note                                        */
-/* -------------------------------------------------------------------------- */
-
-function LogActivityDialog({
-  open, onOpenChange, companyId, companyName, onLogged,
-}: {
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-  companyId: string | null;
-  companyName: string;
-  onLogged: () => void;
-}) {
-  const [activityType, setActivityType] = React.useState('call');
-  const [subject, setSubject] = React.useState('');
-  const [body, setBody] = React.useState('');
-  const [saving, setSaving] = React.useState(false);
-
-  React.useEffect(() => {
-    if (open) { setActivityType('call'); setSubject(''); setBody(''); }
-  }, [open]);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!companyId || !subject.trim()) {
-      toast.error('A subject is required');
-      return;
-    }
-    setSaving(true);
-    try {
-      const res = await fetch('/api/crm/activities', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activityType, subject: subject.trim(), body: body.trim(), companyId }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error?.message || 'Could not log this activity');
-      toast.success('Activity logged');
-      onLogged();
-    } catch (err: any) {
-      toast.error(err.message || 'Could not log this activity');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Log activity</DialogTitle>
-          <DialogDescription>
-            Record a call, email, meeting or note against {companyName || 'this customer'}.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={submit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium">Type</label>
-            <Select value={activityType} onValueChange={setActivityType}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="call">Call</SelectItem>
-                <SelectItem value="email">Email</SelectItem>
-                <SelectItem value="meeting">Meeting</SelectItem>
-                <SelectItem value="note">Note</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium">Subject</label>
-            <Input
-              value={subject} onChange={e => setSubject(e.target.value)}
-              placeholder="Discovery call with the CTO" autoFocus
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium">Outcome</label>
-            <Textarea
-              value={body} onChange={e => setBody(e.target.value)} rows={3}
-              placeholder="What was agreed, and what happens next"
-            />
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={saving} className="bg-emerald-600 text-white hover:bg-emerald-700">
-              {saving && <Loader2 className="mr-1.5 size-4 animate-spin" />}
-              Log activity
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

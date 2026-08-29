@@ -84,6 +84,14 @@ export interface Deal {
   company?: { id: string; name: string } | null;
   contact?: { id: string; firstName: string; lastName: string } | null;
   owner?: Member;
+  /**
+   * Whether anyone has an open follow-up against this deal or its customer.
+   *
+   * Set only by /api/crm/overview, which can see everybody's diary. The
+   * client cannot compute it: a colleague's follow-up counts and the caller
+   * is not allowed to read it.
+   */
+  hasNextAction?: boolean;
 }
 
 /**

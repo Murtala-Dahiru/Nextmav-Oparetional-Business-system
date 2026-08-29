@@ -41,6 +41,7 @@ export interface Plan {
     update: number;
     skip: number;
     duplicates: number;
+    linked: number;
     needsAttention: number;
     companiesCreated: number;
     /** False when the workspace holds more records than the index could load. */
@@ -185,8 +186,23 @@ export function planRows(
       note = `Might be ${companyMatch.label} - ${companyMatch.on}`;
     } else {
       action = 'create';
+      const noun = target === 'leads' ? 'New lead' : 'New contact';
+
+      /**
+       * A company that already exists is not a duplicate of this row.
+       *
+       * The person is new; the company they work at is one the CRM already
+       * has, and the row will attach to it rather than create a second. Saying
+       * "New lead" and nothing else hid the single most useful fact on the
+       * screen - that the import is about to join these people to customers
+       * the team already knows.
+       */
       note = candidate.person
-        ? target === 'leads' ? 'New lead' : 'New contact'
+        ? companyMatch
+          ? `${noun} at ${companyMatch.label}, which you already have`
+          : companyFromRow !== null
+            ? `${noun}, joining the company created on row ${companyFromRow + 2}`
+            : noun
         : 'New company';
     }
 
@@ -204,7 +220,18 @@ export function planRows(
       create: planned.filter(p => p.action === 'create').length,
       update: planned.filter(p => p.action === 'update').length,
       skip: planned.filter(p => p.action === 'skip').length,
-      duplicates: planned.filter(p => p.personMatch || p.companyMatch).length,
+      /**
+       * A duplicate is a *person* the CRM already has.
+       *
+       * A matching company is not: the row's person is new and will be
+       * attached to the customer that already exists, which is the correct
+       * outcome rather than a problem to review. Counting those as duplicates
+       * put a warning on every row of a file listing four new people at one
+       * existing customer.
+       */
+      duplicates: planned.filter(p => p.personMatch).length,
+      /** Rows that will join a customer the CRM already holds. */
+      linked: planned.filter(p => p.companyMatch && !p.personMatch).length,
       needsAttention: planned.filter(p => p.candidate.problems.length > 0).length,
       companiesCreated: willCreate.size,
       exhaustive,

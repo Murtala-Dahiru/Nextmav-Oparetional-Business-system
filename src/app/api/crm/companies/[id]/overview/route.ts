@@ -57,7 +57,7 @@ const TICKET_SELECT =
   'id, ticket_number, subject, status, priority, created_at, resolved_at, due_at';
 
 const ACTIVITY_SELECT =
-  'id, activity_type, subject, body, due_at, completed_at, created_at, ' +
+  'id, activity_type, subject, body, due_at, remind_at, completed_at, created_at, member_id, ' +
   'member:organization_members!crm_activities_member_id_fkey(' +
   'id, profiles!organization_members_user_id_fkey(full_name, avatar_url))';
 
@@ -155,10 +155,18 @@ export async function GET(_req: Request, { params }: Params) {
           .order('starts_at', { ascending: true }).limit(10)
       : none,
 
-    // The CRM's own timeline: calls, emails, notes logged against the customer.
+    /**
+     * The CRM's own timeline: calls, emails, notes logged against the customer.
+     *
+     * Fifty rather than twenty-five since the follow-up work: this list now
+     * carries both halves of the relationship - what has happened *and* what is
+     * owed - and the screen splits them. Twenty-five rows of a busy customer's
+     * history could contain no open follow-up at all, so "next action" would
+     * read as empty on precisely the accounts that have one.
+     */
     ctx.supabase.from('crm_activities').select(ACTIVITY_SELECT)
       .eq('organization_id', orgId).eq('company_id', id)
-      .order('created_at', { ascending: false }).limit(25),
+      .order('created_at', { ascending: false }).limit(50),
 
     // And the platform's record of what was changed, from the activity feed.
     ctx.supabase.from('activity_log')

@@ -167,8 +167,24 @@ export function money(value: number, currency?: string): string {
   return formatCurrencyCompact(value, currency);
 }
 
+/**
+ * Money at full precision, without pennies nobody typed.
+ *
+ * ── Why not `formatCurrency` directly ────────────────────────────────────
+ *
+ * It forces two decimal places, which is right for an invoice line and wrong
+ * for every figure in a CRM: a deal is worth ₦2,000,000, and rendering it as
+ * ₦2,000,000.00 spends three characters per row on two zeros that are never
+ * anything else. In a table of twenty deals that is a column of noise the eye
+ * has to look past to compare the magnitudes.
+ *
+ * The decimals come back the moment a value actually has them, so a deal
+ * genuinely worth ₦1,500.50 is not rounded on screen.
+ */
 export function exact(value: number, currency?: string): string {
-  return formatCurrency(value, currency);
+  return Number.isInteger(value)
+    ? formatCurrencyCompact(value, currency)
+    : formatCurrency(value, currency);
 }
 
 /** A percentage that never claims precision it does not have. */

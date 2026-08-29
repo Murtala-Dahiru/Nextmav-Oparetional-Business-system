@@ -60,7 +60,7 @@ const CLOSED_STAGES = ['closed_won', 'closed_lost'];
 
 const DEAL_ROW =
   'id, name, value, stage, probability, expected_close, closed_at, created_at, updated_at, ' +
-  'owner_id, company:companies(id, name), ' +
+  'owner_id, company_id, company:companies(id, name), ' +
   'owner:organization_members!deals_owner_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url))';
 
 const LEAD_ROW =
@@ -116,7 +116,7 @@ export async function GET() {
 
   const [
     pipelineRes, funnelRes, closedRes, closingRes, staleRes, topRes,
-    followupRes, recentRes, volumeRes, newLeadsRes, membersRes, movementRes,
+    followupRes, recentRes, volumeRes, newLeadsRes, membersRes, movementRes, scheduledRes,
   ] = await Promise.all([
     own(supabase.from('v_crm_pipeline_owner').select('*').eq('organization_id', orgId)),
 
@@ -228,6 +228,22 @@ export async function GET() {
       .gte('created_at', daysFromTodayIn(zone, -56))
       .order('created_at', { ascending: false })
       .limit(1000),
+
+    /**
+     * Which deals have an open follow-up against them, from anybody.
+     *
+     * Ids only. "This deal is closing in a week and nobody has arranged to
+     * speak to them" is one of the few genuinely useful things a CRM can tell
+     * you, and it cannot be computed from the caller's own diary - a
+     * colleague's follow-up counts. Reading the whole open queue as bare ids
+     * is one index scan and a few kilobytes.
+     */
+    supabase.from('crm_activities')
+      .select('deal_id, company_id')
+      .eq('organization_id', orgId)
+      .is('completed_at', null)
+      .not('due_at', 'is', null)
+      .limit(2000),
   ]);
 
   const firstError =
@@ -393,6 +409,29 @@ export async function GET() {
     m => m.from_stage && order.indexOf(m.to_stage) < order.indexOf(m.from_stage),
   ).length;
 
+  /* ── Which deals nobody has arranged to speak to ───────────────────────── */
+
+  const scheduledDeals = new Set(
+    ((scheduledRes.data ?? []) as any[]).map(r => r.deal_id).filter(Boolean),
+  );
+  const scheduledCompanies = new Set(
+    ((scheduledRes.data ?? []) as any[]).map(r => r.company_id).filter(Boolean),
+  );
+
+  /**
+   * Marked on the row rather than counted here.
+   *
+   * The screen decides how to say it - "closing in six days, nothing
+   * scheduled" reads differently from a bare count of nine - and the flag is
+   * the only part the server can know, because a colleague's follow-up counts
+   * and the caller cannot see somebody else's diary.
+   */
+  const flag = (rows: any[]) => rows.map(d => ({
+    ...d,
+    hasNextAction: scheduledDeals.has(d.id)
+      || (d.company_id ? scheduledCompanies.has(d.company_id) : false),
+  }));
+
   return success({
     scope,
     currency: org.currency,
@@ -453,9 +492,9 @@ export async function GET() {
     movement: { advanced, slipped, total: moves.length },
     activityByWeek: weeks,
 
-    closingSoon: closingRes.data ?? [],
-    stale: staleRes.data ?? [],
-    topDeals: topRes.data ?? [],
+    closingSoon: flag((closingRes.data ?? []) as any[]),
+    stale: flag((staleRes.data ?? []) as any[]),
+    topDeals: flag((topRes.data ?? []) as any[]),
     followups,
     recentActivity: recentRes.data ?? [],
   });

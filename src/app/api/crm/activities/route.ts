@@ -1,7 +1,7 @@
 import { collectionHandlers } from '@/lib/supabase/crud';
 import { createCrmActivitySchema } from '@/lib/validations';
 import { toSnake } from '@/lib/case';
-import { todayIn, daysFromTodayIn } from '@/lib/org-time';
+import { startOfDayIn } from '@/lib/org-time';
 
 /**
  * The CRM timeline: calls, emails, meetings and notes.
@@ -62,7 +62,19 @@ const SELECT =
  */
 function followUpScope(q: any, ctx: any, url: URL) {
   const zone = ctx.org.timezone;
-  const today = todayIn(zone);
+
+  /**
+   * The boundary is an instant, not a date string.
+   *
+   * `due_at` is a `timestamptz`. Comparing it against `'2026-08-29'` coerces
+   * the string to UTC midnight, so in Lagos everything owed before 1am reads
+   * as overdue and in Auckland half of tomorrow reads as today. `startOfDayIn`
+   * is the instant local midnight actually happened, which is the comparison
+   * the question means - the same helper My Work uses to count what somebody
+   * finished today.
+   */
+  const dayStart = startOfDayIn(zone);
+  const nextDay = new Date(Date.parse(dayStart) + 86_400_000).toISOString();
 
   if (url.searchParams.get('mine') === 'true') {
     q = q.eq('member_id', ctx.org.memberId);
@@ -75,13 +87,11 @@ function followUpScope(q: any, ctx: any, url: URL) {
 
   switch (url.searchParams.get('due')) {
     case 'overdue':
-      return q.is('completed_at', null).not('due_at', 'is', null).lt('due_at', today);
+      return q.is('completed_at', null).not('due_at', 'is', null).lt('due_at', dayStart);
     case 'today':
-      return q.is('completed_at', null)
-        .gte('due_at', today)
-        .lt('due_at', daysFromTodayIn(zone, 1));
+      return q.is('completed_at', null).gte('due_at', dayStart).lt('due_at', nextDay);
     case 'upcoming':
-      return q.is('completed_at', null).gte('due_at', daysFromTodayIn(zone, 1));
+      return q.is('completed_at', null).gte('due_at', nextDay);
     case 'open':
       return q.is('completed_at', null).not('due_at', 'is', null);
     case 'done':

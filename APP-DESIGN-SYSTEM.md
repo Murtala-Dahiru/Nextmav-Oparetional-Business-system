@@ -1123,6 +1123,248 @@ an 844px one.
 `lib/mywork.ts` (`intakeFromNotification`), and copy and craft edits across
 `components/modules/mywork/*`.
 
+---
+
+## 5g. Phase 4 - CRM (2026-08-29)
+
+The largest module in the product, and the one whose gap between what the
+schema could already do and what the screen did was widest.
+
+### What the audit found
+
+The engine was in better shape than the CRM using it. `crm_activities` had
+carried `due_at` and `completed_at` since 0003 - a follow-up, complete with a
+polymorphic subject - and nothing filtered on them. `deals.closed_at` and
+`.lost_reason` were written by the demo seeder and by nothing else.
+`v_pipeline_summary` had computed a weighted pipeline since 0007 and no CRM
+screen read it. And `crm_activities` had been left out of the realtime
+publication in both 0006 and 0020 while its four siblings were added.
+
+Six defects were live on the screen:
+
+- **Contacts crashed.** The Company column bound `row.original.company`, which
+  the endpoint embeds as `{ id, name }`. React refuses to render an object as a
+  child, so every contact with a company took the module into the error
+  boundary. In a seeded workspace that is all of them.
+- **Leads' Company column was always blank** - bound to `company`, where the
+  field is `companyName`.
+- **Column sorting silently did nothing.** Tables send TanStack's camelCase
+  column id (`estimatedValue`, `annualRevenue`, `expectedClose`); the route
+  factory's allow-list holds snake_case, so the server fell back to
+  `created_at` while the header drew its arrow. That affected **every module**
+  built on `listHandler`, not only CRM.
+- **Close dates rendered a day early** - `formatDate` on a bare `date` column,
+  the trap Phase 3 found and fixed only inside My Work.
+- **Every figure was capped at a hundred rows.** Stat cards and charts came
+  from `?pageSize=100` and a `reduce()`, so a workspace with more than a
+  hundred deals showed a pipeline value that was neither the whole pipeline
+  nor any meaningful part of it.
+- **`sales_staff` holds CRM at `scope: 'own'`** and nothing had ever applied
+  it, in the routes or in RLS.
+
+### Migration 0028
+
+- `crm_activities` joins the realtime publication, gains `remind_at` /
+  `reminder_sent_at` matching `todos`, a re-arm trigger, two partial indexes
+  for the follow-up queue and the sweep, and indexes on `company_id` and
+  `lead_id` that 0003 gave only to `deal_id` and `contact_id`.
+- `sweep_crm_reminders()` on the same pg_cron minute as
+  `sweep_todo_reminders()`, with `/api/crm/followups/sweep` as the caller of
+  last resort where the extension is unavailable.
+- `stamp_deal_closure()` sets `closed_at` from the stage, clears it when a deal
+  reopens, and refuses to keep a `lost_reason` on anything that is not lost.
+- `deal_stage_events` - where a deal has been. Time in stage and sales cycle
+  cannot be inferred from a table that knows only where a deal is now, and
+  reporting off `audit_log` is how audit trails stop being trustworthy. Written
+  only by trigger; no UPDATE and no DELETE policy exists.
+- `notify_lead_assignment()` and `notify_deal_change()`. Before this, not one
+  notification in the product concerned a lead or a deal: work is assigned in
+  CRM exactly as it is in Projects and Support, and only those two told anybody.
+- `v_crm_pipeline_owner` and `v_crm_lead_funnel` - `v_pipeline_summary` with
+  the owner kept, and its equivalent for leads. Deliberately no time bucketing:
+  `closed_at` is a `timestamptz` and a view cannot know the organisation's
+  timezone, so monthly series are built in the route.
+
+### The composition
+
+```
+CRM
+  Home        the commercial command centre
+  Leads · Contacts · Companies · Deals · Pipeline · Activities
+  Import      the Import Center
+```
+
+Eight sections, each a screen in its own right, behind a real section
+navigation - a row of named destinations with a current one, sticky - rather
+than a `TabsList` of pills. Sub-navigation stays in module-local state: lifting
+it into the sidebar is a change to all thirteen modules or none.
+
+**CRM Home** is not a second Executive Overview. The Overview looks backwards
+at what the business earned; this looks forwards at what it is about to. The
+plate's headline is the **open pipeline**, with twelve months of won revenue
+beside it and five instruments under it - won this month, weighted forecast,
+win rate, average deal, sales cycle. Then five bands: Attention, Pipeline,
+Revenue, Leads, Diary.
+
+The attention queue follows the same three rules as the dashboard's: one row
+per concern rather than per record, nothing invented, and severity means
+urgency rather than size. Its most useful rule needed one extra query - "this
+deal closes in nine days and nobody has arranged to speak to them" cannot be
+computed from the caller's own diary, because a colleague's follow-up counts.
+
+### Follow-ups, and why they are activities
+
+"Call Ahmed back on Tuesday" and "Called Ahmed on Tuesday" are one row at two
+moments in its life. A `next_action` column on leads, deals, contacts and
+companies would be four columns holding one idea, none of which could be listed
+in date order across the four, all of which are overwritten the moment there is
+a second thing to do.
+
+The date and the reminder are deliberately different fields: `due_at` is the
+day it is owed, `remind_at` is the instant somebody is told. That is what lets
+a follow-up due Friday reach you on Thursday evening, and it is the same
+distinction 0026 drew for `todos`.
+
+Logging a call offers the next step in the same dialog. Two rows are written -
+the history, and the thing owed - and the history goes first, so a failed
+second write loses the follow-up rather than the call.
+
+### Pipeline
+
+Read-only Kanban became a board. Between open stages a drag applies immediately
+with an undo toast; into Won or Lost it opens a dialog - not as a speed bump,
+but because those two are the only moments the product needs something only the
+person knows: the date it actually closed, and why it was lost. A failed move
+puts the card back and shows the server's sentence.
+
+Column totals come from the GROUP BY, the cards are the hundred largest per
+stage, and where a column holds more than is drawn it says so at the foot. A
+heading that summed whatever happened to be loaded would be wrong in exactly
+the workspaces that matter.
+
+### Conversion, which had never worked
+
+`leads.converted_contact_id` has carried a comment since 0003 saying it is "set
+when the lead becomes a contact, so conversion is traceable". Nothing had ever
+set it. `POST /api/crm/leads/[id]/convert` creates the company (reusing one
+whose normalised name matches), the contact, optionally the deal, stamps the
+lead, and writes the conversion onto the customer's timeline. Converting twice
+returns the first contact rather than a second.
+
+### Import Center
+
+Upload, Map, Review, Import - with nothing written before the third screen has
+been confirmed.
+
+`lib/import/sheet.ts` reads CSV and XLSX **with no dependency**. An `.xlsx` is
+a ZIP of XML and Node ships the only hard part in `zlib.inflateRawSync`; what
+remains is a central-directory walk and two small XML scans. It reads the
+workbook's own sheet order rather than trusting `sheet1.xml`, places cells by
+their reference so a gap does not shift a row, and converts Excel serial dates
+using the 1899-12-30 epoch. `npm run test:import` covers all of that with
+fixtures built in the test file rather than checked in as binaries.
+
+The mapping is a list of the names people actually use plus two shape tests -
+not a model, and the screen does not pretend otherwise: every guess carries its
+confidence and its reason in three words, and every one can be overruled.
+Duplicate matching is deliberately asymmetric: an email, a web domain or an
+exact name is a match; anything softer is offered and defaults to skipped,
+because creating a duplicate is annoying and reversible while merging two
+different customers destroys data.
+
+Two rules the commit route is built on: **an import never overwrites** - updates
+fill blanks and only blanks - and **a file cannot duplicate itself**, because
+the match index is told about every record as it is created, so six contacts at
+one company produce one company.
+
+No import-batch tables. What an import did is written to `activity_log`, which
+is the platform's own answer to "what happened" and already has a feed
+rendering it.
+
+### Design
+
+`components/modules/dashboard/{primitives,viz}.tsx` moved to
+`components/shared/readout/` with CRM as the second consumer, which is the
+point the design system says to lift a shared mechanism and not before.
+
+The module's own vocabulary is in `modules/crm/ui.tsx`. A pipeline is a
+*sequence*, so it is drawn as one: a single hue that strengthens as a deal
+advances, with a colour of its own only for won and lost. The version this
+replaces gave each of six stages and each of seven lead statuses a hue, which
+is thirteen saturated pills meaning nothing except "this is a different value
+from that one".
+
+Tables are a CRM-local component rather than the shared `DataTable`, which is
+used by thirteen modules and is not being changed by this phase. It keeps the
+same server-side contract - page, pageSize, sort, sortDir, search, filters -
+and changes only the rendering: aligned numerals, a quiet row, and **cards
+below `md`**, switched in CSS rather than in JavaScript.
+
+### Defects found and fixed on the way
+
+- Nested `<button>` in the mobile card: a card wrapper that was a button
+  containing a company link that was also a button. Reported by React as a
+  hydration error, and fixed the way the desktop row already did it, with the
+  row menu as the keyboard path.
+- The deal value on a phone card was clipped by the row menu positioned over it.
+- Activities logged against a deal never reached that customer's timeline: only
+  `deal_id` was set, and Company 360 reads by `company_id`. The link now carries
+  both, which is what the polymorphic table was designed for.
+- `formatCurrency` forces two decimals, which is right for an invoice line and
+  wrong for every figure in a CRM. The module's `exact()` drops them when the
+  value is whole and keeps them when it is not.
+- A matching *company* was counted as a duplicate and offered an Update button
+  that would not have merged anything. A company that already exists is a
+  customer to join, not a duplicate to review.
+
+### Verified
+
+`npm run test:import` - 69 assertions, no database: semicolon and tab
+delimiters, quoted commas, a byte-order mark, a workbook whose first tab is
+`sheet2.xml`, a row with a hole in it, a date-formatted number against a plain
+one, and the value reader against thousand separators, a currency symbol, a
+European decimal comma and a magnitude suffix.
+
+`npm run crm:verify` - 64 assertions against the running application as the
+seeded owner: the overview's arithmetic agrees with itself, sorting sorts, a
+deal stamps and clears its own close date and lost reason, a follow-up enters
+and leaves the overdue queue, a lead converts once and only once, and an import
+reads a file, finds "Acme Ltd" against "Acme Limited", skips a row with nothing
+in it, and finds its own records on a second run.
+
+Driven by hand in the browser as well: the drag persisted with its stage event,
+the Won dialog wrote the close date and the timeline note, the follow-up
+appeared on Company 360 within the same minute, and the Import Center reached
+its review screen from a real file.
+
+### Changed
+
+`supabase/migrations/0028_crm_followups_and_movement.sql` (new);
+`app/api/crm/{overview,followups/sweep,import/*,leads/[id]/convert,deals/[id]/history}`
+(new); `app/api/crm/{activities,leads,deals}/route.ts` and
+`companies/[id]/overview/route.ts`; `lib/import/*` (new);
+`lib/supabase/{crud,crm-scope}.ts`; `lib/validations.ts`;
+`lib/notification-modules.ts`; `components/shared/readout/*` (moved);
+`components/modules/crm/*` (rewritten, seventeen files);
+`scripts/{import-sheet.test.mts,crm-verify.mjs,crm-cleanup.mjs}` (new).
+
+### Carried forward
+
+- **Bulk actions.** Selecting twenty leads and assigning them to a colleague is
+  a real CRM need and is not here. It wants a shared selection mechanism, which
+  by this repository's rule should arrive with its first consumer rather than
+  before it.
+- **`formatDate` on a bare `date`** is still wrong at the remaining call sites
+  outside My Work and CRM. Both now have a local `formatDay`; the second
+  consumer exists, so the next module that needs it should lift the pair into
+  `lib/format.ts`.
+- **The duplicate index is capped at 5,000 records per kind.** The review screen
+  says so rather than implying completeness. A workspace past that wants a
+  server-side matching query, which is a different design.
+- **Deal stage history is not yet drawn over time.** The table exists and the
+  deal panel reads it; a cohort view of how long deals sit in each stage is the
+  obvious next thing it can support.
+
 ## 6. The phases
 
 | # | Phase | State |
@@ -1130,8 +1372,8 @@ an 844px one.
 | 1 | Navigation / sidebar / shell | **done** |
 | 2 | Executive Overview | **done** |
 | 3 | My Work | **done** (3b: intake, inbox, reminders) |
-| 4 | CRM | next |
-| 5 | Projects | |
+| 4 | CRM | **done** |
+| 5 | Projects | next |
 | 6 | Finance | |
 | 7 | HR | |
 | 8 | Communication | |
@@ -1169,21 +1411,22 @@ an 844px one.
 - **A client's navigation still lists Projects.** That is the existing grant
   (read-only, feeding portal endpoints), but the module's UI is built for staff.
   Decide it in Phase 13.
-- **Charts** still pass raw hex to recharts in CRM and finance. The dashboard
-  is done: every chart on it reads `--chart-*` through `useViz` in
-  `modules/dashboard/viz.tsx`, which re-reads the tokens when the theme
-  changes. That file is the pattern the other two should follow.
-- **`formatDate` parses a bare date as UTC** — found in Phase 3 and fixed only
-  inside My Work, which now has a local `formatDay(iso, opts)` that appends
-  `T00:00:00` first. `new Date('2026-09-03')` is UTC midnight by
-  specification, so in any timezone west of UTC a `date` column renders as the
-  day before. `formatDate` is called **53 times outside My Work**, and the ones
-  passing genuine `date` columns are wrong today — `holidays.holiday_date`,
-  `deals.expected_close`, `tasks.due_date`, `invoices.due_date`,
+- ~~**Charts** still pass raw hex to recharts in CRM and finance.~~ CRM is done
+  in Phase 4 and the shared vocabulary moved with it: `useViz` and the readout
+  primitives now live in `components/shared/readout/`, which is where Finance
+  should read them from in Phase 6. Finance is the last module still passing
+  raw hex.
+- **`formatDate` parses a bare date as UTC** — found in Phase 3, fixed inside
+  My Work, and fixed again inside CRM in Phase 4. `new Date('2026-09-03')` is
+  UTC midnight by specification, so in any timezone west of UTC a `date` column
+  renders as the day before. Both modules now carry a local `formatDay(iso)`
+  that appends `T00:00:00` first, and the remaining call sites passing genuine
+  `date` columns are still wrong today — `holidays.holiday_date`,
+  `tasks.due_date`, `invoices.due_date`,
   `organization_members.terminated_on` among them. Calls passing a
-  `timestamptz` are unaffected. Each module's own phase should convert its
-  own; when the second consumer appears, lift the helper into `lib/format.ts`
-  as `formatDay` — **with** that consumer, not before it.
+  `timestamptz` are unaffected. **The second consumer now exists**, so the next
+  module that needs it should lift the pair into `lib/format.ts` as `formatDay`
+  and point both at it — that was the condition, and it has been met.
 
 ---
 
@@ -1194,7 +1437,15 @@ npm run test:navigation   # nav vs permissions, all nine roles
 npm run security:check    # includes: no tenant branding in the shell
 npm run schema:check
 npm run test:layout
+npm run test:import       # the spreadsheet reader and the field mapping
 npx tsc --noEmit
+```
+
+Two need the dev server and a reachable Supabase:
+
+```bash
+npm run db:verify         # 45 checks: RLS forced, tenant isolation, triggers
+npm run crm:verify        # 64 checks: CRM end to end as the seeded owner
 ```
 
 `npm run app:verify` needs the dev server and a reachable Supabase; it is
