@@ -401,8 +401,15 @@ export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) 
               <Explain n="2" title="Shows what it guessed">
                 Anything it is unsure about is marked. Change any of it.
               </Explain>
+              {/*
+                All four keys, because the screen should describe what the
+                matcher does. It falls through email, then the same name at the
+                same company, then the phone number - and the phone is the one
+                that catches the file where somebody has retyped every name.
+              */}
               <Explain n="3" title="Finds duplicates">
-                By email, web domain and company name. "Acme Ltd" finds "Acme Limited".
+                By email, phone, and name at a company you already have. Web
+                domain and name for companies, so "Acme Ltd" finds "Acme Limited".
               </Explain>
               <Explain n="4" title="Never overwrites">
                 Updates fill empty fields only. Nothing you already have is replaced.
