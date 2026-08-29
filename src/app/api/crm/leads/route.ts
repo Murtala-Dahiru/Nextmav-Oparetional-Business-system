@@ -1,4 +1,5 @@
 import { collectionHandlers } from '@/lib/supabase/crud';
+import { ownedScope } from '@/lib/supabase/crm-scope';
 
 const SELECT = '*, owner:organization_members!leads_owner_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url))';
 
@@ -8,6 +9,10 @@ export const { GET, POST } = collectionHandlers(
     searchColumns: ['first_name', 'last_name', 'email', 'company_name'],
     sortable: ['created_at', 'updated_at', 'first_name', 'last_name', 'status', 'score', 'estimated_value'],
     filterable: ['status', 'owner_id', 'source'],
+    // A role granted CRM at `scope: 'own'` sees its own records and no more.
+    // See lib/supabase/crm-scope.ts for why this applies here and not to
+    // companies or contacts.
+    scope: ownedScope,
   },
   {
     table: 'leads', module: 'crm', select: SELECT,

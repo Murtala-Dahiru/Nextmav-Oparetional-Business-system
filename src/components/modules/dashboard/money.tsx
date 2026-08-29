@@ -8,10 +8,10 @@ import {
 
 import { cn } from '@/lib/utils';
 import { formatCurrencyCompact } from '@/lib/format';
-import { Head, Meter, Segmented, TRow } from './primitives';
+import { Head, Meter, Segmented, TRow } from '@/components/shared/readout/primitives';
 import {
   useViz, axisTick, tickStyle, GRID_DASH, TipShell, TipRow, Key, AreaFill, pct, money,
-} from './viz';
+} from '@/components/shared/readout/viz';
 import type { DashboardFinance } from './types';
 
 /**

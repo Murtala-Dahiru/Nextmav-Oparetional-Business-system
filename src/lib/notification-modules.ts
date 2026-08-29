@@ -71,6 +71,16 @@ const BY_PREFIX: Record<string, ModuleId> = {
   deliverable: 'projects',
   ticket: 'support',
   support: 'support',
+  /**
+   * 0028. Three prefixes rather than one, because the CRM's producers name
+   * their subject the way every other trigger does: `lead_assigned`,
+   * `deal_assigned`, `deal_won`, `deal_lost`. The `crm` prefix covers the one
+   * event whose subject is the module rather than a record - a follow-up
+   * coming due, which is not a lead event or a deal event but a diary one.
+   */
+  lead: 'crm',
+  deal: 'crm',
+  crm: 'crm',
   message: 'communication',
   channel: 'communication',
   invoice: 'finance',
@@ -152,6 +162,15 @@ export const EMITTED_TYPES = [
   // meeting invitation and never clear it, because `typesForModule` builds the
   // SQL `IN` clause from this list.
   'meeting',
+  /**
+   * 0028: `notify_lead_assignment()`, `notify_deal_change()` and
+   * `sweep_crm_reminders()`. Until Phase 4 the CRM emitted nothing at all -
+   * work was assigned there exactly as it is in Projects and Support, and only
+   * those two told anybody.
+   */
+  'lead_assigned',
+  'deal_assigned', 'deal_won', 'deal_lost',
+  'crm_followup_due',
 ];
 
 export function moduleOfNotification(type: string | null | undefined): ModuleId | null {

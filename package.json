@@ -18,7 +18,7 @@
     "app:verify": "node scripts/app-verify.mjs",
     "identity:verify": "node scripts/identity-verify.mjs",
     "contract:check": "node scripts/contract-check.mjs",
-    "verify:all": "npm run db:verify && npm run schema:check && npm run security:check && npm run test:layout && npm run test:navigation && npm run test:dashboard && npm run test:rate-limit && npm run test:observability && npm run app:verify && npm run identity:verify && npm run contract:check && npm run realtime:verify",
+    "verify:all": "npm run db:verify && npm run schema:check && npm run security:check && npm run test:layout && npm run test:navigation && npm run test:dashboard && npm run test:import && npm run test:rate-limit && npm run test:observability && npm run app:verify && npm run identity:verify && npm run contract:check && npm run realtime:verify",
     "schema:check": "tsx scripts/schema-contract.mts",
     "test:rate-limit": "tsx scripts/rate-limit.test.mts",
     "test:observability": "tsx scripts/observability.test.mts",
@@ -26,7 +26,9 @@
     "security:check": "node scripts/security-check.mjs",
     "test:layout": "tsx scripts/stage-layout.test.ts",
     "test:navigation": "tsx scripts/navigation.test.mts",
-    "test:dashboard": "tsx scripts/dashboard-attention.test.mts"
+    "test:dashboard": "tsx scripts/dashboard-attention.test.mts",
+    "test:import": "tsx scripts/import-sheet.test.mts",
+    "crm:verify": "node scripts/crm-verify.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

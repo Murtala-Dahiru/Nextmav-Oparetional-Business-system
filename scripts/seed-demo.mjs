@@ -1292,7 +1292,7 @@ async function seedCrm(ORG, team, companies, contacts) {
     contactsByCompany.get(c.company_id).push(c);
   });
 
-  const dealName = co => `${co.name} — ${pick([
+  const dealName = co => `${co.name} - ${pick([
     'platform rollout', 'integration phase 2', 'support retainer',
     'data migration', 'analytics module', 'hardware refresh',
     'portal build', 'licence renewal', 'discovery engagement',

@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { ArrowRight, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Severity } from './types';
+import type { Severity } from './severity';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════

@@ -8,8 +8,8 @@ import { formatDate } from '@/lib/format';
 import { statusLabel } from '@/lib/constants';
 /* `Bar` is already recharts' in this file; the primitive comes in under a
    name that cannot collide with it. */
-import { Head, TRow, THead, Rail, Meter, Stat, Bar as SplitBar } from './primitives';
-import { useViz, tickStyle, GRID_DASH, TipShell, TipRow, niceTicks } from './viz';
+import { Head, TRow, THead, Rail, Meter, Stat, Bar as SplitBar } from '@/components/shared/readout/primitives';
+import { useViz, tickStyle, GRID_DASH, TipShell, TipRow, niceTicks } from '@/components/shared/readout/viz';
 import type { DashboardProjects, DashboardWork } from './types';
 
 /**

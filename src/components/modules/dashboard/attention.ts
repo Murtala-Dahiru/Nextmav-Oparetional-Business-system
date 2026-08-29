@@ -1,4 +1,4 @@
-import { money as fmtMoney } from './viz';
+import { money as fmtMoney } from '@/components/shared/readout/viz';
 import type { Action } from '@/lib/permissions';
 import type { ModuleId } from '@/lib/constants';
 import type { AttentionItem, DashboardData, Severity } from './types';

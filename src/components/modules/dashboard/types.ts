@@ -336,7 +336,15 @@ export interface DashboardData {
 /*  Attention queue                                                           */
 /* -------------------------------------------------------------------------- */
 
-export type Severity = 'critical' | 'warning' | 'info';
+/**
+ * Re-exported, not redeclared.
+ *
+ * The vocabulary moved to `components/shared/readout/severity` when CRM became
+ * the second module to build an attention queue and the second to draw a
+ * severity rail. Everything that already imported it from here keeps working.
+ */
+import type { Severity } from '@/components/shared/readout/severity';
+export type { Severity };
 
 /**
  * One thing that needs a person.

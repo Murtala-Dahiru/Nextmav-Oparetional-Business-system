@@ -4,8 +4,8 @@ import * as React from 'react';
 import { formatDate } from '@/lib/format';
 import { statusLabel } from '@/lib/constants';
 import { cn } from '@/lib/utils';
-import { Head, TRow, Stat } from './primitives';
-import { useViz, money } from './viz';
+import { Head, TRow, Stat } from '@/components/shared/readout/primitives';
+import { useViz, money } from '@/components/shared/readout/viz';
 import type { DashboardCrm } from './types';
 
 /**

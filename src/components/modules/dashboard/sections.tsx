@@ -11,8 +11,8 @@ import {
 import { MODULES, statusLabel } from '@/lib/constants';
 import {
   Head, TRow, THead, Rail, Meter, Chip, Stat, severityWord,
-} from './primitives';
-import { money } from './viz';
+} from '@/components/shared/readout/primitives';
+import { money } from '@/components/shared/readout/viz';
 import type {
   AttentionItem, DashboardActivity, DashboardEvent,
   DashboardInventory, DashboardSupport, DashboardTask, Severity,

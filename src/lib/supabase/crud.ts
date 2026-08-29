@@ -140,10 +140,35 @@ export function listHandler(opts: ListOptions) {
     const page = Math.max(1, Number(searchParams.get('page')) || 1);
     const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, Number(searchParams.get('pageSize')) || 20));
 
-    // Sorting on an arbitrary column is an injection vector and can also be an
-    // information leak (ordering by a column you cannot read). Allow-list only.
+    /**
+     * Sorting on an arbitrary column is an injection vector and can also be an
+     * information leak (ordering by a column you cannot read). Allow-list only.
+     *
+     * ── Why the allow-list is matched in both dialects ────────────────────
+     *
+     * `sortable` lists column names, which are snake_case. Every table in the
+     * product builds its sort parameter from the TanStack column id, and those
+     * are the camelCase field names the API returns — `estimatedValue`,
+     * `annualRevenue`, `expectedClose`, `employeeCount`.
+     *
+     * So the allow-list rejected them and silently fell back to `created_at`.
+     * Not an error: the request succeeded, the header drew its arrow, and the
+     * rows came back in a completely different order from the one the user
+     * asked for. Sorting the CRM's leads by value, a company by revenue, or a
+     * deal by close date all did nothing, in every module built on this
+     * factory.
+     *
+     * This is the same fix, and the same reasoning, as the filter block below,
+     * which was corrected for exactly this reason. The snake_case spelling
+     * still wins where both would match.
+     */
     const requestedSort = searchParams.get('sort') ?? defaultSort;
-    const sort = sortable.includes(requestedSort) ? requestedSort : defaultSort;
+    const snakeSort = requestedSort.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+    const sort = sortable.includes(requestedSort)
+      ? requestedSort
+      : sortable.includes(snakeSort)
+        ? snakeSort
+        : defaultSort;
     const sortDir = searchParams.get('sortDir') ?? defaultSortDir;
     const ascending = sortDir === 'asc';
 

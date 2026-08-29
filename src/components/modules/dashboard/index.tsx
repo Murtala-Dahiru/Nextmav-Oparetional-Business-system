@@ -21,9 +21,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-import { Plate, Trace, Band, Signal, Card } from './primitives';
-import type { BarTone } from './primitives';
-import { money } from './viz';
+import { Plate, Trace, Band, Signal, Card } from '@/components/shared/readout/primitives';
+import type { BarTone } from '@/components/shared/readout/primitives';
+import { money } from '@/components/shared/readout/viz';
 import {
   AttentionSection, UpcomingSection, SupportSection, InventorySection,
   ActivitySection, GettingStarted, DashboardSkeleton,

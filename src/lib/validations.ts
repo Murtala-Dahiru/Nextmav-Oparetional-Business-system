@@ -141,7 +141,28 @@ export const createDealSchema = z.object({
   ownerId: memberRef(),
 });
 
-export const updateDealSchema = toUpdateSchema(createDealSchema);
+/**
+ * ── Why the update schema is wider than the create one ────────────────────
+ *
+ * `deals.lost_reason` and `deals.closed_at` have existed since 0003 and no
+ * client could ever set either, because `toUpdateSchema(createDealSchema)`
+ * derives its fields from a create schema that names neither. So "why did we
+ * lose it" was a column nothing wrote and every lost-deal analysis was blank.
+ *
+ * They belong on the update rather than the create for a real reason: a deal
+ * is not born lost. Both are outcomes, and an outcome is recorded when it
+ * happens.
+ *
+ * `closedAt` is optional even when closing. 0028's `stamp_deal_closure()`
+ * fills it from the clock when the stage moves and the client says nothing,
+ * and clears it when a closed deal is reopened - so this field exists for the
+ * one case the trigger cannot know about, which is a deal that was actually
+ * signed last Thursday.
+ */
+export const updateDealSchema = toUpdateSchema(createDealSchema).extend({
+  lostReason: z.string().max(500).nullable().optional(),
+  closedAt: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
+});
 
 // ═══════════════════════════════════════════════════════════════
 //  Projects Validations
@@ -300,6 +321,9 @@ export const createCrmActivitySchema = z
     dealId: optionalFk(),
     dueAt: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
     completedAt: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
+    // The instant somebody is told, as against `dueAt`, the day it is owed.
+    // See 0028 and the same pair on `todos`.
+    remindAt: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
   })
   .refine(
     v => Boolean(v.leadId || v.contactId || v.companyId || v.dealId),
@@ -322,6 +346,22 @@ export const updateCrmActivitySchema = toUpdateSchema(
     body: z.string().optional().default(''),
     dueAt: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
     completedAt: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
+    /**
+     * 0028. A follow-up is rescheduled far more often than it is written, so
+     * the edit path has to reach these two or "push it to Friday" would be a
+     * field that accepts the write and does nothing - the exact non-behaviour
+     * `updateSchema` was introduced to stop.
+     */
+    remindAt: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
+    /**
+     * Re-attaching a follow-up to a different record is a legitimate edit -
+     * a lead becomes a contact, a call turns out to be about another deal -
+     * and without these the update route strips the field and reports success.
+     */
+    leadId: optionalFk(),
+    contactId: optionalFk(),
+    companyId: optionalFk(),
+    dealId: optionalFk(),
   }),
 );
 

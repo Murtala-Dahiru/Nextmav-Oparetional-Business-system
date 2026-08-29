@@ -1,4 +1,5 @@
 import { collectionHandlers } from '@/lib/supabase/crud';
+import { ownedScope } from '@/lib/supabase/crm-scope';
 
 // The owner is resolved here as it is for leads. Without it the deal's
 // owner column had nothing to render.
@@ -12,6 +13,10 @@ export const { GET, POST } = collectionHandlers(
     searchColumns: ['name', 'notes'],
     sortable: ['created_at', 'updated_at', 'name', 'value', 'stage', 'probability', 'expected_close'],
     filterable: ['stage', 'owner_id', 'company_id'],
+    // A role granted CRM at `scope: 'own'` sees its own records and no more.
+    // See lib/supabase/crm-scope.ts for why this applies here and not to
+    // companies or contacts.
+    scope: ownedScope,
   },
   {
     table: 'deals', module: 'crm', select: SELECT,
