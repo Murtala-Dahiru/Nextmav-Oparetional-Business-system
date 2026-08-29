@@ -1325,7 +1325,7 @@ delimiters, quoted commas, a byte-order mark, a workbook whose first tab is
 one, and the value reader against thousand separators, a currency symbol, a
 European decimal comma and a magnitude suffix.
 
-`npm run crm:verify` - 64 assertions against the running application as the
+`npm run crm:verify` - 85 assertions against the running application as the
 seeded owner: the overview's arithmetic agrees with itself, sorting sorts, a
 deal stamps and clears its own close date and lost reason, a follow-up enters
 and leaves the overdue queue, a lead converts once and only once, and an import
@@ -1336,6 +1336,53 @@ Driven by hand in the browser as well: the drag persisted with its stage event,
 the Won dialog wrote the close date and the timeline note, the follow-up
 appeared on Company 360 within the same minute, and the Import Center reached
 its review screen from a real file.
+
+### The QA pass
+
+A second pass over the finished module, looking at every screen at 1440, 768
+and 390 in both themes rather than at the code. What it found:
+
+- **A 3,859px pipeline page.** Every stage column rendered every deal it held,
+  so the board grew with the data instead of scrolling inside itself. Columns
+  now cap at 100 cards, scroll inside a bounded height, and Won and Lost cap at
+  15 sorted by close date, because those two are a recent-closures list and not
+  an archive.
+- **Search fields clipped to about 215px** on every list. The `SearchField`
+  root had no width of its own, so it took its intrinsic size rather than the
+  column it sat in.
+- **Activities opened on an empty screen.** The default view filtered to a
+  range that usually held nothing, so the first thing the section said about a
+  busy workspace was that there was nothing in it.
+- **A notification opened the module, not the record.** The tray's link handler
+  read the `module` parameter and dropped the record id beside it, so "Deal
+  assigned to you" landed on the deal list. It now reads the record parameter
+  too and calls `openRecord`, which is the mechanism the rest of the product
+  already uses. Verified in a browser: clicking a lead notification opens that
+  lead's sheet.
+- **Table columns collapsed to equal widths below `xl`.** Column widths are
+  percentages of the whole table, and they only sum to 100 when every column is
+  showing. On a tablet, with half of them hidden, a fixed layout handed the
+  slack to the row-menu column: 230px of nothing beside a Location column too
+  narrow to finish "Port Harcourt, Nigeria". The widths are now shared out over
+  the columns actually on screen. Worth knowing for the next module that
+  borrows this table: the first attempt expressed that as
+  `calc((100% - 2.5rem) * 0.41)`, which is valid CSS that Chrome's fixed table
+  layout silently discards, giving every column an identical width. Plain
+  percentages are the only form it honours here.
+- **Sortable headers did not match their neighbours.** The `th` carries
+  `uppercase`; the sort control inside it is a `<button>`, and a button resets
+  `text-transform`. So sortable headers read "Company" and unsortable ones read
+  "LOCATION", in the same row.
+- **The customer's name, twice.** Deals are usually named after the customer,
+  so "Corvo Health - hardware refresh" sat above "Corvo Health · Amara Salami"
+  and the useful half, the person, was what truncation ate first. The list
+  subtitle, the pipeline card and the My Work source label now drop the company
+  when the name already opens with it.
+
+Also checked and found sound: no em dash anywhere in the module, including
+comments; no console error or exception on any section at 390; every section
+legible in dark at 1440; and the review screen, duplicate matching and
+relationship linking of a real `.xlsx` upload driven end to end.
 
 ### Changed
 

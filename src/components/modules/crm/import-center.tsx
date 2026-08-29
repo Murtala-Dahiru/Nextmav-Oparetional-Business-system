@@ -535,7 +535,12 @@ export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) 
         <>
           <div className="grid grid-cols-2 divide-x divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-e1 sm:grid-cols-4 sm:divide-y-0">
             <Count label="Rows read" value={plan.summary.total} />
-            <Count label="Will be created" value={live.create} tone="good" />
+            {/* Named, so it reads as the promise the receipt then keeps. */}
+            <Count
+              label={target === 'leads' ? 'Leads to add' : 'Contacts to add'}
+              value={live.create}
+              tone="good"
+            />
             <Count label="Will be updated" value={live.update} />
             <Count
               label="Skipped"
@@ -546,23 +551,46 @@ export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) 
 
           <Card className="p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
+              {/*
+                Only the facts that are true of this file.
+
+                "0 joining a customer you have" is not information, it is a
+                slot with nothing in it - and four of them in a row taught the
+                reader to skip the line that carries the one number that
+                matters.
+              */}
               <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12.5px] text-muted-foreground">
-                <span className="inline-flex items-center gap-1.5">
-                  <Building2 className="size-3.5" />
-                  {plan.summary.companiesCreated} new {plan.summary.companiesCreated === 1 ? 'company' : 'companies'}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Building2 className="size-3.5" />
-                  {plan.summary.linked} joining a customer you have
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <Copy className="size-3.5" />
-                  {plan.summary.duplicates} already in the CRM
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <AlertTriangle className="size-3.5" />
-                  {plan.summary.needsAttention} need attention
-                </span>
+                {plan.summary.companiesCreated > 0 && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Building2 className="size-3.5" />
+                    {plan.summary.companiesCreated} new {plan.summary.companiesCreated === 1 ? 'company' : 'companies'}
+                  </span>
+                )}
+                {plan.summary.linked > 0 && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Building2 className="size-3.5" />
+                    {plan.summary.linked} joining a customer you have
+                  </span>
+                )}
+                {plan.summary.duplicates > 0 && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Copy className="size-3.5" />
+                    {plan.summary.duplicates} already in the CRM
+                  </span>
+                )}
+                {plan.summary.needsAttention > 0 && (
+                  <span className="inline-flex items-center gap-1.5 text-warning">
+                    <AlertTriangle className="size-3.5" />
+                    {plan.summary.needsAttention} {plan.summary.needsAttention === 1 ? 'needs' : 'need'} attention
+                  </span>
+                )}
+                {plan.summary.companiesCreated + plan.summary.linked
+                  + plan.summary.duplicates + plan.summary.needsAttention === 0 && (
+                  <span className="inline-flex items-center gap-1.5">
+                    <CheckCircle2 className="size-3.5 text-success" />
+                    Nothing here needs a decision
+                  </span>
+                )}
               </div>
 
               <FilterRow
@@ -727,10 +755,27 @@ export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) 
                 <CheckCircle2 className="size-5" />
               </span>
               <h3 className="text-[16px] font-semibold">Imported</h3>
+              {/*
+                The same count the review screen promised, which means people
+                and not people plus the companies they were attached to. The
+                headline said "5 records created" where the review had said 3,
+                and a receipt that disagrees with the estimate is worse than no
+                receipt. Companies get their own sentence, because creating one
+                is a real thing to know about and not a line item.
+              */}
               <p className="mt-1 max-w-md text-[12.5px] leading-relaxed text-muted-foreground">
-                {result.peopleCreated + result.companiesCreated} records created,
+                {result.peopleCreated} {target === 'leads'
+                  ? (result.peopleCreated === 1 ? 'lead' : 'leads')
+                  : (result.peopleCreated === 1 ? 'contact' : 'contacts')} created,
                 {' '}{result.peopleUpdated + result.companiesUpdated} updated,
                 {' '}{result.skipped} skipped.
+                {result.companiesCreated > 0 && (
+                  <>
+                    {' '}{result.companiesCreated === 1
+                      ? 'One company was created to link them to.'
+                      : `${result.companiesCreated} companies were created to link them to.`}
+                  </>
+                )}
               </p>
             </div>
 

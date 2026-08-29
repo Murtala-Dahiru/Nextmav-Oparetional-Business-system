@@ -29,6 +29,18 @@ try {
                 AND coalesce(company_name,'') = ''))`],
     ['companies',  `DELETE FROM companies WHERE organization_id = $1
        AND (name LIKE 'Verify Holdings%' OR name LIKE 'Import Alpha%' OR name LIKE 'Import Beta%')`],
+
+    /*
+     * The Import Center is also driven through a real browser against a real
+     * .xlsx, and that fixture names its companies with an epoch so two runs
+     * never collide. The stamp is what makes these safe to match on: no real
+     * customer is called "Rivergate Foods 1788038851907 Ltd".
+     */
+    ['drive leads',     `DELETE FROM leads WHERE organization_id = $1
+       AND (company_name LIKE 'Rivergate Foods 1%' OR company_name LIKE 'Kestrel Analytics 1%'
+            OR email LIKE '%@rivergate.test' OR email LIKE '%@kestrelanalytics.test')`],
+    ['drive companies', `DELETE FROM companies WHERE organization_id = $1
+       AND (name LIKE 'Rivergate Foods 1%' OR name LIKE 'Kestrel Analytics 1%')`],
   ];
 
   for (const [label, sql] of steps) {

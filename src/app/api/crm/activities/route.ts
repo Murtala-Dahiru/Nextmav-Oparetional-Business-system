@@ -17,7 +17,7 @@ import { startOfDayIn } from '@/lib/org-time';
  *
  * So the tab demonstrated the feature rather than providing it: every call a
  * salesperson recorded was gone on refresh, reported as saved. That is the
- * failure this codebase treats as the worst kind — a success message over a
+ * failure this codebase treats as the worst kind - a success message over a
  * discarded write.
  *
  * `member_id` is taken from the session rather than the body, for the same

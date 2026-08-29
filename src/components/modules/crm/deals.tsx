@@ -19,7 +19,8 @@ import { useAppStore } from '@/store/app-store';
 import { useCrmList } from './use-list';
 import { CrmTable, type Column } from './table';
 import {
-  SectionHead, SearchField, FilterRow, FilterToggle, StageTag, OwnerTag, Blank, Broken, personName,
+  SectionHead, SearchField, FilterRow, FilterToggle, StageTag, OwnerTag, Blank, Broken,
+  personName, sourceLabel,
 } from './ui';
 import { exact, remove, formatDayShort, daysUntil, relativeDay } from './data';
 import { DealDialog, CloseDealDialog } from './forms';
@@ -53,6 +54,25 @@ import { STAGE_LABELS, CLOSED_STAGES, type Deal } from './types';
  * from a GROUP BY over every deal; two versions of one chart disagreeing is
  * worse than one of them not existing.
  */
+
+/**
+ * The line under a deal's name: who it is with.
+ *
+ * Most deals get named after the customer, so "Corvo Health - hardware
+ * refresh" with "Corvo Health · Amara Salami" beneath it says the company
+ * twice and the useful half - the person - is what gets truncated away on a
+ * narrow screen. When the name already opens with the company, the company is
+ * dropped from the line rather than the person.
+ */
+function subtitle(d: Deal): string {
+  const company = (d.company?.name ?? '').trim();
+  const who = personName(d.contact);
+  const named = company && d.name.toLowerCase().startsWith(company.toLowerCase());
+
+  const parts = [named ? '' : company, who].filter(Boolean);
+  if (parts.length) return parts.join(' · ');
+  return company ? 'No contact linked' : 'No customer linked';
+}
 
 export function DealsSection({
   focusId, onFocusHandled, initialStage,
@@ -114,7 +134,7 @@ export function DealsSection({
         <span className="block min-w-0">
           <span className="block truncate font-medium text-foreground">{d.name}</span>
           <span className="block truncate text-[11.5px] text-muted-foreground">
-            {[d.company?.name, personName(d.contact)].filter(Boolean).join(' · ') || 'No customer linked'}
+            {subtitle(d)}
           </span>
         </span>
       ),
@@ -272,7 +292,7 @@ export function DealsSection({
               <AddToMyWorkItem
                 source={{
                   module: 'crm', type: 'deal', id: d.id,
-                  label: [d.company?.name, d.name].filter(Boolean).join(' · '),
+                  label: sourceLabel(d.company?.name, d.name),
                 }}
                 title={`Move ${d.name} forward`}
               />

@@ -159,6 +159,20 @@ export function personName(p?: { firstName?: string; lastName?: string } | null)
   return `${p.firstName ?? ''} ${p.lastName ?? ''}`.trim();
 }
 
+/**
+ * How a record reads on somebody's personal My Work list.
+ *
+ * "Corvo Health · Corvo Health - hardware refresh" is the shape a blind join
+ * produces, because a deal is very often named after its customer. The company
+ * is dropped when the record's own name already opens with it.
+ */
+export function sourceLabel(company: string | null | undefined, name: string): string {
+  const co = (company ?? '').trim();
+  if (!co) return name;
+  if (!name) return co;
+  return name.toLowerCase().startsWith(co.toLowerCase()) ? name : `${co} · ${name}`;
+}
+
 export function memberName(m?: Member | null): string {
   return m?.profiles?.fullName ?? '';
 }

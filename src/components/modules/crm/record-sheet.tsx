@@ -16,7 +16,8 @@ import { formatDate } from '@/lib/format';
 
 import { getList, getOne, exact, formatDay, relativeDay, daysUntil, listQuery } from './data';
 import {
-  StageTag, LeadStatusTag, Gauge, OwnerTag, Monogram, personName, Spinner, Broken, Blank,
+  StageTag, LeadStatusTag, Gauge, OwnerTag, Monogram, personName, sourceLabel,
+  Spinner, Broken, Blank,
 } from './ui';
 import { Facts, Panel, NextActions, Timeline, useDeleteActivity, whenOf } from './record-parts';
 import { ActivityDialog } from './activity-dialog';
@@ -273,16 +274,24 @@ export function RecordSheet({
       type: kind,
       id: record.id,
       label: kind === 'deal'
-        ? [record.company?.name, record.name].filter(Boolean).join(' · ')
-        : [record.company?.name ?? record.companyName, personName(record)].filter(Boolean).join(' · '),
+        ? sourceLabel(record.company?.name, record.name)
+        : sourceLabel(record.company?.name ?? record.companyName, personName(record)),
     }
     : null;
 
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-xl">
-          <SheetHeader className="border-b border-border px-5 py-4 text-left">
+        {/*
+          The same width as Company 360, deliberately.
+
+          At `max-w-xl` the six header actions - log, follow up, won, lost, add
+          to My Work, edit - wrapped onto two rows with Edit alone on the
+          second. A deal is a workspace and it earns the same width as a
+          customer.
+        */}
+        <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-2xl">
+          <SheetHeader className="border-b border-border py-4 pl-5 pr-12 text-left">
             <div className="flex items-start gap-3">
               {kind === 'deal'
                 ? (
@@ -359,7 +368,7 @@ export function RecordSheet({
                 )}
 
                 <Button
-                  size="sm" variant="ghost" className="ml-auto h-8 gap-1.5 text-[12.5px]"
+                  size="sm" variant="ghost" className="h-8 gap-1.5 text-[12.5px]"
                   onClick={() => setEditOpen(true)}
                 >
                   <Pencil className="size-3.5" /> Edit

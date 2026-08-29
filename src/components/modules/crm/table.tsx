@@ -96,6 +96,47 @@ const HIDE: Record<string, string> = {
   xl: 'hidden xl:table-cell',
 };
 
+/** The widths behind those class names, so the same rule can be asked in JS. */
+const AT: Record<string, number> = { md: 768, lg: 1024, xl: 1280 };
+
+/**
+ * Which `hide` tiers are currently showing.
+ *
+ * ── Why the table needs to know ──────────────────────────────────────────
+ *
+ * Column widths are percentages of the whole table, and they add up to about
+ * 100 only when every column is on screen. On a tablet, half of them are
+ * hidden, so the percentages ask for 60% of the table and a fixed layout hands
+ * the other 40% to whichever column will take it - which was the empty strip
+ * beside the row menu. Locations were being cut short next to 230px of
+ * nothing. Knowing which columns are actually showing lets the percentages be
+ * shared out over those, so a narrower screen makes the remaining columns
+ * wider rather than emptier.
+ */
+function useShownTiers(): Set<string> {
+  const read = React.useCallback(() => {
+    const shown = new Set<string>();
+    if (typeof window === 'undefined') return shown;
+    for (const [tier, px] of Object.entries(AT)) {
+      if (window.matchMedia(`(min-width: ${px}px)`).matches) shown.add(tier);
+    }
+    return shown;
+  }, []);
+
+  /* Server-render as the widest case, which is what the markup already assumes. */
+  const [tiers, setTiers] = React.useState<Set<string>>(() => new Set(Object.keys(AT)));
+
+  React.useEffect(() => {
+    const sync = () => setTiers(read());
+    sync();
+    const lists = Object.values(AT).map(px => window.matchMedia(`(min-width: ${px}px)`));
+    for (const l of lists) l.addEventListener('change', sync);
+    return () => { for (const l of lists) l.removeEventListener('change', sync); };
+  }, [read]);
+
+  return tiers;
+}
+
 export function CrmTable<T>({
   columns, rows, rowKey, loading, onOpen, actions,
   sort, sortDir = 'desc', onSort,
@@ -105,6 +146,30 @@ export function CrmTable<T>({
   const from = total === 0 ? 0 : page * pageSize + 1;
   const to = Math.min(total, (page + 1) * pageSize);
   const pages = Math.max(1, Math.ceil(total / pageSize));
+
+  const tiers = useShownTiers();
+
+  /**
+   * The percentage widths, shared out over the columns that are on screen.
+   *
+   * Plain percentages, deliberately: a `calc()` that mixes a percentage with a
+   * rem is valid CSS but a fixed table layout in Chrome quietly discards it and
+   * falls back to equal columns, which is how a 30% name column and a 14%
+   * status column ended up the same width. Percentages it understands. They sum
+   * to 100 alongside the row-menu column's fixed 2.5rem, so the table is
+   * over-specified by that much and every column is scaled down in proportion -
+   * which keeps the ratios, and is the point.
+   */
+  const widthOf = React.useMemo(() => {
+    const showing = columns.filter(c => !c.hide || tiers.has(c.hide));
+    const asked = showing.reduce((sum, c) => sum + (parseFloat(c.width ?? '') || 0), 0);
+    const scale = asked > 0 ? 100 / asked : 1;
+    return (col: Column<T>) => {
+      const own = parseFloat(col.width ?? '') || 0;
+      if (!own) return col.width;
+      return `${(own * scale).toFixed(3)}%`;
+    };
+  }, [columns, tiers]);
 
   const head = (col: Column<T>, i: number) => {
     const active = col.key && sort === col.key;
@@ -121,7 +186,7 @@ export function CrmTable<T>({
       <th
         key={`${col.header}-${i}`}
         scope="col"
-        style={col.width ? { width: col.width } : undefined}
+        style={{ width: widthOf(col) }}
         className={cn(
           'whitespace-nowrap px-3 pb-2 pt-0 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted-foreground/85',
           col.align === 'right' ? 'text-right' : 'text-left',
@@ -133,7 +198,7 @@ export function CrmTable<T>({
             type="button"
             onClick={() => onSort(col.key!, active && sortDir === 'desc' ? 'asc' : 'desc')}
             className={cn(
-              'inline-flex items-center gap-1 rounded transition-colors hover:text-foreground',
+              'inline-flex items-center gap-1 rounded uppercase tracking-[0.08em] transition-colors hover:text-foreground',
               active && 'text-foreground',
             )}
             aria-label={`Sort by ${col.header}`}

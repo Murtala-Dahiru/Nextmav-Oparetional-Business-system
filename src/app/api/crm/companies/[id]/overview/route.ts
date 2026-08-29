@@ -13,8 +13,8 @@ import type { ModuleId } from '@/lib/constants';
  *  The CRM's Companies tab was a table with a create, an edit and a delete.
  *  Opening a customer told you their industry and their address. Whether they
  *  had three projects running, an invoice sixty days overdue and two open
- *  support tickets — the things anyone speaking to that customer actually
- *  needs — lived in three other modules, each requiring you to know it was
+ *  support tickets - the things anyone speaking to that customer actually
+ *  needs - lived in three other modules, each requiring you to know it was
  *  there and to filter for the company by hand.
  *
  *  Every one of those relationships already existed in the schema:
@@ -35,8 +35,8 @@ import type { ModuleId } from '@/lib/constants';
  *  ── The permission model ─────────────────────────────────────────────────
  *
  *  `crm.view` opens the record. Each cross-module section is then gated on
- *  that module's own `view` — Finance data requires `finance.view`, tickets
- *  require `support.view` — because reaching a customer through the CRM must
+ *  that module's own `view` - Finance data requires `finance.view`, tickets
+ *  require `support.view` - because reaching a customer through the CRM must
  *  not become a way to read modules the sidebar does not offer you. RLS still
  *  scopes every query to the tenant underneath.
  */
@@ -97,7 +97,7 @@ export async function GET(_req: Request, { params }: Params) {
    *
    * Tickets have no `company_id`: a ticket belongs to a *contact*, who belongs
    * to a company. So the ticket query needs the contact ids, which makes this
-   * two waves rather than one — the only sequential step in the endpoint.
+   * two waves rather than one - the only sequential step in the endpoint.
    */
   const { data: contacts } = await ctx.supabase
     .from('contacts').select(CONTACT_SELECT)
@@ -206,7 +206,7 @@ export async function GET(_req: Request, { params }: Params) {
    * The figures the header shows.
    *
    * Computed here, from the same rows the panels below render, so the summary
-   * and the detail can never disagree — the failure mode that makes a customer
+   * and the detail can never disagree - the failure mode that makes a customer
    * screen untrustworthy the first time someone checks the arithmetic.
    */
   const summary = {

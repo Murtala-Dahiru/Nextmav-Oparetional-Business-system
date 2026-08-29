@@ -106,7 +106,13 @@ function DealCard({
           <p className="line-clamp-2 text-[13px] font-medium leading-snug text-foreground">
             {deal.name}
           </p>
-          {deal.company?.name && (
+          {/*
+            Only when it adds something. Deals are usually named after the
+            customer, and "Bellhaven Hotels" under "Bellhaven Hotels - portal
+            build" is a line of card spent saying nothing.
+          */}
+          {deal.company?.name
+            && !deal.name.toLowerCase().startsWith(deal.company.name.trim().toLowerCase()) && (
             <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{deal.company.name}</p>
           )}
         </button>

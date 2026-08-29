@@ -242,7 +242,7 @@ export function CompanyDetail({
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-2xl">
-          <SheetHeader className="border-b border-border px-5 py-4 text-left">
+          <SheetHeader className="border-b border-border py-4 pl-5 pr-12 text-left">
             <div className="flex items-start gap-3">
               <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                 <Building2 className="size-5" />
@@ -318,7 +318,7 @@ export function CompanyDetail({
                 />
                 {onEdit && (
                   <Button
-                    size="sm" variant="ghost" className="ml-auto h-8 gap-1.5 text-[12.5px]"
+                    size="sm" variant="ghost" className="h-8 gap-1.5 text-[12.5px]"
                     onClick={() => { onOpenChange(false); onEdit(c.id); }}
                   >
                     <Pencil className="size-3.5" /> Edit

@@ -28,7 +28,7 @@ export const { GET, POST } = collectionHandlers(
        * `??` cannot supply this default.
        *
        * `Number(undefined)` is `NaN`, and `NaN` is neither null nor undefined,
-       * so `Number(b.probability) ?? 20` evaluates to `NaN` — which survives
+       * so `Number(b.probability) ?? 20` evaluates to `NaN` - which survives
        * the clamp, is sent as null, and fails the NOT NULL constraint. Any
        * deal created without an explicit probability answered 500.
        */
