@@ -570,26 +570,33 @@ function factsFor(kind: Kind, r: any, events: StageEvent[]) {
     : '';
 
   if (kind === 'deal') {
-    const close = r.expectedClose ? daysUntil(r.expectedClose) : null;
+    const settled = r.stage === 'closed_won' || r.stage === 'closed_lost';
+    const close = settled || !r.expectedClose ? null : daysUntil(r.expectedClose);
     const opened = events[0]?.createdAt ?? r.createdAt;
 
     return [
       { label: 'Value', value: exact(r.value) },
-      { label: 'Weighted', value: exact(r.value * r.probability / 100) },
-      {
-        label: 'Expected close',
-        value: r.expectedClose
-          ? (
-            <span className={cn(
-              close !== null && close < 0 && r.stage !== 'closed_won' && r.stage !== 'closed_lost'
-                ? 'font-medium text-destructive' : '',
-            )}>
-              {formatDay(r.expectedClose)}
-              <span className="ml-1.5 text-muted-foreground">{relativeDay(r.expectedClose)}</span>
-            </span>
-          )
-          : '',
-      },
+      { label: 'Weighted', value: settled ? '' : exact(r.value * r.probability / 100) },
+      /**
+       * One date, and which one depends on whether it is over.
+       *
+       * Showing an expected close on a deal that has already been won is a
+       * forecast for the past, and the relative phrasing made it read as one:
+       * "15 Dec, in 15 weeks" on something signed in December.
+       */
+      settled
+        ? { label: r.stage === 'closed_won' ? 'Won on' : 'Lost on', value: formatDay(r.closedAt) }
+        : {
+          label: 'Expected close',
+          value: r.expectedClose
+            ? (
+              <span className={cn(close !== null && close < 0 ? 'font-medium text-destructive' : '')}>
+                {formatDay(r.expectedClose)}
+                <span className="ml-1.5 text-muted-foreground">{relativeDay(r.expectedClose)}</span>
+              </span>
+            )
+            : '',
+        },
       { label: 'Owner', value: <OwnerTag member={r.owner} /> },
       {
         label: 'Age',

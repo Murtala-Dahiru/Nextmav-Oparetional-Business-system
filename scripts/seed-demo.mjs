@@ -1391,6 +1391,30 @@ async function seedCrm(ORG, team, companies, contacts) {
   dealRows.push(...openDeals);
   const deals = await insert('deals', dealRows);
 
+  /**
+   * Backdate the stage history the trigger just wrote.
+   *
+   * 0028's `record_deal_stage_change()` writes one `deal_stage_events` row per
+   * deal on INSERT, stamped `now()` - which is correct for a deal somebody
+   * creates and wrong for a year of history inserted in ten seconds. Left
+   * alone, every deal in the demo reads "0d" in its stage, and the panel whose
+   * whole point is "eleven days in proposal" says nothing.
+   *
+   * The event is moved to the deal's own `created_at`. It is still the honest
+   * claim the backfill makes - "this is where it was when we started keeping
+   * track" - just dated from when the deal existed rather than from when the
+   * seeder ran.
+   */
+  for (const deal of deals) {
+    await rest(
+      'PATCH',
+      `deal_stage_events?deal_id=eq.${deal.id}`,
+      { created_at: deal.created_at },
+      { Prefer: 'return=minimal' },
+    ).catch(() => {});
+  }
+  note('deal_stage_events', deals.length);
+
   /* Leads, in every state the funnel has. */
   const leadRows = Array.from({ length: 38 }, () => {
     const created = daysAgo(intBetween(1, 300));

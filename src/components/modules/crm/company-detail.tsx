@@ -525,11 +525,18 @@ export function CompanyDetail({
                                 <p className="truncate text-[13px] text-foreground">{d.name}</p>
                                 <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11.5px] text-muted-foreground">
                                   <StageTag stage={d.stage} />
-                                  {d.expectedClose && (
+                                  {/*
+                                    A closed deal is dated by when it closed.
+                                    "closes 15 Dec" on something already won is
+                                    a forecast for the past.
+                                  */}
+                                  {d.closedAt ? (
+                                    <span>on {formatDay(d.closedAt)}</span>
+                                  ) : d.expectedClose ? (
                                     <span className={cn(late && 'font-medium text-destructive')}>
                                       closes {formatDay(d.expectedClose)}
                                     </span>
-                                  )}
+                                  ) : null}
                                 </p>
                               </div>
                               <div className="shrink-0 text-right">

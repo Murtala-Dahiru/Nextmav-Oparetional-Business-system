@@ -135,9 +135,22 @@ export function DealsSection({
     {
       key: 'expectedClose', header: 'Close', width: '15%', align: 'right', card: 'meta',
       cell: d => {
+        /**
+         * A closed deal shows when it closed, not when it was expected to.
+         *
+         * The expected close on a won deal is a date that stopped mattering
+         * the moment it was signed, and running the same "in 15 weeks" through
+         * it produced a forecast for something that has already happened.
+         */
+        if (CLOSED_STAGES.includes(d.stage)) {
+          return d.closedAt
+            ? <span className="text-muted-foreground">{formatDayShort(d.closedAt)}</span>
+            : <span className="text-muted-foreground/70">-</span>;
+        }
+
         if (!d.expectedClose) return <span className="text-muted-foreground/70">Not set</span>;
         const left = daysUntil(d.expectedClose);
-        const late = left !== null && left < 0 && !CLOSED_STAGES.includes(d.stage);
+        const late = left !== null && left < 0;
         return (
           <span className={cn('inline-flex items-center gap-1.5', late && 'font-medium text-destructive')}>
             {late && <AlertTriangle className="size-3" />}

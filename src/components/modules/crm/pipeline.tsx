@@ -71,9 +71,19 @@ function DealCard({
 }: {
   deal: Deal; dragging?: boolean; onOpen?: () => void;
 }) {
-  const left = daysUntil(deal.expectedClose);
-  const late = left !== null && left < 0 && !CLOSED_STAGES.includes(deal.stage);
-  const soon = left !== null && left >= 0 && left <= 14 && !CLOSED_STAGES.includes(deal.stage);
+  /**
+   * A closed card shows when it closed, not when it was expected to.
+   *
+   * The expected close on a won deal stopped mattering the moment it was
+   * signed, and the same relative phrasing turned it into a forecast for
+   * something that has already happened - "closes in fifteen weeks" on a card
+   * sitting in the Won column.
+   */
+  const closed = CLOSED_STAGES.includes(deal.stage);
+  const shownDate = closed ? deal.closedAt : deal.expectedClose;
+  const left = closed ? null : daysUntil(deal.expectedClose);
+  const late = left !== null && left < 0;
+  const soon = left !== null && left >= 0 && left <= 14;
 
   return (
     <div
@@ -122,14 +132,16 @@ function DealCard({
       </span>
 
       <div className="mt-2.5 flex items-center justify-between gap-2">
-        {deal.expectedClose ? (
+        {shownDate ? (
           <span className={cn(
             'inline-flex items-center gap-1 text-[11px]',
             late ? 'font-medium text-destructive' : soon ? 'font-medium text-warning' : 'text-muted-foreground',
           )}>
             {late && <AlertTriangle className="size-3" />}
-            {formatDayShort(deal.expectedClose)}
-            <span className="text-muted-foreground/70">{relativeDay(deal.expectedClose)}</span>
+            {formatDayShort(shownDate)}
+            {!closed && (
+              <span className="text-muted-foreground/70">{relativeDay(shownDate)}</span>
+            )}
           </span>
         ) : (
           <span className="text-[11px] text-muted-foreground/60">No close date</span>
