@@ -20,6 +20,20 @@ function env(k) {
   const m = readFileSync('.env', 'utf8').match(new RegExp(`^${k}=(.*)$`, 'm'));
   return m ? m[1].trim() : '';
 }
+/**
+ * The role ids the product actually defines, read from the source of truth.
+ *
+ * This script is plain `.mjs` and cannot import `lib/constants.ts`, so it
+ * scrapes the ids rather than restating them. A literal count here was wrong
+ * the day a tenth role was added, and restating the list would only move the
+ * same problem one line down.
+ */
+const ROLE_IDS = [...readFileSync('src/lib/constants.ts', 'utf8')
+  .split('export const ROLES')[1]
+  .split('] as const;')[0]
+  .matchAll(/\{\s*id:\s*'([a-z_]+)'/g)]
+  .map(m => m[1]);
+
 const SUPABASE = env('NEXT_PUBLIC_SUPABASE_URL');
 const SERVICE = env('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -494,9 +508,23 @@ try {
   const users = await A.json('/api/admin/users');
   check(users.ok, `admin user list loads (${users.status})`);
 
+  /**
+   * Every role in the model is described, whatever the count.
+   *
+   * This asserted a literal 9 and broke when `partner` was added in 0033 -
+   * which is the assertion working, but it was testing the wrong thing. What
+   * matters is that the endpoint describes the roles the product actually
+   * has, so a role added without a description is caught while a role added
+   * with one is not a failure.
+   */
   const roles = await A.json('/api/admin/roles');
-  check(roles.ok && (roles.body?.data ?? []).length === 9,
-    `all 9 roles described (${(roles.body?.data ?? []).length})`);
+  const described = roles.body?.data ?? [];
+  check(roles.ok && described.length === ROLE_IDS.length,
+    `all ${ROLE_IDS.length} roles described (${described.length})`);
+  check(
+    ROLE_IDS.every(id => described.some(d => d.id === id && String(d.description ?? '').trim())),
+    'and each one says what it is for',
+  );
 
   const roleEdit = await A.json('/api/admin/roles/employee', {
     method: 'PATCH', body: JSON.stringify({ name: 'Hacked' }),

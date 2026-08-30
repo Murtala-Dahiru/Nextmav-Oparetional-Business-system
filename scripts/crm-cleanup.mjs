@@ -41,6 +41,63 @@ try {
             OR email LIKE '%@rivergate.test' OR email LIKE '%@kestrelanalytics.test')`],
     ['drive companies', `DELETE FROM companies WHERE organization_id = $1
        AND (name LIKE 'Rivergate Foods 1%' OR name LIKE 'Kestrel Analytics 1%')`],
+
+    /*
+     * What `performance-verify.mjs` cannot remove through the API.
+     *
+     * An incentive rule that has ever paid anybody is ON DELETE RESTRICT, and
+     * deliberately so: deleting it would erase the reason a payment happened.
+     * The suite therefore switches such rules off rather than removing them,
+     * and the rows are cleared here, entries first because they hold the key.
+     */
+    ['incentive entries', `DELETE FROM incentive_entries WHERE organization_id = $1
+       AND rule_id IN (SELECT id FROM incentive_rules
+                       WHERE organization_id = $1 AND name LIKE 'VERIFY%')`],
+    ['incentive rules',   `DELETE FROM incentive_rules WHERE organization_id = $1
+       AND name LIKE 'VERIFY%'`],
+    ['perf targets',      `DELETE FROM performance_targets WHERE organization_id = $1
+       AND period_label = 'VERIFY'`],
+    ['perf goals',        `DELETE FROM performance_goals WHERE organization_id = $1
+       AND title LIKE 'VERIFY%'`],
+    ['perf reviews',      `DELETE FROM performance_reviews WHERE organization_id = $1
+       AND cycle_id IN (SELECT id FROM performance_cycles
+                        WHERE organization_id = $1 AND name LIKE 'VERIFY%')`],
+    ['perf cycles',       `DELETE FROM performance_cycles WHERE organization_id = $1
+       AND name LIKE 'VERIFY%'`],
+    /*
+     * Titles carrying a 13-digit epoch, which is how every harness in this
+     * repository names the records it creates. No real achievement is called
+     * "Rescued the Corvo renewal 1788050064561".
+     */
+    ['perf achievements', `DELETE FROM performance_achievements WHERE organization_id = $1
+       AND (title LIKE 'VERIFY%' OR title ~ '[0-9]{13}')`],
+    ['partner leads',     `DELETE FROM partner_leads WHERE organization_id = $1
+       AND (company_name LIKE 'Verify Partner Co%' OR last_name LIKE 'Prospect 1%')`],
+
+    /*
+     * Events whose record is gone, and the entries hanging off them.
+     *
+     * `business_events` deliberately holds no foreign key to `deals`: an
+     * achievement outlives the record it came from, which is right for a
+     * product that only ever soft-deletes. But a verification run creates a
+     * deal, wins it, and then deletes it - and the event stays, so the demo
+     * owner's performance fills with figures from deals nobody can open.
+     *
+     * Entries first: they reference the events.
+     */
+    ['orphan entries',    `DELETE FROM incentive_entries WHERE organization_id = $1
+       AND source_event_id IN (
+         SELECT e.id FROM business_events e
+         LEFT JOIN deals d ON d.id = e.entity_id AND d.deleted_at IS NULL
+         WHERE e.organization_id = $1 AND e.entity_type = 'deal' AND d.id IS NULL)`],
+    ['orphan events',     `DELETE FROM business_events e WHERE e.organization_id = $1
+       AND e.entity_type = 'deal'
+       AND NOT EXISTS (SELECT 1 FROM deals d
+                       WHERE d.id = e.entity_id AND d.deleted_at IS NULL)`],
+    ['orphan lead events',`DELETE FROM business_events e WHERE e.organization_id = $1
+       AND e.entity_type = 'lead'
+       AND NOT EXISTS (SELECT 1 FROM leads l
+                       WHERE l.id = e.entity_id AND l.deleted_at IS NULL)`],
   ];
 
   for (const [label, sql] of steps) {

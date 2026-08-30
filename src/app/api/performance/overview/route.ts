@@ -248,8 +248,17 @@ export async function GET(request: Request) {
      */
     if (days > 0) cycles.push(days);
   }
+  /**
+   * Rounded, but never rounded down to nothing.
+   *
+   * A deal opened and closed the same afternoon averages to a fraction of a
+   * day, which `Math.round` turns into "0d" - and a sales cycle of zero days
+   * reads as a broken figure rather than as a fast one. Anything under a day
+   * is reported as 1, which is the truthful floor for a metric counted in
+   * days.
+   */
   const salesCycle = cycles.length
-    ? Math.round(cycles.reduce((a, b) => a + b, 0) / cycles.length)
+    ? Math.max(1, Math.round(cycles.reduce((a, b) => a + b, 0) / cycles.length))
     : null;
 
   const who = whoRes.data as any;

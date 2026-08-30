@@ -1412,6 +1412,128 @@ relationship linking of a real `.xlsx` upload driven end to end.
   deal panel reads it; a cohort view of how long deals sit in each stage is the
   obvious next thing it can support.
 
+## 5h. Phase 5 - Performance, incentives and the HR layer (2026-08-30)
+
+The first phase that is not a module redesign. It adds a layer between the
+CRM, which knows what happened to customers, and HR, which knows about people,
+and answers the question neither could: who did that, and how are they doing
+against what they said they would do.
+
+### The one architectural line
+
+**Performance is derived. Incentives are ledgered.**
+
+A performance figure is a question about the current state of the business and
+is computed on read, never stored. A stored `revenue_won_total` is a second
+source of truth, and this repository has already paid for one: the Deals page
+drew a bar chart from a capped hundred rows while CRM Home drew the same chart
+from a GROUP BY, and they disagreed. That was a chart. This would be a payslip.
+
+Money owed is the opposite discipline. An amount, once computed, is never
+recalculated: correcting a won deal's value produces a reversal row and a new
+one, and the person sees both. An entry that silently changes value is the
+fastest way to destroy trust in a commission system.
+
+The only stored figure is `performance_targets`, and it earns the exception by
+being an input: nothing in the CRM implies what somebody agreed to do.
+
+### What was built
+
+- **`business_events` (0029)** - typed, append-only, written only by triggers.
+  Only by triggers because a deal becomes won through at least four paths,
+  including the import commit endpoint that writes deals directly. Payload is a
+  snapshot: value and currency frozen at the moment, because `deals.value` is
+  editable for ever and the organisation's currency can be changed in settings.
+  `subject_member_id` and `actor_member_id` are separate columns, so a manager
+  marking a colleague's deal won credits the owner and audits the manager.
+
+- **`performance_targets` (0030)** - dates rather than a quarter string, and a
+  closed period refuses to have its number changed. Also adds `invoices.deal_id`,
+  without which commission on collected revenue has nothing to attach to.
+
+- **`incentive_rules` and `incentive_entries` (0031)** - rules are versioned
+  policy, entries are an immutable ledger. Every entry carries its workings,
+  which is what makes "employees understand how their incentives are
+  calculated" a data structure rather than a promise. The rules list is
+  readable by the whole organisation: a scheme people cannot read is a rumour.
+
+- **HR performance (0032)** - cycles, goals, reviews, achievements. A goal is
+  either *measured* (progress from the event spine, nobody typing a number) or
+  *assessed* (judged at review). A review cannot be closed until it has been
+  shared, and sharing is stamped.
+
+- **The partner workspace (0033)** - an external salesperson owns
+  `partner_leads` and never holds a row in `leads`. Approving one *creates* a
+  lead with `source_partner_id` stamped on it.
+
+### Reused rather than rebuilt
+
+`auth_visible_member_ids()` has answered "whose records may I see" since 0005:
+owners, administrators and HR get everyone; a manager gets their department
+plus their direct reports; everyone else gets themselves. Every table in this
+phase reads it. Team performance is the same computation as personal
+performance, grouped and filtered through a function that already existed,
+which is why nothing on that screen can get visibility wrong.
+
+`organization_members.manager_id`, `departments.parent_id`, the `notify_*`
+trigger convention, the realtime publication loop from 0020, `authorize()`, and
+`ACTIONS` already separating `approve` from `edit` were all used as they stood.
+
+### Three traps, all silent
+
+**A `FOR ALL` policy also grants SELECT.** `performance_reviews_write` said
+"you may touch rows about people you can see", and because permissive policies
+are OR'd and FOR ALL covers every command, it re-granted every employee read
+access to their own unshared review - undoing the select policy written
+immediately above it. Both looked correct in isolation. Found by asking as an
+employee and getting a row back. Twenty-one other tables use FOR ALL beside a
+SELECT policy and are unaffected, because their writes are *narrower* than
+their reads; reviews is the one place the reverse is true. **Any table whose
+read rule is narrower than its write rule needs the split.**
+
+**A new role fell through the module fallback.** `can_access_module()` ended in
+`ELSE auth_role_in(org) <> 'client'`, written when `client` was the only
+external role. Adding `partner` would have granted it Workspace,
+Communication, Calendar, Projects, HR, Inventory and Admin. Externals are now
+answered from an explicit list and refused otherwise. `isExternalRole()` was a
+single equality gating the staff directory and the sidebar; it is a set now.
+
+**The API camel-cases JSONB contents.** `explanation.basis_amount` arrives as
+`explanation.basisAmount`. Every screen reading a JSONB column has to expect
+it. `schema:check` catches unregistered validation schemas but not this.
+
+### Verified
+
+`npm run performance:verify` - 71 assertions over HTTP as an owner, a manager
+and an employee, so what is tested is the route guard, the validation, the RLS
+policy and the trigger together. It sweeps its own residue first, so an
+interrupted run cannot make the next one fail on a constraint doing its job.
+
+Twenty of those are the partner isolation, borrowed against a real session:
+six CRM endpoints refused, performance refused, the staff directory refused, a
+draft invisible to the company, the one-way submit, the created lead carrying
+its attribution, and the partner still unable to read the lead their own
+prospect became.
+
+An incentive rule that has ever paid anybody is `ON DELETE RESTRICT` and cannot
+be removed, correctly - deleting it would erase the reason a payment happened.
+The suite switches such rules off instead, and `scripts/crm-cleanup.mjs` clears
+the rows when the demo workspace wants tidying.
+
+### Carried forward
+
+- **Team and department targets** are modelled and stored but only member
+  targets have a screen. The subject picker offers people; teams and
+  departments need one more control each.
+- **`target_bonus`** as a rule kind. The three event-driven shapes are built;
+  paying a bonus for crossing a target needs the cumulative period figure at
+  event time, which is a different query from the three that exist.
+- **Collected-revenue commission** works, but nothing yet links an invoice to a
+  deal in the UI. The column and the event payload are there.
+- **A partner has no incentive screen.** Their commission flows through the
+  same ledger, and `performance` is not a module they hold. Either the portal
+  grows an earnings panel or the ledger endpoint learns to answer them.
+
 ## 6. The phases
 
 | # | Phase | State |
@@ -1420,16 +1542,17 @@ relationship linking of a real `.xlsx` upload driven end to end.
 | 2 | Executive Overview | **done** |
 | 3 | My Work | **done** (3b: intake, inbox, reminders) |
 | 4 | CRM | **done** |
-| 5 | Projects | next |
-| 6 | Finance | |
-| 7 | HR | |
-| 8 | Communication | |
-| 9 | Support | |
-| 10 | Inventory | |
-| 11 | Calendar | |
-| 12 | Workspace | |
-| 13 | Client Portal | |
-| 14 | Admin | |
+| 5 | Performance, incentives and the HR layer | **done** |
+| 6 | Projects | next |
+| 7 | Finance | |
+| 8 | HR (the rest: payroll, cases, onboarding) | |
+| 9 | Communication | |
+| 10 | Support | |
+| 11 | Inventory | |
+| 12 | Calendar | |
+| 13 | Workspace | |
+| 14 | Client Portal | |
+| 15 | Admin | |
 
 ### What each module phase should do
 

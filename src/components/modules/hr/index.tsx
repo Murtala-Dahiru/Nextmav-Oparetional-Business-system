@@ -1655,6 +1655,11 @@ export default function HrModule() {
             <AttendanceTab />
           </motion.div>
         )}
+        {activeTab === 'performance' && (
+          <motion.div key="performance" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
+            <PerformanceTab />
+          </motion.div>
+        )}
         {activeTab === 'cases' && (
           <motion.div key="cases" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
             <InternalHrCasesTab />

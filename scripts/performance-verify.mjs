@@ -129,11 +129,26 @@ async function sweepResidue() {
     if (r.status < 400) swept += 1;
   }
 
+  /**
+   * A rule that has ever paid anybody cannot be deleted, and should not be.
+   *
+   * The foreign key from `incentive_entries` is ON DELETE RESTRICT because
+   * removing the rule would erase the reason a payment happened. So the
+   * fallback is to switch it off, which stops it firing and leaves the
+   * history intact. `scripts/crm-cleanup.mjs` clears the rows themselves when
+   * somebody wants the demo workspace tidy.
+   */
   const rules = await api('owner', '/api/performance/rules?pageSize=200');
   for (const r of rules.body?.data ?? []) {
     if (!String(r.name).startsWith('VERIFY')) continue;
     const d = await api('owner', `/api/performance/rules/${r.id}`, { method: 'DELETE' });
-    if (d.status < 400) swept += 1;
+    if (d.status < 400) { swept += 1; continue; }
+    if (r.isActive) {
+      await api('owner', `/api/performance/rules/${r.id}`, {
+        method: 'PATCH', body: JSON.stringify({ isActive: false }),
+      });
+      swept += 1;
+    }
   }
 
   const cycles = await api('owner', '/api/hr/cycles?pageSize=200');
@@ -663,7 +678,18 @@ try {
   await drop('/api/performance/targets', made.targets);
   /* Deals go before rules: entries reference the rule and hold it back. */
   await drop('/api/crm/deals', made.deals);
-  await drop('/api/performance/rules', made.rules);
+  /*
+   * Rules last, and with the same fallback the sweep uses: one that has paid
+   * anybody is ON DELETE RESTRICT and gets switched off instead.
+   */
+  for (const id of made.rules) {
+    const d = await api('owner', `/api/performance/rules/${id}`, { method: 'DELETE' });
+    if (d.status < 400) { removed += 1; continue; }
+    await api('owner', `/api/performance/rules/${id}`, {
+      method: 'PATCH', body: JSON.stringify({ isActive: false }),
+    });
+    removed += 1;
+  }
 
   console.log(`    PASS  removed ${removed} verification records`);
   passed += 1;
