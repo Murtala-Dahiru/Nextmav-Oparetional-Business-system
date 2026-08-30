@@ -740,3 +740,54 @@ export const updateIncentiveRuleSchema = z.object({
   effectiveTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date').nullable().optional(),
   isActive: z.boolean().optional(),
 });
+
+// ═══════════════════════════════════════════════════════════════
+//  HR performance
+// ═══════════════════════════════════════════════════════════════
+
+export const updateCycleSchema = z.object({
+  name: z.string().min(1, 'Give the cycle a name').optional(),
+  description: z.string().optional(),
+  periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date').optional(),
+  periodEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date').optional(),
+  status: z.enum(['planning', 'active', 'reviewing', 'closed']).optional(),
+});
+
+/**
+ * Editing a goal.
+ *
+ * `kind`, `metric` and `targetId` are absent on purpose. Turning a measured
+ * goal into an assessed one halfway through a cycle changes what the person
+ * was working towards, which is a new goal rather than an edit - and
+ * `check_performance_goal()` would refuse the inconsistent states anyway.
+ */
+export const updateGoalSchema = z.object({
+  title: z.string().min(1, 'Say what the goal is').optional(),
+  description: z.string().optional(),
+  weight: z.coerce.number().int().min(1).max(100).optional(),
+  status: z.enum(['draft', 'active', 'achieved', 'missed', 'cancelled']).optional(),
+  dueOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date').nullable().optional(),
+  selfRating: z.coerce.number().int().min(1).max(5).nullable().optional(),
+  managerRating: z.coerce.number().int().min(1).max(5).nullable().optional(),
+  selfComment: z.string().optional(),
+  managerComment: z.string().optional(),
+  cycleId: z.string().uuid().nullable().optional(),
+});
+
+/**
+ * Editing a review.
+ *
+ * `memberId` and `cycleId` are absent: a review is of one person for one
+ * cycle, and changing either makes it a different review. `sharedAt` and
+ * `closedAt` are absent because the trigger owns them - a client that could
+ * set `sharedAt` could claim somebody was told something they never saw.
+ */
+export const updateReviewSchema = z.object({
+  reviewerId: z.string().uuid().nullable().optional(),
+  status: z.enum(['not_started', 'self_review', 'manager_review', 'shared', 'closed']).optional(),
+  selfComment: z.string().optional(),
+  managerComment: z.string().optional(),
+  overallRating: z.coerce.number().int().min(1).max(5).nullable().optional(),
+  incentiveEligible: z.boolean().nullable().optional(),
+  eligibilityNote: z.string().optional(),
+});

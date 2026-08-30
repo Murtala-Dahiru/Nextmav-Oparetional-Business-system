@@ -6,10 +6,11 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
 import {
   UserCog, UserPlus, Users, Clock, Building2, CheckCircle, XCircle,
-  Pencil, Trash2, Plus, Loader2, MoreHorizontal, CalendarDays, ShieldCheck, ShieldX, KeyRound,
+  Pencil, Trash2, Plus, Loader2, MoreHorizontal, CalendarDays, ShieldCheck, ShieldX, KeyRound, Gauge,
 } from 'lucide-react';
 
 import AttendanceTab from './attendance-tab';
+import PerformanceTab from './performance-tab';
 import { DataTable, type DataTableFilter } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
@@ -1622,6 +1623,9 @@ export default function HrModule() {
           </TabsTrigger>
           <TabsTrigger value="attendance">
             <Clock className="size-4 mr-1.5 hidden sm:inline" />Attendance
+          </TabsTrigger>
+          <TabsTrigger value="performance">
+            <Gauge className="size-4 mr-1.5 hidden sm:inline" />Performance
           </TabsTrigger>
           <TabsTrigger value="cases">
             <ShieldCheck className="size-4 mr-1.5 hidden sm:inline" />HR Case Desk

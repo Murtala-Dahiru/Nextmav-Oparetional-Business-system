@@ -53,6 +53,9 @@ const toSnakeKey = (k: string) => k.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLow
  */
 const MAP: Array<{ schema: string; table: string | null; why?: string }> = [
   { schema: 'updateTargetSchema', table: 'performance_targets' },
+  { schema: 'updateCycleSchema', table: 'performance_cycles' },
+  { schema: 'updateGoalSchema', table: 'performance_goals' },
+  { schema: 'updateReviewSchema', table: 'performance_reviews' },
   { schema: 'updateIncentiveRuleSchema', table: 'incentive_rules' },
   { schema: 'createLeadSchema', table: 'leads' },
   { schema: 'updateLeadSchema', table: 'leads' },

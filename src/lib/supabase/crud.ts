@@ -246,8 +246,15 @@ export interface CreateOptions {
    * policy.
    */
   action?: Action;
-  /** Validate and shape the request body. Throw to reject. */
-  prepare?: (body: any, ctx: RequestContext) => Record<string, any>;
+  /**
+   * Validate and shape the request body. Throw to reject.
+   *
+   * May be async. Some defaults can only be resolved by asking the database -
+   * a review's reviewer is the subject's `manager_id`, which the organisation
+   * already knows and which no form should make somebody retype. Awaiting a
+   * synchronous return is harmless, so every existing caller is unaffected.
+   */
+  prepare?: (body: any, ctx: RequestContext) => Record<string, any> | Promise<Record<string, any>>;
 }
 
 /**
@@ -270,7 +277,7 @@ export function createHandler(opts: CreateOptions) {
     try {
       // Forms send a mix of camelCase (pre-migration fields) and snake_case.
       const body = acceptBody(await req.json());
-      payload = prepare ? prepare(body, ctx) : body;
+      payload = prepare ? await prepare(body, ctx) : body;
     } catch (e: any) {
       return error(e.message || 'Invalid request body', 422, 'VALIDATION_ERROR');
     }
