@@ -791,3 +791,23 @@ export const updateReviewSchema = z.object({
   incentiveEligible: z.boolean().nullable().optional(),
   eligibilityNote: z.string().optional(),
 });
+
+/**
+ * Editing a partner's own prospect.
+ *
+ * `status`, `submittedAt`, `decidedAt`, `decidedBy` and `leadId` are all
+ * absent. Every one of them is a claim about a decision the company made, and
+ * a partner who could set them could mark their own submission approved. The
+ * transitions live on their own paths: submitting is a POST to the record,
+ * deciding is a POST to `/api/crm/partner-leads`.
+ */
+export const updatePartnerLeadSchema = z.object({
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  email: z.string().email('Invalid email').nullable().optional(),
+  phone: z.string().nullable().optional(),
+  companyName: z.string().nullable().optional(),
+  jobTitle: z.string().nullable().optional(),
+  note: z.string().optional(),
+  estimatedValue: z.coerce.number().min(0).optional(),
+});

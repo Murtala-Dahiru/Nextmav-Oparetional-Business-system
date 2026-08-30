@@ -215,6 +215,27 @@ export const ROLE_GRANTS: Record<RoleId, RoleGrants> = {
      */
     projects: { actions: READ, scope: 'own' },
   },
+
+  /**
+   * External, and narrower than a client.
+   *
+   * An outside salesperson working their own prospects. One grant, and it is
+   * the portal - which is where their lead workspace is rendered, for the
+   * same reason the client's whole product lives there.
+   *
+   * What is deliberately absent is the important part: no `crm` at any scope.
+   * A partner never reads `leads`, `deals`, `contacts` or `companies`. Their
+   * prospects live in `partner_leads`, which they own, and approving one
+   * *creates* a lead rather than revealing one. Giving them filtered CRM
+   * access instead would put the company's whole customer base one policy
+   * mistake away from an external account.
+   *
+   * No `support` either. A partner is not a customer and has no tickets;
+   * granting it would put them in the company's support queue.
+   */
+  partner: {
+    portal: { actions: ['view', 'create', 'edit'], scope: 'own' },
+  },
 };
 
 // ─── Role normalisation ────────────────────────────────────────────────────
@@ -301,9 +322,24 @@ export function roleLabel(role: RoleId): string {
   return ROLES.find(r => r.id === role)?.name ?? 'Employee';
 }
 
-/** True for roles that are not employees of the organisation. */
+/**
+ * True for roles that are not employees of the organisation.
+ *
+ * ── Why this is a set and not a comparison ───────────────────────────────
+ *
+ * It read `role === 'client'` while `client` was the only external role, and
+ * every caller inherited that assumption: the directory refuses to enumerate
+ * staff for an external, navigation hides the internal sections, and
+ * `defaultModuleFor` sends them to the portal. Adding `partner` as a second
+ * external role without widening this would have given an outside
+ * salesperson the company's staff directory and an employee's sidebar.
+ *
+ * A set, so the next external role is one entry rather than an audit.
+ */
+const EXTERNAL_ROLES = new Set<RoleId>(['client', 'partner']);
+
 export function isExternalRole(role: RoleId): boolean {
-  return role === 'client';
+  return EXTERNAL_ROLES.has(role);
 }
 
 /**

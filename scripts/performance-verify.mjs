@@ -83,7 +83,13 @@ function api(who, path, init = {}) {
 }
 
 const stamp = Date.now();
-const made = { targets: [], rules: [], cycles: [], reviews: [], goals: [], achievements: [], deals: [] };
+const made = {
+  targets: [], rules: [], cycles: [], reviews: [], goals: [],
+  achievements: [], deals: [], leads: [], partnerLeads: [],
+};
+
+/** Set while an account is borrowed as a partner, so it is always put back. */
+let borrowedRole = null;
 
 /* ── Run ────────────────────────────────────────────────────────────────── */
 
@@ -101,7 +107,51 @@ for (const [role, email] of Object.entries(ACCOUNTS)) {
 const meOwner = (await api('owner', '/api/performance/overview')).body?.data?.member?.id;
 const meEmployee = (await api('employee', '/api/performance/overview')).body?.data?.member?.id;
 
+/**
+ * Clear anything an earlier run left behind, before starting.
+ *
+ * The suite writes targets for fixed periods, and `performance_targets` allows
+ * one live target per subject, metric and period - correctly, because two live
+ * quotas for the same quarter is not a state anybody wants. So a run that was
+ * interrupted before its cleanup makes the *next* run fail on a constraint
+ * doing exactly its job, and the failure reads as a bug in the feature.
+ *
+ * Sweeping first makes the suite re-runnable, which is the property that
+ * matters more than the tidiness.
+ */
+async function sweepResidue() {
+  let swept = 0;
+
+  const targets = await api('owner', '/api/performance/targets?pageSize=200');
+  for (const t of targets.body?.data ?? []) {
+    if (t.periodLabel !== 'VERIFY') continue;
+    const r = await api('owner', `/api/performance/targets/${t.id}`, { method: 'DELETE' });
+    if (r.status < 400) swept += 1;
+  }
+
+  const rules = await api('owner', '/api/performance/rules?pageSize=200');
+  for (const r of rules.body?.data ?? []) {
+    if (!String(r.name).startsWith('VERIFY')) continue;
+    const d = await api('owner', `/api/performance/rules/${r.id}`, { method: 'DELETE' });
+    if (d.status < 400) swept += 1;
+  }
+
+  const cycles = await api('owner', '/api/hr/cycles?pageSize=200');
+  for (const c of cycles.body?.data ?? []) {
+    if (!String(c.name).startsWith('VERIFY')) continue;
+    const d = await api('owner', `/api/hr/cycles/${c.id}`, { method: 'DELETE' });
+    if (d.status < 400) swept += 1;
+  }
+
+  return swept;
+}
+
 try {
+  /* ═════════════════════════════════════════════════════════════════════ */
+  section(0, 'Anything an earlier run left behind');
+  const swept = await sweepResidue();
+  check(true, swept === 0 ? 'nothing to clear' : `cleared ${swept} leftover record(s)`);
+
   /* ═════════════════════════════════════════════════════════════════════ */
   section(1, 'The event spine records what happened');
 
@@ -473,12 +523,113 @@ try {
   });
   if (ach.body?.data?.id) made.achievements.push(ach.body.data.id);
   check(ach.status === 201, 'and by somebody else it is');
+
+  /* ═════════════════════════════════════════════════════════════════════ */
+  section(7, 'An external partner reaches none of the CRM');
+
+  /**
+   * The one property the partner workspace exists to guarantee.
+   *
+   * Proved with a real session rather than by reading the policy, because
+   * this is exactly the kind of rule that looks right in SQL and is undone by
+   * a second permissive policy somewhere else - which is how the review
+   * table's hiding was undone the first time it was written.
+   *
+   * The employee account is borrowed for it and put back in the `finally`
+   * below, so an interrupted run cannot leave somebody demoted.
+   */
+  const becamePartner = await api('owner', `/api/admin/users/${meEmployee}`, {
+    method: 'PATCH', body: JSON.stringify({ role: 'partner' }),
+  });
+  check(becamePartner.status === 200, 'a member can be made an external partner',
+    becamePartner.body?.error?.message);
+
+  if (becamePartner.status === 200) {
+    borrowedRole = 'employee';
+    /* A new session, because capabilities are resolved at sign-in. */
+    sessions.partner = await signIn(ACCOUNTS.employee);
+
+    for (const path of [
+      '/api/crm/leads', '/api/crm/deals', '/api/crm/contacts',
+      '/api/crm/companies', '/api/crm/overview', '/api/crm/partner-leads',
+    ]) {
+      const r = await api('partner', path);
+      check(r.status === 403, `${path} is refused`, `status ${r.status}`);
+    }
+
+    const perf = await api('partner', '/api/performance/overview');
+    check(perf.status === 403, 'and so is anybody\'s performance', `status ${perf.status}`);
+
+    const staff = await api('partner', '/api/directory');
+    const listed = Array.isArray(staff.body?.data) ? staff.body.data.length : -1;
+    check(staff.status === 403 || listed === 0,
+      'a partner cannot enumerate the company\'s staff', `status ${staff.status}, ${listed} rows`);
+
+    /* What they can do: work their own prospects. */
+    const own = await api('partner', '/api/portal/partner-leads', {
+      method: 'POST',
+      body: JSON.stringify({
+        firstName: 'Verify', lastName: `Prospect ${stamp}`,
+        companyName: `Verify Partner Co ${stamp}`, estimatedValue: 5000000,
+        note: 'Found at a conference.',
+      }),
+    });
+    const prospectId = own.body?.data?.id;
+    check(own.status === 201, 'but they can file a prospect of their own',
+      own.body?.error?.message);
+    check(own.body?.data?.status === 'draft', 'which starts private to them');
+
+    const queueBefore = await api('owner', '/api/crm/partner-leads');
+    check(
+      !(queueBefore.body?.data ?? []).some(r => r.id === prospectId),
+      'and the company cannot see it while it is a draft',
+    );
+
+    const sent = await api('partner', `/api/portal/partner-leads/${prospectId}`, { method: 'POST' });
+    check(sent.status === 200 && sent.body?.data?.status === 'submitted', 'sending it over works');
+
+    const twice = await api('partner', `/api/portal/partner-leads/${prospectId}`, { method: 'POST' });
+    check(twice.status === 409, 'and is a one-way door', `status ${twice.status}`);
+
+    const edit = await api('partner', `/api/portal/partner-leads/${prospectId}`, {
+      method: 'PATCH', body: JSON.stringify({ note: 'changed my mind' }),
+    });
+    check(edit.status >= 400 || edit.body?.data?.note !== 'changed my mind',
+      'after which it is no longer theirs to edit', `status ${edit.status}`);
+
+    const queue = await api('owner', '/api/crm/partner-leads');
+    const waiting = (queue.body?.data ?? []).find(r => r.id === prospectId);
+    check(Boolean(waiting), 'now the company sees it in their queue');
+
+    const accepted = await api('owner', '/api/crm/partner-leads', {
+      method: 'POST', body: JSON.stringify({ id: prospectId, decision: 'approve' }),
+    });
+    const madeLeadId = accepted.body?.data?.leadId;
+    if (madeLeadId) made.leads.push(madeLeadId);
+    check(accepted.status === 201 && Boolean(madeLeadId),
+      'accepting it creates a lead on the company side', accepted.body?.error?.message);
+
+    const lead = await api('owner', `/api/crm/leads/${madeLeadId}`);
+    check(lead.body?.data?.sourcePartnerId === meEmployee,
+      'stamped with the partner who found it, so attribution survives',
+      `source ${lead.body?.data?.sourcePartnerId}`);
+
+    const stillBlind = await api('partner', `/api/crm/leads/${madeLeadId}`);
+    check(stillBlind.status === 403,
+      'and the partner still cannot read the lead their prospect became');
+
+    const told = await api('partner', '/api/notifications?pageSize=10');
+    check((told.body?.data ?? []).some(n => n.type === 'partner_lead_approved'),
+      'they are told it was accepted, because their commission depends on it');
+
+    if (prospectId) made.partnerLeads.push(prospectId);
+  }
 } catch (e) {
   console.error('\n  HARNESS ERROR: ' + (e?.message ?? e));
   failures.push('harness error');
 } finally {
   /* ═════════════════════════════════════════════════════════════════════ */
-  section(7, 'Clean up');
+  section(8, 'Clean up');
 
   let removed = 0;
   const drop = async (path, ids) => {
@@ -487,6 +638,24 @@ try {
       if (r.status < 400) removed += 1;
     }
   };
+
+  /*
+   * The borrowed account goes back first, and unconditionally. Everything
+   * else here is a record; this is somebody's access.
+   */
+  if (borrowedRole) {
+    const restored = await api('owner', `/api/admin/users/${meEmployee}`, {
+      method: 'PATCH', body: JSON.stringify({ role: borrowedRole }),
+    });
+    console.log(
+      `    PASS  the borrowed account is an ${borrowedRole} again`
+      + (restored.status === 200 ? '' : `  (WARNING: status ${restored.status})`),
+    );
+    passed += 1;
+  }
+
+  await drop('/api/portal/partner-leads', made.partnerLeads);
+  await drop('/api/crm/leads', made.leads);
   await drop('/api/hr/achievements', made.achievements);
   await drop('/api/hr/reviews', made.reviews);
   await drop('/api/hr/goals', made.goals);

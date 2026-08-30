@@ -16,6 +16,7 @@ import { statusLabel, ROADMAP_STAGES } from '@/lib/constants';
 import { useAppStore } from '@/store/app-store';
 import { useProjectRealtime, useModuleRealtime } from '@/hooks/use-realtime';
 import { cn } from '@/lib/utils';
+import { PartnerLeads } from './partner-leads';
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -276,6 +277,38 @@ function DeliverableStatus({ file }: { file: Deliverable }) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export default function PortalModule() {
+  const { activeRole } = useAppStore();
+  const isClient = activeRole === 'client';
+
+  /**
+   * A partner's whole product, rendered before anything else runs.
+   *
+   * Returning early matters: everything below this line fetches a client's
+   * projects, invoices and tickets, and a partner is entitled to none of it.
+   * Those requests would be refused rather than leak, but a screen that fires
+   * four requests it knows will fail is a screen that shows four error states
+   * to somebody who is exactly where they belong.
+   */
+  if (activeRole === 'partner') {
+    return (
+      <div className="flex-1 overflow-auto p-4 md:p-6">
+        <PartnerLeads />
+      </div>
+    );
+  }
+
+  return <ClientPortal />;
+}
+
+/**
+ * The client portal proper, split out so the branch above can be a real
+ * early return.
+ *
+ * React refuses a conditional return above hooks, and rightly: everything
+ * below opens with a dozen of them and they would be called in a different
+ * order for a partner. A dispatcher and two components is the honest shape.
+ */
+function ClientPortal() {
   const { activeRole } = useAppStore();
   const isClient = activeRole === 'client';
 

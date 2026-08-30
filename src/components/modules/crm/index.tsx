@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import {
-  LayoutGrid, Target, Users, Building2, Handshake, Columns3, Sparkles, Upload,
+  LayoutGrid, Target, Users, Building2, Handshake, Columns3, Sparkles, Upload, UserPlus,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -18,6 +18,7 @@ import { DealsSection } from './deals';
 import { PipelineSection } from './pipeline';
 import { ActivitiesSection } from './activities';
 import { ImportCenter } from './import-center';
+import { PartnerQueue } from './partner-queue';
 import type { CrmSection } from './types';
 
 /**
@@ -59,6 +60,7 @@ const SECTIONS: { id: CrmSection; label: string; icon: React.ElementType }[] = [
   { id: 'deals', label: 'Deals', icon: Handshake },
   { id: 'pipeline', label: 'Pipeline', icon: Columns3 },
   { id: 'activities', label: 'Activities', icon: Sparkles },
+  { id: 'partners', label: 'Partners', icon: UserPlus },
   { id: 'import', label: 'Import', icon: Upload },
 ];
 
@@ -197,6 +199,18 @@ export default function CrmModule() {
         {section === 'pipeline' && <PipelineSection />}
 
         {section === 'activities' && <ActivitiesSection />}
+
+        {/*
+          The partner queue.
+
+          Behind the same grant as everything else here, which is what keeps
+          external partners out of it: they hold no CRM grant at any scope, so
+          this path refuses them at the door and the row policy refuses them
+          again.
+        */}
+        {section === 'partners' && (
+          <PartnerQueue onOpenLead={id => go('leads', { type: 'lead', id })} />
+        )}
 
         {section === 'import' && mayImport && <ImportCenter onGo={go} />}
       </div>

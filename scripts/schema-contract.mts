@@ -52,6 +52,7 @@ const toSnakeKey = (k: string) => k.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLow
  * it here is visible rather than silently unchecked.
  */
 const MAP: Array<{ schema: string; table: string | null; why?: string }> = [
+  { schema: 'updatePartnerLeadSchema', table: 'partner_leads' },
   { schema: 'updateTargetSchema', table: 'performance_targets' },
   { schema: 'updateCycleSchema', table: 'performance_cycles' },
   { schema: 'updateGoalSchema', table: 'performance_goals' },

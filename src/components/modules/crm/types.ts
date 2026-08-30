@@ -218,7 +218,7 @@ export interface CrmAttentionItem {
 
 export type CrmSection =
   | 'home' | 'leads' | 'contacts' | 'companies'
-  | 'deals' | 'pipeline' | 'activities' | 'import';
+  | 'deals' | 'pipeline' | 'activities' | 'partners' | 'import';
 
 /* -------------------------------------------------------------------------- */
 /*  Vocabulary                                                                */

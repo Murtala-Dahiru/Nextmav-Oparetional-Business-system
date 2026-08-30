@@ -62,6 +62,7 @@ export const ROLES = [
   { id: 'sales_staff', name: 'Sales Staff', description: 'Access to CRM leads, deals pipeline, contacts, and customer sales activities.' },
   { id: 'support_staff', name: 'Support Staff', description: 'Customer support ticket management, SLA tracking, and KB articles.' },
   { id: 'client', name: 'Client Portal User', description: 'Restricted external view limited to client tickets and project deliverables.' },
+  { id: 'partner', name: 'External Partner', description: 'Outside salesperson working their own prospects. Submits leads for approval and sees nothing of the CRM.' },
 ] as const;
 
 export type RoleId = (typeof ROLES)[number]['id'];
@@ -75,15 +76,16 @@ export type RoleId = (typeof ROLES)[number]['id'];
  * visibly.
  */
 export const ROLE_PERMISSIONS: Record<RoleId, ModuleId[]> = {
-  owner: ['dashboard', 'mywork', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar', 'portal', 'admin'],
-  administrator: ['dashboard', 'mywork', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar', 'portal', 'admin'],
-  manager: ['dashboard', 'mywork', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar', 'portal'],
-  employee: ['dashboard', 'mywork', 'projects', 'workspace', 'communication', 'hr', 'calendar'],
-  hr_staff: ['dashboard', 'mywork', 'hr', 'workspace', 'communication', 'calendar'],
-  finance_staff: ['dashboard', 'mywork', 'finance', 'workspace', 'communication', 'calendar'],
-  sales_staff: ['dashboard', 'mywork', 'crm', 'workspace', 'communication', 'calendar', 'portal'],
-  support_staff: ['dashboard', 'mywork', 'support', 'workspace', 'communication', 'calendar'],
+  owner: ['dashboard', 'mywork', 'performance', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar', 'portal', 'admin'],
+  administrator: ['dashboard', 'mywork', 'performance', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar', 'portal', 'admin'],
+  manager: ['dashboard', 'mywork', 'performance', 'crm', 'projects', 'workspace', 'communication', 'support', 'hr', 'finance', 'inventory', 'calendar', 'portal'],
+  employee: ['dashboard', 'mywork', 'performance', 'projects', 'workspace', 'communication', 'hr', 'calendar'],
+  hr_staff: ['dashboard', 'mywork', 'performance', 'hr', 'workspace', 'communication', 'calendar'],
+  finance_staff: ['dashboard', 'mywork', 'performance', 'finance', 'workspace', 'communication', 'calendar'],
+  sales_staff: ['dashboard', 'mywork', 'performance', 'crm', 'workspace', 'communication', 'calendar', 'portal'],
+  support_staff: ['dashboard', 'mywork', 'performance', 'support', 'workspace', 'communication', 'calendar'],
   client: ['portal', 'support'],
+  partner: ['portal'],
 };
 
 /**
