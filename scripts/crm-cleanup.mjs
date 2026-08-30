@@ -20,7 +20,16 @@ try {
     ['activities', `DELETE FROM crm_activities WHERE organization_id = $1
        AND (subject = 'Lead converted' OR subject LIKE 'Verification%'
             OR body LIKE 'Verify Person%')`],
-    ['deals',      `DELETE FROM deals WHERE organization_id = $1 AND name LIKE 'Verif%'`],
+    /*
+     * ILIKE, not LIKE.
+     *
+     * `crm-verify` names its deals "Verification deal" and
+     * `performance-verify` names them "VERIFY perf <stamp>". Postgres LIKE is
+     * case-sensitive, so the second kind never matched and its wins sat in the
+     * demo owner's performance figures looking like real revenue.
+     */
+    ['deals',      `DELETE FROM deals WHERE organization_id = $1
+       AND (name ILIKE 'verif%' OR name ~ '[0-9]{13}')`],
     ['contacts',   `DELETE FROM contacts WHERE organization_id = $1 AND last_name LIKE 'Person%'`],
     ['leads',      `DELETE FROM leads WHERE organization_id = $1
        AND (last_name LIKE 'Person%' OR company_name LIKE 'Verify Holdings%'
