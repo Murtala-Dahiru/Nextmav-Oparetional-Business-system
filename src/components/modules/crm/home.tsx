@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useModuleRealtime } from '@/hooks/use-realtime';
+import { statusLabel } from '@/lib/constants';
 import {
   Plate, Band, Head, Signal, Trace, Meter, Rail, TRow, THead, Card, Chip,
 } from '@/components/shared/readout/primitives';
@@ -670,7 +671,7 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
                         {personName(l) || l.email || 'Unnamed lead'}
                       </span>
                       <span className="block truncate text-[11.5px] text-muted-foreground">
-                        {l.companyName || 'No company'} · {l.source}
+                        {l.companyName || 'No company'} · {l.source ? statusLabel(l.source) : 'No source'}
                       </span>
                     </span>
                     <span className="shrink-0 text-right">

@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
 import { AddToMyWorkButton } from '@/components/shared/add-to-my-work';
 import { formatDate } from '@/lib/format';
+import { statusLabel } from '@/lib/constants';
 
 import { getList, getOne, exact, formatDay, relativeDay, daysUntil, listQuery } from './data';
 import {
@@ -625,7 +626,7 @@ function factsFor(kind: Kind, r: any, events: StageEvent[]) {
       { label: 'Phone', value: tel },
       { label: 'Company', value: r.companyName || '' },
       { label: 'Job title', value: r.jobTitle || '' },
-      { label: 'Source', value: r.source || '' },
+      { label: 'Source', value: r.source ? statusLabel(r.source) : '' },
       { label: 'Estimated value', value: r.estimatedValue ? exact(r.estimatedValue) : '' },
       { label: 'Score', value: <Gauge value={r.score ?? 0} label="Score" /> },
       { label: 'Owner', value: <OwnerTag member={r.owner} /> },
@@ -644,7 +645,7 @@ function factsFor(kind: Kind, r: any, events: StageEvent[]) {
         : '',
     },
     { label: 'Job title', value: r.jobTitle || '' },
-    { label: 'Source', value: r.source || '' },
+    { label: 'Source', value: r.source ? statusLabel(r.source) : '' },
     { label: 'Status', value: r.isActive ? 'Active' : 'No longer here' },
     { label: 'Added', value: formatDate(r.createdAt) },
     { label: 'Notes', value: r.notes || '', full: true },
