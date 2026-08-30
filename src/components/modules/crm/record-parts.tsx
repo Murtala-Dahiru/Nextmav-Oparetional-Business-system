@@ -74,7 +74,7 @@ export function Panel({
 }) {
   return (
     <section className={cn('rounded-xl border border-border bg-card', className)}>
-      <header className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
         <h3 className="text-[13px] font-semibold text-foreground">{title}</h3>
         {count !== undefined && count > 0 && (
           <span className="rounded bg-muted px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums text-muted-foreground">
@@ -131,7 +131,7 @@ export function NextActions({
         const Icon = activityIcon(a.activityType);
 
         return (
-          <li key={a.id} className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0">
+          <li key={a.id} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
             <button
               type="button"
               onClick={() => complete(a)}
@@ -253,7 +253,7 @@ export function Timeline({
         const newDay = startsDay[i];
 
         return (
-          <li key={a.id} className="relative flex gap-3 py-2.5">
+          <li key={a.id} className="relative flex gap-3 py-3">
             <span className="relative z-10 mt-0.5 flex size-[23px] shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted-foreground">
               <Icon className="size-3" />
             </span>

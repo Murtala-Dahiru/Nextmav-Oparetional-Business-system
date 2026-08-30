@@ -187,8 +187,18 @@ export function CrmTable<T>({
         key={`${col.header}-${i}`}
         scope="col"
         style={{ width: widthOf(col) }}
+        /**
+         * The header sits *inside* the card, so it needs room above it.
+         *
+         * `pt-0` put the column names hard against the card's top border,
+         * with the search field a few pixels beyond that. It read as a strip
+         * of small caps wedged into a seam rather than as the head of a
+         * table, and it was the single thing most responsible for the whole
+         * list feeling squeezed. The padding is now symmetrical with the
+         * rows' own, so the header is a band rather than an edge.
+         */
         className={cn(
-          'whitespace-nowrap px-3 pb-2 pt-0 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted-foreground/85',
+          'whitespace-nowrap px-4 pb-3 pt-3.5 text-[11px] font-medium uppercase tracking-[0.07em] text-muted-foreground/80',
           col.align === 'right' ? 'text-right' : 'text-left',
           col.hide ? HIDE[col.hide] : '',
         )}
@@ -198,7 +208,7 @@ export function CrmTable<T>({
             type="button"
             onClick={() => onSort(col.key!, active && sortDir === 'desc' ? 'asc' : 'desc')}
             className={cn(
-              'inline-flex items-center gap-1 rounded uppercase tracking-[0.08em] transition-colors hover:text-foreground',
+              'inline-flex items-center gap-1 rounded uppercase tracking-[0.07em] transition-colors hover:text-foreground',
               active && 'text-foreground',
             )}
             aria-label={`Sort by ${col.header}`}
@@ -214,12 +224,33 @@ export function CrmTable<T>({
 
   if (loading) {
     return (
+      /**
+       * Sized like the rows it precedes, not like a generic list.
+       *
+       * The skeleton used a shorter rhythm than the table, so the page
+       * visibly jumped taller the moment the data arrived. Two bars per row,
+       * because every CRM table here has a name over a subtitle.
+       */
       <div className="rounded-xl border border-border bg-card shadow-e1">
-        <div className="space-y-px p-3">
+        {/* Standing in for the header band, so that does not jump either. */}
+        <div className="h-[42px] border-b border-border" />
+        <div>
           {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-4 px-1 py-2.5">
-              <div className="size-7 shrink-0 animate-pulse rounded-full bg-muted" />
-              <div className="h-3 flex-1 animate-pulse rounded bg-muted" style={{ maxWidth: `${40 + (i % 4) * 12}%` }} />
+            <div
+              key={i}
+              className="flex items-center gap-4 border-b border-border/70 px-4 py-3.5 last:border-0"
+            >
+              <div className="size-8 shrink-0 animate-pulse rounded-full bg-muted" />
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <div
+                  className="h-3 animate-pulse rounded bg-muted"
+                  style={{ width: `${38 + (i % 4) * 11}%` }}
+                />
+                <div
+                  className="h-2.5 animate-pulse rounded bg-muted/70"
+                  style={{ width: `${26 + (i % 3) * 9}%` }}
+                />
+              </div>
               <div className="hidden h-3 w-24 animate-pulse rounded bg-muted md:block" />
               <div className="h-3 w-16 animate-pulse rounded bg-muted" />
             </div>
@@ -296,7 +327,7 @@ export function CrmTable<T>({
                     onOpen(row);
                   }}
                   className={cn(
-                    'cursor-pointer px-4 py-3.5 transition-colors active:bg-accent/70',
+                    'cursor-pointer px-4 py-4 transition-colors active:bg-accent/70',
                     // The row menu is positioned over the card's top-right
                     // corner, which is exactly where the figure sits. Without
                     // this the deal value on every card was clipped by it.
@@ -306,7 +337,7 @@ export function CrmTable<T>({
                   {inner}
                 </div>
               ) : (
-                <div className={cn('px-4 py-3.5', actions && 'pr-12')}>{inner}</div>
+                <div className={cn('px-4 py-4', actions && 'pr-12')}>{inner}</div>
               )}
 
               {actions && (
@@ -332,7 +363,7 @@ export function CrmTable<T>({
           <thead>
             <tr className="border-b border-border">
               {columns.map(head)}
-              {actions && <th scope="col" className="w-10" />}
+              {actions && <th scope="col" className="w-12" />}
             </tr>
           </thead>
           <tbody>
@@ -341,15 +372,15 @@ export function CrmTable<T>({
                 key={rowKey(row)}
                 onClick={onOpen ? () => onOpen(row) : undefined}
                 className={cn(
-                  'border-b border-border/60 last:border-0 transition-colors',
-                  onOpen && 'cursor-pointer hover:bg-accent/50',
+                  'border-b border-border/70 last:border-0 transition-colors',
+                  onOpen && 'cursor-pointer hover:bg-accent/60',
                 )}
               >
                 {columns.map((col, i) => (
                   <td
                     key={`${col.header}-${i}`}
                     className={cn(
-                      'px-3 py-2.5 text-[13px] text-foreground',
+                      'px-4 py-3.5 text-[13px] leading-snug text-foreground',
                       col.align === 'right' ? 'text-right tabular-nums' : 'text-left',
                       col.hide ? HIDE[col.hide] : '',
                     )}
@@ -358,7 +389,7 @@ export function CrmTable<T>({
                   </td>
                 ))}
                 {actions && (
-                  <td className="px-1 py-1.5 text-right">
+                  <td className="px-2 py-3.5 align-middle text-right">
                     {/*
                       The menu stops the click reaching the row. Without this,
                       opening the row menu also opens the record behind it -
@@ -387,7 +418,7 @@ export function CrmTable<T>({
           Shown only when there is more than one page. A pager under twelve
           rows saying "1 of 1" is furniture. */}
       {total > pageSize && (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-3 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
           <p className="text-[12px] tabular-nums text-muted-foreground">
             {from}-{to} of {total} {total === 1 ? noun : `${noun}s`}
           </p>

@@ -99,7 +99,7 @@ export function CompaniesSection({
           </span>
           <span className="min-w-0">
             <span className="block truncate font-medium text-foreground">{c.name}</span>
-            <span className="block truncate text-[11.5px] text-muted-foreground">
+            <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
               {c.industry || 'No industry recorded'}
             </span>
           </span>
@@ -107,7 +107,7 @@ export function CompaniesSection({
       ),
     },
     {
-      header: 'Website', width: '20%', hide: 'lg', card: 'meta',
+      header: 'Website', width: '21%', hide: 'lg', card: 'meta',
       cell: c => (c.website
         ? (
           <a
@@ -136,7 +136,7 @@ export function CompaniesSection({
       },
     },
     {
-      key: 'employeeCount', header: 'People', width: '12%', align: 'right', hide: 'xl',
+      key: 'employeeCount', header: 'People', width: '11%', align: 'right', hide: 'xl',
       cell: c => (c.employeeCount
         ? <span className="text-muted-foreground">{formatNumber(c.employeeCount)}</span>
         : <span className="text-muted-foreground/70">-</span>),

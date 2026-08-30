@@ -92,7 +92,7 @@ export function ContactsSection({
 
   const columns: Column<Contact>[] = React.useMemo(() => [
     {
-      key: 'lastName', header: 'Contact', width: '26%', card: 'title',
+      key: 'lastName', header: 'Contact', width: '28%', card: 'title',
       cell: c => (
         <span className="flex min-w-0 items-center gap-2.5">
           <Monogram name={personName(c)} />
@@ -100,7 +100,7 @@ export function ContactsSection({
             <span className="block truncate font-medium text-foreground">
               {personName(c) || c.email || 'Unnamed contact'}
             </span>
-            <span className="block truncate text-[11.5px] text-muted-foreground">
+            <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
               {c.jobTitle || 'No job title'}
               {!c.isActive && <span className="ml-1.5">· no longer here</span>}
             </span>
@@ -109,7 +109,7 @@ export function ContactsSection({
       ),
     },
     {
-      header: 'Company', width: '20%', card: 'subtitle',
+      header: 'Company', width: '18%', card: 'subtitle',
       cell: c => (c.company?.name
         ? (
           <button

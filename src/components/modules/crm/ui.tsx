@@ -134,9 +134,9 @@ export function Gauge({
 }) {
   const pct = Math.max(0, Math.min(100, value));
   return (
-    <span className={cn('inline-flex items-center gap-2', className)}>
+    <span className={cn('inline-flex items-center gap-1.5', className)}>
       <span
-        className="block h-[5px] w-14 shrink-0 overflow-hidden rounded-full bg-border/70"
+        className="block h-[5px] w-12 shrink-0 overflow-hidden rounded-full bg-border/70"
         role="img"
         aria-label={`${label ? `${label}: ` : ''}${pct} out of 100`}
       >
@@ -145,7 +145,7 @@ export function Gauge({
           style={{ width: `${pct}%`, background: 'color-mix(in srgb, var(--chart-1) 80%, transparent)' }}
         />
       </span>
-      <span className="w-7 shrink-0 text-right text-[12px] tabular-nums text-muted-foreground">{pct}</span>
+      <span className="w-6 shrink-0 text-right text-[12px] tabular-nums text-muted-foreground">{pct}</span>
     </span>
   );
 }
@@ -349,7 +349,7 @@ export function FilterRow({
       role="radiogroup"
       aria-label={ariaLabel}
       className={cn(
-        'flex items-center gap-0.5 overflow-x-auto rounded-md bg-muted p-0.5',
+        'flex h-9 items-center gap-0.5 overflow-x-auto rounded-md bg-muted p-0.5',
         '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         className,
       )}
@@ -364,7 +364,7 @@ export function FilterRow({
             aria-checked={on}
             onClick={() => onChange(o.value)}
             className={cn(
-              'flex shrink-0 items-center gap-1.5 rounded-[5px] px-2.5 py-[5px] text-[12.5px] font-medium transition-colors',
+              'flex h-8 shrink-0 items-center gap-1.5 rounded-[5px] px-3 text-[12.5px] font-medium transition-colors',
               on
                 ? 'bg-card text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground',
@@ -457,7 +457,7 @@ export function FilterToggle({
       aria-pressed={active}
       onClick={() => onChange(!active)}
       className={cn(
-        'flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-[6px] text-[12.5px] font-medium transition-colors',
+        'flex h-9 shrink-0 items-center gap-1.5 rounded-md border px-3 text-[12.5px] font-medium transition-colors',
         active
           ? 'border-foreground/25 bg-accent text-foreground'
           : 'border-border bg-card text-muted-foreground hover:text-foreground',

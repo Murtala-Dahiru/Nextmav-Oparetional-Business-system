@@ -102,7 +102,7 @@ export function LeadsSection({
 
   const columns: Column<Lead>[] = React.useMemo(() => [
     {
-      key: 'lastName', header: 'Lead', width: '28%', card: 'title',
+      key: 'lastName', header: 'Lead', width: '31%', card: 'title',
       cell: l => (
         <span className="flex min-w-0 items-center gap-2.5">
           <Monogram name={personName(l)} />
@@ -110,7 +110,7 @@ export function LeadsSection({
             <span className="block truncate font-medium text-foreground">
               {personName(l) || l.email || 'Unnamed lead'}
             </span>
-            <span className="block truncate text-[11.5px] text-muted-foreground">
+            <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
               {[l.jobTitle, l.companyName].filter(Boolean).join(' · ') || 'No company recorded'}
             </span>
           </span>
@@ -122,7 +122,7 @@ export function LeadsSection({
       cell: l => <LeadStatusTag status={l.status} />,
     },
     {
-      key: 'score', header: 'Score', width: '13%', hide: 'lg', card: 'meta',
+      key: 'score', header: 'Score', width: '12%', hide: 'lg', card: 'meta',
       cell: l => <Gauge value={l.score ?? 0} label="Score" />,
     },
     {
@@ -132,7 +132,7 @@ export function LeadsSection({
         : <span className="text-muted-foreground/70">-</span>),
     },
     {
-      header: 'Owner', width: '16%', hide: 'xl',
+      header: 'Owner', width: '17%', hide: 'xl',
       cell: l => <OwnerTag member={l.owner} />,
     },
     {

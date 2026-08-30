@@ -133,7 +133,7 @@ export function DealsSection({
       cell: d => (
         <span className="block min-w-0">
           <span className="block truncate font-medium text-foreground">{d.name}</span>
-          <span className="block truncate text-[11.5px] text-muted-foreground">
+          <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
             {subtitle(d)}
           </span>
         </span>
@@ -155,12 +155,25 @@ export function DealsSection({
         under a Lost row was arithmetic nobody asked for, in the column a
         forecast is read from.
       */
+      /*
+        Stacked, not trailed.
+
+        "₦7,192,000 62%" right-aligns as one string, so the *percentage* lands
+        on the column edge and the amounts underneath each other do not line
+        up - which defeats the point of a right-aligned money column, where
+        the whole value is being able to compare magnitudes by eye. The figure
+        gets the edge; the probability sits under it.
+      */
       cell: d => (CLOSED_STAGES.includes(d.stage)
         ? <span className="text-muted-foreground/50">-</span>
         : (
-          <span className="text-muted-foreground">
-            {exact(d.value * d.probability / 100)}
-            <span className="ml-1.5 text-[11.5px] text-muted-foreground/70">{d.probability}%</span>
+          <span className="block">
+            <span className="block text-muted-foreground">
+              {exact(d.value * d.probability / 100)}
+            </span>
+            <span className="mt-0.5 block text-[11.5px] text-muted-foreground/70">
+              {d.probability}% likely
+            </span>
           </span>
         )),
     },
@@ -183,14 +196,22 @@ export function DealsSection({
         if (!d.expectedClose) return <span className="text-muted-foreground/70">Not set</span>;
         const left = daysUntil(d.expectedClose);
         const late = left !== null && left < 0;
+
+        /* The date holds the column edge; how far off it is sits beneath. */
         return (
-          <span className={cn('inline-flex items-center gap-1.5', late && 'font-medium text-destructive')}>
-            {late && <AlertTriangle className="size-3" />}
-            <span>
+          <span className={cn('block', late && 'text-destructive')}>
+            <span className={cn(
+              'flex items-center justify-end gap-1.5',
+              late && 'font-medium',
+            )}>
+              {late && <AlertTriangle className="size-3 shrink-0" />}
               {formatDayShort(d.expectedClose)}
-              <span className={cn('ml-1.5 text-[11.5px]', late ? '' : 'text-muted-foreground/70')}>
-                {relativeDay(d.expectedClose)}
-              </span>
+            </span>
+            <span className={cn(
+              'mt-0.5 block text-[11.5px]',
+              late ? 'text-destructive/80' : 'text-muted-foreground/70',
+            )}>
+              {relativeDay(d.expectedClose)}
             </span>
           </span>
         );
