@@ -75,7 +75,7 @@ export async function GET(request: Request) {
   const [whoRes, eventsRes, targetsRes, pipelineRes, activityRes, stageRes] = await Promise.all([
     supabase
       .from('organization_members')
-      .select('id, role, department_id, department:departments(id, name), '
+      .select('id, role, department_id, department:departments!organization_members_department_id_fkey(id, name), '
         + 'profiles!organization_members_user_id_fkey(full_name, avatar_url, job_title)')
       .eq('organization_id', orgId).eq('id', subject).maybeSingle(),
 
@@ -120,15 +120,28 @@ export async function GET(request: Request) {
       .gte('created_at', period.start)
       .lte('created_at', `${period.end}T23:59:59.999Z`),
 
-    /* How long this person's deals sit in each stage, from the history table. */
+    /**
+     * The whole stage history of this person's deals, deliberately unbounded
+     * in time.
+     *
+     * Bounding it by the period looked reasonable and produced nonsense: a
+     * deal opened in May and won in August has only its closing event inside
+     * a Q3 window, so "first seen" and "closed" were the same row and the
+     * cycle came out as zero days. Averaged in with real cycles that drags the
+     * figure towards zero, and a sales cycle that is wrong in the flattering
+     * direction is worse than one that is missing.
+     *
+     * The rows are narrow and one salesperson's deal history is small.
+     * Filtering to deals that closed in the window happens below, once the
+     * closures are known.
+     */
     supabase
       .from('deal_stage_events')
       .select('deal_id, from_stage, to_stage, created_at')
       .eq('organization_id', orgId)
       .eq('member_id', subject)
-      .gte('created_at', period.start)
       .order('created_at', { ascending: true })
-      .limit(2000),
+      .limit(5000),
   ]);
 
   const failed = [whoRes, eventsRes, targetsRes, pipelineRes, stageRes].find(r => r.error);
@@ -222,10 +235,18 @@ export async function GET(request: Request) {
   }
   const cycles: number[] = [];
   for (const [dealId, end] of closedAt) {
+    /* Only deals that closed inside the window being looked at. */
+    if (end < period.start || end > `${period.end}T23:59:59.999Z`) continue;
     const start = firstSeen.get(dealId);
     if (!start) continue;
     const days = (Date.parse(end) - Date.parse(start)) / 86_400_000;
-    if (days >= 0) cycles.push(days);
+    /**
+     * A deal whose whole history is one row has no measurable cycle: it was
+     * created already closed, by the seeder or by somebody recording business
+     * that was won elsewhere. Counting it as a zero-day sale would be a lie in
+     * the flattering direction.
+     */
+    if (days > 0) cycles.push(days);
   }
   const salesCycle = cycles.length
     ? Math.round(cycles.reduce((a, b) => a + b, 0) / cycles.length)

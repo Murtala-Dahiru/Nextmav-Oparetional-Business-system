@@ -1,6 +1,7 @@
 import { isFilterValue } from '@/lib/filters';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ModuleId } from '@/lib/constants';
+import type { Action } from '@/lib/permissions';
 import { authorize, pgError, type RequestContext } from '@/lib/auth-context';
 import { success, error, paginated, serverError } from '@/lib/api-response';
 import { acceptBody, toCamel, toSnake } from '@/lib/case';
@@ -234,6 +235,17 @@ export interface CreateOptions {
   table: string;
   module: ModuleId;
   select?: string;
+  /**
+   * The capability this insert needs. Defaults to `create`.
+   *
+   * Occasionally a table inside a module is not the module's ordinary
+   * business. Incentive rules live in Performance, where a manager holds
+   * `create` so they can set their team's targets, but writing the company's
+   * commission rates is a different responsibility - so that route asks for
+   * `manage` and a manager is refused, in the route and again in its RLS
+   * policy.
+   */
+  action?: Action;
   /** Validate and shape the request body. Throw to reject. */
   prepare?: (body: any, ctx: RequestContext) => Record<string, any>;
 }
@@ -247,11 +259,11 @@ export interface CreateOptions {
  * pointless round trip.
  */
 export function createHandler(opts: CreateOptions) {
-  const { table, module, select = '*', prepare } = opts;
+  const { table, module, select = '*', prepare, action = 'create' } = opts;
 
   return guarded('Could not create the record.', { table, module, op: 'create' },
     async function POST(req: Request) {
-    const ctx = await authorize(module, 'create');
+    const ctx = await authorize(module, action);
     if (ctx instanceof Response) return ctx;
 
     let payload: Record<string, any>;

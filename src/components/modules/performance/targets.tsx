@@ -50,17 +50,17 @@ const METRICS = [
 
 interface TargetRow {
   id: string;
-  subject_type: 'member' | 'team' | 'department';
-  subject_id: string;
+  subjectType: 'member' | 'team' | 'department';
+  subjectId: string;
   metric: string;
-  target_value: string | number;
+  targetValue: string | number;
   currency: string;
-  period_label: string;
-  period_start: string;
-  period_end: string;
+  periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
   notes: string;
-  superseded_by: string | null;
-  setter?: { profiles?: { full_name: string; avatar_url: string | null } } | null;
+  supersededBy: string | null;
+  setter?: { profiles?: { fullName: string; avatarUrl: string | null } } | null;
 }
 
 interface Member { id: string; name: string; avatarUrl: string | null; jobTitle: string | null }
@@ -73,24 +73,24 @@ export function TargetsSection() {
   const [formOpen, setFormOpen] = React.useState(false);
   const [supersede, setSupersede] = React.useState<TargetRow | null>(null);
 
-  const listUrl = `/api/performance/targets?pageSize=200&sort=period_start&sortDir=desc&_=${nonce}`;
+  const listUrl = `/api/performance/targets?pageSize=200&sort=periodStart&sortDir=desc&_=${nonce}`;
   const list = useEndpoint<TargetRow[]>(listUrl);
   /**
    * The people picker.
    *
    * `/api/directory` is the endpoint every picker in the product uses, and it
    * returns `v_assignable_members` rows verbatim - snake_case, with
-   * `member_id` as the key rather than `id`. Mapped here rather than wished
+   * `memberId` as the key rather than `id`. Mapped here rather than wished
    * into a different shape: the endpoint is shared by eleven other screens and
    * changing it for this one is how a picker somewhere else goes blank.
    */
   const people = useEndpoint<{
-    member_id: string; full_name: string; avatar_url: string | null; job_title: string | null;
+    memberId: string; fullName: string; avatarUrl: string | null; jobTitle: string | null;
   }[]>('/api/directory');
 
   const members: Member[] = React.useMemo(
     () => (people.data ?? []).map(p => ({
-      id: p.member_id, name: p.full_name, avatarUrl: p.avatar_url, jobTitle: p.job_title,
+      id: p.memberId, name: p.fullName, avatarUrl: p.avatarUrl, jobTitle: p.jobTitle,
     })),
     [people.data],
   );
@@ -106,8 +106,8 @@ export function TargetsSection() {
   if (list.error) return <Broken message={list.error} onRetry={list.reload} />;
 
   const rows = list.data ?? [];
-  const live = rows.filter(r => !r.superseded_by);
-  const past = rows.filter(r => r.superseded_by);
+  const live = rows.filter(r => !r.supersededBy);
+  const past = rows.filter(r => r.supersededBy);
 
   return (
     <div className="flex flex-col gap-5">
@@ -203,15 +203,15 @@ function TargetTable({
   return (
     <ul className={cn('divide-y divide-border', !muted && 'overflow-hidden rounded-xl border border-border bg-card shadow-e1')}>
       {rows.map(r => {
-        const who = r.subject_type === 'member' ? byId.get(r.subject_id) : null;
+        const who = r.subjectType === 'member' ? byId.get(r.subjectId) : null;
         const meta = METRICS.find(m => m.id === r.metric);
-        const label = r.subject_type === 'member'
+        const label = r.subjectType === 'member'
           ? (who?.name ?? 'A member who has left')
-          : `${r.subject_type === 'team' ? 'Team' : 'Department'} target`;
+          : `${r.subjectType === 'team' ? 'Team' : 'Department'} target`;
 
         return (
           <li key={r.id} className={cn('flex items-center gap-3 px-4 py-3', muted && 'opacity-70')}>
-            {r.subject_type === 'member'
+            {r.subjectType === 'member'
               ? <Avatar name={who?.name ?? '?'} url={who?.avatarUrl} />
               : (
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
@@ -222,17 +222,17 @@ function TargetTable({
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[13.5px] font-medium text-foreground">{label}</span>
               <span className="block truncate text-[11.5px] text-muted-foreground">
-                {meta?.label ?? r.metric} · {r.period_label || `${formatDay(r.period_start)} to ${formatDay(r.period_end)}`}
+                {meta?.label ?? r.metric} · {r.periodLabel || `${formatDay(r.periodStart)} to ${formatDay(r.periodEnd)}`}
               </span>
             </span>
 
             <span className="shrink-0 text-right">
               <span className="block text-[14px] font-semibold tabular-nums text-foreground">
-                {metricValue(Number(r.target_value), meta?.unit ?? 'count', r.currency)}
+                {metricValue(Number(r.targetValue), meta?.unit ?? 'count', r.currency)}
               </span>
-              {r.setter?.profiles?.full_name && (
+              {r.setter?.profiles?.fullName && (
                 <span className="block text-[11px] text-muted-foreground">
-                  set by {r.setter.profiles.full_name}
+                  set by {r.setter.profiles.fullName}
                 </span>
               )}
             </span>
@@ -301,12 +301,12 @@ function TargetDialog({
   React.useEffect(() => {
     if (!open) return;
     if (supersede) {
-      setSubjectId(supersede.subject_id);
+      setSubjectId(supersede.subjectId);
       setMetric(supersede.metric);
       setValue('');
-      setStart(supersede.period_start);
-      setEnd(supersede.period_end);
-      setLabel(supersede.period_label);
+      setStart(supersede.periodStart);
+      setEnd(supersede.periodEnd);
+      setLabel(supersede.periodLabel);
       setNotes('');
     } else {
       setSubjectId('');
@@ -330,13 +330,13 @@ function TargetDialog({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          subject_type: 'member',
-          subject_id: subjectId,
+          subjectType: 'member',
+          subjectId: subjectId,
           metric,
-          target_value: n,
-          period_start: start,
-          period_end: end,
-          period_label: label,
+          targetValue: n,
+          periodStart: start,
+          periodEnd: end,
+          periodLabel: label,
           notes,
         }),
       });

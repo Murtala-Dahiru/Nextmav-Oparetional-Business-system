@@ -235,15 +235,21 @@ export function TeamPerformance({ onOpenMember }: { onOpenMember: (id: string) =
 
                     {/*
                       The comparison bar, scaled to the top performer rather
-                      than to a target, because not everybody has a target and
-                      a row with no bar reads as a row with no data.
+                      than to a target, because not everybody has a target.
+
+                      Drawn only when there is something to draw. An empty
+                      track under every name that closed nothing put eleven
+                      grey lines down the screen, which reads as a component
+                      that failed to load rather than as a zero.
                     */}
-                    <span className="mt-1.5 block h-1 w-full max-w-[220px] overflow-hidden rounded-full bg-border/70 sm:max-w-[320px]">
-                      <span
-                        className="block h-full rounded-full"
-                        style={{ width: `${share * 100}%`, background: 'var(--chart-1)' }}
-                      />
-                    </span>
+                    {m.achieved > 0 && (
+                      <span className="mt-1.5 block h-1 w-full max-w-[220px] overflow-hidden rounded-full bg-border/70 sm:max-w-[320px]">
+                        <span
+                          className="block h-full rounded-full"
+                          style={{ width: `${share * 100}%`, background: 'var(--chart-1)' }}
+                        />
+                      </span>
+                    )}
                   </span>
 
                   <span className="hidden shrink-0 text-right sm:block">

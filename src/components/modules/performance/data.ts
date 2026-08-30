@@ -14,16 +14,25 @@ import { formatCurrencyCompact, formatCurrency, formatNumber } from '@/lib/forma
  * another's screen, which this repository has already paid for once.
  */
 
-export interface Fetched<T> {
+export interface Fetched<T, M = Record<string, any>> {
   data: T | null;
+  /**
+   * The envelope beside the rows.
+   *
+   * Returned from the same request rather than left for the caller to fetch
+   * again: the list and its totals have to describe the same read, and two
+   * requests can straddle a write and disagree.
+   */
+  meta: M | null;
   loading: boolean;
   error: string | null;
   reload: () => void;
 }
 
 /** One endpoint, with the loading and error states the screens actually use. */
-export function useEndpoint<T>(url: string | null): Fetched<T> {
+export function useEndpoint<T, M = Record<string, any>>(url: string | null): Fetched<T, M> {
   const [data, setData] = React.useState<T | null>(null);
+  const [meta, setMeta] = React.useState<M | null>(null);
   const [loading, setLoading] = React.useState(Boolean(url));
   const [error, setError] = React.useState<string | null>(null);
   const [nonce, setNonce] = React.useState(0);
@@ -41,9 +50,11 @@ export function useEndpoint<T>(url: string | null): Fetched<T> {
         if (!res.ok) {
           setError(body?.error?.message ?? body?.message ?? 'That did not load.');
           setData(null);
+          setMeta(null);
           return;
         }
         setData(body?.data ?? null);
+        setMeta(body?.meta ?? null);
       })
       .catch(() => { if (live) setError('That did not load.'); })
       .finally(() => { if (live) setLoading(false); });
@@ -51,7 +62,7 @@ export function useEndpoint<T>(url: string | null): Fetched<T> {
     return () => { live = false; };
   }, [url, nonce]);
 
-  return { data, loading, error, reload: () => setNonce(n => n + 1) };
+  return { data, meta, loading, error, reload: () => setNonce(n => n + 1) };
 }
 
 /**

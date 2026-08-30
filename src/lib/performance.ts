@@ -77,6 +77,37 @@ export interface Period {
 }
 
 /**
+ * What to call a date range.
+ *
+ * The client sends explicit dates for every request, including the one that
+ * means "this quarter", so a label built from the raw dates would put
+ * "2026-07-01 to 2026-09-30" at the top of a screen whose control says "This
+ * quarter". Recognising the common shapes gives the reader back the name they
+ * chose, and anything unrecognised falls through to the honest range.
+ */
+function rangeLabel(from: string, to: string): string {
+  const [fy, fm, fd] = from.split('-').map(Number);
+  const [ty, tm, td] = to.split('-').map(Number);
+
+  /* A whole year. */
+  if (fy === ty && fm === 1 && fd === 1 && tm === 12 && td === 31) return String(fy);
+
+  /* A whole quarter. */
+  const lastDay = new Date(Date.UTC(ty, tm, 0)).getUTCDate();
+  if (fy === ty && fd === 1 && td === lastDay && tm - fm === 2 && (fm - 1) % 3 === 0) {
+    return `Q${Math.floor((fm - 1) / 3) + 1} ${fy}`;
+  }
+
+  /* A whole month. */
+  if (fy === ty && fm === tm && fd === 1 && td === lastDay) {
+    return new Date(Date.UTC(fy, fm - 1, 1))
+      .toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  }
+
+  return `${from} to ${to}`;
+}
+
+/**
  * A period, defaulting to the current quarter in the organisation's calendar.
  *
  * Quarters rather than months, because a sales target is almost never monthly
@@ -89,7 +120,7 @@ export function resolvePeriod(
   to?: string | null,
 ): Period {
   if (from && to) {
-    return { start: from, end: to, label: `${from} to ${to}` };
+    return { start: from, end: to, label: rangeLabel(from, to) };
   }
   const today = todayIn(zone);
   const [y, m] = today.split('-').map(Number);

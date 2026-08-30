@@ -663,6 +663,9 @@ async function main() {
     ...finance, ...delivery, ...crm,
   }));
 
+  /* ── 10b. Targets, the commission rule, and the ledger it produces ───── */
+  Object.assign(summary, await seedPerformance(ORG, team));
+
   /* ── 11. Settle the notifications the seeding itself produced ─────────── */
   Object.assign(summary, await settleNotifications(ORG, team));
 
@@ -1285,6 +1288,21 @@ async function seedProjects(ORG, team, companies, departments) {
  * with a PATCH.
  */
 async function seedCrm(ORG, team, companies, contacts) {
+  /**
+   * Clear the event spine before the records that produced it are replaced.
+   *
+   * `business_events` deliberately holds no foreign key to `deals`: an
+   * achievement outlives the record it came from, which is right for a
+   * product that only ever soft-deletes. The seeder is the one thing that
+   * *hard* deletes, so without this every re-seed leaves the previous
+   * generation's events behind and the earnings ledger shows each commission
+   * twice, then three times. The entries go first: they reference the events.
+   */
+  await rest('DELETE', `incentive_entries?organization_id=eq.${ORG}`, undefined,
+    { Prefer: 'return=minimal' }).catch(() => null);
+  await rest('DELETE', `business_events?organization_id=eq.${ORG}`, undefined,
+    { Prefer: 'return=minimal' }).catch(() => null);
+
   const dealRows = [];
   const contactsByCompany = new Map();
   contacts.forEach(c => {
@@ -1911,3 +1929,116 @@ main().catch(e => {
   console.error('\nFAILED:', e.message);
   process.exit(1);
 });
+
+/* -------------------------------------------------------------------------- */
+/*  Performance: targets, one real rule, and the ledger it produces            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The performance layer, made demonstrable.
+ *
+ * ── Why this seeds a rule rather than entries ────────────────────────────
+ *
+ * Entries are not seeded, ever. They are written by `apply_incentive_rules()`
+ * from the events the CRM already emitted, and inventing them here would
+ * produce rows whose workings did not match any rule - which is precisely the
+ * failure the ledger exists to make impossible. Instead this writes the rule
+ * and calls `recompute_incentives()`, which is the same path a real company
+ * takes when it adds a scheme part-way through a quarter.
+ *
+ * ── Why the targets are deliberately uneven ──────────────────────────────
+ *
+ * Everybody comfortably ahead makes the screen look designed rather than
+ * observed. These are set as a multiple of what each person has actually
+ * closed, so the team list shows somebody ahead, somebody on pace and
+ * somebody well behind, which is the state a manager's screen has to be
+ * legible in.
+ */
+async function seedPerformance(ORG, team) {
+  await wipe('performance_targets', ORG);
+
+  /* Entries first: they hold a foreign key to the rules. */
+  await rest('DELETE', `incentive_entries?organization_id=eq.${ORG}`, undefined,
+    { Prefer: 'return=minimal' }).catch(() => null);
+  await wipe('incentive_rules', ORG);
+
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const q = Math.floor(now.getUTCMonth() / 3);
+  const startMonth = q * 3 + 1;
+  const periodStart = `${y}-${String(startMonth).padStart(2, '0')}-01`;
+  const periodEnd = new Date(Date.UTC(y, startMonth + 2, 0)).toISOString().slice(0, 10);
+  const label = `Q${q + 1} ${y}`;
+
+  /* What each person actually closed this quarter, from the event spine. */
+  const events = await select(
+    'business_events',
+    `select=subject_member_id,payload&organization_id=eq.${ORG}`
+    + `&event_type=eq.deal.won&occurred_at=gte.${periodStart}`
+    + `&occurred_at=lte.${periodEnd}T23:59:59Z&limit=2000`,
+  ) ?? [];
+
+  const wonBy = new Map();
+  for (const e of events) {
+    if (!e.subject_member_id) continue;
+    wonBy.set(e.subject_member_id, (wonBy.get(e.subject_member_id) ?? 0) + Number(e.payload?.value ?? 0));
+  }
+
+  /* A spread of standings, so the screen is legible rather than uniform. */
+  const MULTIPLIER = [0.8, 1.15, 1.6, 2.4];
+  const targets = [];
+  let i = 0;
+  for (const [memberId, won] of wonBy) {
+    if (won <= 0) continue;
+    targets.push({
+      organization_id: ORG,
+      subject_type: 'member',
+      subject_id: memberId,
+      metric: 'revenue_won',
+      period_label: label,
+      period_start: periodStart,
+      period_end: periodEnd,
+      target_value: Math.round(won * MULTIPLIER[i % MULTIPLIER.length] / 100_000) * 100_000,
+      currency: 'NGN',
+      notes: '',
+      set_by: team[0]?.id ?? null,
+    });
+    i += 1;
+  }
+  if (targets.length) await insert('performance_targets', targets, { returning: false });
+
+  /**
+   * One rule, tiered, applying to everybody.
+   *
+   * Tiered rather than flat because it is the arrangement that makes the
+   * ledger's explanation line worth reading: "11,600,000 x 2.5% (tier 2,
+   * above 10,000,000)" says something a flat percentage does not.
+   */
+  const rules = await insert('incentive_rules', [{
+    organization_id: ORG,
+    name: 'Sales commission',
+    description: 'Paid on the value of a deal at the point it is won.',
+    basis: 'booked_revenue',
+    trigger_event: 'deal.won',
+    calculation: {
+      kind: 'tiered',
+      tiers: [{ from: 0, rate: 1 }, { from: 10000000, rate: 2.5 }],
+    },
+    effective_from: `${y}-01-01`,
+    is_active: true,
+    created_by: team[0]?.id ?? null,
+  }]);
+
+  /* Now let the engine write the ledger from events that already happened. */
+  const written = await rest('POST', 'rpc/recompute_incentives', {
+    p_org: ORG,
+    p_from: `${y}-01-01T00:00:00Z`,
+    p_to: new Date().toISOString(),
+  }).catch(() => null);
+
+  return {
+    'performance targets': targets.length,
+    'incentive rules': rules?.length ?? 0,
+    'incentive entries': typeof written === 'number' ? written : 'recomputed',
+  };
+}

@@ -714,3 +714,29 @@ export const updateTargetSchema = z.object({
   notes: z.string().optional(),
   supersededBy: z.string().uuid().nullable().optional(),
 });
+
+/**
+ * Editing an incentive rule.
+ *
+ * `calculation` and `basis` are editable on purpose: a commission rate does
+ * legitimately change. What stops that rewriting history is
+ * `check_incentive_rule()`, which bumps `version` whenever the terms move, and
+ * `incentive_entries.rule_version`, which pins what each entry was calculated
+ * under. Old entries keep their old sum and can still explain themselves.
+ *
+ * `version` itself is absent: it is the database's to increment, and a client
+ * that could set it could make an entry point at terms that never existed.
+ */
+export const updateIncentiveRuleSchema = z.object({
+  name: z.string().min(1, 'Give the rule a name people will recognise').optional(),
+  description: z.string().optional(),
+  basis: z.enum(['booked_revenue', 'collected_revenue', 'per_event']).optional(),
+  triggerEvent: z.enum(['deal.won', 'invoice.paid', 'lead.qualified', 'lead.converted']).optional(),
+  calculation: z.record(z.string(), z.unknown()).optional(),
+  appliesToRole: z.string().nullable().optional(),
+  appliesToDepartment: z.string().uuid().nullable().optional(),
+  appliesToMember: z.string().uuid().nullable().optional(),
+  effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date').optional(),
+  effectiveTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date').nullable().optional(),
+  isActive: z.boolean().optional(),
+});

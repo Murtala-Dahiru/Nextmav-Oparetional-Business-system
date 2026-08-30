@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { User, Users, Target as TargetIcon, ArrowLeft } from 'lucide-react';
+import { User, Users, Target as TargetIcon, Coins, Scale, ArrowLeft } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button';
 import { MyPerformance } from './me';
 import { TeamPerformance } from './team';
 import { TargetsSection } from './targets';
+import { EarningsSection } from './earnings';
+import { RulesSection } from './rules';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -39,12 +41,22 @@ import { TargetsSection } from './targets';
  * these screens re-checks for itself, and the RLS underneath re-checks again.
  */
 
-type Section = 'me' | 'team' | 'targets';
+type Section = 'me' | 'team' | 'earnings' | 'targets' | 'rules';
 
 const SECTIONS: { id: Section; label: string; icon: React.ElementType }[] = [
   { id: 'me', label: 'My performance', icon: User },
   { id: 'team', label: 'Team', icon: Users },
+  { id: 'earnings', label: 'Earnings', icon: Coins },
   { id: 'targets', label: 'Targets', icon: TargetIcon },
+  /*
+   * Last, and open to everybody.
+   *
+   * A commission scheme people cannot read is a rumour, so the rules are an
+   * ordinary tab rather than an admin screen. Only the editing is restricted,
+   * and that is enforced by the route and by the RLS policy rather than by
+   * hiding the page from the people it applies to.
+   */
+  { id: 'rules', label: 'Rules', icon: Scale },
 ];
 
 export default function PerformanceModule() {
@@ -153,7 +165,19 @@ export default function PerformanceModule() {
 
         {section === 'team' && <TeamPerformance onOpenMember={openMember} />}
 
+        {/*
+          One screen, two readings.
+
+          Somebody who can only see themselves gets their own ledger; a manager
+          or Finance gets everybody they may see, with the approval buttons the
+          endpoint says they may use. Splitting these into two components would
+          mean maintaining the workings line twice.
+        */}
+        {section === 'earnings' && <EarningsSection mineOnly={!seesTeam} />}
+
         {section === 'targets' && <TargetsSection />}
+
+        {section === 'rules' && <RulesSection />}
       </div>
     </div>
   );

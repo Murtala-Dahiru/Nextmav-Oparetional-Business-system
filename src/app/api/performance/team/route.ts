@@ -79,7 +79,7 @@ export async function GET(request: Request) {
   const [peopleRes, eventsRes, targetsRes, pipelineRes, activityRes] = await Promise.all([
     supabase
       .from('organization_members')
-      .select('id, role, is_active, department:departments(id, name), '
+      .select('id, role, is_active, department:departments!organization_members_department_id_fkey(id, name), '
         + 'profiles!organization_members_user_id_fkey(full_name, avatar_url, job_title)')
       .eq('organization_id', orgId)
       .in('id', visible),
