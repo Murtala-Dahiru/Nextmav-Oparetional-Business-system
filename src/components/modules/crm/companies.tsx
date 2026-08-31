@@ -13,7 +13,7 @@ import { AddToMyWorkItem } from '@/components/shared/add-to-my-work';
 import { formatNumber } from '@/lib/format';
 
 import { useCrmList } from './use-list';
-import { CrmTable, type Column } from './table';
+import { RecordTable, type Column } from '@/components/shared/record-table';
 import { SectionHead, SearchField, Blank, Broken } from './ui';
 import { exact, remove } from './data';
 import { CompanyDialog } from './forms';
@@ -166,7 +166,7 @@ export function CompaniesSection({
       {list.error ? (
         <Broken message={list.error} onRetry={list.reload} />
       ) : (
-        <CrmTable
+        <RecordTable
           columns={columns}
           rows={list.rows}
           rowKey={c => c.id}

@@ -76,6 +76,16 @@ export const SOURCE_KINDS: Record<string, { noun: string; module: ModuleId; open
   contact:  { noun: 'Contact', module: 'crm',           opens: true },
   company:  { noun: 'Company', module: 'crm',           opens: true },
   message:  { noun: 'Message', module: 'communication', opens: false },
+  /**
+   * An action agreed in a meeting.
+   *
+   * `opens: true` because Communication's focus handler already accepts
+   * `openRecord('communication', 'meeting', id)` - it switches to the meetings
+   * view and opens the room or the record. A `message` cannot claim the same,
+   * because opening one needs its channel as well as its id and a focus
+   * request carries only the id.
+   */
+  meeting:  { noun: 'Meeting', module: 'communication', opens: true },
   invoice:  { noun: 'Invoice', module: 'finance',       opens: true },
   expense:  { noun: 'Expense', module: 'finance',       opens: false },
   page:     { noun: 'Page',    module: 'workspace',     opens: true },

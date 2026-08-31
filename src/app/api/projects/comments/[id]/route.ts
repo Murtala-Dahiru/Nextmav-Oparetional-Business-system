@@ -7,7 +7,7 @@ import { acceptBody } from '@/lib/case';
  *
  * Both are restricted to the author by RLS. Checked here as well so the answer
  * is "that is not your comment" rather than an empty result that reads as "it
- * does not exist" — a distinction that matters when two people are looking at
+ * does not exist" - a distinction that matters when two people are looking at
  * the same thread.
  */
 
@@ -35,7 +35,7 @@ export async function PATCH(req: Request, { params }: Params) {
        * Edits are marked, not hidden.
        *
        * A thread where messages can change without trace is one nobody can
-       * rely on afterwards — and project discussions are read back precisely
+       * rely on afterwards - and project discussions are read back precisely
        * when someone is trying to establish what was agreed.
        */
       update.edited_at = new Date().toISOString();

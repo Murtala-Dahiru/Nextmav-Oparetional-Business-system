@@ -32,7 +32,7 @@ export async function GET(_req: Request, { params }: Params) {
  *
  * Starting, ending, locking, opening or closing the waiting room, and the
  * notes. Restricted to the host and co-hosts by `meetings_update`; this
- * handler adds the transitions that are not expressible as a column write —
+ * handler adds the transitions that are not expressible as a column write -
  * starting stamps `started_at`, ending stamps `ended_at` and turns everybody
  * still in the room to `left`, so a meeting that ends does not leave a list of
  * people apparently still sitting in it.
@@ -110,7 +110,7 @@ export async function PATCH(req: Request, { params }: Params) {
      * Everybody still in the room is marked as having left.
      *
      * Without this, the participant list of a finished meeting reads as though
-     * four people are still in it — for ever, since nothing else will ever
+     * four people are still in it - for ever, since nothing else will ever
      * update those rows. `left_at` is the meeting's end, which is the truth.
      */
     await ctx.supabase
@@ -136,7 +136,7 @@ export { PATCH as PUT };
  *
  * Hard delete, and only for one that has not happened: `meeting_participants`
  * cascades, and there is nothing worth keeping about a room nobody entered.
- * A meeting that ran is a record of something and is kept — cancelling that
+ * A meeting that ran is a record of something and is kept - cancelling that
  * would be rewriting history rather than tidying a calendar.
  */
 export async function DELETE(_req: Request, { params }: Params) {

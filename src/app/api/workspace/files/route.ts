@@ -2,6 +2,7 @@ import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 import { isFilterValue } from '@/lib/filters';
+import { normaliseLink, hostOf } from '@/lib/links';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -68,7 +69,7 @@ export async function GET(req: Request) {
  * Record a file that has just been uploaded to storage.
  *
  * The storage policies already confine a member to their own organization's
- * path prefix, so a caller cannot have written outside it — but the metadata
+ * path prefix, so a caller cannot have written outside it - but the metadata
  * row arrives in a *separate* request, and without the check below a caller
  * could register another tenant's object against their own folder and then
  * read it back through a signed URL this application generates.
@@ -84,15 +85,45 @@ export async function POST(req: Request) {
     return error('Invalid request body', 422, 'VALIDATION_ERROR');
   }
 
-  const filename = String(b.filename ?? '').trim();
-  const path = String(b.path ?? '').trim();
-  const bucket = String(b.bucket ?? 'documents').trim();
+  /**
+   * Two kinds of resource, one row.
+   *
+   * The material a team needs is not all bytes in a bucket: the brand assets
+   * are in Figma, the signed contract is in Drive, the staging build is behind
+   * a URL. A link and an upload answer the same question - where is the thing -
+   * are filed in the same folder, follow the same sharing rule and are renamed
+   * the same way. Two tables would mean two lists that can never sort
+   * together, which is why 0034 made a link a `files` row whose bytes live
+   * elsewhere and this endpoint is the workspace's second consumer of it.
+   *
+   * NextMav is deliberately not recreating Drive or Figma. It is the one place
+   * somebody looks to find out where a thing is.
+   */
+  const externalUrl = b.external_url ? normaliseLink(String(b.external_url)) : null;
+  const isLink = 'external_url' in b && !!b.external_url;
+
+  if (isLink && !externalUrl) {
+    return error(
+      'That does not look like a web address. Links start with http:// or https://.',
+      422, 'INVALID_LINK',
+    );
+  }
+
+  const filename = String(b.filename ?? '').trim()
+    || (externalUrl ? hostOf(externalUrl) : '');
+  const bucket = externalUrl ? 'link' : String(b.bucket ?? 'documents').trim();
+  // A link's `path` is a synthetic key: it exists to satisfy (bucket, path)
+  // uniqueness and to keep every row under its organisation's prefix, which
+  // is the invariant checked below for both kinds.
+  const path = externalUrl
+    ? `${ctx.org.organizationId}/links/${crypto.randomUUID()}`
+    : String(b.path ?? '').trim();
   const pageId = b.page_id || null;
 
   if (!filename) return error('filename is required', 422, 'VALIDATION_ERROR');
   if (!path) return error('path is required', 422, 'VALIDATION_ERROR');
-  if (!pageId) return error('pageId is required — a file belongs in a folder', 422, 'VALIDATION_ERROR');
-  if (!WORKSPACE_BUCKETS.includes(bucket)) {
+  if (!pageId) return error('pageId is required, a file belongs in a folder', 422, 'VALIDATION_ERROR');
+  if (!externalUrl && !WORKSPACE_BUCKETS.includes(bucket)) {
     return error(
       `Workspace files live in ${WORKSPACE_BUCKETS.join(' or ')}, not "${bucket}".`,
       422, 'INVALID_BUCKET',
@@ -104,7 +135,7 @@ export async function POST(req: Request) {
 
   // The folder must be one the caller may write in. RLS on `files` scopes by
   // organization only, so without this a file could be filed into a folder the
-  // uploader cannot open — and would then be visible to everyone who can.
+  // uploader cannot open - and would then be visible to everyone who can.
   const { data: parent } = await ctx.supabase
     .from('v_workspace_tree').select('id, title, permission')
     .eq('organization_id', ctx.org.organizationId).eq('id', pageId).maybeSingle();
@@ -123,8 +154,11 @@ export async function POST(req: Request) {
       bucket,
       path,
       filename,
+      external_url: externalUrl,
       mime_type: b.mime_type || null,
-      size_bytes: Math.max(0, Number(b.size_bytes) || 0),
+      // A link has no size. Zero rather than null because the column is NOT
+      // NULL, and the file list prints the host in place of a byte count.
+      size_bytes: externalUrl ? 0 : Math.max(0, Number(b.size_bytes) || 0),
       description: String(b.description ?? ''),
       folder: String(b.folder ?? '').replace(/^\/+|\/+$/g, ''),
       // Both default closed. Sharing with a client is an act, not an omission.
@@ -147,7 +181,7 @@ export async function POST(req: Request) {
     member_id: ctx.org.memberId,
     module: 'workspace',
     action: 'upload',
-    title: `Uploaded ${filename}`,
+    title: `${externalUrl ? 'Linked' : 'Uploaded'} ${filename}`,
     description: parent.title ? `to ${parent.title}` : '',
     entity_type: 'file',
     entity_id: data.id,

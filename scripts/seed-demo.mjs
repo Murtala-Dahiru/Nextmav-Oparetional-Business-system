@@ -64,6 +64,7 @@
  */
 
 import fs from 'node:fs';
+import zlib from 'node:zlib';
 import path from 'node:path';
 import process from 'node:process';
 
@@ -517,6 +518,20 @@ async function main() {
     'support_tickets',
     'stock_movements', 'products', 'suppliers', 'warehouses',
     'calendar_events', 'activity_log', 'notifications',
+    /*
+       Communication. `message_saves`, `message_reactions` and `files` carrying
+       a `message_id` all cascade from `messages`; `messages`, `channel_members`
+       and `meeting_participants` cascade from their channel or meeting. The
+       two parents are listed for the same reason as the rest of this list:
+       depending on cascade behaviour without stating it is how a seed script
+       breaks silently when a constraint changes.
+
+       `channels` is wiped last of the three because a meeting references one.
+    */
+    'meetings', 'messages', 'channels',
+    // Versions, shares, sheet columns, sheet rows, links, filed resources and
+    // page comments all cascade from `workspace_pages`.
+    'workspace_page_links', 'workspace_pages',
     'leave_requests',
     'companies',
   ];
@@ -657,6 +672,14 @@ async function main() {
   Object.assign(summary, await seedInventory(ORG));
   Object.assign(summary, await seedCalendar(ORG, team, companies));
   Object.assign(summary, await seedLeave(ORG, team));
+
+  /* -- 9b. The company's written knowledge -------------------------------- */
+  Object.assign(summary, await seedWorkspace(ORG, team));
+
+  /* -- 9b2. One face each, so identity can be seen at all ----------------- */
+  Object.assign(summary, await seedAvatars(ORG, team));
+  /* -- 9c. How the company talks ------------------------------------------ */
+  Object.assign(summary, await seedCommunication(ORG, team, companies));
 
   /* ── 10. What happened ────────────────────────────────────────────────── */
   Object.assign(summary, await seedActivity(ORG, team, {
@@ -1778,6 +1801,829 @@ async function seedLeave(ORG, team) {
 }
 
 /* -------------------------------------------------------------------------- */
+/*  The workspace                                                             */
+/* -------------------------------------------------------------------------- */
+/**
+ * A company's written knowledge.
+ *
+ * Added with Phase 13. Every other module here had a year of data and the
+ * workspace had none, so its screens - Home, the library, the template
+ * gallery - could only ever be judged against their empty states, which is
+ * precisely the reason this seeder exists (see the note at the top of the file).
+ *
+ * What it writes is what a real workspace holds: an area per function, real
+ * documents with headings and tables in them, three spreadsheets with typed
+ * columns and rows, links to the business records the documents are about, a
+ * discussion on the policy people always argue about, and two external links
+ * standing in for the material that lives in Drive and Figma.
+ *
+ * No uploads. A file needs bytes in storage, and a seeder that writes metadata
+ * for objects that do not exist produces a file list where every row fails to
+ * open. A link needs no bytes, which is exactly the case it was added for.
+ */
+const WORKSPACE_TREE = [
+  {
+    title: 'Company', icon: 'book-open', colour: '#2d9572',
+    summary: 'How the business is run, and what it has decided.',
+    children: [
+      {
+        title: 'Strategy', icon: 'target', colour: '#2c6fa7',
+        summary: 'Where we are going, and what we have chosen not to do.',
+        children: [
+          {
+            title: '2026 strategy', icon: 'target', colour: '#2c6fa7', starred: true,
+            summary: 'The three-year position, the choices behind it, and how we will know.',
+            body: [
+              '# Strategy',
+              '',
+              '**Horizon** 2026 to 2028  ',
+              '**Owner** Ada Okonkwo',
+              '',
+              '## Where we are now',
+              '',
+              'Delivery revenue is concentrated: the four largest engagements are 61% of',
+              'the book, and two of them renew in the same quarter. Utilisation is healthy',
+              'and the pipeline is not - weighted forecast covers about half of next year',
+              'at current win rates.',
+              '',
+              '## Where we are going',
+              '',
+              'A services business with a recurring floor under it. Two thirds project',
+              'work, one third retained, and the retained half sold to customers we',
+              'already deliver for.',
+              '',
+              '## The choices that get us there',
+              '',
+              '| Choice | Instead of | Because |',
+              '| --- | --- | --- |',
+              '| Retainers with existing customers | New-logo growth | The cost of sale is already paid |',
+              '| Two verticals, deeply | Every sector | Reusable delivery, higher margin |',
+              '| Hire delivery leads | Hire generalists | The constraint is supervision, not hands |',
+              '',
+              '## What we will not do',
+              '',
+              '- Fixed-price work beyond ++twelve weeks++ without a phased contract.',
+              '- Staff augmentation. It looks like revenue and is not a business.',
+              '',
+              '## How we will know',
+              '',
+              '| Measure | Today | In 12 months |',
+              '| --- | ---: | ---: |',
+              '| Retained share of revenue | 11% | 30% |',
+              '| Revenue from the top four | 61% | under 45% |',
+              '| Gross margin | 18.4% | 24% |',
+              '',
+            ].join('\n'),
+          },
+          {
+            title: 'Business case: regional expansion', icon: 'lightbulb', colour: '#b8730a',
+            summary: 'The argument for a second delivery office, including doing nothing.',
+            body: [
+              '# Business case',
+              '',
+              '## The decision being asked for',
+              '',
+              'Approve setup and twelve months of running cost for a second delivery',
+              'office, by the end of Q1.',
+              '',
+              '## The problem',
+              '',
+              'Delivery capacity is the binding constraint on revenue, and the local',
+              'market for senior engineers is priced above what our margin supports.',
+              '',
+              '## Options considered',
+              '',
+              '| Option | Cost | Benefit | Risk |',
+              '| --- | ---: | --- | --- |',
+              '| Do nothing | 0 | None | Capacity flat, two renewals at risk |',
+              '| Pay above market locally | 31m a year | Fast | Margin falls below 15% |',
+              '| Second office | 48m setup | 14 more delivery heads | Supervision at distance |',
+              '',
+              '## Recommendation',
+              '',
+              'The second office. The margin arithmetic works from month nine, and the',
+              'supervision risk is answerable by hiring the lead first.',
+              '',
+              '## What happens if we do nothing',
+              '',
+              'Two renewals are delivered by a team already at capacity, and this',
+              'conversation happens again in six months with less time.',
+              '',
+            ].join('\n'),
+          },
+        ],
+      },
+      {
+        title: 'Policies', icon: 'book-open', colour: '#8b5cf6',
+        summary: 'What applies to everybody, with an owner and a review date.',
+        children: [
+          {
+            title: 'Leave policy', icon: 'book-open', colour: '#8b5cf6', starred: true,
+            summary: 'Annual leave, notice, carry-over and how to request it.',
+            comments: [
+              'Does the four-week notice apply to a single day, or only to a block?',
+              'A single day needs 48 hours. The four weeks is for anything over five days, and I will make that explicit in the next revision.',
+            ],
+            body: [
+              '# Leave policy',
+              '',
+              '**Applies to** all employees  ',
+              '**Owner** People team  ',
+              '**Next review** 1 July',
+              '',
+              '## Purpose',
+              '',
+              'To set out how much leave people have, how to take it, and what happens',
+              'to what they do not use.',
+              '',
+              '## Scope',
+              '',
+              'Every employee on a permanent contract. Contractors are covered by their',
+              'own agreement and are ++not++ covered here.',
+              '',
+              '## Entitlement',
+              '',
+              '| Length of service | Days per year |',
+              '| --- | ---: |',
+              '| Under 2 years | 20 |',
+              '| 2 to 5 years | 24 |',
+              '| Over 5 years | 28 |',
+              '',
+              '## Requesting leave',
+              '',
+              '1. Raise the request in NextMav under People.',
+              '2. Your manager approves or declines within three working days.',
+              '3. Anything over five consecutive days needs four weeks of notice.',
+              '',
+              '## Carry-over',
+              '',
+              'Up to five days carry into the following year and must be used by',
+              '31 March. Nothing beyond five days carries.',
+              '',
+              '> Leave is not a bonus to be saved. A team where nobody takes their',
+              '> entitlement has a supervision problem, not a saving.',
+              '',
+              '## Exceptions',
+              '',
+              'A department head may approve one in writing. Send it to the People team',
+              'so the record is complete.',
+              '',
+            ].join('\n'),
+          },
+          {
+            title: 'Expense policy', icon: 'book-open', colour: '#8b5cf6',
+            summary: 'What the company pays for, what it does not, and the limits.',
+            body: [
+              '# Expense policy',
+              '',
+              '**Applies to** everyone who spends company money  ',
+              '**Owner** Finance  ',
+              '**Next review** 1 October',
+              '',
+              '## The policy',
+              '',
+              'The company pays for what it asked you to do. Anything you would not be',
+              'comfortable explaining to a colleague, do not claim.',
+              '',
+              '## Limits',
+              '',
+              '| Category | Limit | Approval |',
+              '| --- | ---: | --- |',
+              '| Meals while travelling | 18,000 a day | Manager |',
+              '| Accommodation | 85,000 a night | Manager |',
+              '| Software | 50,000 | Manager |',
+              '| Anything above 250,000 | - | Finance |',
+              '',
+              '## What we do not pay for',
+              '',
+              '- Fines, penalties and parking tickets.',
+              '- Upgrades bought after the booking was approved.',
+              '- Alcohol, other than at a client dinner.',
+              '',
+              '## Claiming',
+              '',
+              'Raise it in Finance within 30 days with a receipt. A claim older than',
+              'that needs a written reason.',
+              '',
+            ].join('\n'),
+          },
+          {
+            title: 'Information security policy', icon: 'code', colour: '#c0392b',
+            summary: 'Access, devices, customer data, and what to do after an incident.',
+            body: [
+              '# Information security policy',
+              '',
+              '**Applies to** all staff and contractors  ',
+              '**Owner** Engineering  ',
+              '**Next review** 1 December',
+              '',
+              '## Access',
+              '',
+              'Least privilege, always. Access is granted by role and reviewed quarterly,',
+              'and nobody keeps an account after their last day.',
+              '',
+              '## Devices',
+              '',
+              '- Full-disk encryption on every machine that touches customer data.',
+              '- Screen lock at five minutes.',
+              '- No customer data on personal devices.',
+              '',
+              '## Customer data',
+              '',
+              'Production data does not leave production. Use generated data for demos',
+              'and for development, without exception.',
+              '',
+              '## If something goes wrong',
+              '',
+              '1. Tell the engineering lead. Do not wait until you understand it.',
+              '2. Preserve the evidence: do not delete logs or reimage a machine.',
+              '3. The lead decides whether it is an incident and who is told.',
+              '',
+              'Reporting something that turns out to be nothing is always the right call.',
+              '',
+            ].join('\n'),
+          },
+        ],
+      },
+      {
+        title: 'Finance', icon: 'table', colour: '#d4a93f',
+        summary: 'Budgets, forecasts, and the numbers behind them.',
+        children: [
+          {
+            title: '2026 operating budget', kind: 'sheet', icon: 'table', colour: '#d4a93f',
+            summary: 'Planned against actual by line, with the variance calculated.',
+            columns: [
+              { name: 'Line', type: 'text', width: 230, is_frozen: true },
+              { name: 'Category', type: 'select', width: 140,
+                options: ['People', 'Software', 'Marketing', 'Facilities', 'Travel'] },
+              { name: 'Budget', type: 'currency', width: 150, aggregate: 'sum', decimals: 0 },
+              { name: 'Actual', type: 'currency', width: 150, aggregate: 'sum', decimals: 0 },
+              { name: 'Variance', type: 'currency', width: 150, aggregate: 'sum', decimals: 0,
+                formula: '=Budget - Actual' },
+            ],
+            rows: [
+              ['Delivery salaries', 'People', 148000000, 141200000],
+              ['Engineering salaries', 'People', 96000000, 98400000],
+              ['Cloud and hosting', 'Software', 14400000, 15900000],
+              ['Design and product tools', 'Software', 3600000, 3180000],
+              ['Recruitment', 'People', 12000000, 7450000],
+              ['Office and utilities', 'Facilities', 18000000, 18240000],
+              ['Client travel', 'Travel', 9600000, 11700000],
+              ['Brand and campaigns', 'Marketing', 22000000, 14850000],
+            ],
+          },
+        ],
+      },
+      {
+        title: 'Operations', icon: 'code', colour: '#0f766e',
+        summary: 'How the work actually gets done.',
+        children: [
+          {
+            title: 'SOP: client onboarding', icon: 'code', colour: '#0f766e',
+            summary: 'From signed contract to first delivery stand-up, in nine steps.',
+            body: [
+              '# Standard operating procedure',
+              '',
+              '**Owner** Delivery  ',
+              '**Review every** 6 months',
+              '',
+              '## Purpose',
+              '',
+              'To take a signed engagement to a running project without anybody having',
+              'to ask what happens next.',
+              '',
+              '## When this applies',
+              '',
+              'Every new engagement, and every renewal that changes the scope.',
+              '',
+              '## Before you start',
+              '',
+              '- The contract is signed and filed against the company record.',
+              '- A delivery lead is named.',
+              '',
+              '## Steps',
+              '',
+              '1. Create the project in NextMav and link this document to it.',
+              '2. Add the client company and the primary contact.',
+              '3. Set the phases from the statement of work.',
+              '4. Invite the delivery team and set allocations.',
+              '5. Raise the first invoice against the payment schedule.',
+              '6. Open the client portal and share the first deliverable folder.',
+              '7. Book the kickoff and send the agenda 48 hours ahead.',
+              '8. Record the kickoff decisions in a meeting-notes page here.',
+              '9. Start the weekly status report.',
+              '',
+              '## How to tell it worked',
+              '',
+              'The first stand-up happens with everybody knowing what they are doing,',
+              'and the first invoice goes out on the day the schedule says.',
+              '',
+              '## When it goes wrong',
+              '',
+              '| Symptom | Cause | What to do |',
+              '| --- | --- | --- |',
+              '| No delivery lead named | Sale closed without a capacity check | Escalate before step 3 |',
+              '| Scope unclear at kickoff | The statement of work is a summary | Rewrite it before phase 1 |',
+              '',
+            ].join('\n'),
+          },
+          {
+            title: 'SOP: incident response', icon: 'code', colour: '#c0392b',
+            summary: 'Who does what in the first hour of a production incident.',
+            body: [
+              '# Standard operating procedure',
+              '',
+              '**Owner** Engineering  ',
+              '**Review every** 3 months',
+              '',
+              '## Purpose',
+              '',
+              'To make the first hour of an incident predictable.',
+              '',
+              '## Steps',
+              '',
+              '1. Whoever notices declares. Declaring costs nothing.',
+              '2. The declarer is incident lead until somebody takes it explicitly.',
+              '3. Open a channel and put the customer name in the title.',
+              '4. Post the position every fifteen minutes, even when it has not changed.',
+              '5. Mitigate first, diagnose second.',
+              '6. Write the timeline while it is happening, not afterwards.',
+              '',
+              '## Escalation',
+              '',
+              '| Elapsed | Who is told |',
+              '| --- | --- |',
+              '| 15 minutes | Engineering lead |',
+              '| 45 minutes | Delivery lead and the account owner |',
+              '| 2 hours | Managing director |',
+              '',
+              '## Afterwards',
+              '',
+              'A review within five working days, blameless, written up here. An incident',
+              'with no write-up will happen again.',
+              '',
+            ].join('\n'),
+          },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Projects', icon: 'map', colour: '#2c6fa7',
+    summary: 'What each engagement decided, in its own words.',
+    children: [
+      {
+        title: 'Corvo patient portal', icon: 'folder', colour: '#2c6fa7',
+        summary: 'Requirements, notes and the plan for the Corvo engagement.',
+        linkProject: 'Corvo',
+        children: [
+          {
+            title: 'Requirements', icon: 'file-text', colour: '#2c6fa7', starred: true,
+            summary: 'What the portal has to do, and what is out of scope.',
+            linkProject: 'Corvo', linkCompany: 'Corvo',
+            body: [
+              '# Product requirements',
+              '',
+              '## Summary',
+              '',
+              'A portal where a patient can see their appointments, their documents and',
+              'their outstanding balance, without calling the practice.',
+              '',
+              '## Problem',
+              '',
+              'Reception spends most of the morning answering three questions that a',
+              'screen could answer.',
+              '',
+              '## Proposed solution',
+              '',
+              '### Must have',
+              '',
+              '- [x] Sign in with an emailed code, so there is no password to forget.',
+              '- [x] Appointments, past and future.',
+              '- [ ] Documents released by the practice.',
+              '- [ ] Outstanding balance, and a way to pay it.',
+              '',
+              '### Should have',
+              '',
+              '- [ ] Rescheduling inside the practice rules.',
+              '- [ ] Reminders by SMS.',
+              '',
+              '## Out of scope',
+              '',
+              'Clinical records. The portal shows what the practice releases, and nothing',
+              'the practice has not released.',
+              '',
+              '## Success measures',
+              '',
+              '| Measure | Today | Target | By when |',
+              '| --- | ---: | ---: | --- |',
+              '| Calls to reception before 11am | 47 a day | under 20 | 90 days after launch |',
+              '| Balances settled within 14 days | 38% | 65% | 6 months |',
+              '',
+            ].join('\n'),
+          },
+          {
+            title: 'Kickoff notes', icon: 'file-text', colour: '#2c6fa7',
+            summary: 'Decisions and actions from the Corvo kickoff.',
+            linkProject: 'Corvo',
+            body: [
+              '# Meeting notes',
+              '',
+              '**Date** ' + day(daysAgo(46)) + '  ',
+              '**Attendees** Ada Okonkwo, the delivery lead, the Corvo product owner',
+              '',
+              '## Purpose',
+              '',
+              'Agree the scope, the phases, and who decides what.',
+              '',
+              '## Decisions',
+              '',
+              '| Decision | Made by | Date |',
+              '| --- | --- | --- |',
+              '| Passwordless sign-in, not passwords | Corvo product owner | ' + day(daysAgo(46)) + ' |',
+              '| Payments in phase 2, not phase 1 | Both | ' + day(daysAgo(46)) + ' |',
+              '',
+              '## Actions',
+              '',
+              '- [x] Send the phased statement of work.',
+              '- [x] Name the practice contact for document release.',
+              '- [ ] Confirm the accessibility standard to test against.',
+              '',
+              '## Not decided',
+              '',
+              'Whether reminders go by SMS or by email. Corvo is checking what their',
+              'patients have consented to.',
+              '',
+            ].join('\n'),
+          },
+        ],
+      },
+      {
+        title: 'Halden telemetry', icon: 'folder', colour: '#b8730a',
+        summary: 'The at-risk engagement, and the plan to recover it.',
+        linkProject: 'Halden',
+        children: [
+          {
+            title: 'Recovery plan', kind: 'sheet', icon: 'table', colour: '#b8730a',
+            summary: 'Tasks, owners, dates and status for the recovery.',
+            linkProject: 'Halden',
+            columns: [
+              { name: 'Task', type: 'text', width: 250, is_frozen: true },
+              { name: 'Phase', type: 'text', width: 140 },
+              { name: 'Status', type: 'select', width: 140,
+                options: ['Not started', 'In progress', 'Blocked', 'Done'] },
+              { name: 'Due', type: 'date', width: 130 },
+              { name: 'Days', type: 'number', width: 90, align: 'right', aggregate: 'sum' },
+              { name: 'Done', type: 'checkbox', width: 80 },
+            ],
+            rows: [
+              ['Re-baseline the schedule with the client', 'Recovery', 'Done', day(daysAgo(12)), 2, true],
+              ['Cut phase 3 to the agreed minimum', 'Recovery', 'Done', day(daysAgo(8)), 3, true],
+              ['Second engineer onto ingest', 'Capacity', 'In progress', day(daysAhead(4)), 5, false],
+              ['Device certification with the vendor', 'Blocked', 'Blocked', day(daysAhead(9)), 8, false],
+              ['Weekly written status to the client', 'Governance', 'In progress', day(daysAhead(2)), 1, false],
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Sales', icon: 'star', colour: '#6366f1',
+    summary: 'Proposals, pricing, and what we said we would do.',
+    children: [
+      {
+        title: 'Proposal: Quillon Media renewal', icon: 'file-text', colour: '#6366f1',
+        summary: 'The licence renewal proposal, valid to the end of the quarter.',
+        linkCompany: 'Quillon', linkDeal: 'Quillon',
+        resources: [
+          ['Signed contract (Drive)', 'https://drive.google.com/drive/folders/quillon-renewal'],
+        ],
+        body: [
+          '# Proposal',
+          '',
+          '**Prepared for** Quillon Media  ',
+          '**Date** ' + day(daysAgo(9)) + '  ',
+          '**Valid until** ' + day(daysAhead(21)),
+          '',
+          '## What you told us',
+          '',
+          'The current licence covers three properties and you now run seven. Reporting',
+          'is assembled by hand every month and takes two people the better part of a',
+          'week.',
+          '',
+          '## What we propose',
+          '',
+          'A group licence across all seven properties, with the monthly reporting',
+          'produced automatically and delivered on the second working day.',
+          '',
+          '## Scope of work',
+          '',
+          '| Workstream | What it includes | Deliverable |',
+          '| --- | --- | --- |',
+          '| Licence | Seven properties, unlimited seats | Signed agreement |',
+          '| Reporting | An automated monthly pack | The first pack in month one |',
+          '| Migration | The four properties not yet on the platform | A cutover plan |',
+          '',
+          '## Investment',
+          '',
+          '| Item | Amount |',
+          '| --- | ---: |',
+          '| Group licence, 12 months | 14,400,000 |',
+          '| Migration, one off | 2,800,000 |',
+          '',
+          '## Assumptions',
+          '',
+          'Property data is available in the format supplied for the pilot. Anything',
+          'that has to be re-keyed is outside this price.',
+          '',
+          '## Next steps',
+          '',
+          'Confirm the property list, and we will issue the agreement the same week.',
+          '',
+        ].join('\n'),
+      },
+      {
+        title: 'Rate card', kind: 'sheet', icon: 'table', colour: '#6366f1',
+        summary: 'Day rate by role, with the effective rate at expected utilisation.',
+        columns: [
+          { name: 'Role', type: 'text', width: 200, is_frozen: true },
+          { name: 'Day rate', type: 'currency', width: 150, decimals: 0 },
+          { name: 'Utilisation', type: 'number', width: 130, align: 'right' },
+          { name: 'Effective', type: 'currency', width: 150, aggregate: 'avg', decimals: 0,
+            formula: '=Day rate * Utilisation / 100' },
+        ],
+        rows: [
+          ['Delivery lead', 210000, 70],
+          ['Senior engineer', 175000, 85],
+          ['Engineer', 130000, 90],
+          ['Designer', 145000, 75],
+          ['Analyst', 110000, 80],
+        ],
+      },
+    ],
+  },
+  {
+    title: 'People', icon: 'star', colour: '#0f766e',
+    summary: 'Joining, growing, and being reviewed.',
+    children: [
+      {
+        title: 'Onboarding: the first two weeks', icon: 'star', colour: '#0f766e',
+        summary: 'What a new joiner does, with an owner against every line.',
+        resources: [
+          ['Brand kit (Figma)', 'https://figma.com/file/northwind-brand-kit'],
+        ],
+        body: [
+          '# Onboarding',
+          '',
+          '**Manager** the joiner\'s own  ',
+          '**Buddy** named before day one',
+          '',
+          '## Before day one',
+          '',
+          '- [x] Accounts and access requested',
+          '- [x] Equipment ordered',
+          '- [ ] First-week calendar sent',
+          '',
+          '## Day one',
+          '',
+          '- [ ] Welcome and introductions',
+          '- [ ] Tools and accounts working',
+          '- [ ] The handbook and the three policies',
+          '',
+          '## Week one',
+          '',
+          '- [ ] Meet the team, one to one',
+          '- [ ] Read the strategy and the onboarding SOP',
+          '- [ ] A first small piece of real work, shipped',
+          '',
+          '## 30 / 60 / 90',
+          '',
+          '| By | What good looks like |',
+          '| --- | --- |',
+          '| 30 days | Delivering small pieces without supervision |',
+          '| 60 days | Owning a workstream on one engagement |',
+          '| 90 days | Trusted with a client conversation |',
+          '',
+        ].join('\n'),
+      },
+      {
+        title: 'Half-year review', icon: 'file-text', colour: '#0f766e',
+        template: 'People',
+        summary: 'The review this company actually runs: evidence, then judgement.',
+        body: [
+          '# Performance review',
+          '',
+          '**Period** half year  ',
+          '**Reviewer** the line manager',
+          '',
+          '## What they were working towards',
+          '',
+          '| Goal | Agreed | Outcome |',
+          '| --- | --- | --- |',
+          '|  |  |  |',
+          '',
+          '## What went well',
+          '',
+          'With examples. A review without examples is an opinion.',
+          '',
+          '## What did not',
+          '',
+          '## How they work with others',
+          '',
+          '## Their own view',
+          '',
+          '## Agreed for next period',
+          '',
+          '| Goal | Measure | By when |',
+          '| --- | --- | --- |',
+          '|  |  |  |',
+          '',
+          '## Support they need',
+          '',
+        ].join('\n'),
+      },
+    ],
+  },
+];
+
+async function seedWorkspace(ORG, team) {
+  const [projects, companies, deals] = await Promise.all([
+    select('projects', `select=id,name&organization_id=eq.${ORG}`),
+    select('companies', `select=id,name&organization_id=eq.${ORG}`),
+    select('deals', `select=id,name&organization_id=eq.${ORG}`),
+  ]);
+
+  const findBy = (rows, needle) =>
+    rows.find(r => String(r.name ?? '').toLowerCase().includes(needle.toLowerCase()));
+
+  const pages = [];
+  const columnsToWrite = [];
+  const rowsToWrite = [];
+  const linksToWrite = [];
+  const resourcesToWrite = [];
+  const commentsToWrite = [];
+
+  /**
+   * Written one level at a time.
+   *
+   * A page's parent has to exist before its children are inserted, and
+   * `prevent_page_cycle` walks the ancestry on every write - so a single flat
+   * insert with client-generated ids would work only until somebody added a
+   * constraint that reads the parent row. One round trip per depth is four
+   * round trips for this tree.
+   */
+  async function writeLevel(specs, parentId, depth) {
+    if (!specs.length) return;
+
+    const written = await insert('workspace_pages', specs.map((spec, i) => ({
+      organization_id: ORG,
+      parent_id: parentId,
+      title: spec.title,
+      summary: spec.summary ?? '',
+      content: spec.body ?? '',
+      icon: spec.icon ?? (spec.children ? 'folder' : 'file-text'),
+      colour: spec.colour ?? '#2d9572',
+      is_folder: !!spec.children,
+      kind: spec.children ? 'document' : (spec.kind ?? 'document'),
+      is_starred: !!spec.starred,
+      is_template: !!spec.template,
+      template_category: spec.template ?? null,
+      visibility: parentId ? 'inherit' : 'organization',
+      sort_order: i,
+      created_by: team[i % team.length].id,
+      last_edited_by: team[(i + 1) % team.length].id,
+      created_at: iso(daysAgo(intBetween(20, 200))),
+      updated_at: iso(daysAgo(intBetween(0, 18))),
+    })));
+
+    written.forEach((page, i) => {
+      const spec = specs[i];
+      pages.push({ page, spec });
+
+      for (const [position, column] of (spec.columns ?? []).entries()) {
+        columnsToWrite.push({
+          organization_id: ORG,
+          page_id: page.id,
+          name: column.name,
+          type: column.type,
+          options: column.options ?? [],
+          width: column.width ?? 180,
+          position,
+          align: column.align ?? null,
+          decimals: column.decimals ?? null,
+          formula: column.formula ?? null,
+          aggregate: column.aggregate ?? 'none',
+          is_frozen: !!column.is_frozen,
+        });
+      }
+
+      for (const [name, url] of spec.resources ?? []) {
+        resourcesToWrite.push({
+          organization_id: ORG,
+          page_id: page.id,
+          bucket: 'link',
+          path: `${ORG}/links/${crypto.randomUUID()}`,
+          filename: name,
+          external_url: url,
+          size_bytes: 0,
+          description: 'Development data.',
+          uploaded_by: team[0].id,
+          created_at: iso(daysAgo(intBetween(2, 40))),
+        });
+      }
+
+      for (const [n, body] of (spec.comments ?? []).entries()) {
+        commentsToWrite.push({
+          organization_id: ORG,
+          page_id: page.id,
+          author_id: team[(n + 1) % team.length].id,
+          body,
+          mentions: [],
+          created_at: iso(daysAgo(6 - n)),
+        });
+      }
+
+      const targets = [
+        ['project', spec.linkProject && findBy(projects, spec.linkProject)],
+        ['company', spec.linkCompany && findBy(companies, spec.linkCompany)],
+        ['deal', spec.linkDeal && findBy(deals, spec.linkDeal)],
+      ];
+      for (const [type, row] of targets) {
+        if (!row) continue;
+        linksToWrite.push({
+          organization_id: ORG,
+          page_id: page.id,
+          entity_type: type,
+          entity_id: row.id,
+          label: row.name,
+          created_by: team[0].id,
+        });
+      }
+    });
+
+    if (depth < 4) {
+      for (let i = 0; i < specs.length; i++) {
+        if (specs[i].children) await writeLevel(specs[i].children, written[i].id, depth + 1);
+      }
+    }
+  }
+
+  await writeLevel(WORKSPACE_TREE, null, 0);
+
+  const columns = columnsToWrite.length
+    ? await insert('workspace_sheet_columns', columnsToWrite)
+    : [];
+
+  /*
+    A row's cells are keyed by *column id*, which does not exist until the
+    columns are written - so the rows are assembled here rather than in the
+    tree above. Getting this wrong is silent: the grid renders a full set of
+    columns and an entirely empty body.
+  */
+  const columnsByPage = new Map();
+  for (const column of columns) {
+    columnsByPage.set(column.page_id, [...(columnsByPage.get(column.page_id) ?? []), column]);
+  }
+
+  for (const { page, spec } of pages) {
+    if (!spec.rows) continue;
+    const cols = (columnsByPage.get(page.id) ?? []).sort((a, b) => a.position - b.position);
+    spec.rows.forEach((values, position) => {
+      const cells = {};
+      values.forEach((value, i) => {
+        const column = cols[i];
+        // A formula column stores nothing: its values are worked out in the
+        // browser from the columns to its left.
+        if (column && !column.formula && value !== null && value !== '') cells[column.id] = value;
+      });
+      rowsToWrite.push({
+        organization_id: ORG,
+        page_id: page.id,
+        cells,
+        position,
+        created_by: team[0].id,
+        updated_by: team[0].id,
+      });
+    });
+  }
+
+  if (rowsToWrite.length) await insert('workspace_sheet_rows', rowsToWrite, { returning: false });
+  if (linksToWrite.length) await insert('workspace_page_links', linksToWrite, { returning: false });
+  if (resourcesToWrite.length) await insert('files', resourcesToWrite, { returning: false });
+  if (commentsToWrite.length) await insert('comments', commentsToWrite, { returning: false });
+
+  return {
+    workspace_pages: pages.length,
+    workspace_columns: columns.length,
+    workspace_rows: rowsToWrite.length,
+    workspace_links: linksToWrite.length,
+    workspace_resources: resourcesToWrite.length,
+    workspace_comments: commentsToWrite.length,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /*  Activity                                                                  */
 /* -------------------------------------------------------------------------- */
 /**
@@ -2041,4 +2887,698 @@ async function seedPerformance(ORG, team) {
     'incentive rules': rules?.length ?? 0,
     'incentive entries': typeof written === 'number' ? written : 'recomputed',
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Communication                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * How the company talks.
+ *
+ * -- Why this had to exist -------------------------------------------------
+ *
+ * The demo workspace carried a year of invoices, deals, projects and tickets
+ * and exactly one channel with no messages in it. So Communication was the one
+ * module that could not be judged at all: every screen in it was an empty
+ * state, which tells you nothing about whether the design works and quite a
+ * lot about why it looked unfinished.
+ *
+ * -- What it writes --------------------------------------------------------
+ *
+ * Rooms a real studio would have, and traffic shaped like real traffic:
+ *
+ *   · Six channels - the whole company, announcements, a design room, a
+ *     project room, a client room and a private one - plus a direct
+ *     conversation between the owner and each of four colleagues.
+ *   · Around three hundred messages spread across ten weeks, bunched into
+ *     working hours, with the usual long tail of one-line replies.
+ *   · Threads under about a fifth of the messages, because a timeline where
+ *     nothing has been answered cannot show what threading looks like.
+ *   · Mentions of the signed-in owner, so the personal inbox has something in
+ *     it, and reactions and pins so the timeline is not uniform.
+ *   · Three meetings: one that has ended and has notes, and two scheduled with
+ *     the owner invited and not yet answered.
+ *
+ * -- The two rules it obeys ------------------------------------------------
+ *
+ * **The read markers are set deliberately.** `channel_members.last_read_at`
+ * defaults to the moment the row was written, which here is before every
+ * message - so without a second pass the owner would open the module to a
+ * badge of three hundred and an inbox of everything. Each membership is moved
+ * to just behind the newest message in its channel, and the owner is left
+ * behind in a couple of rooms on purpose, which is what makes the unread
+ * states on Home and in the sidebar legible.
+ *
+ * **Nothing here writes a notification by hand.** `notify_message_mentions`
+ * fires on insert, and `settleNotifications` at the end of the run marks the
+ * resulting rows read exactly as it does for the rest of the seeding.
+ */
+async function seedCommunication(ORG, team, companies) {
+  const owner = team[0];
+  const others = team.slice(1);
+  if (!others.length) return { channels: 0, messages: 0 };
+
+  const projects = await select(
+    'projects', `select=id,name&organization_id=eq.${ORG}&order=created_at.desc&limit=2`);
+
+  /* -- The rooms ---------------------------------------------------------- */
+
+  const client = companies[0];
+  const plan = [
+    {
+      name: 'general', display: 'General', type: 'public', post: 'everyone',
+      topic: 'Anything that concerns everybody.',
+      description: 'The whole studio. Keep it short and keep it here.',
+      members: team,
+    },
+    {
+      name: 'announcements', display: 'Announcements', type: 'announcement', post: 'admins',
+      topic: 'Posted by the leadership team.',
+      description: 'Company decisions, policy, and anything everyone has to know.',
+      members: team,
+    },
+    {
+      name: 'design', display: 'Design', type: 'public', post: 'everyone',
+      topic: 'Craft, critique and work in progress.',
+      description: 'Where design work is shown before it ships.',
+      members: [owner, ...others.slice(0, 6)],
+    },
+    projects[0] && {
+      name: slugOf(projects[0].name), display: projects[0].name, type: 'public', post: 'everyone',
+      topic: 'Delivery, blockers and decisions.',
+      description: `Everything about ${projects[0].name}.`,
+      project_id: projects[0].id,
+      members: [owner, ...others.slice(0, 5)],
+    },
+    client && {
+      name: slugOf(client.name), display: client.name, type: 'private', post: 'members',
+      topic: 'Account team only.',
+      description: `The ${client.name} account: renewals, escalations, commercials.`,
+      company_id: client.id,
+      members: [owner, ...others.slice(1, 4)],
+    },
+    {
+      name: 'leadership', display: 'Leadership', type: 'private', post: 'members',
+      topic: 'Not for wider circulation.',
+      description: 'Heads of department.',
+      members: [owner, ...others.slice(0, 3)],
+    },
+  ].filter(Boolean);
+
+  const channels = await insert('channels', plan.map((c, i) => ({
+    organization_id: ORG,
+    name: c.name,
+    display_name: c.display,
+    description: c.description,
+    topic: c.topic,
+    type: c.type,
+    post_policy: c.post,
+    join_policy: c.type === 'private' ? 'invite' : 'open',
+    project_id: c.project_id ?? null,
+    company_id: c.company_id ?? null,
+    created_by: owner.id,
+    created_at: iso(daysAgo(120 - i * 4)),
+  })));
+
+  const memberRows = [];
+  channels.forEach((row, i) => {
+    for (const m of plan[i].members) {
+      memberRows.push({
+        channel_id: row.id,
+        member_id: m.id,
+        role: m.id === owner.id ? 'owner' : 'member',
+        joined_at: iso(daysAgo(115 - i * 4)),
+        /*
+          Two of the six are starred for the owner, so the sidebar's Starred
+          group and Home's ordering have something to show. Starring is a
+          personal fact, so nobody else's row carries it.
+        */
+        is_favourite: m.id === owner.id && (i === 0 || plan[i].project_id != null),
+      });
+    }
+  });
+
+  /* -- Direct conversations ------------------------------------------------ */
+
+  /*
+     `open_direct_channel()` is the function the application uses, and it is
+     the only thing that knows the slug convention for a two-person room. It is
+     SECURITY DEFINER but resolves the caller through `auth.uid()`, which is
+     null for a service-key request - the same trap `record_stock_movement`
+     set. So the rows are written here, with the slug built the way that
+     function builds it: the two membership ids, sorted, so the pair can only
+     ever produce one room.
+  */
+  const dmWith = others.slice(0, 4);
+  const dms = await insert('channels', dmWith.map((m, i) => {
+    const pair = [owner.id, m.id].sort();
+    return {
+      organization_id: ORG,
+      name: `dm-${pair[0]}-${pair[1]}`,
+      display_name: null,
+      description: '',
+      topic: '',
+      type: 'direct',
+      post_policy: 'members',
+      join_policy: 'invite',
+      created_by: owner.id,
+      created_at: iso(daysAgo(60 - i * 5)),
+    };
+  }));
+
+  dms.forEach((row, i) => {
+    for (const m of [owner, dmWith[i]]) {
+      memberRows.push({
+        channel_id: row.id, member_id: m.id, role: 'member',
+        joined_at: row.created_at, is_favourite: false,
+      });
+    }
+  });
+
+  await insert('channel_members', memberRows, { returning: false });
+
+  /* -- What was said ------------------------------------------------------- */
+
+  const messageRows = [];
+  const roots = [];
+
+  /*
+     Working hours, working days.
+
+     A conversation stamped uniformly across the clock reads as a log file
+     rather than as a company: the day separators land in the wrong places, the
+     time beside a message means nothing, and a channel looks equally busy at
+     three in the morning. This puts each message inside 08:00-18:59 and moves
+     weekends back to the Friday.
+  */
+  const workMoment = (daysBack) => {
+    const d = daysAgo(daysBack);
+    if (d.getDay() === 0) d.setDate(d.getDate() - 2);
+    if (d.getDay() === 6) d.setDate(d.getDate() - 1);
+    d.setHours(intBetween(8, 18), intBetween(0, 59), intBetween(0, 59), 0);
+    return d;
+  };
+
+  const OPENERS = [
+    'Morning all. Standup in ten.',
+    'Draft is up for review when anyone has a moment.',
+    'Client came back on the scope, mostly positive.',
+    'Deploy went out at 14:20, nothing on fire.',
+    'Can we move the review to Thursday? Wednesday is full.',
+    'Numbers for last month are in Finance now.',
+    'Heads up: staging will be down for an hour from 16:00.',
+    'Anyone got the latest version of the brand guidelines?',
+    'Signed off. Invoicing this week.',
+    'Two of the milestones slipped, I have moved the dates.',
+    'Good call this morning, thanks everyone.',
+    'The new onboarding flow is behind a flag if you want to look.',
+    'Reminder that Friday is a half day.',
+    'Support saw three tickets on the same thing overnight.',
+    'Contract is with legal, expecting it back Tuesday.',
+    'I have written the decisions up so we stop relitigating them.',
+    'Quick one: who owns the analytics dashboard now?',
+    'Rescheduled the client call to next Wednesday at 2.',
+    'Invoice went out this morning, thirty day terms as usual.',
+    'That bug is fixed on main, will go out with the next release.',
+  ];
+
+  const REPLIES = [
+    'Looks good to me.',
+    'Agreed.',
+    'Can you send me the link?',
+    'I will pick this up after lunch.',
+    'Not sure that works, we tried it in March.',
+    'Done.',
+    'Thanks, that helps.',
+    'Let us take it in the meeting rather than here.',
+    'One thing: the dates on the second slide are wrong.',
+    'Nice work.',
+    'I have added it to my list.',
+    'Who is covering while she is away?',
+    'Yes, Thursday works.',
+    'Sorted, thanks.',
+  ];
+
+  const ANNOUNCEMENTS = [
+    'The office closes at 13:00 on Friday for the quarterly all-hands.',
+    'The new expense policy takes effect on the first of next month. Receipts within seven days.',
+    'We have signed the Pallas Retail renewal. Well done to everyone who worked on it.',
+    'Annual leave requests for December close at the end of this week.',
+  ];
+
+  /* Ten weeks of traffic, weighted towards the recent end. */
+  channels.forEach((channel, i) => {
+    const isAnnouncement = plan[i].type === 'announcement';
+    const speakers = plan[i].members;
+    const volume = isAnnouncement ? ANNOUNCEMENTS.length : intBetween(28, 46);
+
+    for (let n = 0; n < volume; n++) {
+      const daysBack = isAnnouncement
+        ? intBetween(2, 50)
+        : Math.floor(Math.pow(rand(), 1.7) * 70);
+      const sender = isAnnouncement ? owner : pick(speakers);
+      const body = isAnnouncement ? ANNOUNCEMENTS[n] : pick(OPENERS);
+      const at = workMoment(daysBack);
+
+      /*
+         The owner is named now and then, which is what puts anything in the
+         personal inbox at all. Never by themselves: `communication_inbox()`
+         filters out a message you sent, so seeding one would be misleading.
+      */
+      const namesOwner = !isAnnouncement && sender.id !== owner.id && rand() < 0.09;
+      messageRows.push({
+        organization_id: ORG,
+        channel_id: channel.id,
+        sender_id: sender.id,
+        body: namesOwner ? `@${owner.full_name || 'Ada Okonkwo'} ${lowerFirst(body)}` : body,
+        parent_id: null,
+        mentions: namesOwner ? [owner.id] : [],
+        attachments: [],
+        is_pinned: !isAnnouncement && rand() < 0.03,
+        created_at: iso(at),
+      });
+      roots.push({ speakers });
+    }
+  });
+
+  /* Direct conversations: shorter, closer together, and two-sided. */
+  const DM_LINES = [
+    'Do you have five minutes this afternoon?',
+    'Sent you the revised figures.',
+    'Yes, that is fine by me.',
+    'Can you take the client call tomorrow? I am double booked.',
+    'I will have it to you before the end of the day.',
+    'Thanks for picking that up.',
+    'Have you seen the note from legal?',
+    'Let us go with the second option.',
+  ];
+  dms.forEach((channel, i) => {
+    const pair = [owner, dmWith[i]];
+    const volume = intBetween(6, 14);
+    for (let n = 0; n < volume; n++) {
+      messageRows.push({
+        organization_id: ORG,
+        channel_id: channel.id,
+        sender_id: pair[n % 2 === 0 ? 1 : 0].id,
+        body: pick(DM_LINES),
+        parent_id: null,
+        mentions: [],
+        attachments: [],
+        is_pinned: false,
+        created_at: iso(workMoment(Math.floor(Math.pow(rand(), 2) * 30))),
+      });
+      roots.push({ speakers: pair });
+    }
+  });
+
+  const inserted = await insert('messages', messageRows);
+
+  /*
+     Replies, in a second pass.
+
+     A thread's `parent_id` has to point at a row that exists, and an insert
+     cannot reference the ids it is itself producing. So the roots go in first
+     and their answers follow, stamped after the message they answer.
+  */
+  const replyRows = [];
+  inserted.forEach((row, index) => {
+    const meta = roots[index];
+    if (!meta || rand() > 0.22) return;
+    const count = intBetween(1, 4);
+    for (let n = 0; n < count; n++) {
+      const at = new Date(new Date(row.created_at).getTime()
+        + (n + 1) * intBetween(3, 90) * 60_000);
+      if (at > TODAY) continue;
+      replyRows.push({
+        organization_id: ORG,
+        channel_id: row.channel_id,
+        sender_id: pick(meta.speakers).id,
+        body: pick(REPLIES),
+        parent_id: row.id,
+        mentions: [],
+        attachments: [],
+        is_pinned: false,
+        created_at: iso(at),
+      });
+    }
+  });
+  if (replyRows.length) await insert('messages', replyRows, { returning: false });
+
+  /* -- Reactions ----------------------------------------------------------- */
+
+  const EMOJI = ['👍', '🎉', '👀', '✅', '❤️', '🙏'];
+  const reactionRows = [];
+  const seen = new Set();
+  for (const row of inserted) {
+    if (rand() > 0.18) continue;
+    for (let n = 0; n < intBetween(1, 3); n++) {
+      const who = pick(team);
+      const emoji = pick(EMOJI);
+      const key = `${row.id}:${who.id}:${emoji}`;
+      // The table's unique index refuses a repeat, and one conflict fails the
+      // whole chunk it is in.
+      if (seen.has(key)) continue;
+      seen.add(key);
+      reactionRows.push({ message_id: row.id, member_id: who.id, emoji });
+    }
+  }
+  if (reactionRows.length) await insert('message_reactions', reactionRows, { returning: false });
+
+  /* -- Where everybody has read to ----------------------------------------- */
+
+  const latestByChannel = new Map();
+  for (const row of inserted) {
+    const at = new Date(row.created_at).getTime();
+    if (at > (latestByChannel.get(row.channel_id) ?? 0)) latestByChannel.set(row.channel_id, at);
+  }
+
+  for (const row of memberRows) {
+    const latest = latestByChannel.get(row.channel_id);
+    if (!latest) continue;
+    /*
+       The owner is left behind in about a third of their rooms and caught up
+       in the rest, so both states are on the screen. Everybody else is caught
+       up, because nobody is looking at their screen.
+    */
+    const behindHours = row.member_id === owner.id && rand() < 0.35
+      ? intBetween(6, 40)
+      : 0;
+    await rest(
+      'PATCH',
+      `channel_members?channel_id=eq.${row.channel_id}&member_id=eq.${row.member_id}`,
+      { last_read_at: iso(new Date(latest - behindHours * 3_600_000)) },
+      { Prefer: 'return=minimal' },
+    ).catch(() => null);
+  }
+
+  /* -- The owner's shelf ---------------------------------------------------- */
+
+  const saveable = shuffle(inserted.filter(r => r.sender_id !== owner.id)).slice(0, 4);
+  const NOTES = ['For the Thursday review', '', 'Check this against the contract', ''];
+  if (saveable.length) {
+    await insert('message_saves', saveable.map((row, i) => ({
+      organization_id: ORG,
+      member_id: owner.id,
+      message_id: row.id,
+      note: NOTES[i] ?? '',
+      created_at: iso(daysAgo(intBetween(1, 12))),
+    })), { returning: false });
+  }
+
+  /* -- Meetings ------------------------------------------------------------ */
+
+  const projectRoom = channels.find((_, i) => plan[i].project_id) ?? channels[0];
+  const general = channels[0];
+
+  const meetingPlan = [
+    {
+      title: 'Weekly delivery review',
+      agenda: 'Where each project stands, what is blocked, and what moves.',
+      channel_id: projectRoom.id,
+      status: 'ended',
+      scheduled_at: iso(daysAgo(6)),
+      started_at: iso(daysAgo(6)),
+      ended_at: iso(new Date(daysAgo(6).getTime() + 47 * 60_000)),
+      notes:
+        'Decisions\n'
+        + '- Halden telemetry moves to the 18th. Client informed.\n'
+        + '- No new scope on Corvo until the portal ships.\n'
+        + '\n'
+        + 'Actions\n'
+        + '- Redo the delivery plan with the new dates.\n'
+        + '- Write the migration risks up for the client.\n',
+    },
+    {
+      title: 'Pallas renewal, commercial call',
+      agenda: 'Pricing, term, and the support tier they asked about.',
+      channel_id: general.id,
+      status: 'scheduled',
+      scheduled_at: iso(atHour(daysAhead(2), 14)),
+      notes: '',
+    },
+    {
+      title: 'Design critique',
+      agenda: 'Three screens, twenty minutes each. Bring questions, not opinions.',
+      channel_id: channels[2]?.id ?? general.id,
+      status: 'scheduled',
+      scheduled_at: iso(atHour(daysAhead(5), 10)),
+      notes: '',
+    },
+  ];
+
+  const meetings = await insert('meetings', meetingPlan.map(m => ({
+    organization_id: ORG,
+    channel_id: m.channel_id,
+    title: m.title,
+    agenda: m.agenda,
+    /*
+       A colleague hosts the two that are still to come. An invitation the
+       signed-in person has not answered is what puts anything in Home's
+       attention band, and you cannot be invited to your own meeting.
+    */
+    host_id: m.status === 'ended' ? owner.id : others[0].id,
+    status: m.status,
+    mode: 'video',
+    scheduled_at: m.scheduled_at ?? null,
+    started_at: m.started_at ?? null,
+    ended_at: m.ended_at ?? null,
+    duration_minutes: 45,
+    waiting_room: m.status !== 'ended',
+    notes: m.notes,
+  })));
+
+  /*
+     `seed_meeting_host()` writes the host's own participant row on insert, so
+     only the guests are added here. Inserting the host again would collide
+     with the unique index on (meeting_id, member_id) and fail the batch.
+  */
+  const participantRows = [];
+  meetings.forEach((meeting, i) => {
+    const spec = meetingPlan[i];
+    const hostId = spec.status === 'ended' ? owner.id : others[0].id;
+    for (const guest of [owner, ...others.slice(0, 5)]) {
+      if (guest.id === hostId) continue;
+      participantRows.push({
+        meeting_id: meeting.id,
+        member_id: guest.id,
+        role: 'attendee',
+        state: spec.status === 'ended' ? 'left' : 'invited',
+        joined_at: spec.status === 'ended' ? spec.started_at : null,
+        left_at: spec.status === 'ended' ? spec.ended_at : null,
+      });
+    }
+  });
+  if (participantRows.length) {
+    await insert('meeting_participants', participantRows, { returning: false });
+  }
+
+  return {
+    channels: channels.length + dms.length,
+    messages: inserted.length + replyRows.length,
+    'message reactions': reactionRows.length,
+    'saved messages': saveable.length,
+    meetings: meetings.length,
+  };
+}
+
+/** A channel slug, the same shape the create endpoint produces. */
+function slugOf(name) {
+  return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+}
+
+/** A date at a whole hour, without mutating the one passed in. */
+function atHour(date, hour) {
+  const d = new Date(date);
+  d.setHours(hour, 0, 0, 0);
+  return d;
+}
+
+/**
+ * "Draft is up" after an @mention, so the sentence still reads as a sentence.
+ * Left alone when the first word is a name or an acronym.
+ */
+function lowerFirst(text) {
+  if (/^[A-Z]{2,}/.test(text)) return text;
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Faces                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A photograph for everybody in the demo workspace.
+ *
+ * -- Why the demo needs this ------------------------------------------------
+ *
+ * `profiles.avatar_url` is rendered by the sidebar, the CRM, Projects, the
+ * workspace, HR, the client portal and - since the Communication pass - every
+ * message, mention, meeting tile and people picker. Nobody in the demo
+ * workspace had one, so every one of those surfaces was judged on its fallback
+ * and the "one profile, used everywhere" behaviour could not be seen at all.
+ *
+ * -- Why generated marks rather than photographs ---------------------------
+ *
+ * Because a demo dataset must not ship pictures of real people, and inventing
+ * faces is worse than not having them. These are deterministic geometric marks
+ * drawn from the person's membership id, in the product's own chart ramp: they
+ * are unmistakably *images* rather than initials, which is the thing being
+ * demonstrated, and they are honest about being generated.
+ *
+ * -- The path is the security model ----------------------------------------
+ *
+ * `storage_org_id()` reads the first segment of the object name and the upload
+ * policy checks it against the caller's memberships, so an avatar has to live
+ * under an organisation id. The same shape the settings page uploads to.
+ */
+async function seedAvatars(ORG, team) {
+  const TINTS = [
+    '#2d9572', '#2c6fa7', '#d4a93f', '#b8730a',
+    '#8b5cf6', '#0f766e', '#6366f1', '#c0392b',
+  ];
+
+  let written = 0;
+
+  for (const member of team) {
+    const seed = hashOf(member.id);
+    const tint = TINTS[seed % TINTS.length];
+    const png = identicon(seed, tint);
+    const path = `${ORG}/${member.user_id ?? member.id}/avatar.png`;
+
+    try {
+      const res = await fetch(`${URL}/storage/v1/object/avatars/${path}`, {
+        method: 'POST',
+        headers: {
+          apikey: KEY,
+          Authorization: `Bearer ${KEY}`,
+          'Content-Type': 'image/png',
+          'x-upsert': 'true',
+        },
+        body: png,
+      });
+      if (!res.ok && res.status !== 409) {
+        throw new Error(`${res.status} ${(await res.text()).slice(0, 200)}`);
+      }
+    } catch (e) {
+      console.log(`  ! avatar for ${member.id}: ${String(e.message).slice(0, 120)}`);
+      continue;
+    }
+
+    const url = `${URL}/storage/v1/object/public/avatars/${path}`;
+    /*
+       Written against the profile, which is the one place identity lives. A
+       membership does not carry a face; a person does, and the same person in
+       two organisations is the same face in both.
+    */
+    if (member.user_id) {
+      await rest('PATCH', `profiles?id=eq.${member.user_id}`, { avatar_url: url },
+        { Prefer: 'return=minimal' }).catch(() => null);
+      written += 1;
+    }
+  }
+
+  return { avatars: written };
+}
+
+/** A small stable integer from an id. */
+function hashOf(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (id.charCodeAt(i) + ((h << 5) - h)) | 0;
+  return Math.abs(h);
+}
+
+/**
+ * A five-by-five symmetric mark, as a PNG.
+ *
+ * -- Why PNG and not SVG --------------------------------------------------
+ *
+ * The `avatars` bucket allows jpeg, png, webp and gif, and refuses
+ * `image/svg+xml` with a 415. That restriction is right and worth keeping:
+ * an SVG is a document that can carry script, and this bucket is public and
+ * rendered in `<img>` tags across the product.
+ *
+ * So the mark is rasterised here. A PNG is a signature, three chunks and a
+ * zlib stream, and `zlib.deflateSync` is in the standard library - which is
+ * cheaper than a dependency for eleven images that never change.
+ *
+ * Symmetric because an asymmetric grid of squares reads as noise at 28px,
+ * which is the size these are seen at almost everywhere. Two shades of one
+ * hue rather than several, so a column of them in a message list stays calm.
+ */
+function identicon(seed, tint) {
+  const SIZE = 99;
+  const CELL = 15;
+  const PAD = 12;
+
+  const ink = [
+    parseInt(tint.slice(1, 3), 16),
+    parseInt(tint.slice(3, 5), 16),
+    parseInt(tint.slice(5, 7), 16),
+  ];
+  // The background is the same hue at 14% over white, which is what the
+  // fallback initials use, so a generated face and a drawn one match.
+  const wash = ink.map(c => Math.round(255 - (255 - c) * 0.14));
+
+  const on = new Set();
+  let bits = seed;
+  for (let y = 0; y < 5; y++) {
+    for (let x = 0; x < 3; x++) {
+      bits = (bits * 1103515245 + 12345) & 0x7fffffff;
+      if ((bits >> 8) % 100 < 48) { on.add(`${x},${y}`); on.add(`${4 - x},${y}`); }
+    }
+  }
+
+  /* Raw scanlines: one filter byte per row, then RGB triples. */
+  const raw = Buffer.alloc(SIZE * (1 + SIZE * 3));
+  let o = 0;
+  for (let py = 0; py < SIZE; py++) {
+    raw[o++] = 0;
+    for (let px = 0; px < SIZE; px++) {
+      const gx = Math.floor((px - PAD) / CELL);
+      const gy = Math.floor((py - PAD) / CELL);
+      const inside = gx >= 0 && gx < 5 && gy >= 0 && gy < 5 && on.has(`${gx},${gy}`);
+      const c = inside ? ink : wash;
+      raw[o++] = c[0]; raw[o++] = c[1]; raw[o++] = c[2];
+    }
+  }
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(SIZE, 0);
+  ihdr.writeUInt32BE(SIZE, 4);
+  ihdr[8] = 8;   // bit depth
+  ihdr[9] = 2;   // colour type: truecolour
+
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', ihdr),
+    pngChunk('IDAT', zlib.deflateSync(raw, { level: 9 })),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/** One PNG chunk: length, type, payload, CRC32 of type and payload. */
+function pngChunk(type, data) {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length, 0);
+  const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body), 0);
+  return Buffer.concat([length, body, crc]);
+}
+
+const CRC_TABLE = (() => {
+  const table = new Int32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c;
+  }
+  return table;
+})();
+
+function crc32(buf) {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
 }

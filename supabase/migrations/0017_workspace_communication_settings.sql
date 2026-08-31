@@ -1338,7 +1338,14 @@ END $$;
  * clicks it; computing that in the browser would mean shipping the sharing
  * rules to it, which is both duplication and a disclosure.
  */
-CREATE OR REPLACE VIEW public.v_workspace_tree
+-- Dropped rather than replaced, as `v_channel_members` below already is.
+-- `CREATE OR REPLACE VIEW` cannot remove a column, and 0035 appends six to
+-- this view - so on a replay of the whole set against a database that has
+-- reached 0035, this statement fails with "cannot drop columns from view" and
+-- takes every migration after it with it. 0035 recreates the wider version a
+-- few files later; nothing depends on either.
+DROP VIEW IF EXISTS public.v_workspace_tree CASCADE;
+CREATE VIEW public.v_workspace_tree
 WITH (security_invoker = true) AS
 SELECT
   p.id,
@@ -1392,7 +1399,10 @@ COMMENT ON VIEW public.v_workspace_tree IS
  * shape is wanted by the project deliverables tab and the HR documents tab,
  * and three PostgREST select strings for one join is how they drift.
  */
-CREATE OR REPLACE VIEW public.v_files
+-- Same reason as `v_workspace_tree` above: 0035 widens this view, so a replay
+-- has to drop it here rather than try to replace it with a narrower one.
+DROP VIEW IF EXISTS public.v_files CASCADE;
+CREATE VIEW public.v_files
 WITH (security_invoker = true) AS
 SELECT
   f.id,

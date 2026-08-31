@@ -41,7 +41,7 @@ export const { GET, POST } = collectionHandlers(
        *
        * Rejected here with the list of valid phases rather than left to the
        * CHECK constraint, which surfaces as "violates check constraint
-       * milestones_stage_valid" — accurate, and useless to the person who
+       * milestones_stage_valid" - accurate, and useless to the person who
        * chose the wrong word.
        *
        * 'completed' is not accepted on creation for the same reason

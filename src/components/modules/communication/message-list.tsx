@@ -4,12 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   Pin, PinOff, MoreHorizontal, SmilePlus, MessageSquare, Trash2, Pencil,
-  Eye, Link2, FileText, Download, Loader2, CornerDownRight, Check,
+  Eye, Link2, FileText, Download, Loader2, CornerDownRight, Check, Bookmark,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PersonAvatar } from '@/components/shared/person-avatar';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
   DropdownMenuSeparator,
@@ -19,25 +19,28 @@ import {
 } from '@/components/ui/dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { formatFileSize, formatRelativeTime, initialsOf } from '@/lib/format';
+import { formatFileSize, formatRelativeTime } from '@/lib/format';
 import { useAppStore } from '@/store/app-store';
 import { cn } from '@/lib/utils';
 
 import {
-  type ChannelMember, type Message, type MessageFile, type RecordReference,
-  type Receipt, QUICK_REACTIONS, REFERENCE_TARGETS, api, avatarColor, clockTime,
-  isImage,
+  type ChannelMember, type ChannelRow, type Message, type MessageFile,
+  type RecordReference, type Receipt, type ThreadSummary,
+  QUICK_REACTIONS, REFERENCE_TARGETS, api, clockTime, isImage,
 } from './types';
 import { RichText } from './rich-text';
+import { TurnIntoMenu } from './actions';
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
 //  One message
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
 
 export interface MessageBubbleProps {
   message: Message;
+  /** The conversation it is in, which is what decides where it can be sent. */
+  channel: ChannelRow;
   isOwn: boolean;
-  /** Same author, within a few minutes — render without a repeated header. */
+  /** Same author, within a few minutes: render without a repeated header. */
   isConsecutive: boolean;
   currentMemberId: string | null;
   canModerate: boolean;
@@ -46,6 +49,20 @@ export interface MessageBubbleProps {
   members: ChannelMember[];
   /** Highlighted because a search or a jump brought the reader here. */
   highlighted?: boolean;
+  /**
+   * What is under this message, known before it is opened.
+   *
+   * From `channel_threads()`, fetched once per conversation. Before 0036 the
+   * count could not be known without fetching the replies, so a message with
+   * eleven answers was drawn identically to one nobody had responded to.
+   */
+  thread?: ThreadSummary;
+  /** Whether this message is on the reader's own shelf. */
+  isSaved: boolean;
+  onToggleSave: () => void;
+  /** Turning a sentence into work. See `actions.tsx`. */
+  onTurnInto: (destination: 'todo' | 'reminder' | 'crm' | 'task') => void;
+  onScheduleMeeting: () => void;
   onTogglePin: () => void;
   onReact: (emoji: string) => void;
   onDelete: () => void;
@@ -57,8 +74,9 @@ export interface MessageBubbleProps {
 }
 
 export function MessageBubble({
-  message, isOwn, isConsecutive, currentMemberId, canModerate, canEdit, canDelete,
-  members, highlighted, onTogglePin, onReact, onDelete, onReply, onEdit,
+  message, channel, isOwn, isConsecutive, currentMemberId, canModerate, canEdit, canDelete,
+  members, highlighted, thread, isSaved, onToggleSave, onTurnInto, onScheduleMeeting,
+  onTogglePin, onReact, onDelete, onReply, onEdit,
   onToggleThread, threadOpen, replies,
 }: MessageBubbleProps) {
   const [editing, setEditing] = useState(false);
@@ -109,8 +127,8 @@ export function MessageBubble({
   /**
    * Whether this message names the reader.
    *
-   * Read from `messages.mentions` — the column the notification trigger fires
-   * on — rather than by looking for the reader's name in the text. The two can
+   * Read from `messages.mentions` - the column the notification trigger fires
+   * on - rather than by looking for the reader's name in the text. The two can
    * disagree: somebody can type a name the composer did not resolve, and a
    * message edited afterwards keeps the mentions it was sent with. The column
    * is what actually notified somebody, so it is what the highlight should
@@ -123,20 +141,32 @@ export function MessageBubble({
   return (
     <div
       id={`message-${message.id}`}
+      /**
+       * Three states, and only one of them may carry colour at a time.
+       *
+       * Being named is the brand; being pinned is the warning ramp, which is
+       * the colour a pin already wears everywhere else in the product. The
+       * washes are a twentieth of full strength, because a timeline in a busy
+       * channel can have a dozen of these in view at once and a column of
+       * tinted blocks has no hierarchy left in it.
+       */
       className={cn(
-        'group relative flex gap-2.5 rounded-lg px-3 py-1 transition-colors',
-        'hover:bg-muted/40',
-        message.isPinned && 'border-l-2 border-amber-400 bg-amber-50/40 dark:bg-amber-950/10',
-        namesMe && !message.isPinned && 'border-l-2 border-amber-400/70 bg-amber-50/30 dark:bg-amber-950/10',
-        highlighted && 'animate-pulse bg-emerald-500/10',
+        'group relative flex gap-2.5 rounded-md px-3 py-1 transition-colors',
+        'hover:bg-muted/50',
+        message.isPinned && 'border-l-2 border-warning/70 bg-warning/[0.05]',
+        namesMe && !message.isPinned && 'border-l-2 border-brand bg-brand/[0.05]',
+        highlighted && 'bg-brand/15 ring-1 ring-inset ring-brand/30',
       )}
     >
       {!isConsecutive ? (
-        <Avatar className="mt-0.5 size-9 shrink-0">
-          <AvatarFallback className={cn('text-xs font-medium text-white', avatarColor(message.senderId))}>
-            {initialsOf(senderName)}
-          </AvatarFallback>
-        </Avatar>
+        <PersonAvatar
+          id={message.senderId}
+          name={senderName}
+          src={message.sender?.profiles?.avatarUrl}
+          size="md"
+          decorative
+          className="mt-0.5"
+        />
       ) : (
         /* The time appears in the gutter on hover, so a run of consecutive
            messages stays clean and is still individually timestamped. */
@@ -179,18 +209,26 @@ export function MessageBubble({
               disabled={savingEdit}
               autoFocus
               rows={Math.min(6, editDraft.split('\n').length + 1)}
-              className="resize-none rounded-md border bg-background px-2.5 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
+              className="resize-none rounded-md border bg-background px-2.5 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
             />
             <p className="text-[10px] text-muted-foreground">
               Enter to save · Shift+Enter for a new line · Escape to cancel
             </p>
           </div>
         ) : message.body ? (
+          /*
+            A reading measure, not the width of the window.
+
+            A timeline that fills a 1440px screen puts 190 characters on a
+            line, which is roughly two and a half times what anybody reads
+            comfortably - and a conversation is read for hours. Capped at 75
+            characters and left aligned, so the eye returns to the same place.
+          */
           <RichText
             body={message.body}
             mentions={mentionNames}
             currentMemberId={currentMemberId}
-            className="text-foreground/90"
+            className="max-w-[75ch] text-[13.5px] leading-relaxed text-foreground/90"
           />
         ) : null}
 
@@ -222,7 +260,7 @@ export function MessageBubble({
                       className={cn(
                         'flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition-colors',
                         mine
-                          ? 'border-emerald-500 bg-emerald-500/10'
+                          ? 'border-brand bg-brand/10'
                           : 'border-transparent bg-muted hover:border-border',
                       )}
                     >
@@ -237,34 +275,72 @@ export function MessageBubble({
           </div>
         )}
 
-        {/* ── Thread ──
-            Shown only when it has replies or has been opened. A "0 replies"
-            affordance on every message is noise, and the count is not known
-            until the thread is fetched. */}
-        {(threadOpen || (replies?.length ?? 0) > 0) && (
+        {/* -- Thread --
+            The count comes from `channel_threads()` and arrives with the
+            timeline, so a discussion announces itself instead of hiding until
+            somebody happens to click. A "0 replies" affordance on every
+            message would still be noise, so nothing is drawn until there is
+            something under the message or the reader has opened it. */}
+        {(threadOpen || (thread?.replyCount ?? 0) > 0 || (replies?.length ?? 0) > 0) && (
           <div className="mt-1.5">
             <button
               onClick={onToggleThread}
-              className="flex items-center gap-1 text-xs font-medium text-emerald-700 hover:underline dark:text-emerald-400"
+              className={cn(
+                'group/thread flex items-center gap-1.5 rounded-md py-0.5 pr-1.5 text-xs',
+                'text-muted-foreground transition-colors hover:text-foreground',
+              )}
             >
-              <CornerDownRight className="size-3" />
-              {replies === undefined
-                ? 'Loading replies…'
-                : replies.length === 0
-                  ? 'No replies yet'
-                  : `${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
-              {threadOpen ? ' · hide' : ''}
+              <CornerDownRight className="size-3 shrink-0" />
+              <span className="font-medium text-foreground">
+                {threadCountLabel(thread, replies)}
+              </span>
+              {/*
+                Who is in it, and whether you are.
+
+                "Ada and two others" is the sentence people use out loud, and
+                `iReplied` is what "following a discussion" means here: having
+                said something in it. There is no separate follow list, on
+                purpose - one would need upkeep and would fall out of step with
+                the conversation it claims to describe.
+              */}
+              {!!thread?.participants?.length && (
+                <span className="hidden truncate sm:inline">
+                  {participantWords(thread.participants)}
+                </span>
+              )}
+              {thread?.iReplied && (
+                <span className="hidden shrink-0 rounded border px-1 text-[10px] font-medium sm:inline">
+                  You replied
+                </span>
+              )}
+              {thread?.lastReplyAt && !threadOpen && (
+                <span className="hidden shrink-0 text-muted-foreground/80 md:inline">
+                  {formatRelativeTime(thread.lastReplyAt)}
+                </span>
+              )}
+              <span className="shrink-0 opacity-0 transition-opacity group-hover/thread:opacity-100">
+                {threadOpen ? 'Hide' : 'Open'}
+              </span>
             </button>
+
+            {threadOpen && replies === undefined && (
+              <p className="mt-1.5 flex items-center gap-1.5 border-l-2 border-border pl-3 text-xs text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" /> Loading the thread
+              </p>
+            )}
 
             {threadOpen && !!replies?.length && (
               <div className="mt-1.5 flex flex-col gap-2 border-l-2 border-border pl-3">
                 {replies.map(r => (
                   <div key={r.id} className="flex gap-2">
-                    <Avatar className="mt-0.5 size-6 shrink-0">
-                      <AvatarFallback className={cn('text-[10px] font-medium text-white', avatarColor(r.senderId))}>
-                        {initialsOf(r.sender?.profiles?.fullName)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <PersonAvatar
+                      id={r.senderId}
+                      name={r.sender?.profiles?.fullName}
+                      src={r.sender?.profiles?.avatarUrl}
+                      size="xs"
+                      decorative
+                      className="mt-0.5"
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-baseline gap-2">
                         <span className="text-xs font-semibold">
@@ -289,6 +365,24 @@ export function MessageBubble({
                   </div>
                 ))}
               </div>
+            )}
+
+            {/*
+              Continuing the thread from inside it.
+
+              Without this, replying to a thread meant scrolling back to the
+              root message and finding the reply control on it, which is the
+              gesture that makes people give up and answer in the channel
+              instead. The composer is the same one at the bottom of the
+              screen; this points it at this message.
+            */}
+            {threadOpen && (
+              <button
+                onClick={onReply}
+                className="mt-1.5 ml-3 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Reply in this thread
+              </button>
             )}
           </div>
         )}
@@ -333,6 +427,26 @@ export function MessageBubble({
             <TooltipContent>Reply in thread</TooltipContent>
           </Tooltip>
 
+          {/*
+            The shelf.
+
+            Beside the pin rather than buried in the menu, because these are
+            the two "keep this" gestures and the difference between them is
+            worth teaching by proximity: a pin is for the room, a bookmark is
+            for you. Quiet on purpose - it is the most-used control in the bar
+            and the least important-looking, which is the right way round for
+            something a person does thirty times a week.
+          */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-6" onClick={onToggleSave}
+                aria-pressed={isSaved} aria-label={isSaved ? 'Remove from saved' : 'Save this message'}>
+                <Bookmark className={cn('size-3.5', isSaved && 'fill-current text-brand')} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{isSaved ? 'Saved. Only you can see it.' : 'Save for later'}</TooltipContent>
+          </Tooltip>
+
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" className="size-6" onClick={onTogglePin}
@@ -350,9 +464,28 @@ export function MessageBubble({
               <MoreHorizontal className="size-3.5" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="w-56">
             {/*
-              Who has seen it — asked for, never announced.
+              Communication to action.
+
+              First in the menu because it is the thing this module can do that
+              a standalone chat product cannot: a sentence that is work becomes
+              work, in the place work lives, without anybody retyping it. The
+              submenu offers a client note only in a conversation that has a
+              client, and a project task only in one that has a project.
+            */}
+            <TurnIntoMenu
+              channel={channel}
+              onPick={onTurnInto}
+              onScheduleMeeting={onScheduleMeeting}
+            />
+            <DropdownMenuItem onClick={onToggleSave}>
+              <Bookmark className={cn('mr-2 size-4', isSaved && 'fill-current')} />
+              {isSaved ? 'Remove from saved' : 'Save for later'}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {/*
+              Who has seen it: asked for, never announced.
 
               The brief is explicit that a message must not wear "Seen by Ada,
               Grace" the moment somebody opens the channel. So it is an item in
@@ -379,7 +512,7 @@ export function MessageBubble({
             </DropdownMenuItem>
             {/*
               Only the author edits. Moderation can remove a message but not
-              rewrite it — putting words in somebody's mouth is a different
+              rewrite it - putting words in somebody's mouth is a different
               power from taking them away, and the RLS policy allows an UPDATE
               only to rows whose sender is the caller, so this is the UI
               agreeing with the boundary rather than inventing one.
@@ -404,7 +537,7 @@ export function MessageBubble({
         A timeline holds forty of these bubbles, and a dialog per bubble is
         forty components carrying their own state and effects for a panel
         almost nobody opens. Radix renders nothing while closed, so the cost is
-        small — but it is a cost paid on every message in every channel, for
+        small - but it is a cost paid on every message in every channel, for
         the life of the session.
       */}
       {receiptsOpen && (
@@ -428,7 +561,7 @@ export function MessageBubble({
  *
  * The module holds the channel roster, so "who has read this" could be worked
  * out in the browser by comparing each member's `lastReadAt` against the
- * message — and that is exactly what the old inline "Read by …" line did.
+ * message - and that is exactly what the old inline "Read by …" line did.
  * Two problems: the roster in state is whatever was last fetched, so a large
  * channel silently under-reports, and it is a second definition of "has read"
  * that will disagree with the badge the moment either is touched.
@@ -449,7 +582,7 @@ function ReceiptsDialog({
 
   /**
    * Fetched on mount, because this component only exists once it has been
-   * asked for — the bubble does not render it until then, so there is no
+   * asked for - the bubble does not render it until then, so there is no
    * "opened" transition to hang the request on.
    */
   useEffect(() => {
@@ -500,11 +633,7 @@ function ReceiptsDialog({
                 <div className="mb-4 divide-y rounded-md border">
                   {seen.map(r => (
                     <div key={r.memberId} className="flex items-center gap-2.5 p-2.5">
-                      <Avatar className="size-7 shrink-0">
-                        <AvatarFallback className={cn('text-[10px] text-white', avatarColor(r.memberId))}>
-                          {initialsOf(r.fullName)}
-                        </AvatarFallback>
-                      </Avatar>
+                      <PersonAvatar id={r.memberId} name={r.fullName} src={r.avatarUrl} size="sm" decorative />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">{r.fullName}</p>
                         {r.jobTitle && (
@@ -514,7 +643,7 @@ function ReceiptsDialog({
                       {/*
                         The time is when they last read the conversation, which
                         for a message they have read is the earliest instant we
-                        can honestly claim — not a per-message receipt, and
+                        can honestly claim - not a per-message receipt, and
                         labelled so nobody reads more into it than that.
                       */}
                       <span className="shrink-0 text-xs text-muted-foreground">
@@ -534,11 +663,7 @@ function ReceiptsDialog({
                 <div className="divide-y rounded-md border">
                   {notYet.map(r => (
                     <div key={r.memberId} className="flex items-center gap-2.5 p-2.5 opacity-70">
-                      <Avatar className="size-7 shrink-0">
-                        <AvatarFallback className={cn('text-[10px] text-white', avatarColor(r.memberId))}>
-                          {initialsOf(r.fullName)}
-                        </AvatarFallback>
-                      </Avatar>
+                      <PersonAvatar id={r.memberId} name={r.fullName} src={r.avatarUrl} size="sm" decorative />
                       <p className="min-w-0 flex-1 truncate text-sm">{r.fullName}</p>
                     </div>
                   ))}
@@ -561,13 +686,13 @@ function ReceiptsDialog({
  *
  * ── Why the URL is fetched on demand ─────────────────────────────────────
  *
- * The `attachments` bucket is private, so a path is not readable — it needs a
+ * The `attachments` bucket is private, so a path is not readable - it needs a
  * signed URL, and a signed URL has an expiry. Signing every attachment when
  * the timeline loads would mean a request per file on every channel open, and
  * links that have expired by the time somebody scrolls back to them. So the
  * signature is fetched when somebody actually wants the file.
  *
- * The exception is an image, which is fetched as soon as it is on screen —
+ * The exception is an image, which is fetched as soon as it is on screen -
  * an image preview that needs a click is not a preview.
  */
 function Attachment({ file, compact }: { file: MessageFile; compact?: boolean }) {
@@ -672,7 +797,7 @@ function InlineImage({
    *
    * Fetching in the render body is the shorthand that seems to work and is a
    * side effect in a function React is allowed to call, discard and call
-   * again — under concurrent rendering that is a signing request per attempt.
+   * again - under concurrent rendering that is a signing request per attempt.
    * `onNeedUrl` already memoises its result, so this runs once per file.
    */
   const asked = useRef(false);
@@ -714,8 +839,8 @@ function InlineImage({
 /**
  * ── Why this goes through the store ──────────────────────────────────────
  *
- * There is no route per record in this product — modules are swapped by id
- * inside one page — so "open task X" cannot be expressed as a URL and an
+ * There is no route per record in this product - modules are swapped by id
+ * inside one page - so "open task X" cannot be expressed as a URL and an
  * `<a href>` would be a dead link. `openRecord` switches the module and leaves
  * a focus request the target module consumes once.
  */
@@ -739,7 +864,7 @@ function ReferenceChip({ reference }: { reference: RecordReference }) {
 
   const content = (
     <>
-      <Link2 className="size-3 shrink-0 text-violet-500" />
+      <Link2 className="size-3 shrink-0 text-muted-foreground" />
       <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
         {target.label}
       </span>
@@ -761,7 +886,7 @@ function ReferenceChip({ reference }: { reference: RecordReference }) {
   return (
     <button
       onClick={() => openRecord(target.module, target.type, reference.id)}
-      className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs transition-colors hover:border-violet-400 hover:bg-violet-500/5"
+      className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs transition-colors hover:border-foreground/30 hover:bg-accent"
     >
       {content}
     </button>
@@ -793,17 +918,50 @@ export function DaySeparator({ label }: { label: string }) {
  * channel with nineteen new messages, the useful question is where to start
  * reading, and scrolling up looking for the last thing you recognise is the
  * friction this removes. Rendered once, from the read marker captured when the
- * channel was opened — not from the live marker, which is about to be cleared
+ * channel was opened, not from the live marker, which is about to be cleared
  * by the act of reading.
+ *
+ * The rule is the brand rather than a red: nothing here is wrong or urgent,
+ * and red in this product means live or destructive. A label on one side
+ * rather than centred, because a centred pill reads as a section heading and
+ * this is a place marker.
  */
 export function NewMessagesDivider() {
   return (
-    <div className="my-3 flex items-center gap-3">
-      <div className="h-px flex-1 bg-rose-400/60" />
-      <span className="rounded-full bg-rose-500 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+    <div className="my-3 flex items-center gap-2" role="separator" aria-label="New messages">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand">
         New
       </span>
-      <div className="h-px flex-1 bg-rose-400/60" />
+      <div className="h-px flex-1 bg-brand/40" />
     </div>
   );
+}
+
+/* ------------------------------------------------------------------------- */
+/*  Thread wording                                                            */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * "3 replies", from whichever source knows.
+ *
+ * The summary is authoritative until the thread is opened, at which point the
+ * fetched replies are newer than it - somebody may have answered in between.
+ * Taking the larger of the two is what stops the count flickering downwards
+ * the moment a thread is expanded.
+ */
+function threadCountLabel(thread?: ThreadSummary, replies?: Message[]): string {
+  const known = Math.max(thread?.replyCount ?? 0, replies?.length ?? 0);
+  if (!known) return replies === undefined ? 'Thread' : 'No replies yet';
+  return `${known} ${known === 1 ? 'reply' : 'replies'}`;
+}
+
+/** "Ada Lovelace", "Ada and Grace", "Ada and 4 others". */
+function participantWords(names: string[]): string {
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${firstName(names[0])} and ${firstName(names[1])}`;
+  return `${firstName(names[0])} and ${names.length - 1} others`;
+}
+
+function firstName(full: string): string {
+  return full.split(' ')[0] || full;
 }

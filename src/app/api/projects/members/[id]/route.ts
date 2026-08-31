@@ -74,7 +74,7 @@ export { PATCH as PUT };
  * Take someone off a project.
  *
  * Their tasks are deliberately left assigned. Removing a person from the team
- * is a staffing change, not a statement that the work is unassigned — silently
+ * is a staffing change, not a statement that the work is unassigned - silently
  * orphaning their open tasks would lose the record of who was doing what. The
  * response reports how many they still hold so the caller can reassign them
  * deliberately.

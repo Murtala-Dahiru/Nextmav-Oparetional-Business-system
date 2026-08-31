@@ -26,7 +26,7 @@ export async function GET(_req: Request, { params }: Params) {
  *
  * "You have not been admitted yet" has to be a fact the server holds. If it
  * were a message broadcast to a client, a participant who simply ignored it
- * would still receive everybody's media — the peer connections are established
+ * would still receive everybody's media - the peer connections are established
  * between browsers, so a client that is not told to stay out is already in.
  * The row is what the other participants consult before offering a connection.
  */
@@ -50,7 +50,7 @@ export async function POST(req: Request, { params }: Params) {
     return error('That meeting is over.', 409, 'RULE_VIOLATION');
   }
 
-  // No list means "let me in" — the join button.
+  // No list means "let me in" - the join button.
   const requested: string[] = Array.isArray(b.member_ids) && b.member_ids.length
     ? b.member_ids.filter(Boolean)
     : [ctx.org.memberId];
@@ -80,7 +80,7 @@ export async function POST(req: Request, { params }: Params) {
     /**
      * Where a knock lands.
      *
-     * A host walks straight in — a waiting room the host waits in is a room
+     * A host walks straight in - a waiting room the host waits in is a room
      * nobody can be let out of.
      *
      * ── Coming back is not arriving ──────────────────────────────────────
@@ -88,13 +88,13 @@ export async function POST(req: Request, { params }: Params) {
      * The other three cases are all one person: somebody who is already in
      * this meeting and whose browser has asked again. `admitted` is the
      * moment between the host saying yes and the seat being taken.
-     * `admitted_at` is that same yes, remembered — so leaving to take a call
+     * `admitted_at` is that same yes, remembered - so leaving to take a call
      * and coming back does not put you at the door the host already opened.
      * `joined` means the row still says they are here, which is what a tab
      * that crashed or a laptop that slept looks like.
      *
      * Without these, refreshing the page during a meeting sent you back to
-     * the waiting room and the host had to admit you a second time — which
+     * the waiting room and the host had to admit you a second time - which
      * is the same interruption twice, for the crime of pressing reload. A
      * host who does not want somebody back has `removed`, and that is checked
      * above and is the one state that is not a way-station.
@@ -178,7 +178,7 @@ export async function POST(req: Request, { params }: Params) {
  *
  * One handler for both because they write the same row, and which of them a
  * caller is permitted is decided by `meeting_participants_update` rather than
- * by a branch here — an employee may change their own row and may not change
+ * by a branch here - an employee may change their own row and may not change
  * anybody's role, which is expressed once, in the policy, where it also holds
  * for anything that writes this table by another path.
  */
@@ -218,7 +218,7 @@ export async function PATCH(req: Request, { params }: Params) {
    * Muting somebody else, admitting, removing and promoting are host acts and
    * are refused here with an explanation.
    *
-   * The RLS policy already refuses them — but it refuses by matching no rows,
+   * The RLS policy already refuses them - but it refuses by matching no rows,
    * which reaches the caller as "that person is not in this meeting". True,
    * unhelpful, and indistinguishable from a genuine 404.
    */
@@ -258,7 +258,7 @@ export async function PATCH(req: Request, { params }: Params) {
  * A row is not deleted for either: who was in a meeting is part of what the
  * meeting was, and a participant list that shrinks as people go answers no
  * question anybody has afterwards. Leaving is a state, and this is the same
- * write PATCH makes — kept because "DELETE me from this meeting" is the verb
+ * write PATCH makes - kept because "DELETE me from this meeting" is the verb
  * the browser reaches for when a tab is closing.
  */
 export async function DELETE(req: Request, { params }: Params) {

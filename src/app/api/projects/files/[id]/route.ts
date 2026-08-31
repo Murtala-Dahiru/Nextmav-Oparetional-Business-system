@@ -10,8 +10,8 @@ type Params = { params: Promise<{ id: string }> };
 
 const SELECT =
   'id, filename, mime_type, size_bytes, bucket, path, folder, is_client_visible, ' +
-  'is_confidential, created_at, project_id, requires_approval, approval_decision, ' +
-  'approved_at, approval_note, ' +
+  'is_confidential, external_url, created_at, project_id, requires_approval, ' +
+  'approval_decision, approved_at, approval_note, ' +
   'approver:organization_members!files_approved_by_fkey(' +
   'id, profiles!organization_members_user_id_fkey(full_name))';
 
@@ -20,8 +20,8 @@ const SELECT =
  *
  * The buckets are private, so a path alone is not readable. Signing happens on
  * the server after the row has been resolved through RLS, which means the
- * permission decision is made against the *metadata* — where "this belongs to
- * a project you can see" is expressible — rather than against the storage
+ * permission decision is made against the *metadata* - where "this belongs to
+ * a project you can see" is expressible - rather than against the storage
  * path, where it is not.
  */
 export async function GET(_req: Request, { params }: Params) {
@@ -39,6 +39,19 @@ export async function GET(_req: Request, { params }: Params) {
 
   if (e) return pgError(e);
   if (!file) return error('Not found', 404, 'NOT_FOUND');
+
+  /**
+   * A link has nothing to sign.
+   *
+   * Its `path` is a synthetic key with no object behind it (0034), so asking
+   * storage for a signed URL would fail with `STORAGE_UNAVAILABLE` on a row
+   * that is working exactly as intended. `expiresIn` is null rather than 600,
+   * because a link does not expire and saying it does would be a lie the
+   * client could act on.
+   */
+  if (file.external_url) {
+    return success({ ...file, url: file.external_url, expiresIn: null });
+  }
 
   // Ten minutes: long enough to open or download, short enough that a link
   // pasted into a chat has stopped working by the time anyone finds it.
@@ -132,7 +145,7 @@ export async function PATCH(req: Request, { params }: Params) {
      *
      * Otherwise `requires_approval` stays true on a file the portal no longer
      * lists, and the project's denominator counts a deliverable that cannot be
-     * approved — progress would be permanently capped with nothing on screen to
+     * approved - progress would be permanently capped with nothing on screen to
      * explain it.
      */
     if (update.is_client_visible === false) {
@@ -146,7 +159,7 @@ export async function PATCH(req: Request, { params }: Params) {
      * Confidential and client-visible are mutually exclusive.
      *
      * The portal policy already excludes confidential files, so the
-     * combination would simply not appear — silently, which is the worst
+     * combination would simply not appear - silently, which is the worst
      * outcome: somebody would tick "share with client", see no error, and
      * believe the client had it.
      */
@@ -171,7 +184,7 @@ export async function PATCH(req: Request, { params }: Params) {
       }
       if (wantsConfidential && current?.is_client_visible && !('is_client_visible' in update)) {
         // Marking something confidential withdraws it from the client rather
-        // than refusing — the stricter intent is obviously the one meant.
+        // than refusing - the stricter intent is obviously the one meant.
         update.is_client_visible = false;
       }
     }

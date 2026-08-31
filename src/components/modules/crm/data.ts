@@ -64,82 +64,16 @@ export async function remove(url: string): Promise<void> {
 /* -------------------------------------------------------------------------- */
 
 /**
- * A `date` column, rendered as the day it says.
+ * The calendar-day helpers moved to `lib/format.ts` in Phase 6.
  *
- * ── The trap ─────────────────────────────────────────────────────────────
- *
- * `new Date('2026-09-03')` is UTC midnight *by specification*, so in any
- * timezone west of UTC it renders as the 2nd. `deals.expected_close` is a
- * `date`, and the old CRM passed it straight to `formatDate` - so every close
- * date in the product was a day early for anybody in the Americas, on a screen
- * whose entire job is telling you what closes when.
- *
- * My Work found this in Phase 3 and fixed it locally. This is the second
- * consumer, which is the point the design system says to lift it - so this is
- * the same function, and when the third module needs it, it moves to
- * `lib/format.ts` and both call sites follow it.
- *
- * `timestamptz` values are unaffected and must not be passed here: they carry
- * their own offset, and appending one would shift them.
+ * They were written in My Work, written again here, and Projects was about to
+ * be the third module needing them - which is the condition this repository
+ * uses for lifting a helper rather than copying it a third time. Re-exported
+ * rather than repointed at every call site: seven files in this module import
+ * them from here, and a move that also touches seven files is a move whose
+ * diff hides whether anything changed. Nothing did.
  */
-export function formatDay(iso: string | null | undefined, opts?: Intl.DateTimeFormatOptions): string {
-  if (!iso) return '';
-  const bare = /^\d{4}-\d{2}-\d{2}$/.test(iso);
-  const d = new Date(bare ? `${iso}T00:00:00` : iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleDateString(undefined, opts ?? { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-/** The same day, without the year - for dates inside the current one. */
-export function formatDayShort(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const bare = /^\d{4}-\d{2}-\d{2}$/.test(iso);
-  const d = new Date(bare ? `${iso}T00:00:00` : iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const now = new Date();
-  return d.toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
-  });
-}
-
-/** Today, as `YYYY-MM-DD` in the reader's own calendar. */
-export function today(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-/**
- * Whole days from today to a date, negative for the past.
- *
- * Both ends are normalised to local midnight first, so "tomorrow" is 1 all day
- * rather than 0 in the morning and 1 in the evening. A count of days that
- * changes with the clock is the reason "closes in 0 days" used to appear on
- * something due next week.
- */
-export function daysUntil(iso: string | null | undefined): number | null {
-  if (!iso) return null;
-  const bare = /^\d{4}-\d{2}-\d{2}$/.test(iso);
-  const target = new Date(bare ? `${iso}T00:00:00` : iso);
-  if (Number.isNaN(target.getTime())) return null;
-  target.setHours(0, 0, 0, 0);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return Math.round((target.getTime() - now.getTime()) / 86_400_000);
-}
-
-/** "in 3 days", "today", "5 days ago" - said the way a person would. */
-export function relativeDay(iso: string | null | undefined): string {
-  const d = daysUntil(iso);
-  if (d === null) return '';
-  if (d === 0) return 'today';
-  if (d === 1) return 'tomorrow';
-  if (d === -1) return 'yesterday';
-  if (d > 0) return d < 14 ? `in ${d} days` : `in ${Math.round(d / 7)} weeks`;
-  const past = Math.abs(d);
-  return past < 14 ? `${past} days ago` : `${Math.round(past / 7)} weeks ago`;
-}
+export { formatDay, formatDayShort, todayISO as today, daysUntil, relativeDay } from '@/lib/format';
 
 /** A month key (`2026-08`) as "Aug", or "Aug 25" when the year has turned. */
 export function monthLabel(period: string, withYear = false): string {

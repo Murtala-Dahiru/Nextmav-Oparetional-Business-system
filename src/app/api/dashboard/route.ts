@@ -686,18 +686,34 @@ export async function GET() {
   }
 
   if (sees('workspace')) {
+    /**
+     * The workspace's recent pages.
+     *
+     * This read used to say `is_starred:is_template` - an alias written before
+     * `is_starred` existed, which 0014 then added. It selected the *template*
+     * flag under the star's name, and the mapping below discarded it anyway
+     * and hard-coded `isStarred: false`, so the dashboard has never shown a
+     * star on a starred page and the alias was pointing at the wrong column
+     * the whole time. Both are fixed: the real columns are read, and the
+     * colour is the page's own rather than a framework green.
+     *
+     * Folders and templates are excluded. A folder's timestamp moves whenever
+     * anything inside it is renamed, so including them fills a "recent" list
+     * with containers rather than with what somebody was working on.
+     */
     const { data: pages } = await supabase
       .from('workspace_pages')
-      .select('id, title, icon, updated_at, is_starred:is_template')
+      .select('id, title, icon, colour, updated_at, is_starred')
       .eq('organization_id', orgId).is('deleted_at', null)
+      .eq('is_folder', false).eq('is_template', false)
       .order('updated_at', { ascending: false }).limit(6);
     payload.recentFiles = (pages ?? []).map((p: any) => ({
       id: p.id,
       title: p.title,
       icon: p.icon ?? 'file-text',
-      color: '#10b981',
+      color: p.colour ?? '#2d9572',
       updatedAt: p.updated_at,
-      isStarred: false,
+      isStarred: p.is_starred === true,
     }));
   }
 

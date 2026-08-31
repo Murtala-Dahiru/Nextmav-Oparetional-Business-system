@@ -10,7 +10,7 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PersonAvatar } from '@/components/shared/person-avatar';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -20,11 +20,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { createClient } from '@/lib/supabase/client';
 import { formatFileSize, initialsOf, truncate } from '@/lib/format';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 
 import {
   type ChannelMember, type Message, type RecordReference,
-  QUICK_REACTIONS, REFERENCE_TARGETS, avatarColor, channelLabel,
+  QUICK_REACTIONS, REFERENCE_TARGETS, channelLabel,
   safeName, type ChannelRow,
 } from './types';
 import { plainPreview } from './rich-text';
@@ -37,8 +38,8 @@ import { plainPreview } from './rich-text';
  *  ── What it was ──────────────────────────────────────────────────────────
  *
  *  A single-line `<Input>`. One line means a message longer than a sentence
- *  scrolls sideways while you write it, and Shift+Enter — the gesture everyone
- *  uses for a second line — did nothing at all, because a text input has no
+ *  scrolls sideways while you write it, and Shift+Enter - the gesture everyone
+ *  uses for a second line - did nothing at all, because a text input has no
  *  second line to go to. Mentions had to be typed exactly: `@` then the
  *  colleague's full name, spelled correctly, or the notification silently did
  *  not happen. Nothing could be attached, though the endpoint had accepted
@@ -52,7 +53,7 @@ import { plainPreview } from './rich-text';
  *
  *  · Mention completion. Typing `@` opens the room; arrow keys and Enter pick.
  *    The resolved names are what the module sends as `mentions`, so what was
- *    highlighted is exactly who was notified — the completion is not a
+ *    highlighted is exactly who was notified - the completion is not a
  *    convenience laid over a text match, it is the same list.
  *
  *  · Attachments and record links, which are different things and stay
@@ -77,6 +78,22 @@ export interface ComposerProps {
   currentMemberId: string | null;
   organizationId: string | null;
   maxAttachmentMb: number;
+  /**
+   * Unsent text, per conversation, held by the module.
+   *
+   * -- Why a ref owned by the parent ----------------------------------------
+   *
+   * Because a draft has to outlive this component and must not re-render the
+   * module on every keystroke. The module remounts the composer by channel id,
+   * so switching rooms gives a clean box seeded from this map and switching
+   * back restores what was typed.
+   *
+   * It also fixes something worse than a lost draft: before this the composer
+   * was never remounted, so half a sentence typed in one channel was still in
+   * the box after switching to another, one Return away from being posted in
+   * the wrong room.
+   */
+  drafts: React.MutableRefObject<Record<string, string>>;
   replyTo: Message | null;
   onCancelReply: () => void;
   onSend: (payload: {
@@ -92,10 +109,26 @@ export interface ComposerProps {
 const MAX_ROWS = 6;
 
 export function Composer({
-  channel, members, currentMemberId, organizationId, maxAttachmentMb,
+  channel, members, currentMemberId, organizationId, maxAttachmentMb, drafts,
   replyTo, onCancelReply, onSend, onTyping, disabled,
 }: ComposerProps) {
-  const [draft, setDraft] = useState('');
+  const isMobile = useIsMobile();
+  const [draft, setDraftState] = useState(() => drafts.current[channel.channelId] ?? '');
+
+  /**
+   * Every write to the draft goes through here, so the map and the box cannot
+   * disagree. An effect that mirrored one into the other would be a second
+   * source of truth and one render behind.
+   */
+  const setDraft = useCallback((next: string | ((prev: string) => string)) => {
+    setDraftState(prev => {
+      const value = typeof next === 'function' ? next(prev) : next;
+      if (value) drafts.current[channel.channelId] = value;
+      else delete drafts.current[channel.channelId];
+      return value;
+    });
+  }, [drafts, channel.channelId]);
+
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingFile[]>([]);
   const [references, setReferences] = useState<RecordReference[]>([]);
@@ -116,13 +149,53 @@ export function Composer({
    * Measured from `scrollHeight` after resetting to `auto`: without the reset
    * the box can only ever grow, because `scrollHeight` of an element already
    * tall enough is its own height and deleting a line would leave the gap.
+   *
+   * -- Two things this has to survive --------------------------------------
+   *
+   * · **Being measured before layout.** Run in the effect body, the first
+   *   measurement happens while the box may still be at its intrinsic width,
+   *   where the placeholder wraps over six lines - so an empty composer
+   *   opened at 160px tall and stayed there, because nothing re-measures
+   *   until somebody types. A frame later the width is real. This was
+   *   visible on every conversation: a third of the screen given to an empty
+   *   text box.
+   * · **The width changing afterwards.** Opening the details rail narrows the
+   *   composer, which re-wraps the text and changes how tall it needs to be.
+   *   The observer watches the row rather than the textarea, because
+   *   observing an element while setting its height is a loop.
    */
   useEffect(() => {
     const el = textRef.current;
+    const row = el?.parentElement;
     if (!el) return;
-    el.style.height = 'auto';
-    const line = 24;
-    el.style.height = `${Math.min(el.scrollHeight, line * MAX_ROWS + 16)}px`;
+
+    const LINE = 24;
+    const cap = LINE * MAX_ROWS + 16;
+    const fit = () => {
+      el.style.height = 'auto';
+      const wanted = el.scrollHeight;
+      el.style.height = `${Math.min(wanted, cap)}px`;
+      // A scrollbar only once there is something to scroll. Left on auto, the
+      // browser draws one against a box that is exactly its own content.
+      el.style.overflowY = wanted > cap ? 'auto' : 'hidden';
+    };
+
+    const frame = requestAnimationFrame(fit);
+
+    let lastWidth = row?.clientWidth ?? 0;
+    const observer = row && typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => {
+        if (row.clientWidth === lastWidth) return;
+        lastWidth = row.clientWidth;
+        fit();
+      })
+      : null;
+    if (observer && row) observer.observe(row);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
   }, [draft]);
 
   // ─── Mentions ────────────────────────────────────────────────────────────
@@ -140,7 +213,7 @@ export function Composer({
    * Find the mention being typed.
    *
    * Looks backwards from the caret for an `@` that is not preceded by a word
-   * character — so an email address does not open the picker — and gives up at
+   * character - so an email address does not open the picker - and gives up at
    * a newline or after enough characters that this is clearly prose rather
    * than a name. Two words are allowed after the `@` because most people are
    * called two words.
@@ -168,7 +241,7 @@ export function Composer({
     setDraft(next);
     setMentionQuery(null);
     // The caret goes after the name that was just inserted, not to the end of
-    // the message — somebody mentioning a colleague mid-sentence is still in
+    // the message - somebody mentioning a colleague mid-sentence is still in
     // the middle of that sentence.
     requestAnimationFrame(() => {
       const pos = at + member.fullName.length + 2;
@@ -201,7 +274,7 @@ export function Composer({
 
   const upload = useCallback(async (list: FileList | File[]) => {
     if (!organizationId) {
-      toast.error('Your workspace is still loading — try again in a moment.');
+      toast.error('Your workspace is still loading - try again in a moment.');
       return;
     }
 
@@ -215,8 +288,8 @@ export function Composer({
       /**
        * The path must begin with the organisation id.
        *
-       * That is the whole storage security model — every policy checks the
-       * first segment against the caller's memberships — and the message
+       * That is the whole storage security model - every policy checks the
+       * first segment against the caller's memberships - and the message
        * endpoint refuses a path that does not match, so getting this wrong
        * fails loudly rather than storing something unreachable.
        */
@@ -245,7 +318,7 @@ export function Composer({
    * A half-uploaded attachment that is removed is removed from storage too.
    *
    * Without this, every abandoned draft leaves an object nobody will ever
-   * reference — invisible, un-deletable through any screen, and counted
+   * reference - invisible, un-deletable through any screen, and counted
    * against the organisation's storage for ever.
    */
   const dropPending = useCallback(async (key: string) => {
@@ -295,7 +368,7 @@ export function Composer({
        * The module has already reported it. Put the work back so nothing
        * anybody typed is lost to a failed request.
        *
-       * The attachments included — they were restored for the text and the
+       * The attachments included - they were restored for the text and the
        * record links and not for the files, so a send that failed left
        * somebody looking at their message with the document missing from it,
        * and no sign that it had ever been there. The objects are already in
@@ -318,8 +391,11 @@ export function Composer({
   return (
     <div
       className={cn(
-        'border-t bg-card/40 px-4 py-3 transition-colors',
-        dragging && 'bg-emerald-500/5 ring-1 ring-inset ring-emerald-500/40',
+        'shrink-0 border-t bg-card/40 px-3 py-3 transition-colors sm:px-4',
+        // The home indicator on a modern phone sits over the last few pixels
+        // of the viewport; without this the send button is under it.
+        'pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+        dragging && 'bg-brand/5 ring-1 ring-inset ring-brand/40',
       )}
       onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
       onDragLeave={() => setDragging(false)}
@@ -333,14 +409,14 @@ export function Composer({
           normal send look identical from the composer, and the message lands
           somewhere the sender did not expect. */}
       {replyTo && (
-        <div className="mb-2 flex items-center gap-2 rounded-md border-l-2 border-emerald-500 bg-muted/50 px-2.5 py-1.5">
-          <MessageSquare className="size-3.5 shrink-0 text-emerald-600" />
+        <div className="mb-2 flex items-center gap-2 rounded-md border-l-2 border-brand bg-muted/50 px-2.5 py-1.5">
+          <MessageSquare className="size-3.5 shrink-0 text-brand" />
           <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
             Replying to{' '}
             <span className="font-medium text-foreground">
               {replyTo.sender?.profiles?.fullName || 'Unknown member'}
             </span>
-            {' — '}{truncate(plainPreview(replyTo.body), 60)}
+            {' - '}{truncate(plainPreview(replyTo.body), 60)}
           </p>
           <Button variant="ghost" size="icon" className="size-5 shrink-0"
             onClick={onCancelReply} aria-label="Cancel reply">
@@ -384,7 +460,7 @@ export function Composer({
 
           {references.map(r => (
             <Badge key={`${r.kind}-${r.id}`} variant="outline" className="gap-1.5 py-1 pl-2 pr-1">
-              <Link2 className="size-3 text-violet-500" />
+              <Link2 className="size-3 text-muted-foreground" />
               <span className="max-w-[12rem] truncate">{r.label}</span>
               <button
                 onClick={() => setReferences(prev =>
@@ -418,11 +494,8 @@ export function Composer({
                   i === mentionIndex ? 'bg-accent' : 'hover:bg-accent/50',
                 )}
               >
-                <Avatar className="size-6">
-                  <AvatarFallback className={cn('text-[10px] text-white', avatarColor(m.memberId))}>
-                    {initialsOf(m.fullName)}
-                  </AvatarFallback>
-                </Avatar>
+                <PersonAvatar id={m.memberId} name={m.fullName}
+                  src={m.avatarUrl} size="xs" decorative />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm">{m.fullName}</span>
                   {m.jobTitle && (
@@ -443,7 +516,7 @@ export function Composer({
                   <Paperclip className="size-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Attach a file — or drop one here</TooltipContent>
+              <TooltipContent>Attach a file - or drop one here</TooltipContent>
             </Tooltip>
           </TooltipProvider>
 
@@ -475,10 +548,20 @@ export function Composer({
           rows={1}
           value={draft}
           disabled={disabled || sending}
+          /**
+           * The hints belong on a keyboard, and only on a keyboard.
+           *
+           * "@ to notify, ** for bold" wraps to a second line at 375px, which
+           * makes an empty composer two lines tall on a phone before anybody
+           * has typed anything - and the shortcuts it advertises need keys the
+           * device does not have.
+           */
           placeholder={
             replyTo
               ? 'Reply in thread…'
-              : `Message ${channelLabel(channel)}   ·   @ to notify, ** for bold`
+              : isMobile
+                ? `Message ${channelLabel(channel)}`
+                : `Message ${channelLabel(channel)}   ·   @ to notify, ** for bold`
           }
           onChange={(e) => {
             setDraft(e.target.value);
@@ -490,7 +573,7 @@ export function Composer({
            * Pasting a screenshot posts it.
            *
            * A clipboard image has no filename, so one is invented from the
-           * moment — otherwise every screenshot in the organisation is called
+           * moment - otherwise every screenshot in the organisation is called
            * "image.png" and the file list becomes unusable within a week.
            */
           onPaste={(e) => {
@@ -516,25 +599,58 @@ export function Composer({
               }
               if (e.key === 'Escape') { e.preventDefault(); setMentionQuery(null); return; }
             }
-            // Enter sends, Shift+Enter is a new line. The other way round is a
-            // defensible choice and the wrong one for a chat: the common act
-            // should be the shorter gesture.
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); return; }
+            /**
+             * Enter sends on a desktop, and starts a new line on a phone.
+             *
+             * -- Why the two are different ------------------------------------
+             *
+             * On a keyboard the common act should be the shorter gesture, and
+             * Shift+Enter is right there for a second line. On a phone there is
+             * no Shift: intercepting Return meant a message could never have a
+             * second line at all, and every accidental Return sent half a
+             * sentence. The soft keyboard's own Return key is the newline, the
+             * send button is the send, and `enterKeyHint` tells the keyboard to
+             * draw it as a return key rather than as "Go".
+             */
+            if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
+              e.preventDefault(); void send(); return;
+            }
             // Escape drops out of a reply rather than leaving the draft
             // silently bound to a thread.
             if (e.key === 'Escape' && replyTo) onCancelReply();
           }}
+          enterKeyHint={isMobile ? 'enter' : 'send'}
+          /**
+           * The box brings itself into view when the keyboard opens.
+           *
+           * A soft keyboard resizes the visual viewport without moving the
+           * layout, so on a phone the composer can end up underneath it with
+           * no way to see what is being typed. Scrolling the focused element
+           * into view after the keyboard has finished animating is the fix that
+           * works without measuring `visualViewport`, and it costs nothing on a
+           * desktop where the element is already in view.
+           */
+          onFocus={() => {
+            if (!isMobile) return;
+            setTimeout(
+              () => textRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }),
+              250,
+            );
+          }}
           className={cn(
-            'min-h-9 flex-1 resize-none rounded-lg border bg-background px-3 py-2 text-sm',
+            'min-h-9 flex-1 resize-none rounded-lg border bg-background px-3 py-2',
+            // 16px on a phone, because anything smaller makes iOS Safari zoom
+            // the page on focus and leave it zoomed.
+            'text-base sm:text-sm',
             'placeholder:text-muted-foreground focus-visible:outline-none',
-            'focus-visible:ring-2 focus-visible:ring-emerald-500/40',
+            'focus-visible:ring-2 focus-visible:ring-ring/40',
             'disabled:cursor-not-allowed disabled:opacity-60',
           )}
         />
 
         <Button
           size="icon"
-          className="mb-0.5 size-9 shrink-0 bg-emerald-600 text-white hover:bg-emerald-700"
+          className="mb-0.5 size-9 shrink-0"
           onClick={() => void send()}
           disabled={!canSend || disabled}
           aria-label="Send message"
@@ -547,7 +663,9 @@ export function Composer({
 
       {/* One quiet line of help rather than a formatting toolbar. A toolbar in
           a chat composer is six buttons nobody presses twice; the shortcuts
-          are the thing worth knowing. */}
+          are the thing worth knowing. Hidden on a phone, where none of these
+          keys exist and the line would be one more thing between the keyboard
+          and the conversation. */}
       <p className="mt-1.5 hidden px-1 text-[11px] text-muted-foreground sm:block">
         <kbd className="rounded border px-1">Enter</kbd> to send ·{' '}
         <kbd className="rounded border px-1">Shift</kbd>+<kbd className="rounded border px-1">Enter</kbd> for a new line ·{' '}
@@ -567,7 +685,7 @@ export function Composer({
  * Because it already exists, is permission-filtered per module, and searches
  * exactly the seven things somebody would want to link. Writing a second
  * search here would be a second set of rules about which records an employee
- * may see — and the first one is already the version that gets maintained.
+ * may see - and the first one is already the version that gets maintained.
  */
 function RecordLinkButton({
   onPick, disabled,
@@ -577,7 +695,7 @@ function RecordLinkButton({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  /** Results tagged with the query that produced them — see `SearchDialog`. */
+  /** Results tagged with the query that produced them - see `SearchDialog`. */
   const [answered, setAnswered] = useState<{ q: string; rows: any[] }>({ q: '', rows: [] });
   const debounced = useDebounce(query, 250);
 
@@ -653,7 +771,7 @@ function RecordLinkButton({
               }}
               className="flex w-full items-start gap-2.5 border-b px-3 py-2 text-left last:border-0 hover:bg-accent/50"
             >
-              <Link2 className="mt-0.5 size-3.5 shrink-0 text-violet-500" />
+              <Link2 className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm">{r.title}</span>
                 <span className="block truncate text-[11px] text-muted-foreground">

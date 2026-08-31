@@ -29,7 +29,9 @@
     "test:dashboard": "tsx scripts/dashboard-attention.test.mts",
     "test:import": "tsx scripts/import-sheet.test.mts",
     "crm:verify": "node scripts/crm-verify.mjs",
-    "performance:verify": "node scripts/performance-verify.mjs"
+    "performance:verify": "node scripts/performance-verify.mjs",
+    "projects:verify": "node scripts/projects-verify.mjs",
+    "workspace:verify": "node scripts/workspace-verify.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -89,6 +91,7 @@
     "react-resizable-panels": "^3.0.3",
     "react-syntax-highlighter": "^15.6.1",
     "recharts": "^2.15.4",
+    "remark-gfm": "^4.0.1",
     "sharp": "^0.34.3",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",

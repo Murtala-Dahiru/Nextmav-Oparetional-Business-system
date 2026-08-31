@@ -17,7 +17,7 @@ export async function GET(_req: Request, { params }: Params) {
 
   if (e) return pgError(e);
   // A private channel the caller is not in is filtered out by `channels_select`
-  // rather than answered with a 403 — confirming it exists would disclose the
+  // rather than answered with a 403 - confirming it exists would disclose the
   // conversation's existence, which is the thing being kept private.
   if (!channel) return error('Not found', 404, 'NOT_FOUND');
 
@@ -128,7 +128,7 @@ export async function DELETE(_req: Request, { params }: Params) {
   if (!channel) return error('Not found', 404, 'NOT_FOUND');
   if (channel.type === 'direct') {
     return error(
-      'A direct conversation cannot be deleted — it belongs to both people.',
+      'A direct conversation cannot be deleted - it belongs to both people.',
       409, 'RULE_VIOLATION',
     );
   }
@@ -137,7 +137,7 @@ export async function DELETE(_req: Request, { params }: Params) {
    * The trail is written before the row goes, not after.
    *
    * `communication_audit.channel_id` is `ON DELETE SET NULL`, so the entry
-   * survives the deletion with its channel reference cleared — which is why
+   * survives the deletion with its channel reference cleared - which is why
    * the name is put into `reason` as well. A record of "a channel was deleted"
    * that cannot say which one is not a record of anything.
    */

@@ -3,10 +3,10 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 import {
-  Hash, Lock, User, Settings, Search, Pin, Plus, MoreHorizontal, Menu, Loader2,
-  MessageSquare, Users, UserPlus, LogOut, Megaphone, Trash2, X, Archive,
+  Settings, Search, Pin, Plus, MoreHorizontal, Menu, Loader2,
+  MessageSquare, Users, UserPlus, LogOut, Trash2, Archive,
   Bell, BellOff, Video, ChevronDown, FolderKanban, Building2, Radio,
-  ArrowDown, Inbox, AtSign,
+  ArrowDown, AtSign, Star, PanelRight, Bookmark, Info,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,7 @@ import { useFocusRequest } from '@/hooks/use-focus-request';
 import { useModuleRealtime, useRealtime, useTyping } from '@/hooks/use-realtime';
 import { type PresenceRow } from '@/hooks/use-presence';
 import { PresenceDot } from '@/components/shared/presence-dot';
+import { PersonAvatar } from '@/components/shared/person-avatar';
 import {
   DEFAULT_COMMUNICATION_POLICY, settingsOf, type CommunicationPolicy,
 } from '@/lib/org-settings';
@@ -35,7 +36,8 @@ import { cn } from '@/lib/utils';
 
 import {
   type ChannelMember, type ChannelRow, type DirectoryMember, type MeetingRow,
-  type Message, type RecordReference, type SearchHit,
+  type Message, type RecordReference, type SavedMessage, type SearchHit,
+  type ThreadSummary,
   api, apiWithMeta, channelLabel, dayKey, dayLabel,
 } from './types';
 import { plainPreview } from './rich-text';
@@ -46,6 +48,10 @@ import {
   SearchDialog, type LinkOption,
 } from './dialogs';
 import { MeetingRoom, MeetingsView, ScheduleMeetingDialog } from './meetings';
+import { Home, SavedPanel } from './home';
+import { ConversationPanel } from './panel';
+import { MessageActionDialog, type MessageActionTarget } from './actions';
+import { ChannelGlyph, LivePip, UnreadPill } from './ui';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -62,30 +68,30 @@ import { MeetingRoom, MeetingsView, ScheduleMeetingDialog } from './meetings';
  *  This pass closes that gap, and the shape of the work was the same each
  *  time: something already existed in the database and nothing reached it.
  *
- *    · `messages.attachments`  — accepted since the first migration, never
+ *    · `messages.attachments`  - accepted since the first migration, never
  *                                once non-empty. Files now go to `files`, and
  *                                the column carries record references.
- *    · `channel_members.is_muted` — accepted by the members endpoint, read by
+ *    · `channel_members.is_muted` - accepted by the members endpoint, read by
  *                                nothing. It is a control now.
- *    · `channels.department_id`/`team_id` — never set by anything. Joined by
+ *    · `channels.department_id`/`team_id` - never set by anything. Joined by
  *                                `project_id` and `company_id` in 0023, so a
  *                                conversation has a subject and links both
  *                                ways to the work it is about.
- *    · Search               — filtered the hundred messages already loaded.
+ *    · Search               - filtered the hundred messages already loaded.
  *                                Now a real index across everything readable.
- *    · Read receipts        — announced under every message. Now asked for.
- *    · Meetings             — did not exist. Now a room, with a waiting room
+ *    · Read receipts        - announced under every message. Now asked for.
+ *    · Meetings             - did not exist. Now a room, with a waiting room
  *                                and a host, in the channel the work lives in.
  *
  *  ── Why the file split ───────────────────────────────────────────────────
  *
- *  This was 2,100 lines in one file. The deep modules here — crm, projects,
- *  mywork — are all a folder with a shell and per-concern children, and that
+ *  This was 2,100 lines in one file. The deep modules here - crm, projects,
+ *  mywork - are all a folder with a shell and per-concern children, and that
  *  is what this is now: the shell holds the data and the decisions, and the
  *  timeline, the composer, the dialogs and the meeting room are their own.
  */
 
-// The roles that administer an organisation. Rendering only — the server
+// The roles that administer an organisation. Rendering only - the server
 // decides, through `is_org_admin()`, and this only avoids offering a control
 // that would return 403.
 const ORG_ADMIN_ROLES = ['owner', 'administrator', 'super_admin', 'admin'];
@@ -93,7 +99,22 @@ const ORG_ADMIN_ROLES = ['owner', 'administrator', 'super_admin', 'admin'];
 /** How many messages a scrollback page holds. */
 const PAGE_SIZE = 40;
 
-type View = 'messages' | 'meetings';
+/**
+ * Three views, and Home is the one the module opens on.
+ *
+ * -- Why the module no longer opens straight into a channel ----------------
+ *
+ * It used to select the most recently active conversation and drop the reader
+ * into it. That is right for somebody who is already in a conversation and
+ * wrong for everybody arriving in the morning, which is when this module is
+ * most often opened: what they need first is what happened while they were
+ * away, and the old behaviour answered it by showing them one room out of
+ * forty and a column of badges to interpret.
+ *
+ * Home answers it directly and is one click from every conversation, so
+ * nothing is further away than it was.
+ */
+type View = 'home' | 'messages' | 'meetings';
 type Filter = 'all' | 'unread';
 
 export default function CommunicationModule() {
@@ -105,6 +126,17 @@ export default function CommunicationModule() {
   const role = useAppStore(s => s.user?.role ?? 'employee');
   const openRecord = useAppStore(s => s.openRecord);
   const isOrgAdmin = ORG_ADMIN_ROLES.includes(role);
+  /**
+   * The reader's own name and face, for Home's one line of greeting and for
+   * the composer's identity.
+   *
+   * Selected as two primitives rather than as an object: a selector that
+   * builds one returns a new reference on every call, which zustand v5 reads
+   * as "the store changed" and renders for ever. That failure has already been
+   * paid for once in this file, over the communication policy.
+   */
+  const firstName = useAppStore(s => s.user?.firstName || null);
+  const myAvatar = useAppStore(s => s.user?.avatarUrl ?? null);
 
   /**
    * The organisation's communication policy.
@@ -112,7 +144,7 @@ export default function CommunicationModule() {
    * Read from the session rather than fetched: `/api/admin/settings` is the
    * only other source and an employee is rightly refused it, so a module that
    * asked there would fall back to defaults for everybody who is not an
-   * administrator — and then offer an Edit button the endpoint refuses.
+   * administrator - and then offer an Edit button the endpoint refuses.
    *
    * Rendering only. Every one of these is enforced again server-side, which is
    * the decision that counts; this is so the module does not present a control
@@ -120,14 +152,14 @@ export default function CommunicationModule() {
    *
    * ── Why the raw slice is selected and the merge happens outside ──────────
    *
-   * The obvious version of this deriving the policy *inside* the selector —
-   * `useAppStore(s => settingsOf(s.organization?.policies, …))` — crashes the
+   * The obvious version of this deriving the policy *inside* the selector -
+   * `useAppStore(s => settingsOf(s.organization?.policies, …))` - crashes the
    * module, and it took a reproduction to see why.
    *
    * zustand v5's `useStore` hands `() => selector(getState())` straight to
    * React's `useSyncExternalStore`, which calls it on every render and
    * compares the result with `Object.is`. `settingsOf` merges defaults under
-   * the stored document, so it returns a *new object every call* — React reads
+   * the stored document, so it returns a *new object every call* - React reads
    * that as "the external store changed", renders again, gets another new
    * object, and never settles:
    *
@@ -136,7 +168,7 @@ export default function CommunicationModule() {
    *
    * The subtlety worth remembering: it only bites once a session has loaded.
    * With no `policies` on the organisation, `settingsOf` returns the defaults
-   * object itself — one stable reference, no loop — so the module renders
+   * object itself - one stable reference, no loop - so the module renders
    * perfectly until the moment there is something to read.
    *
    * `s.organization?.policies` is a stable reference between renders, so the
@@ -149,8 +181,11 @@ export default function CommunicationModule() {
     [storedPolicies],
   );
 
-  const [view, setView] = useState<View>('messages');
+  const [view, setView] = useState<View>('home');
   const [showSidebar, setShowSidebar] = useState(false);
+  /** The details rail. Closed by default; see `panel.tsx`. */
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [savedOpen, setSavedOpen] = useState(false);
 
   // ── Data ──
   const [channels, setChannels] = useState<ChannelRow[]>([]);
@@ -163,11 +198,36 @@ export default function CommunicationModule() {
   const [companies, setCompanies] = useState<LinkOption[]>([]);
   const [onlineCount, setOnlineCount] = useState(0);
   /**
+   * The threads in the open conversation, keyed by the message they hang from.
+   *
+   * One query per channel rather than one per bubble. Before 0036 a reply
+   * count could not be known without fetching the replies, so the timeline
+   * drew no thread affordance at all until somebody clicked one, and a
+   * discussion that had moved into a thread was invisible to everybody who had
+   * not been there when it moved.
+   */
+  const [threads, setThreads] = useState<Record<string, ThreadSummary>>({});
+  /**
+   * The reader's own shelf, as a set of message ids.
+   *
+   * Held as ids rather than as rows because the only question the timeline
+   * asks is "is this one saved"; the rows themselves are read by the shelf
+   * panel, which fetches its own and is the only thing that renders them.
+   */
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  /**
+   * Bumped whenever something lands that Home would want to know about, so it
+   * refetches its inbox without holding a second copy of the channel list.
+   */
+  const [homeKey, setHomeKey] = useState(0);
+  /** Who is in a call right now, from `/api/communication/meetings` meta. */
+  const [inCall, setInCall] = useState<string[]>([]);
+  /**
    * Presence by member id, for the dots on avatars.
    *
    * Kept as a map rather than merged into `members`, because the roster is
    * refetched when a channel is opened and presence is refetched on its own
-   * schedule — merging would mean one of them clobbering the other's freshness
+   * schedule - merging would mean one of them clobbering the other's freshness
    * depending on which request happened to land last.
    */
   const [presence, setPresence] = useState<Record<string, PresenceRow>>({});
@@ -180,7 +240,7 @@ export default function CommunicationModule() {
    * Where the reader had got to when they opened this channel.
    *
    * Captured once, before the channel is marked read, because the act of
-   * reading is about to move the marker — and the "New" divider has to stay
+   * reading is about to move the marker - and the "New" divider has to stay
    * where the reader left off rather than sliding to the end as they scroll.
    */
   const [unreadFrom, setUnreadFrom] = useState<string | null>(null);
@@ -192,7 +252,6 @@ export default function CommunicationModule() {
   const [threadReplies, setThreadReplies] = useState<Record<string, Message[]>>({});
   const [sidebarQuery, setSidebarQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
-  const [showPinned, setShowPinned] = useState(false);
 
   // ── Loading ──
   const [channelsLoading, setChannelsLoading] = useState(true);
@@ -205,10 +264,24 @@ export default function CommunicationModule() {
   const [membersOpen, setMembersOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  /** What Home's field was carrying when it handed over to the search panel. */
+  const [searchSeed, setSearchSeed] = useState('');
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [leaveTarget, setLeaveTarget] = useState<ChannelRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ChannelRow | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * Turning a message into work.
+   *
+   * The target and the destination are held here, and the form is mounted
+   * once, because a timeline holds forty bubbles and a dialog per bubble is
+   * forty components carrying state for a panel almost nobody opens.
+   */
+  const [actionTarget, setActionTarget] = useState<MessageActionTarget | null>(null);
+  const [actionDestination, setActionDestination] =
+    useState<'todo' | 'reminder' | 'crm' | 'task' | null>(null);
+  /** A message the reader wants a meeting about; seeds the schedule dialog. */
+  const [meetingSeed, setMeetingSeed] = useState<{ title: string; agenda: string } | null>(null);
 
   /**
    * The meeting room, held as an id rather than as a row.
@@ -218,7 +291,7 @@ export default function CommunicationModule() {
    * It used to be: `setActiveMeeting(row)` froze one snapshot of
    * `meeting_overview()` for as long as the room was open, and the room read
    * everything from it. Every fact on it then went stale the moment it
-   * mattered — the host ended the meeting and nobody else's room noticed,
+   * mattered - the host ended the meeting and nobody else's room noticed,
    * because their copy still said `live`; somebody saved the notes and the
    * panel kept showing the text from when the room opened; the waiting room
    * was turned on and the flag never moved.
@@ -231,6 +304,21 @@ export default function CommunicationModule() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  /**
+   * Unsent text, per conversation.
+   *
+   * A ref rather than state: a draft must survive switching rooms and must not
+   * re-render the module on every keystroke. See `ComposerProps.drafts`.
+   */
+  const drafts = useRef<Record<string, string>>({});
+  /**
+   * A meeting this browser has just started, which therefore skips the lobby.
+   *
+   * A ref rather than state: nothing renders differently because of it, it is
+   * read once when the room mounts, and putting it in state would re-render
+   * the module for a value only the room ever looks at.
+   */
+  const startedByMe = useRef<string | null>(null);
 
   const selected = channels.find(c => c.channelId === selectedId) ?? null;
   /**
@@ -238,7 +326,7 @@ export default function CommunicationModule() {
    *
    * This is what makes the room react to the meeting ending, the notes being
    * saved, the waiting room being switched on and somebody being promoted to
-   * co-host — none of which the room could see when it held its own copy.
+   * co-host - none of which the room could see when it held its own copy.
    */
   const activeMeeting = activeMeetingId
     ? meetings.find(m => m.meetingId === activeMeetingId) ?? null
@@ -252,14 +340,14 @@ export default function CommunicationModule() {
    * ═════════════════════════════════════════════════════════════════════════
    *
    * The count is derived by `channel_overview()` from `channel_members.
-   * last_read_at`, which is the only definition of "read" in the product —
+   * last_read_at`, which is the only definition of "read" in the product -
    * the badge, the navigation total and the read receipts all come from it,
    * so they cannot disagree with each other. What they *could* disagree with
    * was the screen, in two ways:
    *
    *   · The marker was moved exactly once, when the conversation was opened.
    *     Everything that arrived afterwards while the reader sat looking at it
-   *     counted as unread for ever — so the next time anything refetched the
+   *     counted as unread for ever - so the next time anything refetched the
    *     sidebar, a badge appeared on the conversation currently on screen and
    *     stayed there. That is the reported fault, and it is fixed by treating
    *     reading as continuous rather than as a single event: see the effect
@@ -303,7 +391,7 @@ export default function CommunicationModule() {
    * The second half is what was missing. The sidebar badge and the dashboard
    * read `unreadByModule` in the store, which is composed by
    * `/api/notifications` from the notification tray *and* the same per-channel
-   * unread counts — so reading a conversation moved this module's own numbers
+   * unread counts - so reading a conversation moved this module's own numbers
    * and left every badge outside it showing the old figure until the tray
    * happened to poll. One call puts them back in step immediately.
    */
@@ -327,7 +415,7 @@ export default function CommunicationModule() {
       /**
        * The watermark is the server's timestamp, never this browser's.
        *
-       * It is compared against `lastMessageAt`, which the server produced —
+       * It is compared against `lastMessageAt`, which the server produced -
        * and the two clocks are not the same clock. A laptop running a few
        * minutes fast would set a watermark in the future and then suppress the
        * badge on genuinely unread messages that arrived afterwards, which is
@@ -335,7 +423,7 @@ export default function CommunicationModule() {
        * comes back on the row that was just written; that is the only value
        * comparable with the other.
        *
-       * Nothing is recorded when the write fails — reading a channel you are
+       * Nothing is recorded when the write fails - reading a channel you are
        * not a member of answers 404, which is correct, and a watermark set on
        * a claim the server refused would suppress a count it will keep sending.
        */
@@ -348,7 +436,17 @@ export default function CommunicationModule() {
 
   const loadMeetings = useCallback(async () => {
     try {
-      setMeetings(await api<MeetingRow[]>('/api/communication/meetings'));
+      const page = await apiWithMeta<MeetingRow[]>('/api/communication/meetings');
+      setMeetings(page.data ?? []);
+      /**
+       * "In a call" arrives with the meetings, not with presence.
+       *
+       * `presence_of()` is read by every module, and a dot that means "at
+       * their desk" in the directory and "on a call" in HR is exactly the
+       * divergence the shared presence component exists to prevent. This is a
+       * communication fact, returned to communication, and overlaid only here.
+       */
+      setInCall(Array.isArray(page.meta?.inCall) ? page.meta.inCall : []);
     } catch {
       // Meetings failing must not take the conversation list with it.
     } finally {
@@ -356,8 +454,43 @@ export default function CommunicationModule() {
     }
   }, []);
 
+  /**
+   * The shelf, as ids.
+   *
+   * Fetched once and kept in step by the toggle itself rather than by a
+   * refetch per save: the only writer is this browser, and the realtime
+   * subscription below covers the second device.
+   */
+  const loadSaved = useCallback(async () => {
+    try {
+      const rows = await api<SavedMessage[]>('/api/communication/saved');
+      setSavedIds(new Set((rows ?? []).map(r => r.messageId)));
+    } catch {
+      // A shelf that cannot be read is an empty bookmark icon, not a failure
+      // worth interrupting a conversation over.
+    }
+  }, []);
+
   useEffect(() => { void loadChannels(); }, [loadChannels]);
   useEffect(() => { void loadMeetings(); }, [loadMeetings]);
+  useEffect(() => { void loadSaved(); }, [loadSaved]);
+
+  /**
+   * The shelf, on the other device.
+   *
+   * Filtered to the caller's own rows, as `channel_members` is and for the
+   * same reason: unfiltered, every save by anybody in the organisation would
+   * be an event delivered to every open tab.
+   */
+  useRealtime({
+    name: 'module:saves',
+    enabled: !!currentMemberId,
+    debounceMs: 800,
+    tables: currentMemberId
+      ? [{ table: 'message_saves', filter: `member_id=eq.${currentMemberId}` }]
+      : [],
+    onChange: () => { if (!roomOpen.current) void loadSaved(); },
+  });
 
   /**
    * Everything the module needs that is not a conversation.
@@ -385,14 +518,14 @@ export default function CommunicationModule() {
    *
    * `channels` covers one being created, renamed or archived. `channel_members`
    * covers being added to or removed from one, which is what makes a channel
-   * appear in the sidebar without a reload — and is narrowed to two things on
+   * appear in the sidebar without a reload - and is narrowed to two things on
    * purpose.
    *
    * ── Why the filter and the event list are not optional ───────────────────
    *
    * It was the whole table, every operation. `last_read_at` lives on it, and
    * this module now advances that marker for as long as a conversation is
-   * open — so every message anybody read anywhere in the organisation became a
+   * open - so every message anybody read anywhere in the organisation became a
    * row change delivered to every open tab, each of which answered it by
    * refetching its entire channel list. Ten people in one conversation is a
    * hundred `channel_overview()` calls a minute for a marker that concerns
@@ -401,7 +534,7 @@ export default function CommunicationModule() {
    * Narrowed to the caller's own memberships, appearing and disappearing:
    * being added to a channel and being removed from one are the only changes
    * to this table that alter what the sidebar should show. `REPLICA IDENTITY
-   * FULL` (0020) is what makes the filtered DELETE arrive at all — without it
+   * FULL` (0020) is what makes the filtered DELETE arrive at all - without it
    * the event carries only the primary key and matches no filter.
    */
   const conversationsLive = useRealtime({
@@ -424,7 +557,7 @@ export default function CommunicationModule() {
    *
    * This is what makes "User A creates a meeting while User B is in the module
    * and B sees it appear" true without a reload. `loadChannels` runs alongside
-   * because starting or ending one changes the *channel* row too —
+   * because starting or ending one changes the *channel* row too -
    * `live_meeting_id` is what puts the red dot in the sidebar and the Join
    * button in the conversation header.
    */
@@ -440,8 +573,8 @@ export default function CommunicationModule() {
    * Separate, and slower, on purpose. `meeting_overview()` computes the waiting
    * and present counts from `meeting_participants`, so a host watching the list
    * from outside a room needs this or the "3 waiting" badge never appears. But
-   * it is also the table a running meeting writes to constantly — every camera
-   * toggle, every raised hand — and each of those events reaches every tab in
+   * it is also the table a running meeting writes to constantly - every camera
+   * toggle, every raised hand - and each of those events reaches every tab in
    * the organisation, where all but a handful are about a meeting nobody is
    * looking at. A second and a half collapses a room's chatter into one
    * refetch, and it does not touch the channel list, which none of it changes.
@@ -460,7 +593,7 @@ export default function CommunicationModule() {
    * A message posted anywhere the caller can see.
    *
    * This was deliberately left out before, on the grounds that refetching the
-   * whole channel list per message is expensive — and it is. But it is also the
+   * whole channel list per message is expensive - and it is. But it is also the
    * only thing that can move an unread badge on a conversation that is *not*
    * open, and a chat sidebar whose counts do not move until something else
    * happens to refresh it is not a chat sidebar. The compromise is the
@@ -472,14 +605,20 @@ export default function CommunicationModule() {
     name: 'module:messages',
     debounceMs: 1000,
     tables: [{ table: 'messages' }],
-    onChange: () => { if (!roomOpen.current) void loadChannels(); },
+    onChange: () => {
+      if (roomOpen.current) return;
+      void loadChannels();
+      // Home holds the inbox and nothing else does, so it is told to refetch
+      // rather than given a second copy of the channel list to derive one from.
+      setHomeKey(k => k + 1);
+    },
   });
 
   /**
    * Presence, live.
    *
    * A dot that only changes on reload is worse than no dot: it makes a
-   * confident claim about somebody who left an hour ago. Debounced heavily —
+   * confident claim about somebody who left an hour ago. Debounced heavily -
    * in a company of any size the heartbeats are constant, and a refetch per
    * beat would be a request every second or two for a set of coloured dots.
    */
@@ -491,7 +630,7 @@ export default function CommunicationModule() {
    * tear every channel down and rebuild it each time somebody opened a room.
    *
    * Everything it gates is work whose only product is pixels behind a
-   * full-screen overlay — the sidebar's unread counts, the meeting cards, the
+   * full-screen overlay - the sidebar's unread counts, the meeting cards, the
    * presence dots. `closeMeeting` catches all of it up on the way out, which
    * is the moment before any of it is visible again.
    */
@@ -519,7 +658,7 @@ export default function CommunicationModule() {
 
   useEffect(() => {
     readPresence();
-    // The fallback for a tab whose subscription could not connect — corporate
+    // The fallback for a tab whose subscription could not connect - corporate
     // proxies block websockets, and a presence panel that silently stops
     // updating looks exactly like an office where nobody is at their desk.
     // Paused behind a meeting: a panel of coloured dots nobody can see is not
@@ -532,15 +671,34 @@ export default function CommunicationModule() {
    * Open a conversation: its messages, its participants, and its read marker.
    *
    * Marking read is an explicit call rather than a side effect of the GET, so
-   * that reading a channel is a deliberate act the client can decide about —
+   * that reading a channel is a deliberate act the client can decide about -
    * a prefetch should not clear somebody's unread badge.
    */
+  /**
+   * Every thread in a conversation, described without opening any of them.
+   *
+   * Tolerant of failure and never awaited by the timeline: a channel whose
+   * thread summaries could not be fetched shows its messages with no reply
+   * counts, which is exactly what the module did before 0036 and is far better
+   * than a conversation that will not open.
+   */
+  const loadThreads = useCallback(async (channelId: string) => {
+    try {
+      const rows = await api<ThreadSummary[]>(
+        `/api/communication/threads?channelId=${channelId}`);
+      setThreads(Object.fromEntries((rows ?? []).map(t => [t.rootId, t])));
+    } catch {
+      setThreads({});
+    }
+  }, []);
+
   const openChannel = useCallback(async (channelId: string) => {
     setMessagesLoading(true);
-    setShowPinned(false);
     setReplyTo(null);
     setOpenThread(null);
     setThreadReplies({});
+    setThreads({});
+    void loadThreads(channelId);
     try {
       const [page, mem] = await Promise.all([
         apiWithMeta<Message[]>(
@@ -555,12 +713,12 @@ export default function CommunicationModule() {
       setMembers(mem ?? []);
 
       /**
-       * Captured before the marker moves — see `unreadFrom`.
+       * Captured before the marker moves - see `unreadFrom`.
        *
        * Taken from the caller's own membership row rather than from the
        * sidebar's unread count. The count lives in `channels`, and reading it
        * here would close over whatever that array held when this callback was
-       * created — which is the empty list from the first render, so the
+       * created - which is the empty list from the first render, so the
        * divider would never appear. The marker is the same value the count is
        * derived from anyway, and it needs no second source.
        */
@@ -578,7 +736,7 @@ export default function CommunicationModule() {
     } finally {
       setMessagesLoading(false);
     }
-  }, [currentMemberId, markChannelRead]);
+  }, [currentMemberId, markChannelRead, loadThreads]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -675,11 +833,11 @@ export default function CommunicationModule() {
   const { typing, signal: signalTyping } = useTyping(selectedId, me);
 
   /**
-   * "Message sent — appears instantly."
+   * "Message sent - appears instantly."
    *
    * Filtered to the open channel, which is the case a filter is most clearly
    * worth having: without it every message anywhere in the organisation would
-   * refetch this thread. `message_reactions` and `files` are watched too — a
+   * refetch this thread. `message_reactions` and `files` are watched too - a
    * reaction and an attachment are both changes to a message on screen, and
    * neither carries a `channel_id` to filter on, so each is subscribed
    * unfiltered and costs a discarded event.
@@ -695,7 +853,20 @@ export default function CommunicationModule() {
           { table: 'files' },
         ]
       : [],
-    onChange: () => { if (selectedId && !roomOpen.current) void refreshMessages(selectedId); },
+    onChange: () => {
+      if (!selectedId || roomOpen.current) return;
+      void refreshMessages(selectedId);
+      /**
+       * The reply counts move with the messages.
+       *
+       * A reply is a `messages` row with a `parent_id`, so it arrives on this
+       * subscription and does not appear in the root timeline at all. Without
+       * this the count under a message would be right when the channel was
+       * opened and never again, which is the worse kind of wrong: it looks
+       * maintained.
+       */
+      void loadThreads(selectedId);
+    },
   });
 
   /**
@@ -703,8 +874,8 @@ export default function CommunicationModule() {
    *  When the websocket never connects
    * ═════════════════════════════════════════════════════════════════════════
    *
-   * A good number of corporate proxies block websockets outright — which is
-   * common in exactly the organisations this product is for — and the failure
+   * A good number of corporate proxies block websockets outright - which is
+   * common in exactly the organisations this product is for - and the failure
    * is silent: the subscription reports an error nobody watches, the callback
    * simply never fires, and a quiet channel looks identical to a broken one.
    * Before this, that tab showed whatever was true when it was opened, for the
@@ -713,7 +884,7 @@ export default function CommunicationModule() {
    * So the status is read rather than discarded, and the two intervals are the
    * fallback: eight seconds for the conversation somebody is actually reading,
    * twenty for the lists. Both are far more traffic than the socket would be,
-   * which is why they only run when there is no socket — and the footer says
+   * which is why they only run when there is no socket - and the footer says
    * so, because a person who knows updates are delayed behaves differently
    * from one who thinks nothing has happened.
    */
@@ -739,7 +910,7 @@ export default function CommunicationModule() {
    * marker keeps up with it instead of stopping at the moment it was opened.
    * `document.hidden` is the one condition that has to be honoured: a
    * background tab is not somebody reading, and marking its messages read would
-   * lose them — the badge is the only thing that would ever have brought the
+   * lose them - the badge is the only thing that would ever have brought the
    * reader back.
    */
   const newestAt = messages.length ? messages[messages.length - 1].createdAt : null;
@@ -775,7 +946,7 @@ export default function CommunicationModule() {
    * Follow the conversation, unless the reader has gone looking for something.
    *
    * Scrolling to the newest message whenever anything arrives is right until
-   * somebody scrolls up to read — at which point it drags them back down mid
+   * somebody scrolls up to read - at which point it drags them back down mid
    * sentence, and there is no way to read anything. `atBottom` is what makes
    * the difference; when they are not, the jump button appears instead.
    */
@@ -783,6 +954,60 @@ export default function CommunicationModule() {
     if (atBottom) endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, atBottom]);
 
+  /**
+   * ========================================================================
+   *  The keyboard, on a phone
+   * ========================================================================
+   *
+   * A soft keyboard does not resize the layout viewport. It slides over it.
+   * So a module sized to `100%` of a full-height page keeps its full height,
+   * the composer stays exactly where it was, and the keyboard covers it -
+   * which is the single most common way a mobile chat interface is unusable,
+   * and it is invisible on a desktop browser at any width.
+   *
+   * `visualViewport` is the part of the page that is actually visible. Its
+   * height is written to a custom property and the module is sized to that,
+   * so the timeline shortens and the composer rides up with the keyboard.
+   *
+   * -- Three details that matter -------------------------------------------
+   *
+   * · `offsetTop` is added back, because iOS scrolls the *layout* viewport up
+   *   when the keyboard opens, and a height alone would leave the module
+   *   ending above the fold.
+   * · It is written to the element rather than kept in React state: this
+   *   fires on every frame of the keyboard animation, and a re-render per
+   *   frame would drop the animation on the devices that need it most.
+   * · Desktop is left alone entirely. There is no keyboard to make room for,
+   *   and a viewport-sized module would fight the shell.
+   */
+  const moduleRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const vv = typeof window === 'undefined' ? null : window.visualViewport;
+    const el = moduleRef.current;
+    if (!isMobile || !vv || !el) {
+      moduleRef.current?.style.removeProperty('height');
+      return;
+    }
+
+    let frame = 0;
+    const apply = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        el.style.height = `${Math.round(vv.height + vv.offsetTop)}px`;
+      });
+    };
+
+    apply();
+    vv.addEventListener('resize', apply);
+    vv.addEventListener('scroll', apply);
+    return () => {
+      cancelAnimationFrame(frame);
+      vv.removeEventListener('resize', apply);
+      vv.removeEventListener('scroll', apply);
+      el.style.removeProperty('height');
+    };
+  }, [isMobile]);
   /** `Ctrl`/`Cmd` + `K` opens search from anywhere in the module. */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -798,8 +1023,8 @@ export default function CommunicationModule() {
   /**
    * Somebody opened a conversation or a meeting from another module.
    *
-   * There are no per-record routes here — modules are swapped by id inside one
-   * page — so this is how the CRM's client panel or a project workspace hands
+   * There are no per-record routes here - modules are swapped by id inside one
+   * page - so this is how the CRM's client panel or a project workspace hands
    * over. Delivered once and cleared, or the module would reopen the same
    * record every time it remounted.
    */
@@ -811,7 +1036,7 @@ export default function CommunicationModule() {
        * The id is enough, and it used to not be.
        *
        * This looked the meeting up in whatever `meetings` happened to hold and
-       * did nothing at all if it was not there — which is the ordinary case
+       * did nothing at all if it was not there - which is the ordinary case
        * when the module has just mounted to serve the request. Now the room
        * opens on the row as soon as the list carries it, and the refetch is
        * asked for rather than hoped for.
@@ -824,16 +1049,16 @@ export default function CommunicationModule() {
   /**
    * Stable handles for the room.
    *
-   * Written inline they were a new function on every render of this module —
-   * which is often — and the room holds both in effect dependency lists. That
+   * Written inline they were a new function on every render of this module -
+   * which is often - and the room holds both in effect dependency lists. That
    * turned "join this meeting" into a POST several times a second and the host
    * starting a scheduled meeting into a PATCH storm.
    */
   /**
    * Leaving the room is when the list behind it is caught up.
    *
-   * The room used to refresh this module on every event inside a meeting — a
-   * raised hand, a camera toggled — each one an aggregate query for a sidebar
+   * The room used to refresh this module on every event inside a meeting - a
+   * raised hand, a camera toggled - each one an aggregate query for a sidebar
    * hidden behind a full-screen overlay. Once, here, is the same information at
    * a fraction of the cost, and it lands before anybody can look at it.
    */
@@ -882,11 +1107,11 @@ export default function CommunicationModule() {
           channelId: selectedId,
           // A reply carries the message it answers. The GET already separates
           // roots from replies, so nothing else has to change to make threads
-          // work — only the composer has to say which it is sending.
+          // work - only the composer has to say which it is sending.
           parentId: replying?.id ?? null,
         }),
       });
-      // A reply belongs in its thread, not at the end of the main timeline —
+      // A reply belongs in its thread, not at the end of the main timeline -
       // which is what the endpoint's `parent_id IS NULL` filter already means.
       if (!replying) {
         setMessages(prev => [...prev, created]);
@@ -1052,7 +1277,7 @@ export default function CommunicationModule() {
    * `channel_members.is_muted` has existed since 0003 and the members endpoint
    * has accepted it since 0017; nothing has ever set it or read it. Muting
    * removes the channel from the unread total the navigation badge is built
-   * from — it does not mark anything read, and it never suppresses a mention.
+   * from - it does not mark anything read, and it never suppresses a mention.
    */
   const toggleMute = useCallback(async (channel: ChannelRow) => {
     try {
@@ -1064,8 +1289,79 @@ export default function CommunicationModule() {
         c.channelId === channel.channelId ? { ...c, isMuted: !c.isMuted } : c));
       toast.success(channel.isMuted
         ? `Notifications on for ${channelLabel(channel)}`
-        : `Muted ${channelLabel(channel)} — you will still be told when you are named`);
+        : `Muted ${channelLabel(channel)} - you will still be told when you are named`);
     } catch (err: any) {
+      toast.error(err.message || 'Could not change that');
+    }
+  }, []);
+
+  /**
+   * Put a message on the shelf, or take it off.
+   *
+   * -- Why the icon moves before the request lands --------------------------
+   *
+   * Because it is a toggle a person presses and immediately looks away from,
+   * and a bookmark that fills a third of a second later reads as a control
+   * that did not work. The set is put back exactly as it was if the endpoint
+   * refuses, which is the one case where an optimistic update has to be
+   * undone rather than merely re-fetched.
+   */
+  const toggleSave = useCallback(async (message: Message) => {
+    const wasSaved = savedIds.has(message.id);
+    setSavedIds(prev => {
+      const next = new Set(prev);
+      if (wasSaved) next.delete(message.id); else next.add(message.id);
+      return next;
+    });
+
+    try {
+      if (wasSaved) {
+        await api(`/api/communication/saved?messageId=${message.id}`, { method: 'DELETE' });
+      } else {
+        await api('/api/communication/saved', {
+          method: 'POST',
+          body: JSON.stringify({ messageId: message.id }),
+        });
+        toast.success('Saved', {
+          description: 'Only you can see this. It is on Home under Saved.',
+        });
+      }
+    } catch (err: any) {
+      setSavedIds(prev => {
+        const next = new Set(prev);
+        if (wasSaved) next.add(message.id); else next.delete(message.id);
+        return next;
+      });
+      toast.error(err.message || 'Could not save that');
+    }
+  }, [savedIds]);
+
+  /**
+   * Star a conversation.
+   *
+   * `channel_members.is_favourite` (0036). The other half of muting: it moves
+   * a conversation to the top of the sidebar and changes nothing about what it
+   * counts, which is the distinction that keeps starring from becoming a
+   * second, quieter notification setting nobody can reason about.
+   */
+  const toggleFavourite = useCallback(async (channel: ChannelRow) => {
+    if (!channel.isMember) {
+      toast.message('Join this channel first', {
+        description: 'Starring keeps a conversation at the top of your own list.',
+      });
+      return;
+    }
+    const next = !channel.isFavourite;
+    setChannels(prev => prev.map(c =>
+      c.channelId === channel.channelId ? { ...c, isFavourite: next } : c));
+    try {
+      await api(`/api/communication/channels/${channel.channelId}/members`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isFavourite: next }),
+      });
+    } catch (err: any) {
+      setChannels(prev => prev.map(c =>
+        c.channelId === channel.channelId ? { ...c, isFavourite: !next } : c));
       toast.error(err.message || 'Could not change that');
     }
   }, []);
@@ -1138,7 +1434,7 @@ export default function CommunicationModule() {
    *
    * If it is in the open conversation and already loaded, scroll to it. If it
    * is not, the channel is opened and the message highlighted once it arrives.
-   * The highlight is what makes a jump legible — landing in the middle of a
+   * The highlight is what makes a jump legible - landing in the middle of a
    * conversation with nothing marked is disorienting.
    */
   /**
@@ -1146,7 +1442,7 @@ export default function CommunicationModule() {
    *
    * Search reaches the whole history; the timeline loads forty messages. So a
    * hit from three months ago opened its conversation, scrolled to the bottom
-   * and highlighted nothing — the reader was left in the right room with no
+   * and highlighted nothing - the reader was left in the right room with no
    * idea where the thing they searched for had gone, which is the worst of
    * both: it looked like it had worked. `hunted` counts the pages walked back,
    * because "keep loading until you find it" on a busy channel is an
@@ -1155,13 +1451,29 @@ export default function CommunicationModule() {
   const hunted = useRef(0);
   const gaveUpOn = useRef<string | null>(null);
 
-  const jumpTo = useCallback((hit: SearchHit) => {
+  /**
+   * Open a conversation from anywhere: the sidebar, Home, another module.
+   *
+   * Switching the view is part of it. Selecting a channel while Home is on
+   * screen used to change what the Messages view *would* show and leave the
+   * reader looking at Home, which reads as a click that did nothing.
+   */
+  const openConversation = useCallback((channelId: string) => {
+    if (!channelId) return;
+    setView('messages');
+    setSelectedId(channelId);
+  }, []);
+
+  const openMessage = useCallback((channelId: string, messageId: string) => {
     setView('messages');
     hunted.current = 0;
     gaveUpOn.current = null;
-    setHighlightId(hit.messageId);
-    setSelectedId(hit.channelId);
+    setHighlightId(messageId);
+    setSelectedId(channelId);
   }, []);
+
+  const jumpTo = useCallback(
+    (hit: SearchHit) => openMessage(hit.channelId, hit.messageId), [openMessage]);
 
   useEffect(() => {
     if (!highlightId || messagesLoading) return;
@@ -1170,7 +1482,7 @@ export default function CommunicationModule() {
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       // Cleared after the animation, so a message does not stay marked for the
-      // rest of the session — and only once it has actually been shown.
+      // rest of the session - and only once it has actually been shown.
       const timer = setTimeout(() => setHighlightId(null), 2600);
       return () => clearTimeout(timer);
     }
@@ -1184,7 +1496,7 @@ export default function CommunicationModule() {
     }
 
     // Beyond reach: said out loud rather than left as a jump that silently
-    // did nothing. The marker is deliberately left armed — if the reader keeps
+    // did nothing. The marker is deliberately left armed - if the reader keeps
     // scrolling back and reaches it, it still lights up.
     gaveUpOn.current = highlightId;
     toast.message('That message is further back than this conversation has loaded.', {
@@ -1198,7 +1510,7 @@ export default function CommunicationModule() {
    * ── Why the room is opened from the refreshed list ───────────────────────
    *
    * The create endpoint answers with the `meetings` row. The room reads a row
-   * of `meeting_overview()`, which is a different and much wider shape — the
+   * of `meeting_overview()`, which is a different and much wider shape - the
    * host's name, the channel's label, the counts, whether the caller is the
    * host. Assembling one by hand from the insert would mean inventing half of
    * those, and every field invented here is a field that will disagree with
@@ -1219,7 +1531,12 @@ export default function CommunicationModule() {
       });
       const rows = await api<MeetingRow[]>('/api/communication/meetings');
       setMeetings(rows);
-      if (rows.some(m => m.meetingId === created.id)) setActiveMeetingId(created.id);
+      if (rows.some(m => m.meetingId === created.id)) {
+        // Straight in. Pressing "start a call" is the decision the green room
+        // exists to ask for, so asking again would be asking twice.
+        startedByMe.current = created.id;
+        setActiveMeetingId(created.id);
+      }
       else toast.error('The call was started but could not be opened. It is in Meetings.');
     } catch (err: any) {
       toast.error(err.message || 'Could not start the call');
@@ -1244,10 +1561,19 @@ export default function CommunicationModule() {
     return list;
   }, [channels, sidebarQuery, filter]);
 
+  /**
+   * The sidebar's four groups.
+   *
+   * Starred is first and cuts across the other three, which is the point: the
+   * three rooms a person lives in are rarely all the same kind, and a sidebar
+   * that sorts by kind before importance makes somebody scan three headings to
+   * find the one conversation they open twenty times a day.
+   */
   const groups = useMemo(() => ({
-    channels: visible.filter(c => c.type === 'public' || c.type === 'announcement'),
-    private: visible.filter(c => c.type === 'private'),
-    direct: visible.filter(c => c.type === 'direct'),
+    starred: visible.filter(c => c.isFavourite),
+    channels: visible.filter(c => !c.isFavourite && (c.type === 'public' || c.type === 'announcement')),
+    private: visible.filter(c => !c.isFavourite && c.type === 'private'),
+    direct: visible.filter(c => !c.isFavourite && c.type === 'direct'),
   }), [visible]);
 
   /**
@@ -1264,10 +1590,15 @@ export default function CommunicationModule() {
   const mentionTotal = channels.reduce((sum, c) => sum + c.mentionCount, 0);
   const liveMeetings = meetings.filter(m => m.status === 'live').length;
 
-  const shown = useMemo(
-    () => (showPinned ? messages.filter(m => m.isPinned) : messages),
-    [messages, showPinned],
-  );
+  /**
+   * The timeline is the timeline.
+   *
+   * It used to be filterable down to pinned messages in place, which looked
+   * like a view of the pinned messages and was a view of the pinned messages
+   * among the forty already loaded. The details rail answers that question
+   * properly now, against the endpoint, so the timeline no longer pretends to.
+   */
+  const shown = messages;
 
   // Whether the composer is offered at all. The server decides for real; this
   // is so a read-only channel does not present a box that will be refused.
@@ -1278,6 +1609,22 @@ export default function CommunicationModule() {
   );
 
   const notInChannel = directory.filter(d => !members.some(m => m.memberId === d.memberId));
+
+  /**
+   * The person on the other side of a direct conversation.
+   *
+   * Resolved from the roster rather than from the channel row, because the
+   * roster is what carries the job title - the overview row carries only the
+   * name and the avatar. Falls back to the directory, which is loaded for
+   * everybody in the organisation and is what covers the moment between
+   * opening a conversation and its members arriving.
+   */
+  const isDirect = selected?.type === 'direct';
+  const counterpartId = isDirect ? selected?.counterpartId ?? null : null;
+  const counterpart = counterpartId
+    ? members.find(m => m.memberId === counterpartId)
+      ?? directory.find(d => d.memberId === counterpartId)
+    : undefined;
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
@@ -1315,11 +1662,12 @@ export default function CommunicationModule() {
         </div>
       </div>
 
-      {/* Messages and Meetings are two views of the same module rather than two
-          modules: a meeting is a conversation with a time attached, and the
-          channel a team talks in is the channel they meet in. */}
-      <div className="mx-3 mb-3 grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+      {/* Home, Messages and Meetings are three views of one module rather than
+          three modules: a meeting is a conversation with a time attached, and
+          the channel a team talks in is the channel they meet in. */}
+      <div className="mx-3 mb-3 grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
         {([
+          ['home', 'Home', 0],
           ['messages', 'Messages', unreadTotal],
           ['meetings', 'Meetings', liveMeetings],
         ] as const).map(([id, label, count]) => (
@@ -1327,15 +1675,20 @@ export default function CommunicationModule() {
             key={id}
             onClick={() => setView(id)}
             className={cn(
-              'relative rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-              view === id ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              'relative rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors',
+              view === id
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground',
             )}
           >
             {label}
             {count > 0 && (
               <span className={cn(
-                'ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold text-white',
-                id === 'meetings' ? 'bg-rose-500' : 'bg-emerald-600',
+                'ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1',
+                'text-[10px] font-semibold tabular-nums',
+                id === 'meetings'
+                  ? 'bg-destructive text-white'
+                  : 'bg-primary text-primary-foreground',
               )}>
                 {count > 99 ? '99+' : count}
               </span>
@@ -1344,7 +1697,18 @@ export default function CommunicationModule() {
         ))}
       </div>
 
-      {view === 'messages' && (
+      {/*
+        The conversation list is the module's navigation, so it stays for Home
+        as well as for Messages.
+
+        It was gated on `view === 'messages'`, which left two thirds of the
+        sidebar empty whenever Home was open - and Home is what the module now
+        opens on, so that was the first thing anybody saw. It is also simply
+        wrong as navigation: the list is how you get *to* a conversation, and
+        hiding it on the landing screen means the landing screen is the one
+        place you cannot.
+      */}
+      {view !== 'meetings' && (
         <>
           <div className="px-3 pb-2">
             <div className="relative">
@@ -1366,7 +1730,7 @@ export default function CommunicationModule() {
                 className={cn(
                   'rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors',
                   filter === id
-                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                    ? 'bg-secondary text-foreground'
                     : 'text-muted-foreground hover:bg-muted',
                 )}
               >
@@ -1375,13 +1739,13 @@ export default function CommunicationModule() {
               </button>
             ))}
             {mentionTotal > 0 && (
-              <span className="ml-auto flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+              <span className="ml-auto flex items-center gap-1 rounded-full bg-brand/12 px-2 py-0.5 text-xs font-medium text-brand">
                 <AtSign className="size-3" /> {mentionTotal}
               </span>
             )}
           </div>
 
-          <ScrollArea className="flex-1 px-2">
+          <ScrollArea className="min-h-0 flex-1 px-2">
             {channelsLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="size-5 animate-spin text-muted-foreground" />
@@ -1402,12 +1766,18 @@ export default function CommunicationModule() {
               </div>
             ) : (
               <>
-                <ChannelGroup label="Channels" rows={groups.channels}
-                  selectedId={selectedId} onSelect={setSelectedId} presence={presence} />
-                <ChannelGroup label="Private" rows={groups.private}
-                  selectedId={selectedId} onSelect={setSelectedId} presence={presence} />
-                <ChannelGroup label="Direct messages" rows={groups.direct}
-                  selectedId={selectedId} onSelect={setSelectedId} presence={presence} />
+                <ChannelGroup label="Starred" rows={groups.starred} selectedId={selectedId}
+                  onSelect={openConversation} presence={presence} inCall={inCall}
+                  onToggleFavourite={toggleFavourite} />
+                <ChannelGroup label="Channels" rows={groups.channels} selectedId={selectedId}
+                  onSelect={openConversation} presence={presence} inCall={inCall}
+                  onToggleFavourite={toggleFavourite} />
+                <ChannelGroup label="Private" rows={groups.private} selectedId={selectedId}
+                  onSelect={openConversation} presence={presence} inCall={inCall}
+                  onToggleFavourite={toggleFavourite} />
+                <ChannelGroup label="Direct messages" rows={groups.direct} selectedId={selectedId}
+                  onSelect={openConversation} presence={presence} inCall={inCall}
+                  onToggleFavourite={toggleFavourite} />
               </>
             )}
           </ScrollArea>
@@ -1422,26 +1792,33 @@ export default function CommunicationModule() {
               : `${meetings.length} meeting${meetings.length === 1 ? '' : 's'}`}
           </p>
           {liveMeetings > 0 && (
-            <p className="mt-1 flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
+            <p className="mt-1 flex items-center gap-1.5 text-destructive">
               <Radio className="size-3.5" /> {liveMeetings} happening now
             </p>
           )}
         </div>
       )}
 
-      <div className="border-t px-4 py-2">
-        <p className="text-xs text-muted-foreground">
+      <div className="border-t px-3 py-2">
+        <button
+          type="button"
+          onClick={() => setSavedOpen(true)}
+          className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Bookmark className="size-4 shrink-0" /> Saved
+        </button>
+        <p className="px-1.5 pt-1.5 text-xs text-muted-foreground">
           <span className={cn('mr-1.5 inline-block size-2 rounded-full',
-            onlineCount > 0 ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
+            onlineCount > 0 ? 'bg-brand' : 'bg-muted-foreground/40')} />
           {onlineCount} online
         </p>
         {/* Said plainly rather than hidden. Somebody who knows updates are on
             a timer waits differently from somebody who believes nothing has
             been said. */}
         {degraded && (
-          <p className="mt-1 flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+          <p className="mt-1 flex items-center gap-1.5 px-1.5 text-[11px] text-warning">
             <Radio className="size-3 shrink-0" />
-            Live updates are blocked here — checking every few seconds instead.
+            Live updates are blocked here. Checking every few seconds instead.
           </p>
         )}
       </div>
@@ -1449,7 +1826,7 @@ export default function CommunicationModule() {
   );
 
   return (
-    <div className="flex h-full">
+    <div ref={moduleRef} className="flex h-full overflow-hidden">
       {isMobile && showSidebar && (
         <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setShowSidebar(false)} />
       )}
@@ -1466,7 +1843,30 @@ export default function CommunicationModule() {
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col bg-background">
-        {view === 'meetings' ? (
+        {view === 'home' ? (
+          <Home
+            channels={channels}
+            meetings={meetings}
+            presence={presence}
+            inCall={inCall}
+            reloadKey={homeKey}
+            greeting={firstName}
+            onOpenChannel={openConversation}
+            onOpenMessage={openMessage}
+            onOpenMeeting={(m) => {
+              // A meeting that is running is joined; one that is not is read
+              // about in the list, where its agenda and guests are.
+              if (m.status === 'live') setActiveMeetingId(m.meetingId);
+              else setView('meetings');
+            }}
+            onOpenMeetings={() => setView('meetings')}
+            onNewChannel={() => setCreateOpen(true)}
+            onNewDirect={() => setDmOpen(true)}
+            onSchedule={() => setScheduleOpen(true)}
+            onSearch={(seed) => { setSearchSeed(seed ?? ''); setSearchOpen(true); }}
+            onOpenSaved={() => setSavedOpen(true)}
+          />
+        ) : view === 'meetings' ? (
           <MeetingsView
             meetings={meetings}
             channels={channels}
@@ -1475,7 +1875,7 @@ export default function CommunicationModule() {
             currentMemberId={currentMemberId}
             onRefresh={refreshMeetings}
             onOpenRoom={openMeetingRoom}
-            onOpenChannel={(id) => { setView('messages'); setSelectedId(id); }}
+            onOpenChannel={openConversation}
           />
         ) : !selected ? (
           <div className="flex flex-1 items-center justify-center">
@@ -1488,21 +1888,53 @@ export default function CommunicationModule() {
           </div>
         ) : (
           <>
-            {/* ─── Header ─── */}
-            <div className="flex items-center justify-between gap-2 border-b px-4 py-2.5">
-              <div className="flex min-w-0 items-center gap-2.5">
-                {isMobile && (
-                  <Button variant="ghost" size="icon" className="size-8 shrink-0"
-                    onClick={() => setShowSidebar(true)}>
-                    <Menu className="size-4" />
-                  </Button>
+            {/*
+              ─── Header ───
+
+              Two headers in one, and the difference is the point. A direct
+              conversation is with a *person*, so it leads with their face,
+              their presence and what they do; a channel is a *place*, so it
+              leads with its glyph, its topic and who is in it. Drawing both
+              the same way was the single largest reason a direct message
+              looked plain: it wore a channel's chrome and had none of a
+              channel's information to put in it.
+            */}
+            <div className="flex items-center justify-between gap-2 border-b bg-card/40 px-3 py-2.5 sm:px-4">
+              {isMobile && (
+                <Button variant="ghost" size="icon" className="-ml-1 size-9 shrink-0"
+                  onClick={() => setShowSidebar(true)} aria-label="Conversations">
+                  <Menu className="size-4" />
+                </Button>
+              )}
+              <button
+                onClick={() => setPanelOpen(v => !v)}
+                className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md py-0.5 pr-2 text-left transition-colors hover:bg-accent/60"
+                aria-label="Show conversation details"
+                aria-expanded={panelOpen}
+              >
+                {isDirect && counterpartId ? (
+                  <PersonAvatar
+                    id={counterpartId}
+                    name={selected.counterpartName}
+                    src={selected.counterpartAvatar}
+                    size="md"
+                    presence={presence[counterpartId]?.presence ?? 'offline'}
+                    lastSeenAt={presence[counterpartId]?.lastSeenAt}
+                    inCall={inCall.includes(counterpartId)}
+                    decorative
+                  />
+                ) : (
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted">
+                    <ChannelGlyph type={selected.type} className="size-4" />
+                  </span>
                 )}
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
-                  <ChannelTypeIcon type={selected.type} className="size-4" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
+
+                <span className="min-w-0">
+                  <span className="flex items-center gap-1.5">
                     <h3 className="truncate text-sm font-semibold">{channelLabel(selected)}</h3>
+                    {selected.isFavourite && (
+                      <Star className="size-3 shrink-0 fill-current text-brand" />
+                    )}
                     {selected.isMuted && (
                       <BellOff className="size-3 shrink-0 text-muted-foreground" />
                     )}
@@ -1511,18 +1943,46 @@ export default function CommunicationModule() {
                         <Archive className="size-2.5" /> Archived
                       </Badge>
                     )}
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <button onClick={() => setMembersOpen(true)}
-                      className="flex items-center gap-1 hover:text-foreground">
-                      <Users className="size-3" />{selected.memberCount}
-                    </button>
-                    {(selected.topic || selected.description) && (
-                      <span className="truncate">· {selected.topic || selected.description}</span>
-                    )}
-                  </div>
-                </div>
+                  </span>
 
+                  {/*
+                    The second line. For a person it is who they are and
+                    whether they are there; for a room it is how many people
+                    and what it is for.
+                  */}
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    {isDirect ? (
+                      <>
+                        {counterpart?.jobTitle && (
+                          <span className="truncate">{counterpart.jobTitle}</span>
+                        )}
+                        {counterpart?.jobTitle && <span aria-hidden>·</span>}
+                        <span className="shrink-0">
+                          {counterpartId && inCall.includes(counterpartId)
+                            ? 'In a meeting'
+                            : presenceWords(
+                                presence[counterpartId ?? '']?.presence,
+                                presence[counterpartId ?? '']?.lastSeenAt,
+                              )}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="inline-flex shrink-0 items-center gap-1">
+                          <Users className="size-3" />{selected.memberCount}
+                        </span>
+                        {(selected.topic || selected.description) && (
+                          <span className="truncate">
+                            · {selected.topic || selected.description}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </span>
+                </span>
+              </button>
+
+              <div className="flex shrink-0 items-center">
                 {/*
                   What this conversation is about.
 
@@ -1560,11 +2020,11 @@ export default function CommunicationModule() {
                 {selected.liveMeetingId ? (
                   <Button
                     size="sm"
-                    className="gap-1.5 bg-rose-600 text-white hover:bg-rose-700"
+                    className="gap-1.5 bg-destructive text-white hover:bg-destructive/90"
                     onClick={() => {
                       // The channel row can know about a meeting before the
                       // list has caught up with it, so the id is taken on trust
-                      // and the list is asked to catch up — the click is never
+                      // and the list is asked to catch up - the click is never
                       // dropped, which is what the old `if (found)` did.
                       setActiveMeetingId(selected.liveMeetingId);
                       void loadMeetings();
@@ -1586,24 +2046,32 @@ export default function CommunicationModule() {
                   </TooltipProvider>
                 )}
 
+                {/*
+                  The details rail, in place of the old pinned-messages toggle.
+
+                  That toggle filtered the forty messages already loaded, so a
+                  channel reporting "4 pinned" could show two of them and give
+                  no sign that the others existed. The rail's Pinned tab asks
+                  the endpoint for the pinned messages, which is the only
+                  version of that feature that is true.
+                */}
                 <TooltipProvider delayDuration={400}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
-                        variant={showPinned ? 'secondary' : 'ghost'}
+                        variant={panelOpen ? 'secondary' : 'ghost'}
                         size="icon" className="relative size-8"
-                        onClick={() => setShowPinned(v => !v)}
+                        aria-pressed={panelOpen}
+                        onClick={() => setPanelOpen(v => !v)}
                       >
-                        <Pin className="size-4" />
-                        {selected.pinnedCount > 0 && !showPinned && (
-                          <span className="absolute right-0.5 top-0.5 flex size-3.5 items-center justify-center rounded-full bg-amber-500 text-[8px] font-bold text-white">
-                            {selected.pinnedCount}
-                          </span>
+                        <PanelRight className="size-4" />
+                        {selected.pinnedCount > 0 && !panelOpen && (
+                          <span className="absolute right-0.5 top-0.5 flex size-1.5 rounded-full bg-warning" />
                         )}
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      {showPinned ? 'Show everything' : `Pinned (${selected.pinnedCount})`}
+                      {panelOpen ? 'Hide details' : 'People, pinned and files'}
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
@@ -1666,12 +2134,11 @@ export default function CommunicationModule() {
               ) : shown.length === 0 ? (
                 <div className="flex h-full items-center justify-center">
                   <EmptyState
-                    icon={showPinned ? Pin : MessageSquare}
-                    title={showPinned ? 'Nothing pinned' : 'No messages yet'}
-                    description={
-                      showPinned ? 'Pin a message and it will be here — the decisions, not the chatter.'
-                        : canPost ? 'Be the first to say something.'
-                        : 'Nothing has been posted here yet.'}
+                    icon={MessageSquare}
+                    title="No messages yet"
+                    description={canPost
+                      ? 'Be the first to say something.'
+                      : 'Nothing has been posted here yet.'}
                   />
                 </div>
               ) : (
@@ -1682,7 +2149,7 @@ export default function CommunicationModule() {
                     setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 120);
                     // Reaching the top asks for the previous page. A sentinel
                     // and an IntersectionObserver would be the tidier version
-                    // and buys nothing here — this fires at most once per
+                    // and buys nothing here - this fires at most once per
                     // scroll gesture, and `loadingOlder` guards the rest.
                     if (el.scrollTop < 80 && olderCursor && !loadingOlder) void loadOlder();
                   }}
@@ -1700,7 +2167,7 @@ export default function CommunicationModule() {
                         </Button>
                       </div>
                     )}
-                    {!olderCursor && !showPinned && messages.length > 0 && (
+                    {!olderCursor && messages.length > 0 && (
                       <p className="py-3 text-center text-xs text-muted-foreground">
                         This is the beginning of {channelLabel(selected)}.
                       </p>
@@ -1712,7 +2179,7 @@ export default function CommunicationModule() {
                       /**
                        * Grouped when the same person says two things in a row
                        * within a few minutes. Any longer and they are separate
-                       * thoughts that deserve their own header — a reply four
+                       * thoughts that deserve their own header - a reply four
                        * hours later reading as part of the previous message is
                        * how a conversation becomes hard to follow.
                        */
@@ -1730,6 +2197,31 @@ export default function CommunicationModule() {
                           {isFirstUnread && <NewMessagesDivider />}
                           <MessageBubble
                             message={message}
+                            channel={selected}
+                            thread={threads[message.id]}
+                            isSaved={savedIds.has(message.id)}
+                            onToggleSave={() => void toggleSave(message)}
+                            onTurnInto={(destination) => {
+                              setActionTarget({
+                                message,
+                                channel: selected,
+                                senderName: message.sender?.profiles?.fullName || 'Someone',
+                              });
+                              setActionDestination(destination);
+                            }}
+                            onScheduleMeeting={() => {
+                              // The message becomes the meeting's agenda, so
+                              // the invitation says what it is about without
+                              // anybody retyping the sentence that prompted it.
+                              const plain = plainPreview(message.body).trim();
+                              setMeetingSeed({
+                                title: truncate(plain.split('\n')[0] || `${channelLabel(selected)} call`, 80),
+                                agenda: plain
+                                  ? `From ${message.sender?.profiles?.fullName || 'a message'} in ${channelLabel(selected)}:\n\n${plain}`
+                                  : '',
+                              });
+                              setScheduleOpen(true);
+                            }}
                             isOwn={!!currentMemberId && message.senderId === currentMemberId}
                             isConsecutive={consecutive && !isFirstUnread}
                             currentMemberId={currentMemberId}
@@ -1773,7 +2265,7 @@ export default function CommunicationModule() {
             </div>
 
             {/* Who is typing. Above the composer and outside it, so the input
-                does not move when somebody starts or stops — a text box that
+                does not move when somebody starts or stops - a text box that
                 jumps while you are typing in it is worse than no indicator. */}
             <div className="h-5 px-4 text-xs text-muted-foreground" aria-live="polite">
               {typing.length > 0 && (
@@ -1789,11 +2281,18 @@ export default function CommunicationModule() {
 
             {canPost ? (
               <Composer
+                /*
+                  Remounted per conversation, which is what makes the draft map
+                  work and what stops half a sentence typed in one channel
+                  being one Return away from posting in another.
+                */
+                key={selected.channelId}
                 channel={selected}
                 members={members}
                 currentMemberId={currentMemberId}
                 organizationId={organizationId}
                 maxAttachmentMb={policy.maxAttachmentMb}
+                drafts={drafts}
                 replyTo={replyTo}
                 onCancelReply={() => setReplyTo(null)}
                 onSend={send}
@@ -1823,7 +2322,31 @@ export default function CommunicationModule() {
         )}
       </main>
 
-      {/* ─── Dialogs ─── */}
+      {/*
+        The details rail.
+
+        Rendered beside the conversation on a wide screen and over it on a
+        phone, which is the same component either way: a second navigation
+        concept for small screens is how a module ends up with two behaviours
+        to maintain and one of them broken.
+      */}
+      {view === 'messages' && selected && panelOpen && (
+        <ConversationPanel
+          channel={selected}
+          members={members}
+          presence={presence}
+          currentMemberId={currentMemberId}
+          isMobile={isMobile}
+          onClose={() => setPanelOpen(false)}
+          onOpenMessage={(id) => openMessage(selected.channelId, id)}
+          onManageMembers={() => setMembersOpen(true)}
+          onSettings={() => setSettingsOpen(true)}
+          onToggleFavourite={() => void toggleFavourite(selected)}
+          onToggleMute={() => void toggleMute(selected)}
+        />
+      )}
+
+      {/* --- Dialogs --- */}
       <CreateChannelDialog
         key={createOpen ? 'create-open' : 'create-closed'}
         open={createOpen}
@@ -1871,16 +2394,54 @@ export default function CommunicationModule() {
         isSaving={busy}
       />
 
-      <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} onJump={jumpTo} />
+      <SearchDialog
+        // Remounted per opening, so the seed from Home's field lands once.
+        key={searchOpen ? `search-${searchSeed}` : 'search-closed'}
+        open={searchOpen}
+        onOpenChange={(open) => { setSearchOpen(open); if (!open) setSearchSeed(''); }}
+        seed={searchSeed}
+        channels={channels}
+        directory={directory}
+        onJump={jumpTo}
+        onOpenChannel={openConversation}
+        onStartDirect={startDirect}
+      />
 
       <ScheduleMeetingDialog
         key={scheduleOpen ? 'schedule-open' : 'schedule-closed'}
         open={scheduleOpen}
-        onOpenChange={setScheduleOpen}
+        onOpenChange={(open) => { setScheduleOpen(open); if (!open) setMeetingSeed(null); }}
         channels={channels}
         directory={directory.filter(d => d.memberId !== currentMemberId)}
         defaultChannelId={selectedId}
-        onCreated={() => { setScheduleOpen(false); void loadMeetings(); setView('meetings'); }}
+        seed={meetingSeed}
+        onCreated={() => {
+          setScheduleOpen(false);
+          setMeetingSeed(null);
+          void loadMeetings();
+          setView('meetings');
+        }}
+      />
+
+      {/*
+        Turning a message into work, and the shelf.
+
+        Both mounted once by the module rather than once per message: forty
+        bubbles each carrying a form is forty components with state and effects
+        for a panel almost nobody has open.
+      */}
+      <MessageActionDialog
+        target={actionTarget}
+        destination={actionDestination}
+        onOpenChange={(open) => {
+          if (!open) { setActionTarget(null); setActionDestination(null); }
+        }}
+      />
+
+      <SavedPanel
+        open={savedOpen}
+        onOpenChange={(open) => { setSavedOpen(open); if (!open) void loadSaved(); }}
+        onOpenMessage={openMessage}
       />
 
       <ConfirmDialog
@@ -1909,7 +2470,7 @@ export default function CommunicationModule() {
 
         It used to be rendered only while `meetings` happened to contain the
         row, which made every background refetch of that list able to unmount a
-        meeting somebody was sitting in — closing their peer connections and
+        meeting somebody was sitting in - closing their peer connections and
         stopping their camera. The room fetches its own row now; the one below
         is a seed so that opening from the list is instant.
       */}
@@ -1922,6 +2483,7 @@ export default function CommunicationModule() {
           initial={activeMeeting ?? undefined}
           currentMemberId={currentMemberId}
           directory={directory}
+          autoJoin={startedByMe.current === activeMeetingId}
           onClose={closeMeeting}
         />
       )}
@@ -1933,14 +2495,21 @@ export default function CommunicationModule() {
 //  Sidebar
 // ═══════════════════════════════════════════════════════════════════════════
 
-function ChannelTypeIcon({ type, className }: { type: string; className?: string }) {
-  const cls = cn('size-4 shrink-0', className);
-  switch (type) {
-    case 'private': return <Lock className={cn(cls, 'text-amber-500')} />;
-    case 'direct': return <User className={cn(cls, 'text-emerald-500')} />;
-    case 'announcement': return <Megaphone className={cn(cls, 'text-violet-500')} />;
-    default: return <Hash className={cn(cls, 'text-slate-400')} />;
-  }
+/**
+ * Presence as a sentence, for a conversation header.
+ *
+ * The dot on the avatar is the glanceable version and this is the one you can
+ * read: "Away" on its own invites the question this answers. Deliberately the
+ * same three states the shared `PresenceDot` uses, worded rather than coloured,
+ * so nothing here can drift from what the dot beside it claims.
+ */
+function presenceWords(
+  presence: 'online' | 'away' | 'offline' | undefined,
+  lastSeenAt: string | null | undefined,
+): string {
+  if (presence === 'online') return 'Online';
+  if (presence === 'away') return 'Away';
+  return lastSeenAt ? `Last seen ${formatRelativeTime(lastSeenAt)}` : 'Offline';
 }
 
 function ContextChip({
@@ -1953,7 +2522,7 @@ function ContextChip({
   return (
     <button
       onClick={onClick}
-      className="inline-flex max-w-[10rem] items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] transition-colors hover:border-emerald-400 hover:bg-emerald-500/5"
+      className="inline-flex max-w-[10rem] items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
     >
       {icon}
       <span className="truncate">{label}</span>
@@ -1962,7 +2531,7 @@ function ContextChip({
 }
 
 function ChannelGroup({
-  label, rows, selectedId, onSelect, presence,
+  label, rows, selectedId, onSelect, presence, inCall, onToggleFavourite,
 }: {
   label: string;
   rows: ChannelRow[];
@@ -1972,92 +2541,132 @@ function ChannelGroup({
    * Presence by member id, for direct messages.
    *
    * A direct conversation is with a person, so whether that person is at their
-   * desk is the single most useful thing the sidebar row can say — it is the
+   * desk is the single most useful thing the sidebar row can say: it is the
    * difference between asking now and leaving a note.
    */
   presence: Record<string, PresenceRow>;
+  /** Membership ids currently joined to a live meeting. */
+  inCall: string[];
+  onToggleFavourite: (channel: ChannelRow) => void;
 }) {
   if (!rows.length) return null;
 
   return (
     <div className="mb-3">
-      <p className="px-2 py-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <p className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {label}
       </p>
       {rows.map(channel => {
         const active = channel.channelId === selectedId;
-        const unread = channel.unreadCount > 0;
-        const mentioned = channel.mentionCount > 0;
+        const unread = channel.unreadCount > 0 || channel.mentionCount > 0;
+        /**
+         * The other person is on a call.
+         *
+         * Not a presence state, on purpose: this is derived from
+         * `meeting_participants` and shown only in this module, so the shared
+         * dot keeps meaning one thing everywhere else in the product.
+         */
+        const busy = channel.type === 'direct'
+          && !!channel.counterpartId
+          && inCall.includes(channel.counterpartId);
 
         return (
-          <button
+          <div
             key={channel.channelId}
-            onClick={() => onSelect(channel.channelId)}
             className={cn(
-              'group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition-colors',
-              active
-                ? 'bg-emerald-500/10 text-foreground'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              'group relative flex items-center rounded-md transition-colors',
+              // A neutral fill for the selected row, as the shell's navigation
+              // uses: an accent-filled row in a list of forty is the fastest
+              // way to lose the one accent the module is allowed.
+              active ? 'bg-accent' : 'hover:bg-muted',
             )}
           >
-            {/* A direct message shows the other person's presence in place of
-                the generic person icon; everything else keeps its glyph. */}
-            {channel.type === 'direct' && channel.counterpartId ? (
-              <PresenceDot
-                presence={presence[channel.counterpartId]?.presence ?? 'offline'}
-                lastSeenAt={presence[channel.counterpartId]?.lastSeenAt}
-                className="ml-0.5 mr-0.5"
-              />
-            ) : (
-              <ChannelTypeIcon type={channel.type}
-                className={active ? 'text-emerald-600' : undefined} />
-            )}
+            <button
+              onClick={() => onSelect(channel.channelId)}
+              aria-current={active ? 'true' : undefined}
+              className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left text-sm"
+            >
+              {/* A direct message shows the other person's presence in place of
+                  the generic person icon; everything else keeps its glyph. */}
+              {channel.type === 'direct' && channel.counterpartId ? (
+                <PresenceDot
+                  presence={presence[channel.counterpartId]?.presence ?? 'offline'}
+                  lastSeenAt={presence[channel.counterpartId]?.lastSeenAt}
+                  className="ml-0.5 mr-0.5"
+                />
+              ) : (
+                <ChannelGlyph type={channel.type}
+                  className={active ? 'text-foreground' : undefined} />
+              )}
 
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className={cn('flex min-w-0 items-center gap-1 truncate',
-                  unread ? 'font-semibold text-foreground' : 'font-medium',
-                  active && 'text-emerald-700 dark:text-emerald-400')}>
-                  <span className="truncate">{channelLabel(channel)}</span>
-                  {channel.isMuted && <BellOff className="size-3 shrink-0 opacity-60" />}
-                  {channel.liveMeetingId && (
-                    <span className="relative flex size-1.5 shrink-0">
-                      <span className="absolute inline-flex size-full animate-ping rounded-full bg-rose-400 opacity-75" />
-                      <span className="relative inline-flex size-1.5 rounded-full bg-rose-500" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={cn(
+                    'flex min-w-0 items-center gap-1 truncate',
+                    unread ? 'font-semibold text-foreground' : 'font-medium',
+                    !unread && !active && 'text-muted-foreground',
+                  )}>
+                    <span className="truncate">{channelLabel(channel)}</span>
+                    {channel.isMuted && <BellOff className="size-3 shrink-0 opacity-60" />}
+                    {channel.liveMeetingId && <LivePip />}
+                  </span>
+                  {channel.lastMessageAt && (
+                    <span className="shrink-0 text-[10px] text-muted-foreground group-hover:hidden">
+                      {formatRelativeTime(channel.lastMessageAt)}
                     </span>
                   )}
-                </span>
-                {channel.lastMessageAt && (
-                  <span className="shrink-0 text-[10px] text-muted-foreground">
-                    {formatRelativeTime(channel.lastMessageAt)}
-                  </span>
+                </div>
+                {(busy || channel.lastMessage !== null) && (
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {busy ? (
+                      <span className="text-destructive">In a call</span>
+                    ) : (
+                      <>
+                        {channel.lastSender && (
+                          <span className="font-medium">{channel.lastSender}: </span>
+                        )}
+                        {truncate(plainPreview(channel.lastMessage ?? '') || 'Shared a file', 40)}
+                      </>
+                    )}
+                  </p>
                 )}
               </div>
-              {channel.lastMessage !== null && (
-                <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                  {channel.lastSender && <span className="font-medium">{channel.lastSender}: </span>}
-                  {truncate(plainPreview(channel.lastMessage) || 'Shared a file', 40)}
-                </p>
-              )}
-            </div>
 
-            {/* A mention outranks a count: being named is a different fact from
-                being behind, and muting never hides it. */}
-            {mentioned ? (
-              <Badge className="flex h-5 min-w-5 shrink-0 items-center justify-center gap-0.5 rounded-full bg-amber-500 px-1.5 text-[10px] text-white hover:bg-amber-500">
-                <AtSign className="size-2.5" />{channel.mentionCount}
-              </Badge>
-            ) : unread ? (
-              <Badge className={cn(
-                'flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] text-white',
-                channel.isMuted
-                  ? 'bg-muted-foreground/50 hover:bg-muted-foreground/50'
-                  : 'bg-emerald-600 hover:bg-emerald-600',
-              )}>
-                {channel.unreadCount > 99 ? '99+' : channel.unreadCount}
-              </Badge>
-            ) : null}
-          </button>
+              <UnreadPill
+                unread={channel.unreadCount}
+                mentions={channel.mentionCount}
+                muted={channel.isMuted}
+              />
+            </button>
+
+            {/*
+              Starring, on the row itself.
+
+              Revealed on hover and always reachable by keyboard, in the space
+              the timestamp occupies when the pointer is elsewhere. Putting it
+              in a menu would mean two clicks for the gesture that decides how
+              the whole sidebar is ordered.
+            */}
+            {channel.isMember && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onToggleFavourite(channel); }}
+                aria-label={channel.isFavourite ? 'Unstar this conversation' : 'Star this conversation'}
+                aria-pressed={channel.isFavourite}
+                className={cn(
+                  'absolute right-1.5 rounded p-1 transition-opacity',
+                  'hover:bg-background focus-visible:opacity-100',
+                  channel.isFavourite
+                    ? 'opacity-0 group-hover:opacity-100'
+                    : 'opacity-0 group-hover:opacity-100',
+                )}
+              >
+                <Star className={cn(
+                  'size-3.5',
+                  channel.isFavourite ? 'fill-current text-brand' : 'text-muted-foreground',
+                )} />
+              </button>
+            )}
+          </div>
         );
       })}
     </div>

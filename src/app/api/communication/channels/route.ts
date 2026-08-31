@@ -12,7 +12,7 @@ import { audit, communicationPolicy, isOrgAdmin } from '@/lib/communication';
  *
  *  `channel_overview()` returns the sidebar in one query: every channel the
  *  caller may see, with its last message, its unread count, its participants
- *  count and — for a direct message — the other person's name and avatar.
+ *  count and - for a direct message - the other person's name and avatar.
  *
  *  The module previously fetched the channel list and then made one further
  *  request per channel to find its most recent message, so twenty channels
@@ -39,14 +39,14 @@ export async function GET(req: Request) {
      * What ought to interrupt somebody, in one number.
      *
      * A muted conversation is excluded: muting means "do not interrupt me
-     * about this", and a badge on the navigation is an interruption — the
+     * about this", and a badge on the navigation is an interruption - the
      * unread count on the row itself still shows, because muting is not the
      * same as marking read.
      *
      * Except for a mention. Being named is the one thing that has to reach
      * somebody however they have configured the channel, so a muted
      * conversation still contributes the mentions in it. The same expression
-     * appears in `/api/notifications`, which composes the sidebar badge — and
+     * appears in `/api/notifications`, which composes the sidebar badge - and
      * it has to, because two definitions of "unread" are two badges that
      * disagree in front of the user. This one and that one are the same
      * sentence, deliberately.
@@ -86,8 +86,8 @@ export async function POST(req: Request) {
    * The organisation may reserve channel creation for administrators.
    *
    * Checked here rather than in RLS because it is a policy document rather
-   * than a property of the row — the same insert is legitimate or not
-   * depending on a setting that can change between two requests — and because
+   * than a property of the row - the same insert is legitimate or not
+   * depending on a setting that can change between two requests - and because
    * a refusal has to say why. An organisation that curates its channel list is
    * a real thing; one where nobody understands why the button stopped working
    * is not.
@@ -114,7 +114,7 @@ export async function POST(req: Request) {
    *
    * Restricting who may post is an administrative act, so a member cannot
    * create one and appoint themselves its only voice. The check is here rather
-   * than in RLS because the row is legitimate — it is the *combination* with
+   * than in RLS because the row is legitimate - it is the *combination* with
    * the creator's role that is not.
    */
   const isAdmin = ['owner', 'administrator'].includes(ctx.org.role);
@@ -148,7 +148,7 @@ export async function POST(req: Request) {
        * since 0003 and nothing has ever set them, which is why a channel could
        * not be opened from the project it concerned, or the project from the
        * channel. Linking is not access: a private channel about a project is
-       * still private, and a public one is still public — the link only says
+       * still private, and a public one is still public - the link only says
        * what this conversation is for.
        */
       project_id: b.project_id || null,
@@ -168,7 +168,7 @@ export async function POST(req: Request) {
    *
    * The creator first, so that even if the invited list is rejected the
    * channel is not left ownerless. Clients are filtered out here as well as by
-   * `open_direct_channel` — a customer must never end up in an internal thread,
+   * `open_direct_channel` - a customer must never end up in an internal thread,
    * and the invite list comes from the browser.
    */
   const invited: string[] = Array.isArray(b.member_ids) ? b.member_ids.filter(Boolean) : [];

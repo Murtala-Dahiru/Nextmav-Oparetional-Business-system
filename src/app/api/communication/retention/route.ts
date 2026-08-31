@@ -54,9 +54,9 @@ export async function GET() {
  *
  * `apply_message_retention()` refuses anybody who is not an organisation
  * administrator, reads the policy from `org_settings` rather than from this
- * request — a retention period passed in a request body would be a way to
+ * request - a retention period passed in a request body would be a way to
  * delete a year of history without ever changing a setting anybody could see
- * — and writes the audit entry itself.
+ * - and writes the audit entry itself.
  */
 export async function POST() {
   const ctx = await authorize('admin', 'manage');

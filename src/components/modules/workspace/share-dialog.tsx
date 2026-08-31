@@ -35,7 +35,7 @@ import type { OpenPage, PageShare, DirectoryMember, Department } from './types';
  *
  *  A page has a base visibility, and then explicit shares on top of it. Both
  *  are inherited by everything inside a folder, resolved server-side by
- *  `page_permission()` walking up the ancestry — so sharing "HR Documents"
+ *  `page_permission()` walking up the ancestry - so sharing "HR Documents"
  *  with the HR department reaches the pages inside it, including ones created
  *  afterwards.
  */

@@ -1,6 +1,7 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
+import { decorateLinks } from '@/lib/workspace-links';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -26,7 +27,7 @@ export async function GET(_req: Request, { params }: Params) {
 
   if (e) return pgError(e);
   // A row hidden by RLS and a row that does not exist are indistinguishable to
-  // the caller by design — confirming existence would leak across tenants.
+  // the caller by design - confirming existence would leak across tenants.
   if (!page) return error('Not found', 404, 'NOT_FOUND');
 
   // The body lives on the table, not the view: the tree carries structure, and
@@ -35,7 +36,7 @@ export async function GET(_req: Request, { params }: Params) {
     .from('workspace_pages').select('content')
     .eq('id', id).maybeSingle();
 
-  const [columns, rows, files, shares] = await Promise.all([
+  const [columns, rows, files, shares, links] = await Promise.all([
     page.kind === 'sheet'
       ? ctx.supabase.from('workspace_sheet_columns').select('*')
           .eq('page_id', id).order('position')
@@ -48,6 +49,9 @@ export async function GET(_req: Request, { params }: Params) {
     ctx.supabase.from('workspace_page_shares')
       .select('*, member:organization_members!workspace_page_shares_member_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url)), department:departments(id, name)')
       .eq('page_id', id),
+    ctx.supabase.from('workspace_page_links').select('*')
+      .eq('organization_id', ctx.org.organizationId)
+      .eq('page_id', id).order('created_at'),
   ]);
 
   return success({
@@ -57,6 +61,14 @@ export async function GET(_req: Request, { params }: Params) {
     rows: rows.data ?? [],
     files: files.data ?? [],
     shares: shares.data ?? [],
+    /**
+     * What this page is about, resolved to current names.
+     *
+     * Shipped with the page rather than fetched by the panel: the header shows
+     * the first two links inline, so a second request would mean the title bar
+     * rendering, then re-rendering a beat later with two more chips in it.
+     */
+    links: await decorateLinks(ctx as any, links.data ?? []),
   });
 }
 
@@ -65,7 +77,7 @@ export async function GET(_req: Request, { params }: Params) {
  *
  * Fields are allow-listed rather than passed through. `version` is maintained
  * by the snapshot trigger and `created_by` decides who may re-share, so a
- * client that sent either — deliberately or by echoing back a whole record —
+ * client that sent either - deliberately or by echoing back a whole record -
  * would rewrite history or hand itself ownership.
  */
 export async function PATCH(req: Request, { params }: Params) {
@@ -88,6 +100,8 @@ export async function PATCH(req: Request, { params }: Params) {
     update.title = title;
   }
   if (typeof b.content === 'string') update.content = b.content;
+  if (typeof b.summary === 'string') update.summary = b.summary.trim();
+  if ('template_category' in b) update.template_category = b.template_category || null;
   if (typeof b.icon === 'string') update.icon = b.icon;
   if (b.colour || b.color) update.colour = b.colour || b.color;
   if ('is_starred' in b) update.is_starred = !!b.is_starred;
@@ -99,7 +113,7 @@ export async function PATCH(req: Request, { params }: Params) {
    *
    * `parentId: null` means "move to the root" and is distinct from not sending
    * the field at all, so the key's presence is what is tested rather than its
-   * truthiness — otherwise a page could never be moved out of a folder.
+   * truthiness - otherwise a page could never be moved out of a folder.
    */
   if ('parent_id' in b) {
     if (b.parent_id === id) {
@@ -124,12 +138,65 @@ export async function PATCH(req: Request, { params }: Params) {
 
   update.last_edited_by = ctx.org.memberId;
 
-  const { data, error: e } = await ctx.supabase
+  /**
+   * ===========================================================================
+   *  Conflict-safe writes
+   * ===========================================================================
+   *
+   *  A body save carries the version the editor opened at. If the stored
+   *  version has moved past it, somebody else has saved in the meantime and
+   *  this request is about to overwrite their paragraph with a document that
+   *  never contained it. That is the one failure the brief for this phase
+   *  names outright: a user's work must never disappear because another user
+   *  edited the same document.
+   *
+   *  So the write is conditional. `.eq('version', baseVersion)` makes the
+   *  check and the update one statement, which is what makes it safe: reading
+   *  the version first and then writing leaves a window between the two, and
+   *  an autosaving editor writes often enough to find it.
+   *
+   *  409 rather than a silent merge. There is no correct automatic resolution
+   *  for two people rewriting the same sentence, and inventing one would lose
+   *  work quietly instead of loudly. The editor keeps the draft, shows what
+   *  changed underneath it and lets the person decide - which is the whole
+   *  reason `latestVersion` and `latestEditor` come back in the error.
+   *
+   *  Only content is guarded. Starring, moving, renaming and re-sharing are
+   *  not overwrites of anybody's prose, and making them fail because a
+   *  colleague typed a word would be an obstruction with no safety in it.
+   */
+  const baseVersion = Number(b.base_version);
+  const guarded = 'content' in update && Number.isFinite(baseVersion);
+
+  let write = ctx.supabase
     .from('workspace_pages').update(update)
     .eq('organization_id', ctx.org.organizationId)
-    .eq('id', id)
-    .select('*')
-    .maybeSingle();
+    .eq('id', id);
+  if (guarded) write = write.eq('version', baseVersion);
+
+  const { data, error: e } = await write.select('*').maybeSingle();
+
+  if (!e && !data && guarded) {
+    const { data: current } = await ctx.supabase
+      .from('v_workspace_tree')
+      .select('version, last_edited_by_name, updated_at, permission')
+      .eq('organization_id', ctx.org.organizationId).eq('id', id).maybeSingle();
+
+    // A guarded write returning nothing is usually a conflict and occasionally
+    // a permission refusal. Telling the two apart matters: one is "reload and
+    // reapply", the other is "you cannot save this at all".
+    if (current && current.version !== baseVersion) {
+      return error(
+        `${current.last_edited_by_name || 'Someone'} saved this page while you were editing.`,
+        409, 'VERSION_CONFLICT',
+        {
+          latestVersion: current.version,
+          latestEditor: current.last_edited_by_name ?? null,
+          latestAt: current.updated_at,
+        },
+      );
+    }
+  }
 
   if (e) return pgError(e);
   // No row came back either because it is not there or because the caller may
@@ -156,7 +223,7 @@ export async function DELETE(_req: Request, { params }: Params) {
    *
    * `parent_id` cascades on hard delete, but these are soft deletes, so the
    * children would keep `deleted_at IS NULL` and reappear at the root of the
-   * tree — the folder gone and its contents scattered. The descendants are
+   * tree - the folder gone and its contents scattered. The descendants are
    * collected first and marked in one statement.
    */
   const ids = [id];

@@ -99,6 +99,98 @@ export function formatDate(date: string | Date, opts?: Intl.DateTimeFormatOption
   return d.toLocaleDateString(activeLocale, opts ?? { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Calendar days                                                             */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  A `date` column, rendered as the day it says
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * ── The trap ─────────────────────────────────────────────────────────────
+ *
+ * `new Date('2026-09-03')` is UTC midnight **by specification**, so in any
+ * timezone west of UTC it renders as the 2nd. Postgres `date` columns have no
+ * time and no zone — `tasks.due_date`, `milestones.due_date`,
+ * `projects.end_date`, `invoices.due_date`, `deals.expected_close`,
+ * `holidays.holiday_date` are all of them — and passing one to `formatDate`
+ * puts the day before it on the screen.
+ *
+ * ── Why it lives here now ────────────────────────────────────────────────
+ *
+ * My Work found it in Phase 3 and fixed it locally. CRM hit the same thing in
+ * Phase 4 and wrote the same function again, with a note saying that the third
+ * module to need it should lift the pair here and point both at it. Projects
+ * is the third module: every date on a roadmap is a `date` column, so a
+ * workspace built on the local copies would have been the fourth.
+ *
+ * `timestamptz` values are unaffected and must not be passed through the bare
+ * branch: they carry their own offset, and appending one would shift them.
+ * Both helpers test the string's shape rather than trusting the caller.
+ */
+export function formatDay(iso: string | null | undefined, opts?: Intl.DateTimeFormatOptions): string {
+  if (!iso) return '';
+  const d = parseDay(iso);
+  if (!d) return '';
+  return d.toLocaleDateString(activeLocale, opts ?? { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** The same day without the year, for dates inside the current one. */
+export function formatDayShort(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = parseDay(iso);
+  if (!d) return '';
+  return d.toLocaleDateString(activeLocale, {
+    day: 'numeric',
+    month: 'short',
+    ...(d.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }),
+  });
+}
+
+/** A `date` or a `timestamptz`, as a Date in the reader's own calendar. */
+function parseDay(iso: string): Date | null {
+  const bare = /^\d{4}-\d{2}-\d{2}$/.test(iso);
+  const d = new Date(bare ? `${iso}T00:00:00` : iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Today as `YYYY-MM-DD` in the reader's own timezone, not UTC's. */
+export function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Whole days from today to a date, negative for the past.
+ *
+ * Both ends are normalised to local midnight first, so "tomorrow" is 1 all day
+ * rather than 0 in the morning and 1 in the evening. A count of days that
+ * changes with the clock is the reason "closes in 0 days" used to appear on
+ * something due next week.
+ */
+export function daysUntil(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const target = parseDay(iso);
+  if (!target) return null;
+  target.setHours(0, 0, 0, 0);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - now.getTime()) / 86_400_000);
+}
+
+/** "in 3 days", "today", "5 days ago" — said the way a person would. */
+export function relativeDay(iso: string | null | undefined): string {
+  const d = daysUntil(iso);
+  if (d === null) return '';
+  if (d === 0) return 'today';
+  if (d === 1) return 'tomorrow';
+  if (d === -1) return 'yesterday';
+  if (d > 0) return d < 14 ? `in ${d} days` : `in ${Math.round(d / 7)} weeks`;
+  const past = Math.abs(d);
+  return past < 14 ? `${past} days ago` : `${Math.round(past / 7)} weeks ago`;
+}
+
 /** Unambiguous all-numeric form, for dense tables. */
 export function formatDateNumeric(date: string | Date): string {
   if (!date) return '';

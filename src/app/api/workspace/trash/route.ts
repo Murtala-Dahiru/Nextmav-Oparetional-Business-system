@@ -9,13 +9,13 @@ import { acceptBody } from '@/lib/case';
  *
  * ── Why this was missing rather than absent ───────────────────────────────
  *
- * Deleting a page has always been soft — `workspace_pages.deleted_at` is
+ * Deleting a page has always been soft - `workspace_pages.deleted_at` is
  * stamped, the row survives, and deleting a folder marks its descendants in the
  * same statement so they do not reappear scattered at the root.
  *
  * Nothing ever read those rows back. So the data for a trash existed from the
  * first migration, every delete was quietly recoverable, and there was no way
- * to recover anything — which is the worst of both: the storage cost of keeping
+ * to recover anything - which is the worst of both: the storage cost of keeping
  * it and none of the reassurance.
  *
  * ── What restoring has to get right ───────────────────────────────────────
@@ -24,7 +24,7 @@ import { acceptBody } from '@/lib/case';
  * back into a folder that is not there, and it would render at the root or not
  * at all depending on how the tree is walked. So a restore either brings the
  * ancestors back with it or detaches the page to the root, and this one does
- * the former — somebody who deletes a folder by mistake and restores a document
+ * the former - somebody who deletes a folder by mistake and restores a document
  * from it expects the folder back too.
  */
 
@@ -108,7 +108,7 @@ export async function POST(req: Request) {
   /**
    * Walk up to the root, collecting any deleted ancestors.
    *
-   * Bounded at twenty, the same depth limit the delete uses — a workspace tree
+   * Bounded at twenty, the same depth limit the delete uses - a workspace tree
    * that deep is a data problem, and an unbounded walk over a cycle would not
    * terminate.
    */
@@ -134,7 +134,7 @@ export async function POST(req: Request) {
    * Restoring a folder restores what was in it.
    *
    * Deleting a folder marked its descendants in one statement, so restoring
-   * only the folder would leave its contents in the trash — the folder back and
+   * only the folder would leave its contents in the trash - the folder back and
    * empty, which is not what anybody means by undo. Only descendants deleted at
    * the *same moment* are brought back, so a document deleted separately a week
    * earlier stays where it was put.

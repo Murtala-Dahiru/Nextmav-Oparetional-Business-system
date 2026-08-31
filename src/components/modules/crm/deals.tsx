@@ -17,7 +17,7 @@ import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
 
 import { useCrmList } from './use-list';
-import { CrmTable, type Column } from './table';
+import { RecordTable, type Column } from '@/components/shared/record-table';
 import {
   SectionHead, SearchField, FilterRow, FilterToggle, StageTag, OwnerTag, Blank, Broken,
   personName, sourceLabel,
@@ -274,7 +274,7 @@ export function DealsSection({
       {list.error ? (
         <Broken message={list.error} onRetry={list.reload} />
       ) : (
-        <CrmTable
+        <RecordTable
           columns={columns}
           rows={list.rows}
           rowKey={d => d.id}

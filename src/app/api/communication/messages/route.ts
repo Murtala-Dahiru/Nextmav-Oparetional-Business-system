@@ -10,7 +10,7 @@ import { communicationPolicy } from '@/lib/communication';
  * in storage, the governance is a `files` row, and this is the join that puts
  * them on the message without a second request per bubble. Embedded rather
  * than fetched separately because a timeline of a hundred messages would
- * otherwise be a hundred attachment lookups — the same arithmetic that made
+ * otherwise be a hundred attachment lookups - the same arithmetic that made
  * `channel_overview()` necessary.
  */
 const SELECT =
@@ -52,12 +52,35 @@ export async function GET(req: Request) {
    *
    * Both spellings accepted, as `channel_id` above already is. This read only
    * `parent_id`, so a component asking for `?parentId=` got the channel's root
-   * messages back instead of the thread it asked for — no error, just the wrong
+   * messages back instead of the thread it asked for - no error, just the wrong
    * list, which is the failure mode that takes longest to notice.
    */
   const parentId = searchParams.get('parent_id') ?? searchParams.get('parentId');
   if (parentId) query = query.eq('parent_id', parentId);
   else query = query.is('parent_id', null);
+
+  /**
+   * Only what has been pinned.
+   *
+   * The module used to answer "show me the pinned messages" by filtering the
+   * forty it had already loaded, so a decision pinned in March was missing from
+   * the pinned list in April - and missing silently, which is the worst version
+   * of that. `channel_overview()` has reported the true `pinned_count` all
+   * along, so the panel could say "4 pinned" and then show two of them.
+   *
+   * A pinned message is a root or a reply; the `parent_id IS NULL` filter above
+   * is skipped for this reason, because a pinned answer inside a thread is
+   * exactly the kind of thing a team pins.
+   */
+  if (searchParams.get('pinned') === 'true' || searchParams.get('pinned') === '1') {
+    query = ctx.supabase
+      .from('messages')
+      .select(SELECT, { count: 'exact' })
+      .eq('organization_id', ctx.org.organizationId)
+      .eq('channel_id', channelId)
+      .is('deleted_at', null)
+      .eq('is_pinned', true);
+  }
 
   /**
    * Scrolling back.
@@ -67,7 +90,7 @@ export async function GET(req: Request) {
    * Offset paging over a live conversation is wrong in a way that is easy to
    * miss: between loading page 1 and asking for page 2, three messages arrive.
    * Every row shifts by three, so page 2 re-serves rows the reader already has
-   * and skips others — the scrollback repeats itself and loses things at the
+   * and skips others - the scrollback repeats itself and loses things at the
    * same time. A cursor on `created_at` asks for "older than what I already
    * hold", which is stable no matter what arrives at the other end of the list.
    *
@@ -106,7 +129,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * Post a message.
  *
- * The sender is taken from the session, never the body — accepting it would
+ * The sender is taken from the session, never the body - accepting it would
  * let anyone post as a colleague. Mentions are stored as membership ids so the
  * notification trigger does not have to re-parse the text.
  */
@@ -123,10 +146,10 @@ export async function POST(req: Request) {
     /**
      * Two different things arrive under two different names, deliberately.
      *
-     *   `files`       — objects already uploaded to storage by the browser.
+     *   `files`       - objects already uploaded to storage by the browser.
      *                   Each becomes a `files` row, which is what makes it
      *                   findable, attributable and revocable afterwards.
-     *   `attachments` — references to business records: a task, a project, a
+     *   `attachments` - references to business records: a task, a project, a
      *                   workspace page. No bytes, no storage, and nothing to
      *                   govern beyond what already governs the record.
      *
@@ -145,8 +168,8 @@ export async function POST(req: Request) {
     /**
      * Uploads are checked before the message exists.
      *
-     * The path prefix is the whole storage security model — every policy checks
-     * the first segment against the caller's memberships — and a `files` row
+     * The path prefix is the whole storage security model - every policy checks
+     * the first segment against the caller's memberships - and a `files` row
      * pointing outside it would be a way to register another tenant's object
      * against this organisation and then read it back through a signed URL this
      * application generates. The workspace endpoint makes the same check for
@@ -216,7 +239,7 @@ export async function POST(req: Request) {
     }
 
     // Read back through the full projection, so the client receives exactly the
-    // shape the timeline renders — attachments included.
+    // shape the timeline renders - attachments included.
     const { data: full } = await ctx.supabase
       .from('messages').select(SELECT).eq('id', data.id).single();
 

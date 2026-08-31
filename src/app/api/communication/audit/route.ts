@@ -9,7 +9,7 @@ import { success } from '@/lib/api-response';
  *  ── What is deliberately absent ──────────────────────────────────────────
  *
  *  Not one word of anybody's message. The trail records that a message was
- *  removed, by whom, in which channel and why — never what it said. An
+ *  removed, by whom, in which channel and why - never what it said. An
  *  administrator reading this table must not be able to reconstruct a private
  *  conversation from it, and a table shaped so that they could is one that
  *  would eventually be used that way.

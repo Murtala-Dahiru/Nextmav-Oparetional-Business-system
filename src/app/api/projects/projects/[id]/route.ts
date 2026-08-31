@@ -24,8 +24,8 @@ import { updateProjectSchema } from '@/lib/validations';
  * gone, an unvalidated update is worse than a broken one: `deleted_at`,
  * `completed_at`, `organization_id` and `budget` were all writable by anyone
  * holding `projects.edit`, and none of the checks the create route applies were
- * applied here. `updateProjectSchema` — written months ago and until now
- * imported by nothing — is the list of fields a client may set, and the
+ * applied here. `updateProjectSchema` - written months ago and until now
+ * imported by nothing - is the list of fields a client may set, and the
  * `project_dates_valid` constraint catches an end date moved before the start
  * even when only one of the two is being changed.
  *

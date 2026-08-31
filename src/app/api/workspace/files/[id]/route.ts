@@ -1,6 +1,7 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
+import { normaliseLink } from '@/lib/links';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -13,8 +14,8 @@ type Params = { params: Promise<{ id: string }> };
  *
  * The document buckets are private, so a path alone is not readable. Signing
  * happens on the server after the row has been resolved through RLS, which
- * means the permission decision is made against the *metadata* — where "this
- * is in a folder you can open" is expressible — rather than against the
+ * means the permission decision is made against the *metadata* - where "this
+ * is in a folder you can open" is expressible - rather than against the
  * storage path, where it is not.
  */
 export async function GET(_req: Request, { params }: Params) {
@@ -27,7 +28,8 @@ export async function GET(_req: Request, { params }: Params) {
   // `GenericStringError`, which makes every field access fail to compile.
   const { data: file, error: e } = await ctx.supabase
     .from('files')
-    .select('id, filename, mime_type, size_bytes, bucket, path, page_id, description, created_at')
+    .select('id, filename, mime_type, size_bytes, bucket, path, page_id, description, ' +
+      'external_url, created_at')
     .eq('organization_id', ctx.org.organizationId).eq('id', id)
     .is('deleted_at', null).maybeSingle<any>();
 
@@ -39,7 +41,7 @@ export async function GET(_req: Request, { params }: Params) {
    *
    * RLS on `files` scopes by organization, which was the right rule while
    * every workspace page was readable by every employee. Now that a folder can
-   * be private, the check has to be made against the folder — otherwise a file
+   * be private, the check has to be made against the folder - otherwise a file
    * in the HR folder would be downloadable by anybody who could guess its id.
    */
   if (file.page_id) {
@@ -47,6 +49,20 @@ export async function GET(_req: Request, { params }: Params) {
       .from('v_workspace_tree').select('id, permission')
       .eq('organization_id', ctx.org.organizationId).eq('id', file.page_id).maybeSingle();
     if (!folder) return error('Not found', 404, 'NOT_FOUND');
+  }
+
+  /**
+   * A link has nothing to sign.
+   *
+   * Its address is the resource, and it is returned exactly as it was stored:
+   * `normaliseLink` already refused everything that was not http or https on
+   * the way in, so a stored value cannot carry a scheme that does something
+   * when clicked. Signing is skipped rather than attempted - `createSignedUrl`
+   * against a bucket called "link" fails, and the panel would then report a
+   * storage outage for a row that has no storage.
+   */
+  if (file.external_url) {
+    return success({ ...file, url: file.external_url, expiresIn: null, isLink: true });
   }
 
   // Ten minutes: long enough to open or download, short enough that a link
@@ -61,7 +77,7 @@ export async function GET(_req: Request, { params }: Params) {
     );
   }
 
-  return success({ ...file, url: signed?.signedUrl ?? null, expiresIn: 600 });
+  return success({ ...file, url: signed?.signedUrl ?? null, expiresIn: 600, isLink: false });
 }
 
 /**
@@ -93,6 +109,27 @@ export async function PATCH(req: Request, { params }: Params) {
   }
   if ('description' in b) update.description = String(b.description ?? '');
 
+  /**
+   * A link's address can be corrected; an upload's path cannot.
+   *
+   * The two are the same field conceptually - where the thing is - and they
+   * differ in exactly one respect: changing a storage path leaves the row
+   * describing bytes it is not about, while a document that has moved in Drive
+   * has a new address and the old one is simply wrong. The CHECK added in 0034
+   * keeps `bucket = 'link'` and `external_url` honest in both directions, so
+   * this cannot turn an upload into a link by accident.
+   */
+  if ('external_url' in b) {
+    const next = normaliseLink(String(b.external_url ?? ''));
+    if (!next) {
+      return error(
+        'That does not look like a web address. Links start with http:// or https://.',
+        422, 'INVALID_LINK',
+      );
+    }
+    update.external_url = next;
+  }
+
   if ('page_id' in b) {
     if (!b.page_id) return error('A file has to live in a folder.', 422, 'VALIDATION_ERROR');
     // Moving into a folder requires the right to write in the destination.
@@ -115,11 +152,18 @@ export async function PATCH(req: Request, { params }: Params) {
     .select('*').maybeSingle();
 
   if (e) return pgError(e);
-  // The update policy admits the uploader and administrators only, so an empty
-  // result here usually means "not yours" rather than "not there".
+  /**
+   * An empty result is a permission refusal about as often as a miss.
+   *
+   * 0035 widened `files_update` so that somebody who may write in the folder a
+   * file sits in can rename it, not only the person who uploaded it. The old
+   * rule meant the owner of the Finance folder could not correct a misspelt
+   * filename in it, and this endpoint answered with a sentence that was true
+   * and useless.
+   */
   if (!data) {
     return error(
-      'Not found, or you are not the person who uploaded it.',
+      'Not found, or you do not have permission to change it.',
       404, 'NOT_FOUND',
     );
   }

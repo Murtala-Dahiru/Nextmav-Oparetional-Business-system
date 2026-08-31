@@ -12,7 +12,7 @@ import {
  *  organisation's communication policy, and the moderation trail.
  *
  *  Both are here rather than inlined because the alternative is what this
- *  codebase already learned the hard way — three routes each reading
+ *  codebase already learned the hard way - three routes each reading
  *  `org_settings` with their own defaults, which is three answers to "may an
  *  author edit their message" that agree until one of them is changed.
  */
@@ -72,7 +72,7 @@ export function isOrgAdmin(ctx: RequestContext): boolean {
  * Whether this message is still within its edit window.
  *
  * Returns the reason it is not, or null. Phrased as a message rather than a
- * boolean because the caller has to say *why* — "you can no longer edit this"
+ * boolean because the caller has to say *why* - "you can no longer edit this"
  * with no explanation is the sort of refusal people file a support ticket
  * about.
  */
@@ -112,7 +112,7 @@ export type AuditAction =
  * activity feed on 2026-07-31.
  *
  * Failures are swallowed. An audit write that fails must not fail the
- * moderation it was recording — the alternative is a message that could not be
+ * moderation it was recording - the alternative is a message that could not be
  * deleted because the note about deleting it could not be filed.
  */
 export async function audit(

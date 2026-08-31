@@ -7,7 +7,7 @@ import { acceptBody } from '@/lib/case';
  *
  * The `comments` table has carried a `project_id` column since the first
  * business migration and nothing ever wrote to it, so a project had no thread
- * — decisions about the work lived in chat, where they were unfindable a week
+ * - decisions about the work lived in chat, where they were unfindable a week
  * later, or in nobody's inbox at all.
  *
  * Mentions are stored as membership ids in `comments.mentions` rather than
@@ -49,7 +49,7 @@ export async function GET(req: Request) {
 /**
  * Post to a thread.
  *
- * `author_id` is taken from the session and never from the body — the RLS
+ * `author_id` is taken from the session and never from the body - the RLS
  * policy enforces the same rule, but rejecting it here gives a clear error
  * rather than an opaque policy violation, and makes the intent obvious to
  * anyone reading the handler.
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
      * The parent must be in this organization.
      *
      * The foreign key only proves the row exists somewhere. Without this check
-     * a comment could be filed against another tenant's project — RLS would
+     * a comment could be filed against another tenant's project - RLS would
      * refuse to *read* it back, so it would vanish silently rather than fail.
      */
     if (projectId) {
@@ -100,7 +100,7 @@ export async function POST(req: Request) {
      * Mentions are validated against the organization.
      *
      * An id that is not a colleague would sit in the array forever, and the
-     * notification trigger would silently drop it — leaving the author
+     * notification trigger would silently drop it - leaving the author
      * believing they had notified someone they had not.
      */
     let mentions: string[] = Array.isArray(b.mentions) ? b.mentions.filter(Boolean) : [];

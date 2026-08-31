@@ -1534,6 +1534,969 @@ the rows when the demo workspace wants tidying.
   same ledger, and `performance` is not a module they hold. Either the portal
   grows an earnings panel or the ledger endpoint learns to answer them.
 
+---
+
+## 5i. Phase 6 - Projects (2026-08-30)
+
+The module with the widest gap yet between what the schema could already do
+and what the screen did. The engine was not the problem; almost nothing was
+reachable from it.
+
+### What the audit found
+
+Nine capabilities, fully built, with no way to use them:
+
+- **`tasks.milestone_id`** has a foreign key, an index, a roadmap that groups
+  by it and a create handler that refuses a phase from another project - and
+  it was absent from `createTaskSchema`, so `zodResolver` stripped it out of
+  every request before it was sent. **No task in the product could ever be put
+  on a phase.** The roadmap showed "0 tasks" under every column by
+  construction.
+- **`tasks.parent_task_id`** - the same story for subtasks.
+- **`files.requires_approval`** and the whole approval chain
+  (`approval_decision`, `approved_at`, `approved_by`, `approval_note`, a
+  notification trigger, a portal endpoint) have existed since 0018 and are
+  **twenty per cent of the progress figure the client sees**. No staff screen
+  exposed any of it: the team could share a file with a customer and had no
+  way to ask them to accept it.
+- **The Files panel had no upload control at all.** It listed files and could
+  not take one.
+- **`comments.parent_id`** is accepted by the POST handler and was never in
+  its select, so replies could be written and never rendered. Every thread was
+  a flat list of cards.
+- **`PATCH`/`DELETE` on a comment**, **`PATCH` on a project member** (role and
+  allocation) and **`filename`/`folder` on a file** all exist and no control
+  called any of them. Correcting somebody's project role meant removing them
+  and adding them back, losing the joined date.
+- **`milestones.progress_pct`** has a column, a CHECK constraint and a place in
+  the blended progress figure. Nothing set it.
+- **`task_dependencies`** has had a table, a self-reference guard and an RLS
+  policy since 0003 and had never had a row written to it.
+- **`?assignedToMe=true`** has been on the tasks endpoint since it was written
+  and no screen ever sent it, so finding your own work meant filtering the
+  whole organisation's tasks by your own name.
+
+And three live defects:
+
+- **`createTaskSchema` required a project**, so the "Personal task" option in
+  the picker could never be submitted - the endpoint has a whole branch for
+  personal tasks and the form's own resolver refused the case.
+- **`tasks.completed_at`** has existed since 0003 and nothing has ever written
+  it, so "what did we finish this week" was unanswerable and a timeline could
+  only show milestones.
+- **The `blocked` task status had no label and no styling.** It is in
+  `TASK_STATUSES`, the health view counts it, the attention queue is built on
+  it - and the table printed the raw enum. `cancelled` had the same omission on
+  projects.
+
+### Migration 0034
+
+- **`files.external_url`**, with a CHECK tying it to `bucket = 'link'` in both
+  directions. A link is a `files` row whose bytes live elsewhere, so it files,
+  shares and gets approved exactly like an upload - two tables would have meant
+  two lists, two visibility rules and two halves of one file panel that can
+  never sort together.
+- **`task_dependencies` gets its policy fixed.** It checked `task_id` and left
+  `depends_on_id` unconstrained, so a member of organization A could make their
+  own task depend on a task in organization B, and read that id back out of the
+  row. It never mattered because nothing wrote the table; it would have
+  mattered from the first release that did. Plus `reject_dependency_cycle()`,
+  because the first thing to walk this graph should not be able to walk it for
+  ever.
+- **`stamp_task_completion()`** - a `BEFORE` trigger rather than endpoint code,
+  because `tasks` is written by four routes and a rule enforced in four places
+  holds in three. Reopening clears the stamp. Existing done rows are backfilled
+  from `updated_at`, which is an estimate and the only evidence there is.
+
+### The composition
+
+```
+Projects
+  Delivery    the portfolio: what is moving, what is stuck, what is due
+  Projects    every project, searchable, sortable, table or cards
+  Tasks       every task, across projects, with two independent filters
+
+  -> workspace  Overview - Roadmap - Team - Timeline - Files - Discussion
+```
+
+The module opened on a paginated table of every task in the company. That
+answers a question almost nobody arrives with. **Delivery** is the way in now:
+a plate carrying the verdict and five instruments, then four bands - attention,
+portfolio, schedule, movement.
+
+### One population, again
+
+The Executive Overview pass found that `active` was counted org-wide by one
+view while `atRisk` was counted over whichever six rows a second query had
+fetched. `/api/projects/overview` answers the whole screen from a single
+`v_project_health` read: the strip, the health bar, the queue and the cards all
+derive from one array. `projects-verify` asserts it - `totals.live` must equal
+`projects.length`, and on-track plus at-risk plus off-track must equal it too.
+
+### Health, with its reasons
+
+A verdict on its own is a label somebody has to trust. `healthReasons()` reads
+the clauses of `v_project_health`'s own CASE expression back out of the counts
+the same view returns, so the screen says *why*:
+
+```
+Off track
+62%   11 days past the end date - 2 phases overdue - 1 blocked task
+```
+
+Nothing is inferred, scored or summarised. On a healthy project there are no
+clauses to print, so it says what is true instead: how far along, against what,
+and what the next phase is.
+
+`ProgressBreakdown` draws the blend the figure is made of - plan 50, execution
+30, acceptance 20, renormalised over whichever signals the project has. That
+weighting has been the definition since 0018 and no screen had ever shown it,
+so "we are at 64%" could only be answered with "the database says so".
+
+### The roadmap stopped being a Kanban board
+
+Six columns, one per `stage`, always drawn, on a table where most projects use
+two or three - so five columns were empty and a phase name wrapped to three
+lines in the sixth. Worse, grouping by stage discards `sort_order`, which is
+the column a roadmap is *read* in and the one the template creator sets
+deliberately when it writes phases one at a time.
+
+It is a sequence now: the plan against the calendar (deliberately not a Gantt -
+there are no dependency lines and nothing is draggable, because there is no
+scheduler behind it), then the phases in plan order, each opening to the work
+filed under it. Each phase shows two numbers side by side: what its owner
+reports, and what its tasks actually say. A roadmap that averaged them would
+hide the case worth seeing.
+
+### Colour
+
+Four colour maps and thirty-one filled pills became three rules. Colour means
+trouble and nothing else; a sequence is drawn as a sequence (one hue
+strengthening along the delivery phases); a dot and a word, never a filled
+block. The progress bar used to be coloured *by value* - red under 30% - so a
+healthy three-week-old project drew a red bar and a project two months late
+drew a green one. Health carries the colour now, because health is the signal
+that knows.
+
+### Cross-module
+
+- The workspace header's client name opens that company in the CRM through the
+  same `openRecord` the palette and the dashboard use.
+- **Money on a project**, from `invoices.project_id` and `expenses.project_id`,
+  gated on the reader holding finance. The endpoint sends `finance: null`
+  rather than empty arrays: RLS would hand somebody without the grant zero
+  invoices either way, and drawing that as "0 invoiced" is a statement, and a
+  false one. *A route's module says who may call it, not what the caller may
+  see inside it.*
+- "Add to My Work" is on every task row, unchanged: the task stays the team's
+  source of truth and the personal item points at it.
+- Export gained `projects` and `tasks` datasets. The menu is rendered by the
+  module that owns the data and Projects had none, so a role holding
+  `projects.export` had a capability with nothing behind it.
+
+### Lifted, at the second consumer
+
+- **`modules/crm/table.tsx` to `components/shared/record-table.tsx`.** Written
+  for CRM in Phase 4, generalised here at its second caller. Same props, same
+  contract, same rendering.
+- **`formatDay` / `formatDayShort` / `daysUntil` / `relativeDay` / `todayISO`
+  to `lib/format.ts`.** My Work wrote them in Phase 3, CRM wrote them again in
+  Phase 4 with a note saying the third module should lift them. Projects is the
+  third: every date on a roadmap is a bare `date` column. Both modules
+  re-export from the shared pair, so their call sites are untouched.
+
+### Defects found and fixed on the way
+
+1. **Raw ISO dates in server-built copy.** "Phase was due 2026-08-19" - the
+   route cannot format for a reader whose locale lives in the browser, so the
+   risk and attention details count days instead.
+2. **"Coming up" listed things that were late.** On a slipped project the
+   nearest unfinished phase is in the past, so a section headed "Coming up"
+   argued with its first two rows. Renamed, with the late count in the note.
+3. **`?state=open` and `?state=overdue` were filtered in the browser.** That
+   filters the *page*: "Open" on a workspace with two hundred tasks showed
+   whichever of the first twenty happened to be open, under a total that
+   described a different population. Moved into the tasks route's `scope` hook
+   rather than widening the shared factory for eleven other modules.
+4. **The task list folded two questions into one row of chips** - Mine, Open,
+   Blocked, Overdue, Everything - which cannot express "my blocked work". Two
+   controls now: whose, and what state.
+5. **The workload bar did not scale.** `Bar` normalises segments to their own
+   sum, which is right for a composition and wrong for a comparison: one task
+   and eleven drew identical full-width bars. Replaced with a bar whose track
+   is the busiest load on the project.
+6. **The readout strip's `divide-x` on a wrapping grid.** Five instruments of
+   different heights in two columns meant rules drawn between whatever landed
+   beside whatever. Divided only at `lg`, where all five fit in one row.
+7. **"? to 15 May"** on a phase with a due date and no start, followed by "due
+   15 May" on the same line.
+8. **The project list defaulted to `end_date` ascending**, which opens on five
+   engagements that finished in January.
+9. **"1 more need attention"**, **"1 more concerns"**, and `62.1% complete`.
+10. **The two phase meters had `flex-1`**, so on a wide row the label sat four
+    hundred pixels from its bar.
+
+### 5i-b. The correction: Delivery gets its own composition
+
+The first pass built Projects Home out of `shared/readout`: a dark `Plate`
+carrying a headline figure, a five-instrument `Signal` strip, numbered `Band`
+dividers. It was a good page and it was the **third** screen in the product
+built to that pattern, after the Executive Overview and CRM Home. Three modules
+opening on the same dark rectangle makes a suite feel like one screen
+repainted, and it was the wrong pattern for this module besides.
+
+**A delivery portfolio has no headline figure.** "Eleven projects" is a fact
+about the list, not about the business, and no single number says whether the
+work is going well. What the reader needs are *shapes*: which engagements
+overlap, where today falls inside each of them, whether output is rising or
+falling, who is carrying the load.
+
+So Delivery is a **control room**, not a report:
+
+```
+Delivery                                      [Refresh]  [+ New project]
+11 projects in delivery · 8 active · 5 off track · 9 overdue · 4 blocked
+
+┌─ Delivery timeline ────────────────  All 11 · Mine 2 · Attention 6 ──┐
+│        MAY   JUN   JUL   AUG  [TODAY]  OCT   NOV   DEC              │
+│  Corvo patient portal   ▓▓▓▓▓62%░░░░░                               │
+│  Halden telemetry       ▓▓37%░░░░░░░░░░                              │
+│  ...                                                                │
+└──────────────────────────────────────────────────────────────────────┘
+┌ Portfolio ────────┬ Delivered per week ─┬ Who is carrying it ────────┐
+│ ■■■■■■□□□□□       │  ▁▃▂▅▄▆▅█▆▇▅╌       │  Ada      ████████ 14      │
+│ 5 off track …     │  7.5 a week average │  Zainab   ████ 9           │
+└───────────────────┴─────────────────────┴────────────────────────────┘
+┌ Needs attention ─────────────┬ The runway ──────────────────────────┐
+┌ With the client ─────────────┬ Recently delivered ──────────────────┐
+```
+
+**Four instruments, in `modules/projects/charts.tsx`.** None of them is in
+`shared/readout`, and none of them uses recharts: all four are rectangles on a
+proportional axis, and a charting library would add a bundle, a tooltip system
+and a set of defaults to fight while still needing every colour overridden.
+
+- **`Timeline`** is the hero, and the one thing in the product that is
+  unmistakably about project delivery. Each bar's *position* is the engagement's
+  span, its *fill* is the progress figure from `v_project_health`, and its
+  *colour* is the health verdict - so the gap between a fill's edge and the
+  today line **is** the lateness, readable without reading a word. Explicitly
+  not a Gantt: no dependency arrows, no critical path, nothing draggable,
+  because there is no scheduler behind it. Projects with no dates are named
+  under the axis rather than given an invented span.
+- **`UnitGrid`** draws one square per project rather than a stacked bar. A bar
+  is three lengths a reader converts back into counts, and it is what the
+  Executive Overview already uses; eleven squares are eleven projects, and each
+  one is a link, which no proportional chart can be.
+- **`Columns`** is twelve weeks of finished work - the only figure on the page
+  that goes *down* when delivery stalls, and measurable at all only since 0034
+  began stamping `tasks.completed_at`. The current week is drawn hollow against
+  a dashed average line, because comparing a part week with eleven whole ones
+  is the mistake the Executive Overview shipped once with a part month.
+- **`LoadRows`** answers a question no single workspace can: the person under
+  most pressure is usually the one on four projects at once. Scaled against the
+  heaviest load, with unassigned work counted apart rather than folded into a
+  person.
+
+**`Panel`** in `modules/projects/ui.tsx` is the module's third section shape,
+beside `Band` and `Head`. A band divides a page read top to bottom as one
+argument; Delivery is a set of instruments consulted in any order, so each is a
+framed panel with its own header. The workspace deliberately keeps `Head`
+instead - it is a document about one project, not a control room - which is the
+brief's "different treatments according to purpose" made concrete.
+
+Two new series on `/api/projects/overview` feed it: `completionTrend` (twelve
+Monday-aligned buckets, bucketed in the route because a week boundary depends
+on the organisation's timezone and a view cannot know it) and `workload` with
+`unassignedOpen`. `nextMilestone` is merged onto every project row on both the
+overview and the list route.
+
+### The card view is the way in
+
+`view` now defaults to `cards`. A table is the better instrument for "which of
+these is late" and a card for "what is this project", and the second is the
+question somebody arriving at a project list is usually asking. Both are kept
+and the choice is remembered for the session.
+
+The card gained a **health spine** - a 2px edge in the verdict's colour, so a
+grid reads as a distribution before a word is - and the line it was missing:
+**what the project is working towards**, with its countdown. A card that says
+"62% complete" and stops has said how far along the work is and nothing about
+what it is for. It lost the description (prose nobody reads on a board), the
+budget (a figure with no context beside it is not a signal) and the raw task
+counts (the reasons line already carries the ones that matter).
+
+### Also in this pass
+
+- **The task state chips carry their own counts**, each taken under exactly the
+  filters that chip would apply. Reusing Delivery's totals would have been
+  cheaper and wrong: those count live projects only, and the task list can also
+  show work on completed ones.
+- **"still todo"** in a risk sentence became "still to do".
+- **The failure state is framed** like the page it replaces, rather than sitting
+  loose on the background looking like a screen that half rendered.
+- **Panels size to their content** in the two-column rows, so a nearly empty
+  panel is not stretched to match a full one beside it.
+- **The timeline's progress label** is placed against the *fill*, not the bar: a
+  long engagement at 0% has plenty of bar and no fill, and the label was landing
+  on the empty track in the fill's colour.
+
+`npm run projects:verify` is 86 assertions now: sixteen more covering the
+instruments, including that the trend's buckets are exactly a week apart with
+the current week last, and that the load bars plus the unassigned row account
+for every open task the totals claim.
+
+### No em dashes
+
+52 removed across everything the module ships - the module files, the API
+routes and migration 0034. The correction pass above added none. Verified at
+zero, including `charts.tsx` and the rebuilt Delivery screen.
+
+### Verified
+
+`npm run projects:verify` - 86 assertions against the running application as
+the seeded owner: the portfolio's arithmetic closes, a task reaches a phase and
+is refused another project's, subtasks stop at one level, a dependency cycle is
+refused *by the database*, completion stamps and clears, a link normalises and
+is refused a `javascript:` scheme, an unshared file cannot become a deliverable,
+a decision is recorded and withdrawing clears it, a reply comes back with its
+parent, the four `state` filters return what they claim, and open plus done
+partition every task exactly. Everything it creates, it deletes.
+
+Also driven by hand in the browser, light and dark, at 1440 and 375: a link
+added and put forward for approval, a mention typed with `@` and the person
+notified, the roadmap, team, timeline, files and discussion panels, and no
+horizontal overflow at any width.
+
+`npm run db:verify` 45/45, `test:layout` 118/118, `test:navigation` 44/44,
+`schema:check`, `security:check`, `tsc --noEmit` and `eslint` all clean.
+
+### Changed
+
+`supabase/migrations/0034_project_delivery.sql` (new).
+`components/modules/projects/` rebuilt as
+`{index,types,data,ui,charts,home,list,tasks,forms}.tsx` plus
+`workspace/{index,overview,roadmap,team,timeline,files,discussion}.tsx`;
+`project-workspace.tsx` deleted.
+`components/shared/record-table.tsx` (moved from `modules/crm/table.tsx`),
+`lib/format.ts`, `lib/validations.ts`, `modules/crm/data.ts`,
+`modules/mywork/types.ts`.
+API: `projects/overview` (new), `projects/tasks/[id]/dependencies` (new),
+`projects/projects/[id]/overview`, `projects/tasks`, `projects/tasks/[id]`,
+`projects/files`, `projects/files/[id]`, `export`.
+`scripts/projects-verify.mjs` (new), wired as `npm run projects:verify`.
+
+### Carried forward
+
+- **`time_entries`** is a real table with RLS and nothing reads it. Logged
+  hours come from `tasks.logged_hours`, typed by hand. A timesheet is a
+  feature, not a defect, and it belongs to whichever phase decides to build
+  one.
+- **The export route does not exclude soft-deleted rows** for the six datasets
+  that predate this phase. `softDelete` is opt-in on the dataset and is set on
+  the two added here; leads, deals, invoices, expenses, products and tickets
+  should turn it on in their own modules' passes.
+- **A client's navigation still lists Projects.** Unchanged from Phase 1's
+  note: the grant is real and feeds the portal, but this UI is built for staff.
+  Phase 14.
+- **The workspace's panel is local state**, like every other module's
+  sub-navigation. Lifting them into the sidebar is a change to all thirteen or
+  none.
+
+## 5j. Phase 13 - Workspace (2026-08-30)
+
+Taken out of order, at the user's request. The workspace was the module where
+the gap ran the other way from Projects: the *engine* was largely right - a
+nesting tree, resolved permissions, version history, typed sheet columns,
+sharing that walks the ancestry - and almost nothing above it was finished.
+
+### What the audit found
+
+- **The module opened on the words "Nothing open."** No home, no way in, and a
+  fixed 288px sidebar that was `hidden sm:flex`: **on a phone the workspace had
+  no navigation at all and no route to any page.**
+- **The document editor was a monospaced `<Textarea>` behind an Edit button.**
+  No toolbar, no shortcuts, no autosave. Worse, the *reading* view had no
+  `remark-gfm`, so a pipe table - the single most used structure in a business
+  document - rendered as a paragraph of pipes and dashes. Task lists and
+  strikethrough were dead the same way, and `prose-sm` set a report at 13px.
+- **The spreadsheet was a `<table>` of `<input>` elements.** No selection, no
+  keyboard navigation, no multi-cell copy or paste, no column resize, no sort,
+  no filter, no totals, no frozen columns, and the header scrolled away.
+- **`workspace_pages.is_template` has existed since the first business
+  migration**, is accepted by the create endpoint and is filterable on the list
+  endpoint. No screen had ever set it. The only "templates" were three markdown
+  strings in a dropdown that overwrote whatever was already in the box.
+- **`comments.page_id` has had a foreign key and an index since 0003** and no
+  row had ever carried one. A workspace where a policy cannot be questioned in
+  place is one where the questions happen in chat.
+- **`/api/workspace/files?scope=all` had no caller**, and the file panel had no
+  concept of a resource that lives somewhere else - the thing every real team
+  needs, because the brand kit is in Figma and the contract is in Drive.
+- **`/api/search` matched page *content*** and the module's own search box
+  matched titles in the browser, so a phrase buried three folders deep was
+  unreachable from the screen that owns it.
+- **`v_files` never learned about `files.external_url`**, added for Projects in
+  0034, so a link filed in a folder came back with no address.
+
+And two defects, one of them a leak:
+
+- **`comments_select` did not honour `page_permission()`.** Every other rule in
+  the workspace resolves through it - the page, its versions, its sheet
+  columns, its sheet rows, its shares. The comments asked only for the module
+  grant, so the HR folder's *contents* were private and the discussion attached
+  to them was not. It had never leaked anything because nothing had ever
+  written a page comment. This phase gives it its first consumer, which is
+  exactly the moment the policy has to be right.
+- **The dashboard's recent-pages read said `is_starred:is_template`** - an
+  alias written before `is_starred` existed, which 0014 then added. It selected
+  the *template* flag under the star's name, and the mapping discarded it and
+  hard-coded `isStarred: false` anyway. Both halves are fixed.
+
+### Migration 0035
+
+- **`comments_select` and `comments_insert` resolve a page comment through
+  `page_permission()`.** Strictly narrower for the page case and identical
+  everywhere else: nobody loses access to a comment on a project, a task, a
+  deal or a ticket.
+- **`snapshot_page_version()` coalesces.** It wrote a revision on every
+  substantive content change, which is right for a Save button pressed twice a
+  day and wrong for an editor that commits on a pause in typing: fifty
+  snapshots of one paragraph, after which `prune_page_versions` discards the
+  version somebody wanted. Consecutive edits by the same person inside ten
+  minutes now extend the revision already on file. A different author, or a
+  gap, opens a new one. The snapshot row is left untouched rather than
+  overwritten - it already holds the right "before" for the whole sitting.
+- **`workspace_page_links`**, one polymorphic table across ten record types.
+  Not nine join tables: every read is "what is this page about" or "what has
+  been written about this record", and both become nine queries and a union.
+  `entity_id` cannot be a foreign key, so `verify_page_link()` resolves the
+  target in this organisation and refuses a dangling row - a stronger rule than
+  a foreign key, because it is the tenant boundary.
+- **`workspace_pages.summary` and `.template_category`**, plus trigram indexes
+  on `title` and `content`. pg_trgm has been installed since 0001 and no index
+  had ever used it; the workspace's content search was a sequential scan of
+  every page body in the organisation.
+- **Five presentation columns on `workspace_sheet_columns`**: `align`,
+  `decimals`, `formula`, `aggregate`, `is_frozen`, `is_hidden`. All of them are
+  presentation of data that is already stored, which is why they are on the
+  column definition and not in a second table.
+- **`files_update` and `files_delete` widened by one clause** to admit somebody
+  who may write in the folder a file sits in. The old rule meant the owner of
+  the Finance folder could not correct a misspelt filename in it, and the
+  endpoint answered "not found, or you are not the person who uploaded it" -
+  true, and useless.
+- **`v_workspace_tree`** gains `summary`, `template_category`,
+  `last_edited_by_avatar`, `comment_count`, `link_count` and
+  `is_shared_with_me`; **`v_files`** gains `external_url`. Appended, which is
+  the only shape change `CREATE OR REPLACE VIEW` permits.
+
+### The composition
+
+```
+Workspace
+  Home       the way in: what you were writing, what is pinned, the areas
+  Library    the tree, and everything in it
+  Templates  a starting point that already knows the questions
+
+  -> a page  Document / Sheet - Files - Discussion - Details
+```
+
+Opening a page replaces the section entirely. A document is not a panel inside
+a browser: when somebody is reading a policy, the policy is the screen.
+
+### A third composition, deliberately
+
+`shared/readout` gives a dark plate, an instrument strip and numbered bands.
+The Executive Overview, CRM Home and - for one iteration - Projects Home were
+all built from it, and Phase 6 corrected that by giving Projects its own
+control-room panels. The workspace needs a third answer, and it is the easiest
+of the three to argue for: **a workspace has no figures.** No health verdict,
+no pipeline, no completion rate. A dashboard here would be statistics invented
+to fill a shape.
+
+So the vocabulary is a **catalogue**, in `modules/workspace/ui.tsx`: a section
+heading in a fixed left gutter with ruled rows beside it, an `IconTile` that
+tints the page's own colour at 12% behind its glyph, type doing the work, and
+colour used once per row at the size of an icon. No cards, no shadows, no
+tiles with a number in them. It reads like a reference work, which is what a
+company's knowledge is.
+
+### The editor
+
+The file format stays markdown - every stored page, every version snapshot and
+every search match is markdown, and swapping in a JSON document model would
+mean migrating all of it. What changed is the experience.
+
+- A real toolbar: bold, italic, underline, strikethrough, code, three heading
+  levels, bulleted, numbered and task lists, quote, link, image, table, code
+  block, divider, undo and redo, each with its shortcut in the tooltip.
+- **Edits go through `document.execCommand('insertText')`.** Setting `value`
+  from React destroys the textarea's native undo stack, so Ctrl+Z after
+  clicking Bold would undo the last *typed* run instead. The deprecated call is
+  the only way to write into a textarea as though a person had typed it. There
+  is a `setState` fallback for anything that refuses it.
+- Enter continues a list and ends it on an empty item; Tab indents; the surface
+  is set at the same size, measure and leading as the reading view, so nothing
+  shifts when the preview opens. Read / Write / Both, with Both above `lg`.
+- **`++underline++`.** Markdown has none, and every editor that offers one
+  either enables raw HTML - which enables every other tag with it - or picks a
+  convention. A ~40-line remark plugin emits a node carrying `data.hName`, so
+  the output is a React `<u>` with the text as a child: a document containing
+  `++<script>++` underlines those eight characters and does nothing else.
+- **Paragraph alignment is deliberately absent.** Markdown cannot represent it,
+  and inventing a syntax produces documents only this product can read. Table
+  columns *can* be aligned, because GFM has a syntax for it, and the table
+  inserter writes one.
+
+### Autosave, and the three things that make it safe
+
+1. **The history coalesces** (0035 above), so an autosaving editor does not
+   turn the version list into a keystroke log.
+2. **The write is conditional.** Every body save carries the version the editor
+   opened at, and `.eq('version', baseVersion)` makes the check and the update
+   one statement - reading the version first and then writing leaves a window
+   that an autosaving editor writes often enough to find. A stale write is a
+   409 carrying `latestVersion` and `latestEditor`, never a silent merge: there
+   is no correct automatic resolution for two people rewriting one sentence,
+   and inventing one loses work quietly instead of loudly. The editor keeps the
+   draft and offers "Keep mine" or "Take theirs".
+3. **Nothing is discarded on failure.** A refused save leaves the draft in the
+   box and the indicator saying so.
+
+Only content is guarded. Starring, moving and renaming are not overwrites of
+anybody's prose, and failing them because a colleague typed a word would be an
+obstruction with no safety in it.
+
+**Collaboration is presence plus conflict-safe saves, not co-editing.**
+Character-by-character editing of one paragraph needs a CRDT and a server that
+holds document state, which this product does not have, and the brief for this
+phase says explicitly not to fake it. What is here is real: a colleague opening
+the same page appears in the header (broadcast, not a table - "Ada is here" is
+true for a few seconds and writing it down would mean a row per person per page
+with a cleanup job), and if they save while you are typing you are told.
+
+### The spreadsheet
+
+A grid rather than a form laid out in a grid. Cell cursor and range selection,
+arrow keys, Tab, Home/End, Ctrl+arrow to the edge, Enter and F2 to edit, typing
+a character to start editing with it, Delete to clear a range, Ctrl+C as TSV
+and Ctrl+V pasting a block **and growing the sheet to fit it** - a person
+copying twelve rows into a nine-row sheet means to end up with twelve. Column
+resize by drag, one PATCH on release. Sticky header, sticky row gutter, sticky
+totals, frozen leading columns.
+
+- **Sorting and filtering are views, not writes.** Sorting reorders what is
+  drawn and leaves `position` alone: that is the difference between "show me
+  the biggest first" and "renumber my rows", and a grid that silently did the
+  second the first time somebody clicked a header would be one nobody could
+  undo. Empty always sorts last in both directions.
+- **Freezing is a boundary, not a per-column toggle.** Only a leading run can
+  be frozen - a sticky column in the middle of a scrolling region slides over
+  its neighbours and reads as a rendering fault - so "freeze up to here" sets
+  the flag from the left edge to that column.
+- **Formulas** are `=Budget - Actual`, by column *name*: there is no A1 grid
+  here, and a letter would have to be derived from a position that changes the
+  moment somebody drags a column. `modules/workspace/formula.ts` is a tokenizer
+  and a recursive-descent parser over numbers, four operators, parentheses and
+  six functions. **There is no `eval`**: a formula is written by one colleague
+  and evaluated in every other colleague's browser, and `new Function(...)` on
+  that string is arbitrary code execution with the application's own origin and
+  session. Columns evaluate left to right and feed each result into the inputs
+  for the ones after, so `Margin %` can use `Margin` and a cycle cannot be
+  written. A formula column stores nothing - a stored result is a second copy
+  that goes stale the moment an input changes.
+
+### Contextual linking, in both directions
+
+A page names the company, contact, deal, lead, project, task, employee,
+invoice, ticket or department it concerns. Two rules make it honest:
+
+- **A route's module says who may call it, not what the caller may see inside
+  it.** Linking is guarded on `workspace`, but a label comes from CRM, Finance
+  or HR - so `decorateLinks` resolves each name through the caller's own client
+  and only for modules they hold. Where it cannot, the label recorded at link
+  time comes back with `readable: false` and the chip renders with a padlock.
+  The fact that a document concerns an invoice is workspace content; hiding it
+  would make the panel a different length for different readers of one page.
+- **The reverse read has a consumer.** A link that can only be read from the
+  page that made it is a link nobody finds, and complete machinery that nothing
+  calls is this repository's dominant defect. `components/shared/linked-documents.tsx`
+  is on the Projects workspace overview now, and renders *nothing at all* when
+  there is nothing linked or the reader lacks the module - a heading over an
+  empty box is a claim the endpoint cannot make for that reader.
+
+Deliberately not a graph. No canvas, no nodes, no force-directed anything: the
+useful form of this is a short list of names that are also links.
+
+### Templates
+
+Two sources, one gallery. The library in `lib/workspace-templates.ts` ships
+with the product - fourteen documents and four spreadsheets, every heading a
+question somebody actually has to answer - and is copied, never edited in
+place. An organisation's own template is `is_template = true` on a page, set
+from the page's own menu, because a template is a document somebody already
+wrote and wants used again; asking them to write it twice is how a gallery ends
+up with three entries in it.
+
+Copying an organisation's *sheet* template is the case that can silently lose
+everything: cells are keyed by column id, so a copy that does not re-key them
+renders a full set of columns above an entirely empty body, with the values
+present in the database and unreachable. The endpoint maps old ids to new by
+position, and `workspace:verify` asserts that every cell on a copy is keyed to
+a column that exists on it.
+
+### On spaces
+
+`workspace_spaces` exists as a table, with RLS, a visibility rule and a
+department, and has never had a row. It stays that way. A top-level folder
+called "Finance", visible to the finance department, is a space in every
+respect that matters, and it already nests, shares, searches and moves - so
+introducing spaces would give the product two organisational systems that mean
+the same thing, which the brief for this phase rules out. Home calls root
+folders "Areas" and says so.
+
+### Search
+
+Extended, not duplicated. `/api/search` gains workspace **files and links**,
+which it had never matched - a signed contract uploaded into the Legal folder
+was reachable only by remembering which folder it was in. A file result carries
+the id of the folder it sits in, because there are no per-file routes and a
+link to nowhere is not "found it".
+
+The module's own field does two things: it narrows the tree by title as you
+type, which is what a tree filter should do, and on Enter asks
+`/api/workspace/pages?q=`, which matches bodies and summaries through the new
+trigram indexes.
+
+### Defects found and fixed on the way
+
+1. **The dashboard's `is_starred:is_template` alias** (above), which had been
+   reading the wrong column and discarding it anyway.
+2. **`comments_select` on a page** (above).
+3. **The module had no mobile navigation whatsoever** - the tree was
+   `hidden sm:flex` with nothing in its place. It is a drawer below `lg` now.
+4. **The Read / Write switch was `hidden sm:flex`**, so a document could not be
+   edited at all on a phone: the toolbar and the writing surface are both
+   behind it. Labels drop below `sm`; the control does not.
+5. **The sheet's totals ignored the column's `decimals`**, printing
+   `₦323,600,000.00` under a column of `₦148,000,000`.
+6. **The link picker printed `closed_lost`.** The palette un-snakes `meta` on
+   the way to the screen and a second consumer of the same endpoint was about
+   to reintroduce the raw enum.
+7. **`normaliseLink` and `hostOf` were lifted to `lib/links.ts`** at their
+   second consumer. A rule about which URL schemes are allowed is a security
+   rule, and one that exists in two files shortly exists in two versions.
+8. **The old module declared two different `fetch` wrappers** - one in
+   `index.tsx`, one in the sheet grid - which disagreed about non-`ok`
+   responses: a 500 with an HTML body resolved with `data: undefined` and the
+   screen rendered as empty rather than as broken.
+
+### The demo dataset
+
+`seed-demo.mjs` gained a workspace: 25 pages across five areas, three
+spreadsheets with typed columns, formulas and totals, eight record links, two
+external resources and a two-message thread on the leave policy. Every other
+module had a year of data and this one had none, so its screens could only ever
+be judged against their empty states - which is the reason that seeder exists.
+No uploads: a file needs bytes in storage, and metadata for objects that do not
+exist produces a file list where every row fails to open. A link needs no
+bytes, which is exactly the case it was added for.
+
+### No em dashes
+
+Zero across everything the module ships: the fourteen module files, the twelve
+API routes, the three new lib files, migration 0035 and the verification
+harness.
+
+### Verified
+
+`npm run workspace:verify` - **83 assertions** against the running application
+as the seeded owner: the counts on Home are not smaller than the lists they
+head, five consecutive saves are one revision rather than five, a stale write
+is refused and changes nothing while starring still succeeds, a phrase inside a
+document is found by `?q=` and not by the tree filter, a formula column holds
+no cells, an emptied cell is removed rather than stored as `""`, a template
+copy's every cell is keyed to a column that exists on it, a link resolves the
+record's live name and reads back from the record, a reply to a reply is
+refused, a `javascript:` link is refused, restoring a folder brings back what
+was inside it, and - **signed in as a second, less privileged colleague** - a
+private page cannot be opened, its discussion cannot be read, and nothing can
+be posted into it. Everything it creates, it deletes.
+
+Also driven by hand in the browser, light and dark, at 1440 and 375: a document
+written with autosave and native undo intact, a table and a task list rendering,
+the contents rail, a spreadsheet sorted, filtered, range-selected and edited
+with the formula and the totals recomputing, a mention typed with `@` and the
+person notified, a record linked from the picker, the template gallery, the
+share dialog, and no horizontal overflow at either width.
+
+`npm run db:verify` 45/45, `contract:check` clean (including
+`Workspace · Page`), `schema:check`, `security:check`, `test:layout` 118/118,
+`test:navigation` 44/44, `tsc --noEmit` and `eslint` all clean.
+
+### Changed
+
+`supabase/migrations/0035_workspace_knowledge.sql` (new).
+`components/modules/workspace/` rebuilt as
+`{index,types,data,ui,markdown,editor,formula,sheet,files,comments,links,home,library,templates,page}.tsx`;
+`sheet-grid.tsx` and `file-browser.tsx` deleted, `share-dialog.tsx` kept.
+`components/shared/linked-documents.tsx` (new),
+`components/modules/projects/workspace/overview.tsx`.
+`lib/links.ts`, `lib/workspace-links.ts`, `lib/workspace-templates.ts` (new).
+API: `workspace/overview`, `workspace/templates`, `workspace/links`,
+`workspace/comments`, `workspace/comments/[id]`,
+`workspace/pages/[id]/links` (all new); `workspace/pages`,
+`workspace/pages/[id]`, `workspace/pages/[id]/versions`,
+`workspace/pages/[id]/sheet`, `workspace/files`, `workspace/files/[id]`,
+`search`, `dashboard`, `projects/files`.
+`scripts/workspace-verify.mjs` (new, wired as `npm run workspace:verify`),
+`scripts/seed-demo.mjs`. `remark-gfm` added.
+
+### Carried forward
+
+- **`workspace_spaces` remains unused**, on purpose (above). If a future phase
+  wants spaces, it should decide what they add over a root folder *before*
+  writing a row.
+- **Real-time co-editing.** Presence and conflict-safe saves are what this
+  phase delivers. Simultaneous editing of one paragraph needs a CRDT and a
+  server holding document state; it is a piece of infrastructure, not a
+  polish pass, and belongs to whichever phase decides to build it.
+- **Uploads are still per-folder only.** A file must carry a `page_id`, which
+  is what gives it a sharing rule, so Home's "Upload a file" sends the reader
+  to the library to choose one rather than opening a picker with nowhere to
+  put the result.
+- **The reverse link panel has one consumer.** The CRM customer 360 and the
+  invoice view are the obvious next two, in their own phases.
+- **`contract:check` still points `Projects · Project`, `Projects · Task` and
+  `CRM · Activity` at `index.tsx`**, where those interfaces no longer live -
+  they moved into `types.ts` in Phases 4 and 6. It reports SKIP rather than
+  drift, which is the harness quietly checking three fewer things than it
+  claims.
+
+## 5k. Phase 9 - Communication (2026-08-31)
+
+Two passes, a week apart in intent: the first connected the module to the rest
+of the operating system, the second was a product-quality review of what that
+produced. Both are recorded here because the second reversed a decision the
+first had made, and the reversal is the more useful half.
+
+### What the audit found
+
+The module was not broken. 0023 and 0024 had already made it a competent chat
+application with real search, real unread counts, a meeting room and a
+moderation trail. What it lacked was everything that happens *around* a
+conversation:
+
+- **Nothing could be kept.** Pinning is a channel-wide act; there was no
+  personal equivalent, so "I need this on Thursday" had nowhere to go.
+- **Every conversation was equally important.** `channel_members` recorded
+  muting and had no opposite, so a sidebar of forty rooms could only be ordered
+  by whoever spoke last.
+- **A thread's size was unknowable without opening it.** `parent_id` has
+  existed since 0003 and the only way to learn a message had three replies was
+  to fetch them, so the timeline drew no affordance at all and threading was
+  invisible to anybody who had not been there when a discussion moved.
+- **There was no answer to "what needs me".** Mentions were counted per channel
+  and never listed; a reply to something you said produced a notification row
+  and no way back to the sentence it answered.
+- **`SOURCE_KINDS.message` had been in `lib/mywork.ts` since Phase 3b with
+  nothing in the product reaching it.** A sentence that was work stayed a
+  sentence.
+- **The pinned view lied by omission.** It filtered the forty messages already
+  loaded, so a channel reporting "4 pinned" could show two of them.
+- **`profiles.avatar_url` was rendered by five modules and not by this one.**
+  Forty-two avatar call sites in Communication, not one `AvatarImage` among
+  them - and the only control for setting a photograph anywhere in the product
+  was a text box asking for a URL.
+
+### Migrations 0036 and 0037
+
+`0036_communication_workspace.sql`
+
+- `message_saves` - a personal shelf. Own rows only, and `can_see_channel()` is
+  re-checked on read, so a save taken out of a private channel stops being
+  readable at the moment you are removed from it.
+- `channel_members.is_favourite` - the other half of muting. It changes where a
+  conversation sits and never what it counts.
+- `channel_threads(chan)` - reply count, participants, last reply and
+  `i_replied` for a whole channel in one grouped query. `i_replied` is what
+  "following a discussion" means here: having said something in it. No
+  subscription table, because one would need upkeep and would fall out of step
+  with the conversation it claims to describe.
+- `communication_inbox(org, lim, days)` - mentioned, answered, written to.
+- `saved_messages(org, lim)`.
+
+`0037_communication_identity.sql`
+
+- `channel_label_for(chan, viewer)` - the fourth copy of "what is this
+  conversation called from where you are standing" became a function, as 0036's
+  own note said it should.
+- All three read functions rebuilt to return `sender_avatar`.
+- A fourth inbox kind, `announcement`: a broadcast channel is how a company
+  says something everybody has to know, and it was reaching people only as a
+  number on a sidebar row.
+
+### The first pass, and what the second changed
+
+The first pass produced a Home built from five bordered bands: needs you, your
+conversations, meetings, saved messages, recently shared files. Everything on
+it was defensible and the page said nothing, because **five boxes of equal
+weight is a page with no subject**. It read as a dashboard about communication
+rather than as a place to communicate - the exact failure the standing brief
+warns about, arrived at by adding one reasonable thing at a time.
+
+The second pass rebuilt it around one question. **Needs you** is full width and
+is the only place a colour appears; conversations and meetings sit under it,
+side by side, visibly secondary; the shelf is one line at the foot of the page.
+The cards are gone entirely - a section is now a small heading and a ruled list
+on the page background. Files left Home for the conversation panel, where a
+file actually belongs.
+
+Two other reversals worth recording:
+
+- **The sidebar's conversation list is no longer gated on the Messages view.**
+  It was, which left two thirds of the sidebar empty on the screen the module
+  opens on, and made the landing screen the one place you could not reach a
+  conversation.
+- **The pinned-messages toggle in the header was replaced by a details rail.**
+  The toggle filtered loaded messages; the rail's Pinned tab asks the endpoint.
+  A feature that is right about four items out of six is worse than one that
+  says it does not know.
+
+### One identity, everywhere
+
+`components/shared/person-avatar.tsx` is now the only way a person is drawn in
+this module, and `lib/avatar.ts` holds the tint so a face is the same colour in
+Projects and here. `PersonAvatar` renders the photograph when there is one, the
+same tinted initials when there is not, the shared presence dot, and a square
+"in a meeting" pip derived from `meeting_participants` rather than from
+`presence_of()` - a communication fact, returned to communication, overlaid
+only on this module's surfaces so the shared dot keeps meaning one thing.
+
+The missing first step was added with it: **the settings page now uploads a
+photograph** to the `avatars` bucket, which has existed since 0006 and which
+nothing in the product had ever written to. HR and the client portal were
+switched to `PersonAvatar` in the same pass, because "one profile, used
+everywhere" is not a claim you can make module by module.
+
+### Communication to action
+
+The differentiator, and the reason this module is not a chat product. A message
+can become:
+
+- a task on your own list, or a reminder (`POST /api/todos`, through the same
+  `intakeBody` every other module sends, finally reaching `SOURCE_KINDS.message`),
+- a meeting, with the message as the agenda so the invitation says what it is
+  for,
+- a client note, when the conversation carries a company,
+- a project task, when it carries a project.
+
+The last two are offered *only* in a conversation that has that link. A menu
+that offers to file a message against a client the conversation has nothing to
+do with is a menu people learn to skip. **Nothing is parsed**: no date is read
+out of "Friday at 2", because a guess that is right four times in five puts the
+fifth meeting in the wrong week.
+
+A meeting's notes gained the same idea: one field under them that turns a line
+into a personal action pointing back at the meeting.
+
+### The green room
+
+Walking straight into a meeting - camera on, microphone live, in a room that
+may already have eight people in it - is the most exposing thing a conferencing
+product can do to somebody, and the product that does it gets used with the
+camera denied at the browser level. `MeetingLobby` previews the local camera,
+carries the two switches into the room through new `startMuted` /
+`startCameraOff` options on `useMeeting`, and shows who is already there. It is
+skipped for exactly one gesture: "start a call in this conversation", where the
+decision has already been made.
+
+It promises nothing the architecture cannot do. No connection test, no network
+check, no speaking indicator.
+
+### Defects found and fixed on the way
+
+- **Recent meetings could not be scrolled.** `ScrollArea` with `flex-1` and no
+  `min-h-0` in a flex column: the viewport grew to its content, so the meeting
+  history was unreachable below the fold. The same fault was in the sidebar's
+  channel list and the meeting participants panel.
+- **"Coming up" was ordered furthest-first.** `meeting_overview()` sorts by time
+  descending, which is right for what has happened and exactly wrong for what
+  is about to, so the meeting starting in ten minutes was at the bottom.
+- **The composer never remounted between conversations.** Half a sentence typed
+  in one channel was still in the box after switching to another, one Return
+  away from posting in the wrong room. It is now keyed by channel and drafts are
+  held per conversation in a ref the module owns.
+- **Enter sent on a phone.** There is no Shift on a soft keyboard, so a message
+  could never have a second line and every accidental Return sent half a
+  sentence. Enter is now a newline on mobile, and the send button sends.
+- **A soft keyboard covered the composer.** The keyboard slides over the layout
+  viewport rather than resizing it, so a module sized to `100%` keeps its full
+  height. The module is now sized to `visualViewport.height + offsetTop`,
+  written to the element rather than through React so the keyboard animation
+  does not drop frames.
+- **`db:apply` had been broken since 0035.** 0017 replaces `v_workspace_tree`
+  and `v_files` with `CREATE OR REPLACE VIEW`, and 0035 appends columns to
+  both - so a full replay against a database that had reached 0035 failed at
+  0017 with "cannot drop columns from view" and took every migration after it
+  with it. 0017 drops both views first now, as it already did for
+  `v_channel_members`.
+- **The demo workspace had one channel and no messages.** Communication was the
+  one module that could not be judged at all. `seed-demo.mjs` now writes ten
+  conversations, 319 messages with threads, reactions, pins and mentions, three
+  meetings, a shelf, deliberate read markers, and a generated mark for every
+  person so identity is visible.
+
+### Design
+
+Communication has its own vocabulary (`components/modules/communication/ui.tsx`)
+for the reason the workspace has one: **a conversation is not a record**. It has
+no status, no owner and no figure worth putting in a tile, and the thing a
+person is looking for is almost always a sentence somebody said. So: ruled rows,
+one hairline between them, type doing the hierarchy.
+
+Colour is used twice in the whole module. The brand for being named, because a
+mention is the one thing muting cannot silence; destructive for something live.
+An unread count is ink. Every `emerald-*`, `rose-*`, `amber-*` and `violet-*`
+class is gone from the module, including the meeting room's chrome.
+
+Messages are capped at a 75-character measure. A timeline that fills a 1440px
+window puts 190 characters on a line, and a conversation is read for hours.
+
+### Changed
+
+`supabase/migrations/0036_communication_workspace.sql`,
+`0037_communication_identity.sql` (new); `0017` (the two view drops).
+`components/modules/communication/{home,panel,actions,ui}.tsx` (new);
+`{index,message-list,composer,dialogs,meetings,types,rich-text}.tsx`.
+`components/shared/person-avatar.tsx`, `lib/avatar.ts` (new).
+`app/settings/page.tsx`, `components/modules/hr/index.tsx`,
+`components/modules/portal/index.tsx`, `lib/mywork.ts`, `hooks/use-meeting.ts`.
+API: `communication/{inbox,saved,threads,files}` (new);
+`communication/{messages,meetings,channels/[id]/members}`.
+`scripts/seed-demo.mjs`.
+
+### Carried forward
+
+- **Busy, as a presence state somebody sets themselves.** "In a meeting" is
+  derived and honest; "busy" needs a column and a control, and it belongs with
+  the presence layer rather than with this module.
+- **A read receipt is still a question asked per message.** That is the 0023
+  decision and it stands, but the author's menu is not a discoverable place for
+  it.
+- **Announcement expiry.** `channels.type = 'announcement'` carries no lifetime,
+  so an announcement from March is still pinned to the top of the room in
+  September. It needs a column and a decision about what expiry means for a
+  message that has already been read.
+- **Reactions on thread replies.** The root message takes them; a reply does
+  not, which is arbitrary rather than deliberate.
+- **The meeting room's stage is still `bg-slate-900` and white-on-dark by hand.**
+  It is the one surface in the product that is deliberately not on the app's
+  palette, and it should get tokens of its own rather than borrowing Tailwind's.
+
+---
+
 ## 6. The phases
 
 | # | Phase | State |
@@ -1543,14 +2506,14 @@ the rows when the demo workspace wants tidying.
 | 3 | My Work | **done** (3b: intake, inbox, reminders) |
 | 4 | CRM | **done** |
 | 5 | Performance, incentives and the HR layer | **done** |
-| 6 | Projects | next |
-| 7 | Finance | |
+| 6 | Projects | **done** |
+| 7 | Finance | next |
 | 8 | HR (the rest: payroll, cases, onboarding) | |
-| 9 | Communication | |
+| 9 | Communication | **done** (taken out of order) |
 | 10 | Support | |
 | 11 | Inventory | |
 | 12 | Calendar | |
-| 13 | Workspace | |
+| 13 | Workspace | **done** (taken out of order) |
 | 14 | Client Portal | |
 | 15 | Admin | |
 
@@ -1580,23 +2543,25 @@ the rows when the demo workspace wants tidying.
   `h2` and the shell's header holds the only `h1`.
 - **A client's navigation still lists Projects.** That is the existing grant
   (read-only, feeding portal endpoints), but the module's UI is built for staff.
-  Decide it in Phase 13.
+  Still open: Phase 13 ran as the Workspace pass at the user's request rather
+  than as the client-navigation decision this line was pointing at, so it moves
+  to Phase 14, which is where the Client Portal is settled anyway.
 - ~~**Charts** still pass raw hex to recharts in CRM and finance.~~ CRM is done
   in Phase 4 and the shared vocabulary moved with it: `useViz` and the readout
   primitives now live in `components/shared/readout/`, which is where Finance
-  should read them from in Phase 6. Finance is the last module still passing
+  should read them from in Phase 7. Finance is the last module still passing
   raw hex.
-- **`formatDate` parses a bare date as UTC** — found in Phase 3, fixed inside
-  My Work, and fixed again inside CRM in Phase 4. `new Date('2026-09-03')` is
-  UTC midnight by specification, so in any timezone west of UTC a `date` column
-  renders as the day before. Both modules now carry a local `formatDay(iso)`
-  that appends `T00:00:00` first, and the remaining call sites passing genuine
-  `date` columns are still wrong today — `holidays.holiday_date`,
-  `tasks.due_date`, `invoices.due_date`,
-  `organization_members.terminated_on` among them. Calls passing a
-  `timestamptz` are unaffected. **The second consumer now exists**, so the next
-  module that needs it should lift the pair into `lib/format.ts` as `formatDay`
-  and point both at it — that was the condition, and it has been met.
+- ~~**`formatDate` parses a bare date as UTC**~~ Lifted in Phase 6.
+  `new Date('2026-09-03')` is UTC midnight by specification, so in any
+  timezone west of UTC a `date` column renders as the day before. My Work
+  found it in Phase 3 and fixed it locally, CRM wrote the same helper again
+  in Phase 4, and Projects was about to be the third — so `formatDay`,
+  `formatDayShort`, `daysUntil`, `relativeDay` and `todayISO` now live in
+  `lib/format.ts` and both earlier modules re-export from there. **Call sites
+  outside those three are still wrong today** — `holidays.holiday_date`,
+  `invoices.due_date` and `organization_members.terminated_on` among them —
+  and each should point at the shared helper in its own module's phase.
+  Calls passing a `timestamptz` are unaffected.
 
 ---
 
@@ -1616,6 +2581,8 @@ Two need the dev server and a reachable Supabase:
 ```bash
 npm run db:verify         # 45 checks: RLS forced, tenant isolation, triggers
 npm run crm:verify        # 64 checks: CRM end to end as the seeded owner
+npm run projects:verify   # 86 checks: Projects end to end as the seeded owner
+npm run workspace:verify  # 83 checks: Workspace end to end, incl. a second reader
 ```
 
 `npm run app:verify` needs the dev server and a reachable Supabase; it is

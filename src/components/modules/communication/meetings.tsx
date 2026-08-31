@@ -6,7 +6,7 @@ import {
   Video, VideoOff, Mic, MicOff, MonitorUp, PhoneOff, Hand, Users, Lock, Unlock,
   Calendar, Plus, Loader2, DoorOpen, ShieldCheck, NotebookPen, UserX, Radio,
   Clock, MoreHorizontal, Link2, X, CheckCheck, RefreshCw, TriangleAlert,
-  UserCheck, FileText, UserPlus, WifiOff,
+  UserCheck, FileText, UserPlus, WifiOff, ListPlus, ChevronDown,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PersonAvatar } from '@/components/shared/person-avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
@@ -35,11 +35,13 @@ import { formatDateTime, formatRelativeTime, initialsOf } from '@/lib/format';
 import { useMeeting, type PeerHealth } from '@/hooks/use-meeting';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useRealtime } from '@/hooks/use-realtime';
+import { useAppStore } from '@/store/app-store';
+import { intakeBody } from '@/lib/mywork';
 import { cn } from '@/lib/utils';
 
 import {
   type ChannelRow, type DirectoryMember, type MeetingParticipant, type MeetingRow,
-  api, avatarColor, channelLabel,
+  api, channelLabel,
 } from './types';
 import { SOLO_MAX, TILE_GAP, TILE_MIN, fitTiles } from './stage-layout';
 
@@ -76,13 +78,13 @@ export function MeetingsView({
    *
    * The room needs a row of `meeting_overview()`; the create endpoint answers
    * with the `meetings` row, which is a narrower and differently shaped thing.
-   * Rather than assemble the missing half by hand — and have every invented
-   * field disagree with the server — the id is held here and the room opens
+   * Rather than assemble the missing half by hand - and have every invented
+   * field disagree with the server - the id is held here and the room opens
    * when the refreshed list contains it.
    *
    * A ref rather than state: nothing renders differently while it is set, and
    * clearing it from the effect that consumes it would be a synchronous
-   * setState inside an effect — an extra render for a value nobody displays.
+   * setState inside an effect - an extra render for a value nobody displays.
    */
   const openWhenLoaded = useRef<string | null>(null);
 
@@ -95,11 +97,41 @@ export function MeetingsView({
     onOpenRoom(row);
   }, [meetings, onOpenRoom]);
 
+  /**
+   * How many past meetings are drawn before the reader asks for more.
+   *
+   * The history is genuinely scrollable now - it was inside a `flex-1`
+   * `ScrollArea` with no `min-h-0`, so the viewport grew to its content and
+   * nothing ever scrolled, which is why older meetings could not be reached at
+   * all. But an organisation two years in has thousands of them, and rendering
+   * every card to prove the point would make opening this tab slow for
+   * everybody. So: a page at a time, and a control that says how many are
+   * left rather than hiding the fact.
+   */
+  const PAST_PAGE = 25;
+  const [pastShown, setPastShown] = useState(PAST_PAGE);
+
   const groups = useMemo(() => ({
     live: meetings.filter(m => m.status === 'live'),
-    upcoming: meetings.filter(m => m.status === 'scheduled'),
+    /**
+     * Soonest first.
+     *
+     * `meeting_overview()` orders everything by time descending, which is right
+     * for what has happened and exactly wrong for what is about to: it put the
+     * meeting furthest in the future at the top of "Coming up", so the one
+     * starting in ten minutes was at the bottom of the list. Sorted here rather
+     * than in SQL because it is a presentation decision and the function has
+     * other callers.
+     */
+    upcoming: meetings
+      .filter(m => m.status === 'scheduled')
+      .sort((a, b) => (a.scheduledAt ?? '').localeCompare(b.scheduledAt ?? '')),
     past: meetings.filter(m => m.status === 'ended' || m.status === 'cancelled'),
   }), [meetings]);
+
+  // Nothing resets `pastShown` deliberately: this view unmounts when the
+  // reader leaves the Meetings tab, so the count starts fresh next time
+  // without an effect writing state on every change to the list.
 
   return (
     <div className="flex h-full flex-col">
@@ -110,13 +142,13 @@ export function MeetingsView({
             Voice and video, in the conversation the work already lives in.
           </p>
         </div>
-        <Button size="sm" className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+        <Button size="sm" className="gap-1.5"
           onClick={() => setScheduleOpen(true)}>
           <Plus className="size-3.5" /> New meeting
         </Button>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-6 p-5">
           {loading && (
             <div className="flex justify-center py-12">
@@ -129,7 +161,7 @@ export function MeetingsView({
               <EmptyState
                 icon={Video}
                 title="No meetings yet"
-                description="Start a call in a channel, or schedule one — it will appear in everybody's calendar."
+                description="Start a call in a channel, or schedule one - it will appear in everybody's calendar."
                 action={{ label: 'New meeting', onClick: () => setScheduleOpen(true) }}
               />
             </div>
@@ -157,14 +189,33 @@ export function MeetingsView({
             />
           )}
           {groups.past.length > 0 && (
-            <Section
-              title="Past"
-              rows={groups.past}
-              currentMemberId={currentMemberId}
-              onOpenRoom={onOpenRoom}
-              onOpenChannel={onOpenChannel}
-              onRefresh={onRefresh}
-            />
+            <>
+              <Section
+                title="Earlier"
+                rows={groups.past.slice(0, pastShown)}
+                total={groups.past.length}
+                currentMemberId={currentMemberId}
+                onOpenRoom={onOpenRoom}
+                onOpenChannel={onOpenChannel}
+                onRefresh={onRefresh}
+              />
+              {groups.past.length > pastShown && (
+                <div className="flex justify-center pb-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => setPastShown(n => n + PAST_PAGE)}
+                  >
+                    <ChevronDown className="size-3.5" />
+                    Show {Math.min(PAST_PAGE, groups.past.length - pastShown)} more
+                    <span className="text-muted-foreground">
+                      of {groups.past.length - pastShown}
+                    </span>
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </ScrollArea>
@@ -179,7 +230,7 @@ export function MeetingsView({
           setScheduleOpen(false);
           onRefresh();
           /**
-           * A meeting started now opens its room — but on the row the list
+           * A meeting started now opens its room - but on the row the list
            * comes back with, not on the insert's own shape. The room reads a
            * row of `meeting_overview()`, which carries the host's name, the
            * channel label and the counts; assembling one from the insert would
@@ -194,11 +245,13 @@ export function MeetingsView({
 }
 
 function Section({
-  title, rows, accent, currentMemberId, onOpenRoom, onOpenChannel, onRefresh,
+  title, rows, accent, total, currentMemberId, onOpenRoom, onOpenChannel, onRefresh,
 }: {
   title: string;
   rows: MeetingRow[];
   accent?: boolean;
+  /** The size of the whole group, when only part of it is drawn. */
+  total?: number;
   currentMemberId: string | null;
   onOpenRoom: (m: MeetingRow) => void;
   onOpenChannel: (id: string) => void;
@@ -206,13 +259,15 @@ function Section({
 }) {
   return (
     <section>
-      <h3 className="mb-2.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+      <h3 className="mb-2.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {accent && <span className="relative flex size-2">
-          <span className="absolute inline-flex size-full animate-ping rounded-full bg-rose-400 opacity-75" />
-          <span className="relative inline-flex size-2 rounded-full bg-rose-500" />
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-destructive opacity-60" />
+          <span className="relative inline-flex size-2 rounded-full bg-destructive" />
         </span>}
         {title}
-        <span className="font-normal normal-case">({rows.length})</span>
+        <span className="font-normal normal-case tabular-nums text-muted-foreground/70">
+          {total && total > rows.length ? `${rows.length} of ${total}` : rows.length}
+        </span>
       </h3>
       <div className="grid gap-2.5">
         {rows.map(m => (
@@ -262,12 +317,12 @@ function MeetingCard({
   return (
     <div className={cn(
       'flex flex-col gap-3 rounded-xl border bg-card p-4 transition-colors sm:flex-row sm:items-center',
-      live && 'border-rose-300 bg-rose-50/40 dark:border-rose-900 dark:bg-rose-950/10',
+      live && 'border-destructive/40 bg-destructive/[0.04]',
       ended && 'opacity-75',
     )}>
       <div className={cn(
         'flex size-10 shrink-0 items-center justify-center rounded-lg',
-        live ? 'bg-rose-500/15 text-rose-600' : 'bg-muted text-muted-foreground',
+        live ? 'bg-destructive/12 text-destructive' : 'bg-muted text-muted-foreground',
       )}>
         {meeting.mode === 'audio' ? <Mic className="size-5" /> : <Video className="size-5" />}
       </div>
@@ -276,7 +331,7 @@ function MeetingCard({
         <div className="flex flex-wrap items-center gap-2">
           <h4 className="truncate text-sm font-semibold">{meeting.title}</h4>
           {live && (
-            <Badge className="h-5 gap-1 bg-rose-500 px-1.5 text-[10px] text-white hover:bg-rose-500">
+            <Badge className="h-5 gap-1 bg-destructive px-1.5 text-[10px] text-white hover:bg-destructive">
               <Radio className="size-2.5" /> Live
             </Badge>
           )}
@@ -286,7 +341,7 @@ function MeetingCard({
             </Badge>
           )}
           {meeting.knockingCount > 0 && meeting.amHost && (
-            <Badge className="h-5 gap-1 bg-amber-500 px-1.5 text-[10px] text-white hover:bg-amber-500">
+            <Badge variant="outline" className="h-5 gap-1 border-warning/50 px-1.5 text-[10px] text-warning">
               <DoorOpen className="size-2.5" /> {meeting.knockingCount} waiting
             </Badge>
           )}
@@ -327,11 +382,11 @@ function MeetingCard({
               </span>
             )}
             {/* Whether this meeting produced a record is worth knowing from the
-                list — it is the difference between opening it and not. */}
+                list - it is the difference between opening it and not. */}
             {hasNotes && (
               <button
                 onClick={() => setNotesOpen(true)}
-                className="inline-flex items-center gap-1 rounded border border-emerald-400/50 bg-emerald-500/5 px-1.5 py-0.5 text-[11px] text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-400"
+                className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 <FileText className="size-2.5" /> Notes
               </button>
@@ -347,8 +402,8 @@ function MeetingCard({
             disabled={busy}
             onClick={onOpenRoom}
             className={cn('gap-1.5', live
-              ? 'bg-rose-600 text-white hover:bg-rose-700'
-              : 'bg-emerald-600 text-white hover:bg-emerald-700')}
+              ? 'bg-destructive text-white hover:bg-destructive/90'
+              : '')}
           >
             <Video className="size-3.5" /> {live ? 'Join' : 'Start'}
           </Button>
@@ -358,7 +413,7 @@ function MeetingCard({
           Notes, on every card, whatever the meeting's state.
 
           They used to live only inside the room, and the room could only be
-          opened while the meeting was still running — so the moment a meeting
+          opened while the meeting was still running - so the moment a meeting
           ended, everything written in it became unreachable. That is the dead
           end this button removes: a meeting that has happened is exactly when
           somebody goes looking for what was decided.
@@ -455,12 +510,12 @@ function MeetingCard({
  * from the side panel of a running meeting. A meeting that ended took its own
  * record with it: the card no longer offered a way in, and there was no other
  * screen that showed the column at all. Everything that had been typed was
- * still in the database and nothing could reach it — the same shape of defect
+ * still in the database and nothing could reach it - the same shape of defect
  * as `is_muted` and `department_id` before it.
  *
  * So this is the reading surface, and it carries the context that makes a note
  * mean something a month later: when the meeting ran, who hosted it, and the
- * conversation and project it belongs to — each of which opens.
+ * conversation and project it belongs to - each of which opens.
  *
  * Editing is offered to the host and co-hosts, which is what `meetings_update`
  * permits; for everybody else it is the record, read-only, rather than a box
@@ -525,7 +580,7 @@ function MeetingNotesDialog({
             {meeting.channelLabel && meeting.channelId && (
               <button
                 onClick={() => { onOpenChannel(meeting.channelId!); onOpenChange(false); }}
-                className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs transition-colors hover:border-emerald-400 hover:bg-emerald-500/5"
+                className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 <Link2 className="size-3" /> {meeting.channelLabel}
               </button>
@@ -573,16 +628,35 @@ function MeetingNotesDialog({
           </div>
         )}
 
+        {/*
+          What the meeting produced, as work.
+
+          -- Why this is a line and not a list ------------------------------
+
+          Notes hold the decisions. An action item is a different thing: it is
+          owed by somebody after everyone has left the room, and a note that
+          says "Ada to send the contract" is a sentence nobody will read again.
+          So the one action worth offering here is the one that takes it out of
+          the notes and puts it where work lives.
+
+          It creates a personal to-do pointing at this meeting, through the
+          same intake every other module uses. Deliberately not a shared task
+          list attached to the meeting: that would be a fourth place work can
+          live, beside My Work, Projects and Support, and this product already
+          decided where personal work goes.
+        */}
+        {meeting.status !== 'cancelled' && <ActionItemRow meeting={meeting} />}
+
         <DialogFooter className="sm:items-center">
           {dirty && (
-            <span className="mr-auto text-xs text-amber-600 dark:text-amber-400">
-              Unsaved changes — they are kept until you save.
+            <span className="mr-auto text-xs text-warning">
+              Unsaved changes - they are kept until you save.
             </span>
           )}
           <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
           {canEdit && (
             <Button
-              className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+              className="gap-1.5"
               disabled={saving || !dirty}
               onClick={() => void save()}
             >
@@ -596,24 +670,113 @@ function MeetingNotesDialog({
   );
 }
 
+/**
+ * "Ada to send the contract by Friday", turned into something Ada will see.
+ *
+ * One field and one button, under the notes. Each add clears the field and
+ * leaves the focus where it was, so three actions agreed in a meeting take
+ * three sentences and no navigation. The confirmation offers My Work rather
+ * than taking anybody there, because the person is still writing the notes up.
+ */
+function ActionItemRow({ meeting }: { meeting: MeetingRow }) {
+  const allows = useAppStore(s => s.allows);
+  const setActiveModule = useAppStore(s => s.setActiveModule);
+  const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [added, setAdded] = useState(0);
+
+  if (!allows('mywork')) return null;
+
+  const add = async () => {
+    const clean = text.trim();
+    if (!clean || saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/todos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(intakeBody(clean, {
+          module: 'communication',
+          type: 'meeting',
+          id: meeting.meetingId,
+          label: meeting.title,
+        })),
+      });
+      const json = await res.json().catch(() => null);
+      if (json?.error) throw new Error(json.error.message || 'Could not add it');
+      if (!res.ok) throw new Error(`Could not add it (${res.status})`);
+
+      setText('');
+      setAdded(n => n + 1);
+      toast.success('On your list', {
+        description: 'Private to you, and it points back at this meeting.',
+        action: { label: 'Open My Work', onClick: () => setActiveModule('mywork') },
+      });
+    } catch (e: any) {
+      toast.error(e.message || 'Could not add that');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor="meeting-action">Action items</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          id="meeting-action"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void add(); } }}
+          placeholder="Something you are taking away from this"
+          className="h-9"
+        />
+        <Button variant="outline" size="sm" className="shrink-0 gap-1.5"
+          disabled={saving || !text.trim()} onClick={() => void add()}>
+          {saving ? <Loader2 className="size-3.5 animate-spin" /> : <ListPlus className="size-3.5" />}
+          Add
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {added > 0
+          ? `${added} added to your list. They are private to you.`
+          : 'Goes to My Work, linked back to this meeting.'}
+      </p>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  Scheduling
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function ScheduleMeetingDialog({
-  open, onOpenChange, channels, directory, defaultChannelId, onCreated,
+  open, onOpenChange, channels, directory, defaultChannelId, seed, onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   channels: ChannelRow[];
   directory: DirectoryMember[];
   defaultChannelId?: string | null;
+  /**
+   * A message this meeting is about.
+   *
+   * "Let's meet Friday at 2" is the commonest way a meeting gets called, and
+   * before this the only way to act on it was to open a form and retype the
+   * sentence. The message becomes the agenda, so the invitation says what it
+   * is for. Nothing is parsed out of it: the *time* is still chosen by a
+   * person, because a guess that is right four times in five puts the fifth
+   * meeting in the wrong week.
+   */
+  seed?: { title: string; agenda: string } | null;
   onCreated: (meeting: { meetingId: string; status: string }) => void;
 }) {
-  const [title, setTitle] = useState('');
-  const [agenda, setAgenda] = useState('');
+  const [title, setTitle] = useState(seed?.title ?? '');
+  const [agenda, setAgenda] = useState(seed?.agenda ?? '');
   const [mode, setMode] = useState<'video' | 'audio'>('video');
-  const [when, setWhen] = useState<'now' | 'later'>('now');
+  // A meeting called out of a message is nearly always for later; one called
+  // from the toolbar is nearly always now.
+  const [when, setWhen] = useState<'now' | 'later'>(seed ? 'later' : 'now');
   const [scheduledAt, setScheduledAt] = useState('');
   const [duration, setDuration] = useState('30');
   const [channelId, setChannelId] = useState(defaultChannelId ?? '');
@@ -643,7 +806,7 @@ export function ScheduleMeetingDialog({
           memberIds: picked,
         }),
       });
-      toast.success(when === 'now' ? 'Meeting started' : 'Meeting scheduled — it is on the calendar');
+      toast.success(when === 'now' ? 'Meeting started' : 'Meeting scheduled - it is on the calendar');
       onCreated({ meetingId: created.id, status: created.status });
     } catch (err: any) {
       toast.error(err.message || 'Could not create that meeting');
@@ -730,7 +893,7 @@ export function ScheduleMeetingDialog({
             <Select value={channelId || 'none'} onValueChange={(v) => setChannelId(v === 'none' ? '' : v)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent className="max-h-56">
-                <SelectItem value="none">No channel — invite people individually</SelectItem>
+                <SelectItem value="none">No channel - invite people individually</SelectItem>
                 {invitable.map(c => (
                   <SelectItem key={c.channelId} value={c.channelId}>{channelLabel(c)}</SelectItem>
                 ))}
@@ -760,11 +923,8 @@ export function ScheduleMeetingDialog({
                         ? [...prev, person.memberId]
                         : prev.filter(id => id !== person.memberId))}
                     />
-                    <Avatar className="size-6">
-                      <AvatarFallback className={cn('text-[10px] text-white', avatarColor(person.memberId))}>
-                        {initialsOf(person.fullName)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <PersonAvatar id={person.memberId} name={person.fullName}
+                      src={person.avatarUrl} size="xs" decorative />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm">{person.fullName}</span>
                       {person.jobTitle && (
@@ -801,7 +961,7 @@ export function ScheduleMeetingDialog({
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
-            className="bg-emerald-600 text-white hover:bg-emerald-700"
+            
             disabled={
               !title.trim() || saving
               || (when === 'later' && (!scheduledAt || new Date(scheduledAt) < new Date()))
@@ -825,8 +985,8 @@ export function ScheduleMeetingDialog({
  * ── What the server decides, and what this component decides ─────────────
  *
  * This component decides nothing about who may be here. It asks to join, the
- * endpoint answers with a state — `joined`, or `knocking` if there is a
- * waiting room — and it renders that answer. The peer connections are then
+ * endpoint answers with a state - `joined`, or `knocking` if there is a
+ * waiting room - and it renders that answer. The peer connections are then
  * offered only to the membership ids the participant list says are in the
  * room, so a client that lied about being admitted is still connected to
  * nobody: every other browser is consulting the same list.
@@ -834,7 +994,7 @@ export function ScheduleMeetingDialog({
  * ── Why it keeps asking ──────────────────────────────────────────────────
  *
  * The answer to "am I in?" changes while the room is open, and it changes on
- * the *server* — the host admits somebody, refuses somebody, ends the meeting,
+ * the *server* - the host admits somebody, refuses somebody, ends the meeting,
  * turns the waiting room off. The component used to ask once, on mount, and
  * treat the reply as settled, which meant every one of those decisions reached
  * a browser that had stopped listening: an admitted guest waiting at a door
@@ -843,8 +1003,8 @@ export function ScheduleMeetingDialog({
  * finished.
  *
  * So `seat` below is the last answer received rather than the only one, and
- * the participant row — delivered by the subscription, or polled when the
- * socket cannot connect — is what moves it. Every transition ends somewhere a
+ * the participant row - delivered by the subscription, or polled when the
+ * socket cannot connect - is what moves it. Every transition ends somewhere a
  * person can act from: in the room, told why they are not, or offered a retry.
  * There is no state in which this renders a spinner and waits for something
  * that will not come.
@@ -861,7 +1021,7 @@ export function ScheduleMeetingDialog({
  * It used to take `meeting: MeetingRow` from the module's list, and be rendered
  * only while that list happened to contain it. Which made every refetch of that
  * list a hazard: one request that failed, raced, or came back a moment stale
- * and the row was gone for a render — the room unmounted, the peer connections
+ * and the row was gone for a render - the room unmounted, the peer connections
  * closed, the camera stopped, and everybody in the meeting was dropped by
  * somebody else's background fetch. Saving the notes triggered exactly that
  * refetch, which is why writing them up could put people out of the call.
@@ -871,13 +1031,13 @@ export function ScheduleMeetingDialog({
  * server saying the meeting has ended, or that it no longer exists.
  */
 export function MeetingRoom({
-  meetingId, initial, currentMemberId, directory, onClose,
+  meetingId, initial, currentMemberId, directory, autoJoin, onClose,
 }: {
   meetingId: string;
   /**
    * The row the module already had, if it had one.
    *
-   * Only a seed for the first paint — the room refetches immediately either
+   * Only a seed for the first paint - the room refetches immediately either
    * way. Passing it means opening a meeting from the list is instant rather
    * than a spinner over a request that was already answered a second ago.
    */
@@ -886,7 +1046,17 @@ export function MeetingRoom({
   /** Colleagues who can be pulled into a meeting that has already started. */
   directory: DirectoryMember[];
   /**
-   * Closing is also what refreshes the module behind the room — the list is
+   * Skip the green room.
+   *
+   * True for exactly one gesture: "start a call in this conversation", where
+   * the person has already decided and a confirmation step is a step
+   * backwards. Every other route in - a scheduled meeting, a Join button, an
+   * invitation - goes through the lobby, because in those the decision is the
+   * whole point.
+   */
+  autoJoin?: boolean;
+  /**
+   * Closing is also what refreshes the module behind the room - the list is
    * caught up once, on the way out, rather than on every event inside a
    * meeting. See `closeMeeting` in the module shell.
    */
@@ -895,11 +1065,22 @@ export function MeetingRoom({
   const [meeting, setMeeting] = useState<MeetingRow | null>(initial ?? null);
   const [gone, setGone] = useState(false);
   const [slow, setSlow] = useState(false);
+  /**
+   * What the green room decided, or null while it is still open.
+   *
+   * The room is not mounted until this is set, which is what makes the lobby a
+   * real step rather than an overlay: no join request is sent, no media is
+   * acquired by the mesh, and nobody in the meeting sees anybody arrive until
+   * the person has actually chosen to.
+   */
+  const [entry, setEntry] = useState<{ micOn: boolean; camOn: boolean } | null>(
+    autoJoin ? { micOn: true, camOn: true } : null,
+  );
 
   /**
    * Asking again is a counter, and the fetch lives in the effect.
    *
-   * The obvious shape — an async `useCallback` the effect calls — is what
+   * The obvious shape - an async `useCallback` the effect calls - is what
    * `react-hooks/set-state-in-effect` objects to, and the objection has a point
    * here: the request has to be abandoned when the room closes or the meeting
    * changes, and a callback that owns its own setState has nowhere to put that.
@@ -916,7 +1097,7 @@ export function MeetingRoom({
           `/api/communication/meetings?id=${encodeURIComponent(meetingId)}`);
         if (cancelled) return;
         if (rows?.length) { setMeeting(rows[0]); setGone(false); }
-        // An empty answer is the server saying this meeting is not there — for
+        // An empty answer is the server saying this meeting is not there - for
         // this caller, which is the same thing. `meeting_overview()` returns
         // only what the caller may see, so "deleted" and "never yours" arrive
         // alike, and both mean the room should close.
@@ -967,7 +1148,7 @@ export function MeetingRoom({
               </p>
               <div className="flex gap-2">
                 <Button variant="secondary" onClick={onClose}>Close</Button>
-                <Button className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+                <Button className="gap-1.5"
                   onClick={() => { setSlow(false); void loadMeeting(); }}>
                   <RefreshCw className="size-3.5" /> Try again
                 </Button>
@@ -984,11 +1165,24 @@ export function MeetingRoom({
     );
   }
 
+  if (!entry) {
+    return (
+      <MeetingLobby
+        meeting={meeting}
+        currentMemberId={currentMemberId}
+        onJoin={setEntry}
+        onClose={onClose}
+      />
+    );
+  }
+
   return (
     <Room
       meeting={meeting}
       currentMemberId={currentMemberId}
       directory={directory}
+      startMuted={!entry.micOn}
+      startCameraOff={!entry.camOn}
       onClose={onClose}
       onMeetingChanged={loadMeeting}
     />
@@ -996,11 +1190,14 @@ export function MeetingRoom({
 }
 
 function Room({
-  meeting, currentMemberId, directory, onClose, onMeetingChanged,
+  meeting, currentMemberId, directory, startMuted, startCameraOff, onClose, onMeetingChanged,
 }: {
   meeting: MeetingRow;
   currentMemberId: string | null;
   directory: DirectoryMember[];
+  /** What the green room chose. See `MeetingLobby`. */
+  startMuted?: boolean;
+  startCameraOff?: boolean;
   onClose: () => void;
   /** Refetch this room's own meeting row. */
   onMeetingChanged: () => void;
@@ -1017,7 +1214,7 @@ function Room({
    * no amount of realtime could clear:
    *
    *   · The host admits somebody. The endpoint writes `admitted`, which is a
-   *     *permission*, not a seat — a second POST is what turns it into
+   *     *permission*, not a seat - a second POST is what turns it into
    *     `joined`. Nothing sent one, so the admitted guest sat on "Waiting to
    *     be let in" for the length of the meeting while everybody else could
    *     see them in the list.
@@ -1041,8 +1238,8 @@ function Room({
    *
    * Holding the draft as an override rather than as a copy is what lets the
    * live row flow through without an effect to sync it: with nothing typed the
-   * panel shows what was last saved — including a save by somebody else in the
-   * same meeting — and once there is a draft, the draft wins until it is saved.
+   * panel shows what was last saved - including a save by somebody else in the
+   * same meeting - and once there is a draft, the draft wins until it is saved.
    */
   const [draft, setDraft] = useState<string | null>(null);
   const [savingNotes, setSavingNotes] = useState(false);
@@ -1063,8 +1260,8 @@ function Room({
   /**
    * The parent's callbacks, in refs.
    *
-   * Both are written inline at the call site — `onClose={() => setActiveMeetingId(null)}`
-   * — so they are a new function on every render of the module, and the module
+   * Both are written inline at the call site - `onClose={() => setActiveMeetingId(null)}`
+   * - so they are a new function on every render of the module, and the module
    * renders on every presence beat, every keystroke in the composer and every
    * realtime event. Held in the dependency list of the join effect that meant a
    * fresh POST to `/participants` several times a second; in the one that starts
@@ -1084,14 +1281,14 @@ function Room({
    * ── Why the module's list is deliberately *not* refreshed here ───────────
    *
    * It used to be, and it is the most expensive thing the room could do. This
-   * fires on every realtime event in the meeting — a hand going up, a camera
-   * toggled, somebody admitted — and each one was answering with a
+   * fires on every realtime event in the meeting - a hand going up, a camera
+   * toggled, somebody admitted - and each one was answering with a
    * `meeting_overview()` *and* a `channel_overview()` for a sidebar that is
    * entirely hidden behind a full-screen room. Six people fidgeting with their
    * cameras was a few hundred rows of aggregate SQL a minute, on the device
    * least able to spare it, for a list nobody could see.
    *
-   * The list is caught up once, when the room closes — which is the moment
+   * The list is caught up once, when the room closes - which is the moment
    * before it is looked at again. See `closeMeeting` in the module shell.
    */
   const changed = useCallback(() => { reload.current(); }, []);
@@ -1110,7 +1307,7 @@ function Room({
   /**
    * Ask for a seat: the join button, and the retry.
    *
-   * Also what turns an admission into a seat — the server reads `admitted` and
+   * Also what turns an admission into a seat - the server reads `admitted` and
    * answers `joined`, which is why the same call serves the knock and the entry
    * that follows it.
    */
@@ -1123,8 +1320,8 @@ function Room({
        * for ever.
        *
        * `fetch` has no timeout of its own: a request that is neither answered
-       * nor refused — a captive portal, a proxy holding the connection, a
-       * laptop that suspended mid-flight — leaves this promise pending for as
+       * nor refused - a captive portal, a proxy holding the connection, a
+       * laptop that suspended mid-flight - leaves this promise pending for as
        * long as the tab is open, and the `joining` spinner with it. Twenty
        * seconds is far longer than the endpoint has ever needed and still
        * short enough to be a wait rather than a hang, and the abort lands in
@@ -1149,7 +1346,7 @@ function Room({
     } catch (err: any) {
       /**
        * A failed join used to close the room outright, which threw away the
-       * only screen that could explain what happened or offer another go — and
+       * only screen that could explain what happened or offer another go - and
        * a meeting is exactly the moment somebody cannot afford to guess.
        */
       // A timeout arrives as `signal timed out`, which is a sentence for a
@@ -1167,7 +1364,7 @@ function Room({
    * Asking for a seat is the only thing that happens on mount.
    *
    * There was a second effect fetching the participant list alongside it, which
-   * `requestSeat` already does the moment the server answers — two requests for
+   * `requestSeat` already does the moment the server answers - two requests for
    * the same rows, racing, at the one moment in a meeting where latency is
    * actually felt. The roster is worth nothing before the seat is granted
    * anyway: until then there is no room to be in.
@@ -1241,7 +1438,7 @@ function Room({
     if (myState === 'removed') { setSeat('refused'); return; }
     // The host turned the waiting room off while somebody was standing in it.
     // There is no door left to wait at, and nothing else would ever have moved
-    // this row — so ask again, and the server lets them straight in.
+    // this row - so ask again, and the server lets them straight in.
     if (!meeting.waitingRoom) void requestSeat();
   }, [seat, myState, meeting.waitingRoom, requestSeat]);
 
@@ -1256,7 +1453,7 @@ function Room({
    * The room says we are not here, and we are.
    *
    * Two ways that happens, both ordinary. A phone puts a backgrounded tab into
-   * the back/forward cache, which fires `pagehide` — so the tab politely
+   * the back/forward cache, which fires `pagehide` - so the tab politely
    * announced it was leaving and was then restored intact. And a `left` written
    * by a request that raced a rejoin leaves the same disagreement.
    *
@@ -1273,7 +1470,7 @@ function Room({
   /**
    * The meeting is over.
    *
-   * For everybody, including the host who ended it — a room left open on an
+   * For everybody, including the host who ended it - a room left open on an
    * ended meeting is the state where the grid is frozen, the controls do
    * nothing and there is no explanation on screen.
    */
@@ -1299,13 +1496,15 @@ function Room({
     // said this person is in the room. A waiting room that still turned your
     // camera on would not be a waiting room.
     enabled: seat === 'in',
+    startMuted,
+    startCameraOff,
   });
 
   /**
    * The host's mute is enforced locally too.
    *
-   * The row is the authority — everybody in the room can see that this person
-   * is muted — but the muted browser also has to stop transmitting, or the
+   * The row is the authority - everybody in the room can see that this person
+   * is muted - but the muted browser also has to stop transmitting, or the
    * flag is a label on a microphone that is still open.
    */
   const forceMute = media.forceMute;
@@ -1330,7 +1529,7 @@ function Room({
    * Your camera and your share, on the row everybody else reads.
    *
    * `meeting_participants.camera_on` and `is_sharing` have been columns since
-   * 0023 and the grid has always rendered them — but nothing ever wrote them,
+   * 0023 and the grid has always rendered them - but nothing ever wrote them,
    * so every tile claimed the camera was off and the green ring around a shared
    * screen was unreachable. This is the write that was missing.
    */
@@ -1345,7 +1544,7 @@ function Room({
     try {
       await fetch(`/api/communication/meetings/${meeting.meetingId}/participants`, { method: 'DELETE' });
     } catch { /* leaving should never fail in front of somebody */ }
-    // Closing is what refreshes the module behind — see `closeMeeting`. Asking
+    // Closing is what refreshes the module behind - see `closeMeeting`. Asking
     // for it here as well was the same two queries twice.
     close.current();
   }, [meeting.meetingId]);
@@ -1356,7 +1555,7 @@ function Room({
    * Without this, closing the window or quitting the browser left the
    * participant row saying `joined` for ever: a name in the list, a tile in
    * everybody's grid, and a connection every other browser kept trying to
-   * make. `keepalive` is what lets the request outlive the page — an ordinary
+   * make. `keepalive` is what lets the request outlive the page - an ordinary
    * `fetch` is cancelled the moment the document goes.
    *
    * `pagehide` rather than `beforeunload`, because the latter is not fired at
@@ -1392,7 +1591,7 @@ function Room({
    * Everything the grid shows, as one list.
    *
    * Assembled before it is rendered because the layout has to be sized to the
-   * *count* — you cannot fit tiles to a stage while still discovering how many
+   * *count* - you cannot fit tiles to a stage while still discovering how many
    * there are halfway down the JSX. It also puts the three sources in one
    * place: you, the people whose media has arrived, and the people the server
    * says are here whose media has not.
@@ -1411,11 +1610,15 @@ function Room({
       sharing?: boolean;
       /** Absent for your own tile, which is never "connecting" to itself. */
       health?: PeerHealth;
+      avatarUrl?: string | null;
     }[] = [{
       id: 'self',
       stream: media.localStream,
       label: 'You',
       memberId: currentMemberId ?? 'me',
+      // Your own row in the roster carries your photograph, so the tile with
+      // your camera off shows your face rather than your initials.
+      avatarUrl: participants.find(p => p.memberId === currentMemberId)?.avatarUrl ?? null,
       muted: true,
       mirrored: !media.sharing,
       cameraOff: !media.camOn,
@@ -1430,12 +1633,13 @@ function Room({
         stream: peer.stream,
         label: person?.fullName ?? 'Someone',
         memberId: peer.memberId,
+        avatarUrl: person?.avatarUrl ?? null,
         cameraOff: !person?.cameraOn && !peer.hasVideo,
         micOff: !!person?.isMuted,
         handUp: !!person?.handRaisedAt,
         sharing: !!person?.isSharing,
         // Media is arriving, so it is live unless the connection has since
-        // gone quiet — which is precisely the case a frozen picture needs a
+        // gone quiet - which is precisely the case a frozen picture needs a
         // word for.
         health: media.health[peer.memberId] === 'reconnecting' ? 'reconnecting' : 'live',
       });
@@ -1444,7 +1648,7 @@ function Room({
     /**
      * Somebody the room says is here whose media has not arrived.
      *
-     * They get a tile rather than being missing — "is Ada here?" should be
+     * They get a tile rather than being missing - "is Ada here?" should be
      * answerable from the grid. What changed is that the tile now distinguishes
      * "still connecting" from "this browser could not reach them", which used
      * to be the same eternal spinner.
@@ -1457,6 +1661,7 @@ function Room({
         stream: null,
         label: p.fullName,
         memberId: p.memberId,
+        avatarUrl: p.avatarUrl,
         cameraOff: true,
         micOff: p.isMuted,
         handUp: !!p.handRaisedAt,
@@ -1505,7 +1710,7 @@ function Room({
    *
    * These existed only on the card in the meetings list, which meant a host who
    * was actually in the room had to leave it to lock the door, open or close
-   * the waiting room, or end the call — and leaving is the one thing a host
+   * the waiting room, or end the call - and leaving is the one thing a host
    * cannot casually do. The endpoint and the permissions are the same; this is
    * the control being where the person using it already is.
    */
@@ -1572,7 +1777,7 @@ function Room({
           </div>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => close.current()}>Close</Button>
-            <Button className="gap-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
+            <Button className="gap-1.5"
               onClick={() => void requestSeat()}>
               <RefreshCw className="size-3.5" /> Try again
             </Button>
@@ -1656,7 +1861,7 @@ function Room({
             <div className="mx-3 mt-3 flex shrink-0 items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 sm:mx-4">
               <span className="flex-1">{media.mediaError}</span>
               {/*
-                The message said what to do — allow it in the address bar — and
+                The message said what to do - allow it in the address bar - and
                 then offered no way to act on it, so somebody who fixed the
                 permission had to leave the meeting and come back. Asking for a
                 seat again is the full restart: it takes the microphone and
@@ -1665,7 +1870,7 @@ function Room({
                 Withheld for the two faults retrying cannot resolve. A policy
                 that forbids this document the camera will forbid it again a
                 second later, and so will a browser that has no `getUserMedia`
-                — offering the button there is an invitation to press it until
+                - offering the button there is an invitation to press it until
                 somebody concludes the product is broken, when the honest
                 answer is that this particular thing is not going to work.
               */}
@@ -1681,8 +1886,8 @@ function Room({
           {/*
             The connection, said out loud.
 
-            A mesh that cannot get through — no TURN, so a symmetric NAT ends
-            here — used to present as a grid of avatars that never became
+            A mesh that cannot get through - no TURN, so a symmetric NAT ends
+            here - used to present as a grid of avatars that never became
             faces, which is indistinguishable from colleagues who have their
             cameras off. Naming it is the difference between a broken meeting
             and a meeting somebody can do something about.
@@ -1692,7 +1897,7 @@ function Room({
               <TriangleAlert className="size-3.5 shrink-0" />
               <span className="flex-1">
                 The connection to this room dropped. Your network may be blocking direct
-                calls — leaving and joining again is usually enough.
+                calls - leaving and joining again is usually enough.
               </span>
               <Button size="sm" variant="secondary" className="h-6 gap-1 px-2 text-[11px]"
                 onClick={() => void requestSeat()}>
@@ -1705,7 +1910,7 @@ function Room({
             Somebody at the door, where the host is already looking.
 
             The requirement this answers is that a host never has to leave the
-            meeting to manage the waiting room — so the whole exchange happens
+            meeting to manage the waiting room - so the whole exchange happens
             here, with who it is and how long they have been there, and the
             panel stays an option rather than a detour.
           */}
@@ -1732,11 +1937,8 @@ function Room({
               <div className="mt-2 space-y-1">
                 {knocking.slice(0, 3).map(p => (
                   <div key={p.id} className="flex items-center gap-2">
-                    <Avatar className="size-6">
-                      <AvatarFallback className={cn('text-[10px] text-white', avatarColor(p.memberId))}>
-                        {initialsOf(p.fullName)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <PersonAvatar id={p.memberId} name={p.fullName}
+                      src={p.avatarUrl} size="xs" decorative />
                     <span className="min-w-0 flex-1 truncate text-xs text-white">{p.fullName}</span>
                     {p.knockedAt && (
                       <span className="shrink-0 text-[10px] text-white/40">
@@ -1756,7 +1958,7 @@ function Room({
                 ))}
                 {knocking.length > 3 && (
                   <p className="pl-8 text-[10px] text-white/40">
-                    and {knocking.length - 3} more — open Participants to see them all.
+                    and {knocking.length - 3} more - open Participants to see them all.
                   </p>
                 )}
               </div>
@@ -1779,7 +1981,7 @@ function Room({
                *
                * A centred flex child that is taller than its container has its
                * overflow split above and below, and the half above cannot be
-               * scrolled to — the first row of faces is simply gone. Automatic
+               * scrolled to - the first row of faces is simply gone. Automatic
                * margins centre exactly the same way when there is room and do
                * not do that when there is not, which is the whole difference
                * between a crowded meeting on a phone working and not.
@@ -1798,7 +2000,7 @@ function Room({
                  * a tile takes the full column and its height follows, which is
                  * what the module did before this phase and what it should keep
                  * doing. Fitting tiles to the height there produces something
-                 * technically optimal and worse to use — a letterboxed strip
+                 * technically optimal and worse to use - a letterboxed strip
                  * with margins on a screen that has none to spare.
                  *
                  * A desktop is the opposite: wide, short, and the height is what
@@ -1810,7 +2012,7 @@ function Room({
                  * measurement. `isMobile` is the same 768px breakpoint the rest
                  * of the module uses, so the two agree about what a phone is.
                  *
-                 * One column up to two tiles, two columns beyond — which is
+                 * One column up to two tiles, two columns beyond - which is
                  * what the column classes resolved to on a small screen before
                  * this phase, restored exactly. The only thing added is that
                  * the stage scrolls once the rows outgrow it, so a crowded
@@ -1822,7 +2024,7 @@ function Room({
                 ? undefined
                 : stage.width > 0
                   ? { gridTemplateColumns: `repeat(${stage.cols}, ${tileWidth}px)`, width: 'auto' }
-                  // Before the first measurement — one frame — a sensible CSS
+                  // Before the first measurement - one frame - a sensible CSS
                   // grid, so the room does not open on an empty stage.
                   : { gridTemplateColumns: `repeat(${Math.min(tiles.length, 2)}, minmax(0, 1fr))` }}
             >
@@ -1839,6 +2041,7 @@ function Room({
                   handUp={tile.handUp}
                   sharing={tile.sharing}
                   health={tile.health}
+                  avatarUrl={tile.avatarUrl}
                   compact={compactTiles}
                 />
               ))}
@@ -1852,8 +2055,8 @@ function Room({
               layout that made this whole section necessary. */}
           <div className="flex shrink-0 flex-wrap items-center justify-center gap-1.5 border-t border-white/10 px-2 py-2.5 sm:gap-2 sm:px-4 sm:py-3">
             <TooltipProvider delayDuration={300}>
-              {/* A control with no track behind it did nothing when pressed —
-                  `toggleMic` returns early when there is no audio track — so
+              {/* A control with no track behind it did nothing when pressed -
+                  `toggleMic` returns early when there is no audio track - so
                   the button for the device somebody had just been told was
                   unavailable stayed lit and stayed silent. Disabled, and the
                   tooltip says which of the two it is. */}
@@ -1884,7 +2087,7 @@ function Room({
                   }
                 />
               )}
-              {/* Hidden where the browser cannot do it at all — iOS Safari has
+              {/* Hidden where the browser cannot do it at all - iOS Safari has
                   no `getDisplayMedia`, and a button whose only possible outcome
                   is nothing happening is worse than no button. */}
               {canShareScreen && (
@@ -1976,7 +2179,7 @@ function Room({
                 </TooltipTrigger>
                 <TooltipContent>
                   {amHost
-                    ? 'Leave — the meeting carries on without you'
+                    ? 'Leave - the meeting carries on without you'
                     : 'Leave the meeting'}
                 </TooltipContent>
               </Tooltip>
@@ -1987,7 +2190,7 @@ function Room({
         {/* ── Side panel ──
             Full width on a phone, a column on a desktop. A fixed 320px panel
             beside a video grid on a 390px screen leaves 70px for the meeting,
-            which is not a smaller version of the layout — it is a broken one.
+            which is not a smaller version of the layout - it is a broken one.
             On a phone the panel is the screen while it is open, and the grid is
             one tap away. */}
         {(showPeople || showNotes) && (
@@ -2070,7 +2273,7 @@ function Room({
         title="End the meeting"
         description={
           present.length > 1
-            ? `Everyone still in the room — ${present.length} people — will be disconnected. `
+            ? `Everyone still in the room - ${present.length} people - will be disconnected. `
               + 'The notes and the participant list are kept.'
             : 'The meeting will be closed. The notes and the participant list are kept.'
         }
@@ -2079,7 +2282,7 @@ function Room({
         isLoading={ending}
         onConfirm={async () => {
           setEnding(true);
-          // The room closes itself when the status arrives as `ended` — through
+          // The room closes itself when the status arrives as `ended` - through
           // the same effect that closes it for everybody else, rather than a
           // second path that only the host takes.
           const ok = await runMeeting({ status: 'ended' });
@@ -2095,7 +2298,7 @@ function Room({
  * Bringing somebody into a meeting that has already started.
  *
  * The endpoint has accepted a list of member ids from a host since 0023 and
- * nothing in the room ever sent one — inviting was possible only at the moment
+ * nothing in the room ever sent one - inviting was possible only at the moment
  * a meeting was created, which is the one moment you do not yet know who you
  * need. People already in the room, waiting at the door or invited and yet to
  * arrive are filtered out by the caller, so the list is only people it would
@@ -2124,7 +2327,7 @@ function InviteToMeetingDialog({
         method: 'POST', body: JSON.stringify({ memberIds: picked }),
       });
       toast.success(picked.length === 1
-        ? 'Invited — they have been notified'
+        ? 'Invited - they have been notified'
         : `${picked.length} people invited`);
       onInvited();
     } catch (err: any) {
@@ -2158,11 +2361,8 @@ function InviteToMeetingDialog({
                     ? [...prev, person.memberId]
                     : prev.filter(id => id !== person.memberId))}
                 />
-                <Avatar className="size-7">
-                  <AvatarFallback className={cn('text-[10px] text-white', avatarColor(person.memberId))}>
-                    {initialsOf(person.fullName)}
-                  </AvatarFallback>
-                </Avatar>
+                <PersonAvatar id={person.memberId} name={person.fullName}
+                  src={person.avatarUrl} size="sm" decorative />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm">{person.fullName}</span>
                   {person.jobTitle && (
@@ -2184,7 +2384,7 @@ function InviteToMeetingDialog({
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
-            className="bg-emerald-600 text-white hover:bg-emerald-700"
+            
             disabled={!picked.length || saving}
             onClick={() => void submit()}
           >
@@ -2207,8 +2407,8 @@ function InviteToMeetingDialog({
  * It was `grid-cols-1` for one person, `sm:grid-cols-2` for two, and so on.
  * Tailwind columns divide the *width*; the tiles are 16:9, so their height
  * follows from that width and nothing bounds it. One participant on a desktop
- * therefore got a tile as wide as the room and 56% of that tall — taller than
- * the space available — which pushed the control bar off the bottom of the
+ * therefore got a tile as wide as the room and 56% of that tall - taller than
+ * the space available - which pushed the control bar off the bottom of the
  * screen. The mute button was unreachable in a one-to-one call, which is the
  * most common call there is.
  *
@@ -2219,7 +2419,7 @@ function InviteToMeetingDialog({
  * arrangement yields the largest tile that still fits. That is the same
  * calculation every video product does, and it is the only one that behaves on
  * a phone in portrait, a laptop, and a wide monitor with the participant panel
- * open — without a breakpoint for each.
+ * open - without a breakpoint for each.
  *
  * It also means the layout responds to the panel opening and to the window
  * resizing, both of which change the stage and neither of which a media query
@@ -2232,7 +2432,7 @@ function useStageLayout(count: number, gap: number, enabled: boolean) {
   useEffect(() => {
     const el = ref.current;
     // A phone lays out by column class and never reads this, so there is no
-    // reason to observe it — and every soft keyboard opening would otherwise
+    // reason to observe it - and every soft keyboard opening would otherwise
     // re-render the whole room for a number nobody uses.
     if (!el || !enabled) return;
     const observer = new ResizeObserver(entries => {
@@ -2268,7 +2468,7 @@ function RoomShell({
 }) {
   return (
     /*
-      The room is a full-screen overlay, so it owns the whole device — including
+      The room is a full-screen overlay, so it owns the whole device - including
       the parts of it a phone reserves. Without the safe-area insets the title
       sits under the notch and the control bar under the home indicator, which
       is where the Leave button ends up on an iPhone.
@@ -2308,8 +2508,8 @@ function RoomShell({
  * ── Why "off" is not always red ──────────────────────────────────────────
  *
  * It was: every control in this bar went rose the moment it was inactive, so a
- * room at rest showed four red buttons — share, raise hand, participants,
- * notes — none of which was wrong with anything. Red in a meeting means
+ * room at rest showed four red buttons - share, raise hand, participants,
+ * notes - none of which was wrong with anything. Red in a meeting means
  * something specific and worth reserving: nobody can hear you, nobody can see
  * you. A panel that happens to be closed is not that, and a bar that says
  * everything is an alarm says nothing.
@@ -2368,13 +2568,13 @@ function ControlButton({
  *
  * The stream is attached in an effect rather than through a `src`: a
  * `MediaStream` is an object, not a URL, and `srcObject` is the only way to
- * give one to a `<video>`. Muted on the local tile without exception —
+ * give one to a `<video>`. Muted on the local tile without exception -
  * playing your own microphone back through your own speakers is a feedback
  * loop, and every call that has ever howled has done it for this reason.
  */
 const VideoTile = memo(function VideoTile({
   stream, label, muted, mirrored, cameraOff, micOff, handUp, sharing,
-  health, compact, memberId,
+  health, compact, memberId, avatarUrl,
 }: {
   stream: MediaStream | null;
   label: string;
@@ -2389,6 +2589,14 @@ const VideoTile = memo(function VideoTile({
   /** The tile is small enough that the avatar and the labels must come down. */
   compact?: boolean;
   memberId: string;
+  /**
+   * The person's photograph, for the tile with the camera off.
+   *
+   * Which is most tiles, most of the time: a meeting where everybody has their
+   * camera on is the exception, and a grid of coloured initials is the version
+   * of this screen that people were actually looking at.
+   */
+  avatarUrl?: string | null;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
 
@@ -2449,15 +2657,13 @@ const VideoTile = memo(function VideoTile({
               {!compact && <span className="text-[11px] text-white/35">Connecting…</span>}
             </>
           ) : (
-            <Avatar className={compact ? 'size-10' : 'size-16'}>
-              <AvatarFallback className={cn(
-                'font-medium text-white',
-                compact ? 'text-sm' : 'text-lg',
-                avatarColor(memberId),
-              )}>
-                {initialsOf(label)}
-              </AvatarFallback>
-            </Avatar>
+            <PersonAvatar
+              id={memberId}
+              name={label}
+              src={avatarUrl}
+              size={compact ? 'lg' : 'xl'}
+              decorative
+            />
           )}
         </div>
       )}
@@ -2498,7 +2704,7 @@ function ParticipantPanel({
    *
    * The panel used to hold a second copy that refreshed the list on its own,
    * so admitting from the banner and admitting from the panel were two code
-   * paths doing the same thing — and only one of them reported success.
+   * paths doing the same thing - and only one of them reported success.
    */
   onAct: (body: Record<string, unknown>) => Promise<boolean>;
   onAdmit: (memberIds: string[]) => Promise<void>;
@@ -2509,7 +2715,7 @@ function ParticipantPanel({
   const invited = participants.filter(p => ['invited', 'admitted'].includes(p.state));
 
   return (
-    <ScrollArea className="flex-1">
+    <ScrollArea className="min-h-0 flex-1">
       <div className="space-y-5 p-4">
         {amHost && knocking.length > 0 && (
           <section>
@@ -2527,11 +2733,8 @@ function ParticipantPanel({
             <div className="space-y-1.5">
               {knocking.map(p => (
                 <div key={p.id} className="flex items-center gap-2 rounded-lg bg-white/5 p-2">
-                  <Avatar className="size-7">
-                    <AvatarFallback className={cn('text-[10px] text-white', avatarColor(p.memberId))}>
-                      {initialsOf(p.fullName)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <PersonAvatar id={p.memberId} name={p.fullName} src={p.avatarUrl}
+                    size="sm" decorative />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm text-white">{p.fullName}</span>
                     {/* How long somebody has been at the door is the fact that
@@ -2562,11 +2765,8 @@ function ParticipantPanel({
           <div className="space-y-1">
             {inRoom.map(p => (
               <div key={p.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/5">
-                <Avatar className="size-7">
-                  <AvatarFallback className={cn('text-[10px] text-white', avatarColor(p.memberId))}>
-                    {initialsOf(p.fullName)}
-                  </AvatarFallback>
-                </Avatar>
+                <PersonAvatar id={p.memberId} name={p.fullName} src={p.avatarUrl}
+                  size="sm" decorative />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-white">
                     {p.fullName}
@@ -2625,11 +2825,8 @@ function ParticipantPanel({
             <div className="space-y-1">
               {invited.map(p => (
                 <div key={p.id} className="flex items-center gap-2 px-2 py-1 opacity-60">
-                  <Avatar className="size-6">
-                    <AvatarFallback className={cn('text-[10px] text-white', avatarColor(p.memberId))}>
-                      {initialsOf(p.fullName)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <PersonAvatar id={p.memberId} name={p.fullName} src={p.avatarUrl}
+                    size="xs" decorative />
                   <span className="min-w-0 flex-1 truncate text-xs text-white/70">{p.fullName}</span>
                 </div>
               ))}
@@ -2638,5 +2835,292 @@ function ParticipantPanel({
         )}
       </div>
     </ScrollArea>
+  );
+}
+
+/* ========================================================================== */
+/*  The green room                                                            */
+/* ========================================================================== */
+
+/**
+ * Before you walk in.
+ *
+ * -- Why a product needs this ----------------------------------------------
+ *
+ * Walking straight into a meeting is the single most exposing thing a
+ * conferencing product can do to somebody: camera on, microphone live, in a
+ * room that may already have eight people in it, before they have seen
+ * themselves. Every product people trust puts a step in front of it, and every
+ * one that does not gets used with the camera permanently denied at the
+ * browser level - which is the same feature, chosen once, badly.
+ *
+ * -- What it is allowed to promise ------------------------------------------
+ *
+ * Only what the architecture supports. It previews the local camera and
+ * microphone with `getUserMedia`, which is the same call the room makes, and
+ * it carries the two switches through into the room so they mean something.
+ * It does not show who is speaking, it does not test the connection, and it
+ * does not claim a "network check" this product cannot perform.
+ *
+ * -- The tracks it acquires, and why they are stopped ----------------------
+ *
+ * Its own, and released the moment it unmounts. The room asks again on the way
+ * in. Holding the camera open across the handover would leave two live tracks
+ * on one device, which on most hardware means the room's request fails.
+ */
+function MeetingLobby({
+  meeting, currentMemberId, onJoin, onClose,
+}: {
+  meeting: MeetingRow;
+  currentMemberId: string | null;
+  onJoin: (choice: { micOn: boolean; camOn: boolean }) => void;
+  onClose: () => void;
+}) {
+  /**
+   * Who is in there, read once.
+   *
+   * Not subscribed: this screen is on for a few seconds and a roster that
+   * updates under somebody deciding whether to join is movement for its own
+   * sake. The room subscribes properly the moment they walk in.
+   */
+  const [participants, setParticipants] = useState<MeetingParticipant[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void api<MeetingParticipant[]>(
+      `/api/communication/meetings/${meeting.meetingId}/participants`)
+      .then(rows => { if (!cancelled) setParticipants(rows ?? []); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [meeting.meetingId]);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [micOn, setMicOn] = useState(true);
+  const [camOn, setCamOn] = useState(meeting.mode !== 'audio');
+  const [fault, setFault] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+
+  const audioOnly = meeting.mode === 'audio';
+
+  /**
+   * One acquisition, released on the way out.
+   *
+   * Asked for once rather than re-requested when a switch moves: a second
+   * `getUserMedia` for a camera the browser has already granted is a second
+   * device start, which is visibly slower and on some hardware flashes the
+   * indicator light. The switches disable the track instead, which is exactly
+   * what the room does.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    let acquired: MediaStream | null = null;
+
+    void (async () => {
+      try {
+        acquired = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: audioOnly ? false : { width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+        if (cancelled) { acquired.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = acquired;
+        if (videoRef.current) videoRef.current.srcObject = acquired;
+        setReady(true);
+      } catch (e: any) {
+        if (cancelled) return;
+        /*
+          Named rather than swallowed. "Could not start the camera" with no
+          reason is the message that sends somebody to their operating system
+          settings when the answer was a permission prompt they dismissed.
+        */
+        setFault(
+          e?.name === 'NotAllowedError'
+            ? 'Your browser is blocking the camera and microphone for this site.'
+            : e?.name === 'NotFoundError'
+              ? 'No camera or microphone was found on this device.'
+              : 'The camera and microphone could not be started.',
+        );
+        setReady(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    };
+  }, [audioOnly]);
+
+  const flip = (what: 'mic' | 'cam') => {
+    const stream = streamRef.current;
+    if (what === 'mic') {
+      const next = !micOn;
+      stream?.getAudioTracks().forEach(t => { t.enabled = next; });
+      setMicOn(next);
+    } else {
+      const next = !camOn;
+      stream?.getVideoTracks().forEach(t => { t.enabled = next; });
+      setCamOn(next);
+    }
+  };
+
+  const inRoom = participants.filter(p => p.state === 'joined');
+  const invited = participants.filter(p => p.state === 'invited');
+  const me = participants.find(p => p.memberId === currentMemberId);
+  const amHost = meeting.amHost || ['host', 'cohost'].includes(me?.role ?? '');
+  const knocking = meeting.waitingRoom && !amHost;
+
+  return (
+    <RoomShell title={meeting.title} onClose={onClose}>
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-4 sm:p-8">
+        <div className="grid w-full max-w-4xl gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] lg:items-center">
+
+          {/* -- Yourself, before anybody else sees you -- */}
+          <div>
+            <div className="relative aspect-video overflow-hidden rounded-xl bg-black ring-1 ring-white/10">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={cn(
+                  'size-full object-cover',
+                  // Mirrored, because a preview of yourself that is not
+                  // mirrored reads as somebody else's camera.
+                  '-scale-x-100',
+                  (!camOn || audioOnly || !!fault) && 'invisible',
+                )}
+              />
+
+              {(!camOn || audioOnly || fault) && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                  <PersonAvatar
+                    id={currentMemberId ?? 'me'}
+                    name={me?.fullName}
+                    src={me?.avatarUrl}
+                    size="xl"
+                    decorative
+                  />
+                  <p className="text-xs text-white/50">
+                    {fault ? 'No preview' : audioOnly ? 'Voice call' : 'Your camera is off'}
+                  </p>
+                </div>
+              )}
+
+              {!ready && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Loader2 className="size-5 animate-spin text-white/50" />
+                </div>
+              )}
+
+              {/* The two switches, over the preview where they are being
+                  judged, rather than in a toolbar somewhere else. */}
+              <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 p-3">
+                <ControlButton
+                  active={micOn}
+                  warnWhenOff
+                  disabled={!!fault}
+                  onClick={() => flip('mic')}
+                  label={micOn ? 'Mute' : 'Unmute'}
+                  on={<Mic className="size-4" />}
+                  off={<MicOff className="size-4" />}
+                />
+                {!audioOnly && (
+                  <ControlButton
+                    active={camOn}
+                    warnWhenOff
+                    disabled={!!fault}
+                    onClick={() => flip('cam')}
+                    label={camOn ? 'Turn the camera off' : 'Turn the camera on'}
+                    on={<Video className="size-4" />}
+                    off={<VideoOff className="size-4" />}
+                  />
+                )}
+              </div>
+            </div>
+
+            {fault && (
+              <p className="mt-2 flex items-start gap-1.5 text-xs text-amber-300/90">
+                <TriangleAlert className="mt-px size-3.5 shrink-0" />
+                {fault} You can still join and listen.
+              </p>
+            )}
+          </div>
+
+          {/* -- What you are walking into -- */}
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-white">{meeting.title}</h2>
+            <p className="mt-1 text-sm text-white/55">
+              {meeting.status === 'live'
+                ? meeting.startedAt
+                  ? `Started ${formatRelativeTime(meeting.startedAt)}`
+                  : 'Happening now'
+                : meeting.scheduledAt
+                  ? formatDateTime(meeting.scheduledAt)
+                  : 'Not scheduled'}
+              {meeting.hostName ? ` · Hosted by ${meeting.hostName}` : ''}
+            </p>
+
+            {meeting.agenda?.trim() && (
+              <p className="mt-3 whitespace-pre-wrap rounded-lg bg-white/5 p-3 text-sm text-white/70">
+                {meeting.agenda}
+              </p>
+            )}
+
+            {(meeting.channelLabel || meeting.projectName) && (
+              <p className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-white/45">
+                {meeting.channelLabel && (
+                  <span className="inline-flex items-center gap-1 rounded border border-white/15 px-1.5 py-0.5">
+                    <Link2 className="size-2.5" /> {meeting.channelLabel}
+                  </span>
+                )}
+                {meeting.projectName && (
+                  <span className="inline-flex items-center gap-1 rounded border border-white/15 px-1.5 py-0.5">
+                    {meeting.projectName}
+                  </span>
+                )}
+              </p>
+            )}
+
+            <div className="mt-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-white/35">
+                {inRoom.length > 0 ? 'Already here' : 'Invited'}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {(inRoom.length ? inRoom : invited).slice(0, 8).map(p => (
+                  <span key={p.id} className="flex items-center gap-1.5 rounded-full bg-white/5 py-1 pl-1 pr-2.5">
+                    <PersonAvatar id={p.memberId} name={p.fullName} src={p.avatarUrl}
+                      size="xs" decorative />
+                    <span className="max-w-[8rem] truncate text-xs text-white/70">
+                      {p.fullName}
+                    </span>
+                  </span>
+                ))}
+                {(inRoom.length ? inRoom : invited).length === 0 && (
+                  <span className="text-xs text-white/40">
+                    Nobody yet. You will be the first in.
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <Button
+              size="lg"
+              className="mt-6 w-full gap-2"
+              onClick={() => onJoin({ micOn, camOn })}
+            >
+              <Video className="size-4" />
+              {knocking ? 'Ask to join' : meeting.status === 'live' ? 'Join now' : 'Start the meeting'}
+            </Button>
+
+            {knocking && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-white/45">
+                <DoorOpen className="size-3.5 shrink-0" />
+                The host will be asked to let you in.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </RoomShell>
   );
 }

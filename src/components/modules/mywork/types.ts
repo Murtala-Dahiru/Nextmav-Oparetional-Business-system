@@ -1,7 +1,7 @@
 import {
   AlertTriangle, Sun, Sunrise, CalendarRange, CalendarClock, Inbox, CheckCircle2,
 } from 'lucide-react';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatDay } from '@/lib/format';
 import type { ModuleId } from '@/lib/constants';
 import { SOURCE_MODULE_LABELS, sourceNoun, sourceOpens } from '@/lib/mywork';
 import type { Recurrence } from '@/lib/todo-recurrence';
@@ -138,18 +138,15 @@ export function addDaysISO(iso: string, days: number): string {
 }
 
 /**
- * A `YYYY-MM-DD` day, formatted - parsed as a *local* day.
+ * Lifted to `lib/format.ts` in Phase 6.
  *
- * `formatDate` runs the string through `new Date(...)`, and a bare
- * `2026-09-03` is parsed as UTC midnight by specification. Rendered in any
- * timezone west of UTC that comes back as the 2nd, so a to-do due on the 3rd
- * would be labelled with the day before it on every screen in this module.
- * `due_on` is a `date` precisely because it has no time and no zone; appending
- * `T00:00:00` is what says so to the parser.
+ * This module wrote it first, CRM wrote it again in Phase 4, and Projects
+ * would have been the third - so it moved, and this re-export keeps the
+ * eleven call sites in this module unchanged. The shared version tests the
+ * string's shape before appending the time, so it is also safe to hand a
+ * `timestamptz`, which this one was not.
  */
-export function formatDay(iso: string, opts: Intl.DateTimeFormatOptions): string {
-  return formatDate(`${iso}T00:00:00`, opts);
-}
+export { formatDay };
 
 /** Whole days between two `YYYY-MM-DD` days, in the reader's own calendar. */
 export function daysBetween(from: string, to: string): number {

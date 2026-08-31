@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PersonAvatar } from '@/components/shared/person-avatar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -1024,11 +1024,12 @@ function PortalProjectView({
                 {messages.map(m => (
                   <Card key={m.id}>
                     <CardContent className="flex items-start gap-3 p-4">
-                      <Avatar className="size-8 shrink-0">
-                        <AvatarFallback className="bg-emerald-100 text-[10px] text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                          {initialsOf(m.author?.profiles?.fullName)}
-                        </AvatarFallback>
-                      </Avatar>
+                      <PersonAvatar
+                        id={m.author?.id ?? m.id}
+                        name={m.author?.profiles?.fullName}
+                        src={m.author?.profiles?.avatarUrl}
+                        decorative
+                      />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2">
                           <span className="text-sm font-medium text-foreground">

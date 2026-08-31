@@ -11,12 +11,12 @@ import { cn } from '@/lib/utils';
  *  ── Why this is a renderer and not an editor ─────────────────────────────
  *
  *  The brief asks for rich text. The obvious reading is a WYSIWYG toolbar in
- *  the composer, and this repository already ships one — `@mdxeditor/editor`,
+ *  the composer, and this repository already ships one - `@mdxeditor/editor`,
  *  used by the workspace for documents. Putting it in a chat composer would be
  *  wrong for two reasons: it is a document editor, so it costs a considerable
  *  bundle on a screen people leave open all day, and a message is not a
  *  document. What people actually want when they say rich text in a chat is
- *  emphasis, a code span, a link and a list — all of which they already type
+ *  emphasis, a code span, a link and a list - all of which they already type
  *  as markdown out of habit, in every chat tool there is.
  *
  *  So the composer stays a plain text box that anybody can type into blind,
@@ -25,8 +25,8 @@ import { cn } from '@/lib/utils';
  *
  *  ── Why not a markdown library ───────────────────────────────────────────
  *
- *  Because a markdown library renders markdown — headings, tables, images,
- *  blockquotes, raw HTML — and a chat message that can contain an `<h1>` is a
+ *  Because a markdown library renders markdown - headings, tables, images,
+ *  blockquotes, raw HTML - and a chat message that can contain an `<h1>` is a
  *  chat message somebody will use to shout. The grammar below is closed and
  *  small on purpose: five inline forms, links, and lists. Anything else is
  *  text, which is the correct rendering of text.
@@ -53,7 +53,7 @@ type Token =
 /**
  * The order matters.
  *
- * `code` is first because a backtick span is literal — `**not bold**` inside
+ * `code` is first because a backtick span is literal - `**not bold**` inside
  * one has to stay as it was typed, and a pattern that ran earlier would have
  * already consumed it. `bold` precedes `italic` for the ordinary reason that
  * `**` would otherwise be read as two empty emphases.
@@ -156,7 +156,7 @@ function Inline({ tokens }: { tokens: Token[] }) {
                 // it the opened page gets a handle on this one through
                 // `window.opener` and can navigate it somewhere else.
                 rel="noopener noreferrer"
-                className="break-all font-medium text-emerald-700 underline underline-offset-2 hover:text-emerald-800 dark:text-emerald-400"
+                className="break-all font-medium text-brand underline underline-offset-2 hover:opacity-80"
               >
                 {tok.v}
               </a>
@@ -168,8 +168,8 @@ function Inline({ tokens }: { tokens: Token[] }) {
                 className={cn(
                   'rounded px-1 font-medium',
                   tok.isMe
-                    ? 'bg-amber-200 text-amber-900 dark:bg-amber-500/30 dark:text-amber-200'
-                    : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300',
+                    ? 'bg-brand/20 font-semibold text-brand'
+                    : 'bg-muted text-foreground/80',
                 )}
               >
                 @{tok.v}

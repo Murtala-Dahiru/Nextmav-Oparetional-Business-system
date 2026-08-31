@@ -2,8 +2,8 @@ import { collectionHandlers } from '@/lib/supabase/crud';
 import { getContext } from '@/lib/auth-context';
 
 /**
- * `owner` previously resolved to `(id)` alone, so the project card — which
- * renders the owner's initials and full name — had nothing to show and left
+ * `owner` previously resolved to `(id)` alone, so the project card - which
+ * renders the owner's initials and full name - had nothing to show and left
  * both blank. The profile join is the same one every other module already
  * uses for a member.
  */
@@ -46,7 +46,7 @@ export { POST };
  *
  * `v_project_health` has existed since 0007 and already computes total,
  * completed, blocked and overdue tasks, progress, days remaining, logged hours
- * and an at-risk flag — per project, in one place, using the same definitions
+ * and an at-risk flag - per project, in one place, using the same definitions
  * the reports use.
  *
  * Nothing read it. The board recomputed progress in the browser from
@@ -76,13 +76,39 @@ export async function GET(req: Request) {
       'project_id, total_tasks, completed_tasks, blocked_tasks, overdue_tasks, ' +
       'total_milestones, completed_milestones, overdue_milestones, progress_pct, ' +
       // Added in 0016. `health` grades what `is_at_risk` could only flag, and
-      // the board shows the grade — a project a month past its deadline should
+      // the board shows the grade - a project a month past its deadline should
       // not look identical to one carrying a single late task.
       'days_remaining, logged_hours, is_at_risk, health, member_count',
     )
     .in('project_id', rows.map(r => r.id));
 
   const byId = new Map((health ?? []).map((h: any) => [h.project_id, h]));
+
+  /**
+   * The next unfinished phase on each project, for the card view.
+   *
+   * A card that says "62% complete" and stops has told the reader how far along
+   * the work is and nothing about what it is working towards. The rows arrive
+   * ordered by date, so the first one seen per project is its nearest.
+   *
+   * Merged here for the same reason the health metrics are: `milestones` is a
+   * one-to-many from `projects`, so embedding it would multiply the rows and
+   * PostgREST cannot take the first of an embedded set.
+   */
+  const { data: phases } = await ctx.supabase
+    .from('milestones')
+    .select('id, name, due_date, stage, project_id')
+    .eq('organization_id', ctx.org.organizationId)
+    .in('project_id', rows.map(r => r.id))
+    .is('completed_at', null)
+    .not('due_date', 'is', null)
+    .order('due_date')
+    .limit(300);
+
+  const nextPhase = new Map<string, any>();
+  for (const m of phases ?? []) {
+    if (!nextPhase.has(m.project_id)) nextPhase.set(m.project_id, m);
+  }
 
   return Response.json(
     {
@@ -115,6 +141,20 @@ export async function GET(req: Request) {
            */
           health: h?.health ?? 'on_track',
           memberCount: h?.member_count ?? 0,
+          /**
+           * What the project is working towards next.
+           *
+           * A card that says "62% complete" and stops has told the reader how
+           * far along the work is and nothing about what it is *for*.
+           */
+          nextMilestone: nextPhase.has(r.id)
+            ? {
+                id: nextPhase.get(r.id).id,
+                name: nextPhase.get(r.id).name,
+                dueDate: nextPhase.get(r.id).due_date,
+                stage: nextPhase.get(r.id).stage,
+              }
+            : null,
         };
       }),
     },

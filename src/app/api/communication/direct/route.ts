@@ -6,9 +6,9 @@ import { acceptBody } from '@/lib/case';
  * Open a direct conversation with a colleague.
  *
  * Delegates to `open_direct_channel()`, which is where the rules live: the
- * pair must be unique in *both* directions — otherwise Ada messaging Grace and
+ * pair must be unique in *both* directions - otherwise Ada messaging Grace and
  * Grace messaging Ada produce two half-empty threads neither of them can find
- * the other in — and creating the channel with both memberships has to be one
+ * the other in - and creating the channel with both memberships has to be one
  * atomic act, or a crash between them leaves a conversation nobody is in.
  *
  * Returns the existing thread when there is one, so "message" is idempotent

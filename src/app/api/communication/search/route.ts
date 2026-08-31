@@ -8,7 +8,7 @@ import { success, error } from '@/lib/api-response';
  *
  *  ── What this replaces ───────────────────────────────────────────────────
  *
- *  The module's search filtered the array of messages it had already loaded —
+ *  The module's search filtered the array of messages it had already loaded -
  *  the most recent hundred of the conversation currently open. Anything older,
  *  or in any other channel, could not be found at all. That is not a search;
  *  it is a highlight, and the difference only becomes apparent when somebody
@@ -17,7 +17,7 @@ import { success, error } from '@/lib/api-response';
  *  ── Why the ranking is done in Postgres ──────────────────────────────────
  *
  *  `message_search()` is a full-text query against a GIN index, deliberately
- *  SECURITY INVOKER so that `messages_select` — not this handler — decides
+ *  SECURITY INVOKER so that `messages_select` - not this handler - decides
  *  what a caller is allowed to find. A search that re-implemented channel
  *  visibility would be a second copy of an access rule living in the one place
  *  it is most damaging to get wrong.
@@ -36,7 +36,7 @@ export async function GET(req: Request) {
    * A single character is not a search.
    *
    * Prefix matching on one letter returns most of the organisation's messages,
-   * ranked meaninglessly — a result set that is slow to produce and useless to
+   * ranked meaninglessly - a result set that is slow to produce and useless to
    * read. Returning nothing is the honest answer while somebody is still on
    * their first keystroke.
    */

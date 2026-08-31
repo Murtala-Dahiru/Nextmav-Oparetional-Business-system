@@ -22,9 +22,52 @@ interface Dataset {
   select: string;
   columns: { key: string; label: string }[];
   order?: string;
+  /**
+   * Exclude soft-deleted rows.
+   *
+   * Opt-in rather than automatic, because turning it on for every dataset
+   * changes what six other modules' exports contain, and this phase is the
+   * Projects one. It is set on the two datasets added here; the rest are
+   * listed in the phase record so the next module's pass can turn its own on
+   * deliberately.
+   */
+  softDelete?: boolean;
 }
 
 const DATASETS: Record<string, Dataset> = {
+  /**
+   * Projects and tasks.
+   *
+   * The export menu is rendered by the module that owns the data, and the
+   * Projects module had none - so a role holding `projects.export` had a
+   * capability with nothing behind it. Both are the columns somebody actually
+   * wants in a spreadsheet: the ones they would otherwise retype off the
+   * screen.
+   */
+  projects: {
+    table: 'projects', module: 'projects',
+    select: 'name, status, priority, start_date, end_date, budget, created_at',
+    columns: [
+      { key: 'name', label: 'Project' }, { key: 'status', label: 'Status' },
+      { key: 'priority', label: 'Priority' }, { key: 'start_date', label: 'Starts' },
+      { key: 'end_date', label: 'Target' }, { key: 'budget', label: 'Budget' },
+      { key: 'created_at', label: 'Created' },
+    ],
+    order: 'end_date',
+    softDelete: true,
+  },
+  tasks: {
+    table: 'tasks', module: 'projects',
+    select: 'title, status, priority, due_date, estimated_hours, logged_hours, completed_at, created_at',
+    columns: [
+      { key: 'title', label: 'Task' }, { key: 'status', label: 'Status' },
+      { key: 'priority', label: 'Priority' }, { key: 'due_date', label: 'Due' },
+      { key: 'estimated_hours', label: 'Estimated' }, { key: 'logged_hours', label: 'Logged' },
+      { key: 'completed_at', label: 'Completed' }, { key: 'created_at', label: 'Created' },
+    ],
+    order: 'due_date',
+    softDelete: true,
+  },
   leads: {
     table: 'leads', module: 'crm',
     select: 'first_name, last_name, email, phone, company_name, status, score, estimated_value, created_at',
@@ -134,10 +177,14 @@ export async function GET(req: Request) {
   // practice a request for 100k rows is a report, not a download.
   const limit = Math.min(10_000, Math.max(1, Number(searchParams.get('limit')) || 5_000));
 
-  const { data, error: e } = await ctx.supabase
+  let query = ctx.supabase
     .from(spec.table)
     .select(spec.select)
-    .eq('organization_id', ctx.org.organizationId)
+    .eq('organization_id', ctx.org.organizationId);
+
+  if (spec.softDelete) query = query.is('deleted_at', null);
+
+  const { data, error: e } = await query
     .order(spec.order ?? 'created_at', { ascending: false })
     .limit(limit);
 

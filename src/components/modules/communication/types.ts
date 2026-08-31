@@ -1,18 +1,18 @@
 import { type ModuleId } from '@/lib/constants';
 
 /**
- * ═══════════════════════════════════════════════════════════════════════════
+ * ===========================================================================
  *  What the communication module is made of.
- * ═══════════════════════════════════════════════════════════════════════════
+ * ===========================================================================
  *
- *  One definition per shape, imported by the shell, the timeline, the composer
- *  and the meeting room. The module was a single 2,100-line file; splitting it
- *  is what every other deep module here already does (crm, projects, mywork),
- *  and this file is the seam — anything two of those four need lives here, and
- *  nothing else does.
+ *  One definition per shape, imported by the shell, the home view, the
+ *  timeline, the composer and the meeting room. The module was a single
+ *  2,100-line file; splitting it is what every other deep module here already
+ *  does (crm, projects, mywork, workspace), and this file is the seam:
+ *  anything two of those need lives here, and nothing else does.
  */
 
-// ─── Conversations ───────────────────────────────────────────────────────
+// --- Conversations --------------------------------------------------------
 
 /** A row of `channel_overview()`. */
 export interface ChannelRow {
@@ -34,6 +34,11 @@ export interface ChannelRow {
   isAdmin: boolean;
   /** Whether the caller has silenced this conversation. */
   isMuted: boolean;
+  /**
+   * Whether the caller has starred it. New in 0036, and the other half of
+   * muting: it changes where the conversation sits, never what it counts.
+   */
+  isFavourite: boolean;
   myRole: string | null;
   lastMessage: string | null;
   lastMessageAt: string | null;
@@ -41,7 +46,7 @@ export interface ChannelRow {
   counterpartId: string | null;
   counterpartName: string | null;
   counterpartAvatar: string | null;
-  /** What the conversation is about. All four are new in 0023. */
+  /** What the conversation is about. All four are from 0023. */
   projectId: string | null;
   projectName: string | null;
   companyId: string | null;
@@ -54,12 +59,12 @@ export interface ChannelRow {
   mentionCount: number;
 }
 
-// ─── Messages ────────────────────────────────────────────────────────────
+// --- Messages -------------------------------------------------------------
 
 /**
  * The message author, as the endpoint returns them.
  *
- * The sender is a membership with the name on its joined profile — a flat
+ * The sender is a membership with the name on its joined profile. A flat
  * `firstName`/`lastName` was never carried, which is how every message once
  * rendered its author as "undefined undefined".
  */
@@ -83,7 +88,7 @@ export interface MessageFile {
  * A link to something elsewhere in the business.
  *
  * Stored in `messages.attachments`, which since 0023 holds references rather
- * than files — see section 9 of that migration for why the two could not share
+ * than files. See section 9 of that migration for why the two could not share
  * a column.
  */
 export interface RecordReference {
@@ -108,6 +113,24 @@ export interface Message {
   attachments?: RecordReference[];
 }
 
+/**
+ * A thread, described without opening it. A row of `channel_threads()` (0036).
+ *
+ * Fetched once per channel and keyed by `rootId`, because forty bubbles must
+ * not be forty requests. Before this the timeline could not know that a
+ * message had replies at all, so a discussion that had moved into a thread was
+ * invisible to anybody who had not been there when it moved.
+ */
+export interface ThreadSummary {
+  rootId: string;
+  replyCount: number;
+  lastReplyAt: string;
+  lastSenderName: string | null;
+  participants: string[];
+  /** Whether the caller has said anything in it. This is what "following" means. */
+  iReplied: boolean;
+}
+
 export interface ChannelMember {
   id: string;
   channelId: string;
@@ -116,7 +139,7 @@ export interface ChannelMember {
   /**
    * How far this member has read.
    *
-   * The same marker `channel_overview()` computes the unread badge from — which
+   * The same marker `channel_overview()` computes the unread badge from, which
    * is why a read receipt derived from it can never disagree with the count.
    */
   lastReadAt: string | null;
@@ -138,6 +161,13 @@ export interface DirectoryMember {
   email: string;
   jobTitle: string | null;
   departmentName: string | null;
+  /**
+   * Both returned by `/api/directory` all along, and neither was declared
+   * here - so every people picker in this module drew initials for somebody
+   * whose photograph the endpoint had already sent.
+   */
+  avatarUrl: string | null;
+  presence: 'online' | 'away' | 'offline' | null;
 }
 
 /** A row of `message_receipts()`, fetched only when the sender asks. */
@@ -160,10 +190,67 @@ export interface SearchHit {
   body: string;
   senderId: string;
   senderName: string;
+  senderAvatar: string | null;
   createdAt: string;
 }
 
-// ─── Meetings ────────────────────────────────────────────────────────────
+/**
+ * A row of `communication_inbox()` (0036).
+ *
+ * The three things that name a person: they were mentioned, they were
+ * answered, or they were written to directly. Everything else that is unread
+ * is the sidebar's job, and an inbox that repeated it would be a second copy
+ * of the product with no editorial judgement in it.
+ */
+export interface InboxItem {
+  kind: 'mention' | 'reply' | 'direct' | 'announcement';
+  messageId: string;
+  channelId: string;
+  channelLabel: string;
+  channelType: ChannelRow['type'];
+  parentId: string | null;
+  body: string;
+  senderId: string;
+  senderName: string | null;
+  senderAvatar: string | null;
+  createdAt: string;
+  isUnread: boolean;
+  hasFiles: boolean;
+}
+
+/** A row of `saved_messages()` (0036). One person's shelf. */
+export interface SavedMessage {
+  saveId: string;
+  note: string;
+  savedAt: string;
+  messageId: string;
+  channelId: string;
+  channelLabel: string;
+  channelType: ChannelRow['type'];
+  parentId: string | null;
+  body: string;
+  senderId: string;
+  senderName: string | null;
+  senderAvatar: string | null;
+  createdAt: string;
+  hasFiles: boolean;
+}
+
+/** A file posted in a conversation, as `/api/communication/files` lists it. */
+export interface ChannelFile {
+  id: string;
+  filename: string;
+  mimeType: string | null;
+  sizeBytes: number;
+  bucket: string;
+  path: string;
+  channelId: string;
+  messageId: string | null;
+  createdAt: string;
+  uploader?: { id: string; profiles?: { fullName: string; avatarUrl: string | null } } | null;
+}
+
+// --- Meetings -------------------------------------------------------------
 
 /** A row of `meeting_overview()`. */
 export interface MeetingRow {
@@ -218,23 +305,26 @@ export interface MeetingParticipant {
   departmentName: string | null;
 }
 
-// ─── Presentation helpers ────────────────────────────────────────────────
+// --- Presentation helpers -------------------------------------------------
 
-const AVATAR_COLORS = [
-  'bg-emerald-500', 'bg-amber-500', 'bg-violet-500', 'bg-rose-500',
-  'bg-cyan-500', 'bg-orange-500', 'bg-pink-500', 'bg-teal-500',
-];
-
-export function avatarColor(id: string): string {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) hash = id.charCodeAt(i) + ((hash << 5) - hash);
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
+/**
+ * The avatar helpers now live in `lib/avatar.ts`.
+ *
+ * They were written here, and a person is the same person in every module: two
+ * modules deriving the fallback colour differently means Ada is green in
+ * Projects and violet here, which works against recognition rather than for
+ * it. Re-exported so this module's own imports read as they always did.
+ *
+ * Prefer `components/shared/person-avatar` over calling these directly - it is
+ * the component that also remembers the photograph, which is the half this
+ * module had been missing on all forty-two of its avatar call sites.
+ */
+export { avatarTint, avatarStyle } from '@/lib/avatar';
 
 /**
  * What a conversation is called on screen.
  *
- * A direct message has no name of its own — the row's `name` is a stable slug
+ * A direct message has no name of its own: the row's `name` is a stable slug
  * built from two membership ids, which is exactly what should never be shown
  * to anybody. The other participant's name comes back on the overview row.
  */
@@ -248,8 +338,8 @@ export const QUICK_REACTIONS = ['👍', '🎉', '👀', '✅', '❤️', '🙏']
 /**
  * Where a record reference goes when it is clicked.
  *
- * There are no per-record routes in this product — modules are swapped by id
- * inside one page — so opening one goes through `openRecord(module, type, id)`.
+ * There are no per-record routes in this product (modules are swapped by id
+ * inside one page), so opening one goes through `openRecord(module, type, id)`.
  * This map is the reference kind's half of that call; the module it names has
  * to be one that handles a focus request, or the click lands somebody on a
  * landing tab with nothing selected.
@@ -265,7 +355,7 @@ export const REFERENCE_TARGETS: Record<
   ticket:  { module: 'support',   type: 'ticket',  label: 'Ticket' },
   company: { module: 'crm',       type: 'company', label: 'Client' },
   deal:    { module: 'crm',       type: 'deal',    label: 'Deal' },
-  // A meeting has no other module to open — it is opened in this one.
+  // A meeting has no other module to open. It is opened in this one.
   meeting: { module: 'communication', type: 'meeting', label: 'Meeting' },
 };
 
@@ -280,7 +370,7 @@ export function isImage(mime: string | null): boolean {
  * Object keys are a path, so a name carrying a slash creates a directory and a
  * name carrying a `#` truncates the key at the fragment. Both produce an
  * object at a path the metadata row does not describe, which is unreachable
- * rather than broken — the worst of the two.
+ * rather than broken: the worse of the two.
  */
 export function safeName(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
@@ -299,7 +389,7 @@ export function dayLabel(iso: string, locale = 'en-GB'): string {
   if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
   return date.toLocaleDateString(locale, {
     weekday: 'long', day: 'numeric', month: 'long',
-    // The year only when it is not this one — "Tuesday, 4 March 2026" on every
+    // The year only when it is not this one. "Tuesday, 4 March 2026" on every
     // separator in a conversation started last week is noise.
     ...(date.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }),
   });
@@ -313,8 +403,8 @@ export function clockTime(iso: string, locale = 'en-GB'): string {
  * The one fetch wrapper this module uses.
  *
  * Throws the endpoint's own message, which is the whole reason it exists: the
- * API answers refusals with an explanation — "this organisation does not allow
- * messages to be edited after they are sent" — and a client that reported
+ * API answers refusals with an explanation ("this organisation does not allow
+ * messages to be edited after they are sent") and a client that reported
  * "Request failed" would be throwing that away at exactly the moment it
  * matters.
  */

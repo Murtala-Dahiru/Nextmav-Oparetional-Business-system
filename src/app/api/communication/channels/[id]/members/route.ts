@@ -63,7 +63,7 @@ export async function POST(req: Request, { params }: Params) {
       409, 'RULE_VIOLATION');
   }
 
-  // No member list means "add me" — the join button.
+  // No member list means "add me" - the join button.
   const requested: string[] = Array.isArray(b.member_ids) && b.member_ids.length
     ? b.member_ids.filter(Boolean)
     : [ctx.org.memberId];
@@ -138,6 +138,15 @@ export async function PATCH(req: Request, { params }: Params) {
 
   if (b.mark_read) update.last_read_at = new Date().toISOString();
   if ('is_muted' in b) update.is_muted = !!b.is_muted;
+  /**
+   * Starring, which is the other half of muting (0036).
+   *
+   * Personal and per member, like the mute flag and the read marker beside it,
+   * and enforced by the same `channel_members_update` policy: every member may
+   * set their own, nobody may set anybody else's. It changes where a
+   * conversation sits in the sidebar and never what it counts.
+   */
+  if ('is_favourite' in b) update.is_favourite = !!b.is_favourite;
   if (b.role) {
     if (!['owner', 'admin', 'member'].includes(b.role)) {
       return error('A channel role is owner, admin or member.', 422, 'VALIDATION_ERROR');

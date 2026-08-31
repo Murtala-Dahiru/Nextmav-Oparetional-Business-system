@@ -69,7 +69,7 @@ export async function PATCH(req: Request, { params }: Params) {
          * constraint, whose message names the constraint and not the mistake.
          *
          * Dragging a milestone into 'completed' is accepted and treated as
-         * completing it — the trigger in 0016 keeps `stage` and `completed_at`
+         * completing it - the trigger in 0016 keeps `stage` and `completed_at`
          * consistent in both directions, but it only fires on `completed_at`,
          * so the translation has to happen here for the drag to mean anything.
          */
@@ -127,7 +127,7 @@ export async function PATCH(req: Request, { params }: Params) {
  * Tell the project's owner and team that a phase closed.
  *
  * Written here rather than as a database trigger, unlike task assignment,
- * because the recipient list is the project's team — a set this function can
+ * because the recipient list is the project's team - a set this function can
  * read cheaply, where a trigger would need its own query per row and would
  * fire for bulk corrections too.
  *

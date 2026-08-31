@@ -10,7 +10,7 @@ const SELECT =
 /**
  * Who a folder or page is shared with.
  *
- * Only somebody who can already open the page can see this — enforced by
+ * Only somebody who can already open the page can see this - enforced by
  * `page_shares_select`, which asks `page_permission()` the same question the
  * page itself does. A share list is a list of colleagues and is not something
  * to hand out to anyone who knows a page id.
@@ -38,7 +38,7 @@ export async function GET(_req: Request, { params }: Params) {
  * to that would make the obvious action fail for a reason nobody would guess.
  *
  * `manage` is required to grant, which the database enforces through
- * `page_shares_write`. This handler checks nothing about permission itself —
+ * `page_shares_write`. This handler checks nothing about permission itself -
  * duplicating the rule here is how the two eventually disagree.
  */
 export async function POST(req: Request, { params }: Params) {
@@ -68,7 +68,7 @@ export async function POST(req: Request, { params }: Params) {
    *
    * Not an upsert: the uniqueness is enforced by two *partial* indexes
    * (`WHERE member_id IS NOT NULL` and the same for departments), because a
-   * share names one subject and leaves the other column NULL — and NULL is not
+   * share names one subject and leaves the other column NULL - and NULL is not
    * equal to NULL, so a plain composite unique would let the same person be
    * added twice. Postgres will not match `ON CONFLICT (page_id, member_id)` to
    * a partial index unless the statement repeats its predicate, which

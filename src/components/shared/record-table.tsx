@@ -10,17 +10,26 @@ import {
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- *  The CRM's table
+ *  The record table
  * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * ── Where this came from ─────────────────────────────────────────────────
+ *
+ * Written for the CRM in Phase 4 as `modules/crm/table.tsx`, and moved here in
+ * Phase 6 with Projects as its second consumer. That is the condition this
+ * design system sets for lifting a shared mechanism: add it *with* its first
+ * caller, generalise it at the second, never in anticipation of a third. The
+ * component is otherwise unchanged — same props, same contract, same
+ * rendering — so nothing about CRM's four lists moved with it.
  *
  * ── Why not the shared `DataTable` ───────────────────────────────────────
  *
- * `components/shared/data-table` is used by thirteen modules and is not being
- * changed by this phase: rewriting it would be a redesign of Finance, HR,
+ * `components/shared/data-table` is used by eleven modules and is not being
+ * changed by these phases: rewriting it would be a redesign of Finance, HR,
  * Inventory and the rest by side effect, which is exactly what a
  * one-module-at-a-time process exists to prevent.
  *
- * What it cannot do, and what a CRM needs it to:
+ * What it cannot do, and what a list of records needs it to:
  *
  *   · **Adapt on a phone.** It renders a table at every width, so a lead list
  *     on a 390px screen is a horizontal scroll with three columns off-screen.
@@ -64,7 +73,7 @@ export interface Column<T> {
   card?: 'title' | 'subtitle' | 'meta' | 'figure';
 }
 
-export interface CrmTableProps<T> {
+export interface RecordTableProps<T> {
   columns: Column<T>[];
   rows: T[];
   rowKey: (row: T) => string;
@@ -137,12 +146,12 @@ function useShownTiers(): Set<string> {
   return tiers;
 }
 
-export function CrmTable<T>({
+export function RecordTable<T>({
   columns, rows, rowKey, loading, onOpen, actions,
   sort, sortDir = 'desc', onSort,
   page, pageSize, total, onPage, onPageSize,
   empty, noun = 'record',
-}: CrmTableProps<T>) {
+}: RecordTableProps<T>) {
   const from = total === 0 ? 0 : page * pageSize + 1;
   const to = Math.min(total, (page + 1) * pageSize);
   const pages = Math.max(1, Math.ceil(total / pageSize));

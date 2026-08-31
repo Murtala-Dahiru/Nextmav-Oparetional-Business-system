@@ -8,10 +8,10 @@
  * The meeting grid used Tailwind column classes: one column for one person,
  * two from the `sm` breakpoint, three from `lg`. Columns divide the *width*.
  * The tiles are 16:9, so their height follows from that width and nothing
- * bounds it — and on a desktop, one participant got a tile as wide as the room
+ * bounds it - and on a desktop, one participant got a tile as wide as the room
  * and 56% of that tall, which is taller than the room. The overflow pushed the
- * control bar off the bottom of the screen, so in a one-to-one call — the most
- * common call there is — the mute and leave buttons could not be reached.
+ * control bar off the bottom of the screen, so in a one-to-one call - the most
+ * common call there is - the mute and leave buttons could not be reached.
  *
  * No arrangement of column classes fixes that, because the binding constraint
  * is the height and CSS columns cannot see it. The fix is to measure the stage
@@ -23,7 +23,7 @@
  * That is one short loop, and it is the only approach that behaves on a phone
  * held upright, a laptop, and a wide monitor with the participant panel open,
  * without a special case for each. It also responds to the panel opening and
- * to the window being resized — neither of which a media query on the viewport
+ * to the window being resized - neither of which a media query on the viewport
  * can observe, because neither changes the viewport.
  *
  * Pure and separate from the component so it can be checked directly:

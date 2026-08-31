@@ -8,7 +8,7 @@ type Params = { params: Promise<{ id: string }> };
 /**
  * Edit a message.
  *
- * Only the sender may change the text — enforced by RLS, which restricts
+ * Only the sender may change the text - enforced by RLS, which restricts
  * UPDATE to rows whose sender is the caller. `edited_at` is stamped so the UI
  * can mark it, since a silently altered message is a small integrity problem
  * in a shared channel.
@@ -18,7 +18,7 @@ type Params = { params: Promise<{ id: string }> };
  * The organisation's communication policy can switch editing off entirely or
  * put a window on it. Checked here rather than in RLS because the rule is a
  * policy document rather than a property of the row, and because a refusal
- * needs to explain itself — a policy that silently returns "not found" is one
+ * needs to explain itself - a policy that silently returns "not found" is one
  * nobody can act on.
  */
 export async function PATCH(req: Request, { params }: Params) {
@@ -70,7 +70,7 @@ export async function PATCH(req: Request, { params }: Params) {
     /**
      * What goes into the trail, and what deliberately does not.
      *
-     * The act and its subject — never a word of what was written. See the note
+     * The act and its subject - never a word of what was written. See the note
      * on `audit()`; an administrator reading this table must not be able to
      * reconstruct a private channel from it.
      */
@@ -98,7 +98,7 @@ export async function PATCH(req: Request, { params }: Params) {
  *
  * ── Who may, and why the two cases are separated ─────────────────────────
  *
- * The author, subject to the organisation's policy — a company may decide that
+ * The author, subject to the organisation's policy - a company may decide that
  * what was said stays said. And a moderator: a channel administrator or an
  * organisation administrator, always, regardless of that policy. The second is
  * not a setting, because an organisation that could switch it off would have
@@ -158,7 +158,7 @@ export async function DELETE(_req: Request, { params }: Params) {
    *
    * Soft, like the message, and for the same reason: the storage object is
    * still there, so an administrator investigating an incident has something
-   * to investigate, while nothing in the product will serve it again — the
+   * to investigate, while nothing in the product will serve it again - the
    * signed-URL endpoint refuses a deleted row.
    */
   await ctx.supabase

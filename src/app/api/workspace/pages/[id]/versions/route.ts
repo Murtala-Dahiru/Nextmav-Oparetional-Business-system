@@ -8,14 +8,40 @@ type Params = { params: Promise<{ id: string }> };
  * Revision history for a document.
  *
  * Snapshots are written by the `snapshot_page_version` trigger, not by this
- * endpoint — the page is edited from the document view, the rename control and
+ * endpoint - the page is edited from the document view, the rename control and
  * the move dialog, and a snapshot that three call sites have to remember to
  * take is one that eventually is not.
  */
-export async function GET(_req: Request, { params }: Params) {
+export async function GET(req: Request, { params }: Params) {
   const ctx = await authorize('workspace', 'view');
   if (ctx instanceof Response) return ctx;
   const { id } = await params;
+
+  /**
+   * One revision, with its body.
+   *
+   * The list deliberately omits `content` - fifty full document bodies to
+   * render fifty rows of "v12, Ada, Tuesday" is a payload nobody reads. Asking
+   * for a specific version is how the panel previews one before restoring it,
+   * which is the difference between a history somebody trusts and a button
+   * marked Restore that they will not press.
+   */
+  const wanted = new URL(req.url).searchParams.get('version');
+  if (wanted !== null) {
+    const version = Number(wanted);
+    if (!Number.isFinite(version)) {
+      return error('version must be a number', 422, 'VALIDATION_ERROR');
+    }
+    const { data, error: readError } = await ctx.supabase
+      .from('workspace_page_versions')
+      .select('id, version, title, content, created_at, edited_by')
+      .eq('page_id', id).eq('version', version)
+      .maybeSingle();
+
+    if (readError) return pgError(readError);
+    if (!data) return error('That revision no longer exists.', 404, 'NOT_FOUND');
+    return success(data);
+  }
 
   const { data, error: e } = await ctx.supabase
     .from('workspace_page_versions')

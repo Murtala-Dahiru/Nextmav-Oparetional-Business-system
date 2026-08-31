@@ -27,7 +27,7 @@ type Params = { params: Promise<{ id: string }> };
  *  ── Why the answer comes from Postgres ───────────────────────────────────
  *
  *  `message_receipts()` refuses anybody but the author, and it derives the
- *  answer from `channel_members.last_read_at` — the same marker the unread
+ *  answer from `channel_members.last_read_at` - the same marker the unread
  *  badge is computed from. Deriving it here instead would mean a second
  *  definition of "has read", and the browser only ever holds the members it
  *  has already fetched, so a large channel would quietly under-report.

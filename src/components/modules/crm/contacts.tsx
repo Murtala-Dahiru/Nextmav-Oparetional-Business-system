@@ -14,7 +14,7 @@ import { formatRelativeTime } from '@/lib/format';
 import { useAppStore } from '@/store/app-store';
 
 import { useCrmList } from './use-list';
-import { CrmTable, type Column } from './table';
+import { RecordTable, type Column } from '@/components/shared/record-table';
 import { SectionHead, SearchField, FilterRow, Monogram, Blank, Broken, personName } from './ui';
 import { remove } from './data';
 import { ContactDialog } from './forms';
@@ -187,7 +187,7 @@ export function ContactsSection({
       {list.error ? (
         <Broken message={list.error} onRetry={list.reload} />
       ) : (
-        <CrmTable
+        <RecordTable
           columns={columns}
           rows={list.rows}
           rowKey={c => c.id}

@@ -205,11 +205,40 @@ export const createTaskSchema = z.object({
   status: z.string().optional().default('todo'),
   priority: z.string().optional().default('medium'),
   assigneeId: memberRef(),
-  projectId: z.string().min(1, 'Project ID is required'),
+  /**
+   * Optional, because a task without a project is a real and supported thing.
+   *
+   * `tasks.project_id` is nullable by design and `POST /api/projects/tasks`
+   * has a whole branch for it: a personal task is somebody's own note to
+   * themselves, it requires only `view` on the module rather than `create`,
+   * and it is what lets an `employee` - who holds `['view', 'edit']` - keep a
+   * list at all. This schema demanded one anyway, so the form's own resolver
+   * refused to submit the case the endpoint was written to accept, and the
+   * "Personal task" option in the picker could never be used.
+   */
+  projectId: z.string().optional().default(''),
   dueDate: z.string().datetime({ offset: true }).or(z.string()).nullable().optional(),
   estimatedHours: z.number().min(0).optional().default(0),
   loggedHours: z.number().min(0).optional().default(0),
   sortOrder: z.number().int().optional().default(0),
+  /**
+   * The phase this task belongs to, and its parent if it is a subtask.
+   *
+   * Both columns are as old as the table. `tasks.milestone_id` has a foreign
+   * key, an index, a validity check in `POST /api/projects/tasks` that refuses
+   * a milestone from another project, and a roadmap that groups by it - and it
+   * was absent from this schema, so `zodResolver` stripped the field out of
+   * every request before it was sent. There was no way, anywhere in the
+   * product, to put a task on a phase. `parent_task_id` is the same story for
+   * subtasks: the self-reference exists, the create handler passes it through,
+   * and nothing could ever set it.
+   *
+   * `optionalFk()` rather than a plain string for the same reason the client
+   * link uses it: clearing the phase has to reach the database as NULL, and
+   * `''` on a uuid column is a type error rather than a cleared link.
+   */
+  milestoneId: optionalFk(),
+  parentTaskId: optionalFk(),
 });
 
 export const updateTaskSchema = toUpdateSchema(createTaskSchema);

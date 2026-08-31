@@ -10,8 +10,8 @@ import { communicationPolicy } from '@/lib/communication';
  *
  *  ── What a meeting is here ───────────────────────────────────────────────
  *
- *  A room with a host, a guest list and a record. The media — audio, video,
- *  a shared screen — is negotiated directly between browsers over Realtime
+ *  A room with a host, a guest list and a record. The media - audio, video,
+ *  a shared screen - is negotiated directly between browsers over Realtime
  *  broadcast and never touches this endpoint; see the note at the top of
  *  section 6 in migration 0023, and `hooks/use-meeting.ts`.
  *
@@ -22,7 +22,7 @@ import { communicationPolicy } from '@/lib/communication';
  *  ── Why it is in Communication and not Calendar ──────────────────────────
  *
  *  Because a meeting is a conversation with a time attached, and it is the
- *  conversation it belongs to that makes it findable — a project's channel
+ *  conversation it belongs to that makes it findable - a project's channel
  *  shows the project's meetings. It still appears on the calendar: a scheduled
  *  meeting writes a `calendar_events` row through a trigger, so it is in
  *  everybody's week without this module having to own a second calendar.
@@ -45,14 +45,14 @@ export async function GET(req: Request) {
    * One meeting, in the shape the list uses.
    *
    * `GET /meetings/{id}` already exists and answers with the raw `meetings`
-   * row, which is a narrower and differently shaped thing — no host name, no
+   * row, which is a narrower and differently shaped thing - no host name, no
    * channel label, no counts, no `amHost`. The meeting room needs the overview
    * row, and needs to be able to ask for its own without depending on a list
    * fetched by somebody else: a room that reads its meeting out of the module's
    * list closes itself the moment that list has a bad second.
    *
    * A filter rather than a second endpoint, because it is the same query with
-   * the same permissions — `meeting_overview()` returns only meetings the
+   * the same permissions - `meeting_overview()` returns only meetings the
    * caller can see, so an id nobody may see comes back as an empty list, which
    * is exactly what "gone" and "not yours" should both look like.
    */
@@ -63,11 +63,44 @@ export async function GET(req: Request) {
   if (channelId) filtered = filtered.filter(r => r.channel_id === channelId);
   if (status && status !== 'all') filtered = filtered.filter(r => r.status === status);
 
+  /**
+   * Who is in a call right now.
+   *
+   * -- Why this is here and not in `/api/presence` --------------------------
+   *
+   * The brief asks for "in a meeting" alongside online, away and offline, and
+   * it is the one of those extra states this product can answer honestly:
+   * `meeting_participants.state = 'joined'` against a meeting that is `live` is
+   * a fact, not a guess, and it needs no new column and no client to announce
+   * anything about itself.
+   *
+   * It is deliberately *not* folded into `presence_of()`. That verdict is read
+   * by every module in the product, and a dot that means "at their desk" in the
+   * directory and "on a call" in the HR screen is the kind of divergence the
+   * shared presence component exists to prevent. This is a communication fact,
+   * returned to communication, and overlaid only on this module's own surfaces.
+   *
+   * One extra query, and only when something is actually running.
+   * `meeting_participants` is under RLS, so this lists only people in meetings
+   * the caller can already see.
+   */
+  const liveIds = rows.filter(r => r.status === 'live').map(r => r.meeting_id);
+  let inCall: string[] = [];
+  if (liveIds.length) {
+    const { data: present } = await ctx.supabase
+      .from('meeting_participants')
+      .select('member_id')
+      .in('meeting_id', liveIds)
+      .eq('state', 'joined');
+    inCall = [...new Set((present ?? []).map((p: any) => p.member_id))];
+  }
+
   return success(filtered, {
     total: filtered.length,
     // The one number every surface in the product wants from this list, computed
     // once here rather than three times in three components.
-    live: rows.filter(r => r.status === 'live').length,
+    live: liveIds.length,
+    inCall,
   });
 }
 
@@ -77,7 +110,7 @@ export async function GET(req: Request) {
  * Two shapes, one endpoint: with `scheduledAt` it goes on the calendar and
  * everybody is invited for a time; without one it starts immediately, which is
  * the "call this channel now" gesture. The difference is a single field
- * because it is a single act — the alternative is two endpoints that share
+ * because it is a single act - the alternative is two endpoints that share
  * every line except the timestamp and drift apart within a month.
  */
 export async function POST(req: Request) {
@@ -103,7 +136,7 @@ export async function POST(req: Request) {
    * Not merely a courtesy: `can_see_meeting()` admits everybody who can see
    * the channel, so attaching a meeting to a private channel the caller is not
    * in would publish its title and agenda to that channel's members. RLS on
-   * `meetings` does not catch this, because the insert itself is legitimate —
+   * `meetings` does not catch this, because the insert itself is legitimate -
    * it is the *combination* with a channel id that is not.
    */
   if (b.channel_id) {
@@ -143,7 +176,7 @@ export async function POST(req: Request) {
    * Who is invited.
    *
    * An explicit list wins. Failing that, a meeting attached to a channel
-   * invites that channel — which is what makes "meet about this" a single
+   * invites that channel - which is what makes "meet about this" a single
    * click rather than a guest list somebody has to rebuild every week.
    */
   let invitees: string[] = Array.isArray(b.member_ids) ? b.member_ids.filter(Boolean) : [];
@@ -187,7 +220,7 @@ export async function POST(req: Request) {
     }));
 
     if (rows.length) {
-      // The notification is the trigger's job, not this handler's — see
+      // The notification is the trigger's job, not this handler's - see
       // `notify_meeting_invite()`. Doing it here as well would double every
       // invitation.
       await ctx.supabase

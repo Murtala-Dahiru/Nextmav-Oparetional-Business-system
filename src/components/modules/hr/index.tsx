@@ -39,7 +39,7 @@ import {
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PersonAvatar } from '@/components/shared/person-avatar';
 import { Separator } from '@/components/ui/separator';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -428,11 +428,7 @@ function EmployeesTab() {
         const u = row.original;
         return (
           <div className="flex items-center gap-2.5">
-            <Avatar className="size-8">
-              <AvatarFallback className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                {initialsOf(u.fullName)}
-              </AvatarFallback>
-            </Avatar>
+            <PersonAvatar id={u.memberId} name={u.fullName} src={u.avatarUrl} decorative />
             <span className="font-medium whitespace-nowrap">{u.fullName || '—'}</span>
           </div>
         );
@@ -1156,11 +1152,7 @@ function LeaveTab() {
         if (!r) return '—';
         return (
           <div className="flex items-center gap-2.5">
-            <Avatar className="size-8">
-              <AvatarFallback className="text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                {initialsOf(r.profiles?.fullName)}
-              </AvatarFallback>
-            </Avatar>
+            <PersonAvatar id={r.id} name={r.profiles?.fullName} src={r.profiles?.avatarUrl} decorative />
             <span className="font-medium whitespace-nowrap">{r.profiles?.fullName || '—'}</span>
           </div>
         );

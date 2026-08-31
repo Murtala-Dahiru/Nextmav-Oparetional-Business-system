@@ -8,13 +8,13 @@ import { log, serializeError } from '@/lib/logger';
  *
  * `project_members` and its RLS policy have existed since the first
  * migrations and nothing ever wrote to them, so a project had exactly one
- * person — its owner — and no way to say that a designer, a developer and a
+ * person - its owner - and no way to say that a designer, a developer and a
  * project manager were all working on it.
  *
  * Hand-written rather than built from `collectionHandlers`, because this table
  * has no `organization_id`: it is scoped through its project, and the factory
- * filters on a column that is not here. Tenant isolation still holds — RLS
- * reaches the organization through `projects` — but the explicit check below
+ * filters on a column that is not here. Tenant isolation still holds - RLS
+ * reaches the organization through `projects` - but the explicit check below
  * makes a cross-tenant project id a clear 404 rather than a silent empty
  * result.
  */
@@ -67,7 +67,7 @@ export async function GET(req: Request) {
  *
  * Both ids are checked against this organization before the insert. The
  * foreign keys would catch a nonexistent id, but not one belonging to another
- * tenant — `member_id` references `organization_members` globally, so without
+ * tenant - `member_id` references `organization_members` globally, so without
  * this check an administrator could attach a stranger's membership to their
  * own project and the constraint would happily allow it.
  */

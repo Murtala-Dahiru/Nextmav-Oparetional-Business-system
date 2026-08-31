@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { PersonAvatar } from '@/components/shared/person-avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -31,7 +31,7 @@ import { cn } from '@/lib/utils';
 
 import {
   type ChannelMember, type ChannelRow, type DirectoryMember, type SearchHit,
-  api, avatarColor, channelLabel,
+  api, channelLabel,
 } from './types';
 import { plainPreview } from './rich-text';
 
@@ -105,10 +105,10 @@ export function CreateChannelDialog({
               }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="public">Public — anyone can find and join</SelectItem>
-                  <SelectItem value="private">Private — invitation only</SelectItem>
+                  <SelectItem value="public">Public - anyone can find and join</SelectItem>
+                  <SelectItem value="private">Private - invitation only</SelectItem>
                   {isOrgAdmin && (
-                    <SelectItem value="announcement">Announcements — admins post, everyone reads</SelectItem>
+                    <SelectItem value="announcement">Announcements - admins post, everyone reads</SelectItem>
                   )}
                 </SelectContent>
               </Select>
@@ -131,7 +131,7 @@ export function CreateChannelDialog({
           {/*
             What the conversation is about.
 
-            Not a permission — a private project channel is still private, and a
+            Not a permission - a private project channel is still private, and a
             public one is still public. What it buys is that the channel can be
             opened from the project and the project from the channel, which is
             the difference between a chat tool that sits beside the work and one
@@ -182,11 +182,8 @@ export function CreateChannelDialog({
                           ? [...prev, person.memberId]
                           : prev.filter(id => id !== person.memberId))}
                     />
-                    <Avatar className="size-6">
-                      <AvatarFallback className={cn('text-[10px] text-white', avatarColor(person.memberId))}>
-                        {initialsOf(person.fullName)}
-                      </AvatarFallback>
-                    </Avatar>
+                    <PersonAvatar id={person.memberId} name={person.fullName}
+                      src={person.avatarUrl} size="xs" decorative />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm">{person.fullName}</span>
                       {person.jobTitle && (
@@ -206,7 +203,7 @@ export function CreateChannelDialog({
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
-            className="bg-emerald-600 text-white hover:bg-emerald-700"
+
             disabled={!name.trim() || isSaving}
             onClick={() => onSubmit({
               displayName: name.trim(),
@@ -270,11 +267,8 @@ export function DirectMessageDialog({
                 onClick={() => onPick(person.memberId)}
                 className="flex w-full items-center gap-2.5 p-2.5 text-left hover:bg-accent/40 disabled:opacity-60"
               >
-                <Avatar className="size-7">
-                  <AvatarFallback className={cn('text-[10px] text-white', avatarColor(person.memberId))}>
-                    {initialsOf(person.fullName)}
-                  </AvatarFallback>
-                </Avatar>
+                <PersonAvatar id={person.memberId} name={person.fullName}
+                  src={person.avatarUrl} size="sm" decorative />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{person.fullName}</span>
                   <span className="block truncate text-xs text-muted-foreground">
@@ -353,15 +347,12 @@ export function MembersDialog({
                 {/*
                   The dot comes from `v_channel_members`, which derives it
                   through the same `presence_of()` the directory and the chat
-                  header use — so a person cannot read as online here and away
+                  header use - so a person cannot read as online here and away
                   two panels over.
                 */}
                 <AvatarPresence presence={member.presence} lastSeenAt={member.lastSeenAt}>
-                  <Avatar className="size-7 shrink-0">
-                    <AvatarFallback className={cn('text-[10px] text-white', avatarColor(member.memberId))}>
-                      {initialsOf(member.fullName)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <PersonAvatar id={member.memberId} name={member.fullName}
+                    src={member.avatarUrl} size="sm" decorative />
                 </AvatarPresence>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">
@@ -556,7 +547,7 @@ export function ChannelSettingsDialog({
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
-            className="bg-emerald-600 text-white hover:bg-emerald-700"
+
             disabled={!name.trim() || isSaving}
             onClick={() => onSubmit({
               displayName: name.trim(),
@@ -584,7 +575,7 @@ export function ChannelSettingsDialog({
  * ── What this replaces ───────────────────────────────────────────────────
  *
  * A filter over the hundred messages the open conversation happened to have
- * loaded. Anything older, or anywhere else, could not be found — which is not
+ * loaded. Anything older, or anywhere else, could not be found - which is not
  * a limitation people discover until the moment they need it.
  *
  * `/api/communication/search` is a full-text query whose visibility is decided
@@ -593,20 +584,36 @@ export function ChannelSettingsDialog({
  * somebody is still typing.
  */
 export function SearchDialog({
-  open, onOpenChange, onJump,
+  open, onOpenChange, onJump, seed, channels, directory, onOpenChannel, onStartDirect,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onJump: (hit: SearchHit) => void;
+  /** What Home's field was carrying when it handed over. */
+  seed?: string;
+  channels: ChannelRow[];
+  directory: DirectoryMember[];
+  onOpenChannel: (channelId: string) => void;
+  onStartDirect: (memberId: string) => void;
 }) {
-  const [query, setQuery] = useState('');
+  /**
+   * The field starts with whatever the caller was typing.
+   *
+   * An initial value rather than an effect that writes state when `open`
+   * changes. The module remounts this component by key when the panel opens,
+   * so the seed lands once and nothing overwrites what somebody is typing
+   * afterwards. Setting state inside an effect would also cascade an extra
+   * render, which this file already went out of its way to avoid for the
+   * results below.
+   */
+  const [query, setQuery] = useState(seed ?? '');
   /**
    * The results, tagged with the query that produced them.
    *
    * ── Why not a plain array plus a loading flag ────────────────────────────
    *
    * Because clearing them would mean `setHits([])` and `setLoading(true)` in
-   * the effect body — a synchronous setState inside an effect, which cascades
+   * the effect body - a synchronous setState inside an effect, which cascades
    * an extra render on every keystroke and is what `react-hooks/set-state-in-
    * effect` exists to catch. Carrying the query alongside the rows lets both
    * "these are stale" and "a request is in flight" be *derived* instead, with
@@ -639,12 +646,53 @@ export function SearchDialog({
     return [...map.values()];
   }, [hits]);
 
+  /**
+   * Conversations and people, matched in the browser.
+   *
+   * -- Why these two are not a request ---------------------------------------
+   *
+   * Because the module already holds both lists, permission-filtered by the
+   * endpoints that produced them, and they are tens of rows rather than
+   * thousands. A round trip to filter an array that is already in memory would
+   * add latency to the fastest half of the answer and give the reader a search
+   * that gets slower the more precisely they type.
+   *
+   * Messages go to Postgres because a full-text index over the organisation's
+   * whole history is not something a browser can hold.
+   */
+  const matchedChannels = useMemo(() => {
+    const q = trimmed.toLowerCase();
+    if (q.length < 2) return [];
+    return channels
+      .filter(c => channelLabel(c).toLowerCase().includes(q)
+        || (c.topic ?? '').toLowerCase().includes(q)
+        || (c.projectName ?? '').toLowerCase().includes(q)
+        || (c.companyName ?? '').toLowerCase().includes(q))
+      .slice(0, 5);
+  }, [channels, trimmed]);
+
+  const matchedPeople = useMemo(() => {
+    const q = trimmed.toLowerCase();
+    if (q.length < 2) return [];
+    return directory
+      .filter(d => d.fullName.toLowerCase().includes(q)
+        || d.email.toLowerCase().includes(q)
+        || (d.jobTitle ?? '').toLowerCase().includes(q))
+      .slice(0, 5);
+  }, [directory, trimmed]);
+
+  const nothingAtAll = !loading && !hits.length && !matchedChannels.length && !matchedPeople.length;
+
+  const close = () => { onOpenChange(false); setQuery(''); };
+
   return (
     <Dialog open={open} onOpenChange={(next) => { onOpenChange(next); if (!next) setQuery(''); }}>
       <DialogContent className="max-h-[80vh] gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <DialogHeader className="sr-only">
-          <DialogTitle>Search messages</DialogTitle>
-          <DialogDescription>Find a message in any conversation you can read.</DialogDescription>
+          <DialogTitle>Search communication</DialogTitle>
+          <DialogDescription>
+            Find a message, a conversation or a colleague. Only what you can already read.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex items-center gap-2 border-b px-4 py-3">
@@ -653,7 +701,7 @@ export function SearchDialog({
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search every conversation you can read…"
+            placeholder="Messages, conversations, people"
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           {loading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
@@ -662,12 +710,81 @@ export function SearchDialog({
         <ScrollArea className="max-h-[60vh]">
           {query.trim().length < 2 && (
             <p className="p-8 text-center text-sm text-muted-foreground">
-              Type at least two letters. Searches messages, not channel names.
+              Type at least two letters.
             </p>
           )}
-          {query.trim().length >= 2 && !loading && hits.length === 0 && (
+          {query.trim().length >= 2 && nothingAtAll && (
             <p className="p-8 text-center text-sm text-muted-foreground">
-              Nothing matches “{query.trim()}”.
+              Nothing matches &ldquo;{query.trim()}&rdquo;.
+            </p>
+          )}
+
+          {/*
+            Conversations and people first.
+
+            They are exact, they are instant, and they are usually what
+            somebody typing two words is after. Messages take a round trip and
+            arrive underneath, which is also the order of confidence.
+          */}
+          {matchedChannels.length > 0 && (
+            <div className="border-b">
+              <p className="bg-muted/40 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Conversations
+              </p>
+              {matchedChannels.map(channel => (
+                <button
+                  key={channel.channelId}
+                  onClick={() => { onOpenChannel(channel.channelId); close(); }}
+                  className="flex w-full items-center gap-2.5 px-4 py-2 text-left hover:bg-accent"
+                >
+                  {channel.type === 'direct' ? <UserIcon className="size-3.5 text-muted-foreground" />
+                    : channel.type === 'private' ? <Lock className="size-3.5 text-muted-foreground" />
+                    : channel.type === 'announcement' ? <Megaphone className="size-3.5 text-muted-foreground" />
+                    : <Hash className="size-3.5 text-muted-foreground" />}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{channelLabel(channel)}</span>
+                    {(channel.topic || channel.projectName || channel.companyName) && (
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {channel.topic || channel.projectName || channel.companyName}
+                      </span>
+                    )}
+                  </span>
+                  {!channel.isMember && (
+                    <Badge variant="outline" className="h-4 shrink-0 px-1 text-[9px]">Not joined</Badge>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {matchedPeople.length > 0 && (
+            <div className="border-b">
+              <p className="bg-muted/40 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                People
+              </p>
+              {matchedPeople.map(person => (
+                <button
+                  key={person.memberId}
+                  onClick={() => { onStartDirect(person.memberId); close(); }}
+                  className="flex w-full items-center gap-2.5 px-4 py-2 text-left hover:bg-accent"
+                >
+                  <PersonAvatar id={person.memberId} name={person.fullName}
+                    src={person.avatarUrl} size="xs" decorative />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{person.fullName}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {person.jobTitle || person.departmentName || person.email}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">Message</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {grouped.length > 0 && (
+            <p className="bg-muted/40 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Messages
             </p>
           )}
 

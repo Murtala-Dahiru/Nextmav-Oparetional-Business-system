@@ -10,12 +10,12 @@ type Params = { params: Promise<{ id: string }> };
  *
  * That endpoint's gate is `workspace`, and a member of staff with no workspace
  * grant may still have a conversation. More importantly, its permission check
- * is "which folder is this in" — a question a chat attachment has no answer to.
+ * is "which folder is this in" - a question a chat attachment has no answer to.
  * Here the equivalent question is "which conversation is this in", and it is
  * already answered: `files_select` was narrowed in 0023 so a row carrying a
  * `channel_id` is only selectable by somebody who can see that channel. If the
  * caller cannot read the conversation, this query returns nothing and the
- * handler answers 404 — the same shape of answer a private channel gives for
+ * handler answers 404 - the same shape of answer a private channel gives for
  * everything else, and for the same reason.
  */
 export async function GET(_req: Request, { params }: Params) {

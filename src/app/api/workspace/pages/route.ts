@@ -9,7 +9,7 @@ import { log, serializeError } from '@/lib/logger';
  *
  * Reads `v_workspace_tree` rather than `workspace_pages` because the client
  * needs the caller's effective permission on each node to decide whether to
- * offer rename, share and delete — and that is resolved by walking the folder
+ * offer rename, share and delete - and that is resolved by walking the folder
  * ancestry, which is not something to ship to the browser. The view is
  * `security_invoker`, so RLS on the underlying table still decides which rows
  * exist at all; the permission column only says what may be done with the ones
@@ -48,10 +48,42 @@ export async function GET(req: Request) {
     q = q.is('parent_id', null);
   }
 
+  /**
+   * Two searches, because they answer different questions.
+   *
+   * `?search=` matches titles, which is what a tree filter wants: it narrows
+   * the sidebar to the branches whose names match and keeps the shape of the
+   * workspace visible.
+   *
+   * `?q=` matches titles *and* bodies. Somebody looking for the phrase
+   * "notice period" does not know which document it is in, and the tree could
+   * never find it - `/api/search` has matched page content since the day it
+   * was written, and the workspace's own search box could not. Backed by the
+   * trigram indexes added in 0035; before those this was a sequential scan of
+   * every page body in the organisation.
+   */
   const search = searchParams.get('search')?.trim();
   if (search) {
     const safe = search.replace(/[,()*]/g, ' ').trim();
     if (safe) q = q.ilike('title', `%${safe}%`);
+  }
+
+  const deep = searchParams.get('q')?.trim();
+  if (deep) {
+    const safe = deep.replace(/[,()*]/g, ' ').trim();
+    // The view carries no `content` column - the tree deliberately does not
+    // ship every page body with the sidebar - so the matching ids are resolved
+    // against the table first and the view is then filtered to them. Both
+    // reads are RLS-scoped, so this cannot widen what comes back.
+    if (safe) {
+      const { data: hits } = await ctx.supabase
+        .from('workspace_pages').select('id')
+        .eq('organization_id', ctx.org.organizationId)
+        .is('deleted_at', null)
+        .or(`title.ilike.%${safe}%,content.ilike.%${safe}%,summary.ilike.%${safe}%`)
+        .limit(200);
+      q = q.in('id', (hits ?? []).map((r: any) => r.id));
+    }
   }
 
   const from = (page - 1) * pageSize;
@@ -68,8 +100,8 @@ export async function GET(req: Request) {
  * Create a folder, a document or a spreadsheet.
  *
  * A spreadsheet is created with three starter columns rather than empty. An
- * empty grid has nowhere to type — the first thing anybody has to do is work
- * out how to add a column — and "Name / Status / Owner" is the shape most
+ * empty grid has nowhere to type - the first thing anybody has to do is work
+ * out how to add a column - and "Name / Status / Owner" is the shape most
  * business sheets start from anyway.
  */
 const STARTER_COLUMNS = [
@@ -108,6 +140,11 @@ export async function POST(req: Request) {
     organization_id: ctx.org.organizationId,
     title: b.title?.trim() || (isFolder ? 'New folder' : kind === 'sheet' ? 'Untitled sheet' : 'Untitled'),
     content: isFolder ? '' : (b.content ?? ''),
+    summary: String(b.summary ?? '').trim(),
+    // Only a template is filed under a category. Storing one on an ordinary
+    // page would put it in the gallery's grouping the moment somebody later
+    // flipped `is_template`, under a heading they never chose.
+    template_category: b.is_template ? (b.template_category || null) : null,
     icon: b.icon ?? (isFolder ? 'folder' : kind === 'sheet' ? 'table' : 'file-text'),
     space_id: b.space_id || null,
     parent_id: b.parent_id || null,
@@ -151,7 +188,7 @@ export async function POST(req: Request) {
    * Answer with the same shape the tree does.
    *
    * `insert().select('*')` returns the bare table row, which has no
-   * `permission`, `childCount` or `fileCount` — all of which the client's
+   * `permission`, `childCount` or `fileCount` - all of which the client's
    * node type declares and the sidebar reads. Returning it meant a
    * freshly-created folder was the one node in the tree whose controls could
    * not be rendered until the next full reload. The contract checker found

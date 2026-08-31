@@ -34,6 +34,7 @@ export async function GET(req: Request) {
 
   const [
     leads, companies, projects, tasks, tickets, pages, products, contacts, deals, invoices,
+    workspaceFiles,
   ] = await Promise.all([
     sees('crm')
       ? ctx.supabase.from('leads').select('id, first_name, last_name, company_name, status')
@@ -62,9 +63,10 @@ export async function GET(req: Request) {
           .or(`subject.ilike.${like},ticket_number.ilike.${like}`).limit(limit)
       : none,
     sees('workspace')
-      ? ctx.supabase.from('workspace_pages').select('id, title, icon')
+      ? ctx.supabase.from('workspace_pages')
+          .select('id, title, icon, kind, is_folder, summary')
           .eq('organization_id', orgId).is('deleted_at', null)
-          .or(`title.ilike.${like},content.ilike.${like}`).limit(limit)
+          .or(`title.ilike.${like},content.ilike.${like},summary.ilike.${like}`).limit(limit)
       : none,
     sees('inventory')
       ? ctx.supabase.from('products').select('id, name, sku, stock, unit')
@@ -102,6 +104,25 @@ export async function GET(req: Request) {
           .eq('organization_id', orgId).is('deleted_at', null)
           .or(`invoice_number.ilike.${like},notes.ilike.${like}`).limit(limit)
       : none,
+
+    /**
+     * Files and links filed in the workspace.
+     *
+     * The palette has searched workspace *pages* since it was written and has
+     * never found a file, so a signed contract uploaded into the Legal folder
+     * was reachable only by remembering which folder it was in. Restricted to
+     * rows with a `page_id`: project deliverables, HR documents and expense
+     * receipts live under their own modules and are not the workspace's to
+     * surface. `v_files` is security_invoker, so a file in a folder the caller
+     * cannot open does not come back.
+     */
+    sees('workspace')
+      ? ctx.supabase.from('v_files')
+          .select('id, filename, mime_type, page_id, folder_title, external_url')
+          .eq('organization_id', orgId)
+          .not('page_id', 'is', null)
+          .or(`filename.ilike.${like},description.ilike.${like}`).limit(limit)
+      : none,
   ]);
 
   // Flattened into one ranked list so the palette can render a single
@@ -130,7 +151,21 @@ export async function GET(req: Request) {
     })),
     ...(pages.data ?? []).map((r: any) => ({
       type: 'page', module: 'workspace', id: r.id, title: r.title,
-      subtitle: null, meta: null,
+      subtitle: r.summary || null,
+      meta: r.is_folder ? 'Folder' : r.kind === 'sheet' ? 'Spreadsheet' : 'Document',
+    })),
+    /**
+     * A file opens the folder it is in.
+     *
+     * There is no route to a single file - the workspace has no per-record
+     * URLs, and `openRecord` addresses a page - so the id carried here is the
+     * folder's. Landing somebody in the folder with the file visible is the
+     * honest version of "found it"; a link to nowhere is not.
+     */
+    ...(workspaceFiles.data ?? []).map((r: any) => ({
+      type: 'page', module: 'workspace', id: r.page_id, title: r.filename,
+      subtitle: r.folder_title ? `in ${r.folder_title}` : null,
+      meta: r.external_url ? 'Link' : 'File',
     })),
     ...(products.data ?? []).map((r: any) => ({
       type: 'product', module: 'inventory', id: r.id, title: r.name,
@@ -164,6 +199,7 @@ export async function GET(req: Request) {
    */
   const failures = Object.entries({
     leads, companies, projects, tasks, tickets, pages, products, contacts, deals, invoices,
+    workspaceFiles,
   })
     .filter(([, r]) => (r as any).error)
     .map(([name, r]) => `${name}: ${(r as any).error.message}`);

@@ -249,6 +249,18 @@ export interface UseMeetingOptions {
   audioOnly?: boolean;
   /** False until the caller has actually joined; nothing happens before that. */
   enabled: boolean;
+  /**
+   * What the person chose in the green room, before they walked in.
+   *
+   * Applied to the track after it has been acquired rather than expressed as a
+   * constraint, and the difference matters: not asking for the camera at all
+   * means turning it on later needs a second `getUserMedia`, a second
+   * permission prompt on some browsers, and a renegotiation with everybody in
+   * the room. Acquiring it and leaving it disabled is one prompt and one
+   * `track.enabled = true` away from being on.
+   */
+  startMuted?: boolean;
+  startCameraOff?: boolean;
 }
 
 /** Public STUN only. See the note on TURN in `start()`. */
