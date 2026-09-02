@@ -6,7 +6,7 @@ import {
   Video, VideoOff, Mic, MicOff, MonitorUp, PhoneOff, Hand, Users, Lock, Unlock,
   Calendar, Plus, Loader2, DoorOpen, ShieldCheck, NotebookPen, UserX, Radio,
   Clock, MoreHorizontal, Link2, X, CheckCheck, RefreshCw, TriangleAlert,
-  UserCheck, FileText, UserPlus, WifiOff, ListPlus, ChevronDown,
+  UserCheck, FileText, UserPlus, WifiOff, ListPlus, ChevronDown, Check,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -41,7 +41,7 @@ import { cn } from '@/lib/utils';
 
 import {
   type ChannelRow, type DirectoryMember, type MeetingParticipant, type MeetingRow,
-  api, channelLabel,
+  api, apiWithMeta, channelLabel,
 } from './types';
 import { SOLO_MAX, TILE_GAP, TILE_MIN, fitTiles } from './stage-layout';
 
@@ -300,6 +300,26 @@ function MeetingCard({
   const ended = meeting.status === 'ended';
   const hasNotes = !!(meeting.notes ?? '').trim();
 
+  /**
+   * Answer the invitation.
+   *
+   * `PATCH .../participants` with no `memberId` means "me", which is the
+   * only person whose answer this control may change - the endpoint refuses
+   * anything else and says so.
+   */
+  const rsvp = async (state: string) => {
+    setBusy(true);
+    try {
+      await api(`/api/communication/meetings/${meeting.meetingId}/participants`, {
+        method: 'PATCH', body: JSON.stringify({ state }),
+      });
+      onRefresh();
+    } catch (err: any) {
+      toast.error(err.message || 'Could not send your answer');
+    } finally {
+      setBusy(false);
+    }
+  };
   const act = async (body: Record<string, unknown>) => {
     setBusy(true);
     try {
@@ -395,7 +415,45 @@ function MeetingCard({
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        {/*
+          Answering an invitation, where the invitation is.
+
+          Offered only while there is something to answer: a scheduled
+          meeting the caller has been invited to and has not replied about.
+          Once answered it becomes a quiet label, because the useful thing
+          afterwards is knowing what you said, not being asked again.
+        */}
+        {meeting.status === 'scheduled' && meeting.myRole !== 'host' && (
+          meeting.myState === 'invited' ? (
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs"
+                disabled={busy} onClick={() => void rsvp('accepted')}>
+                <Check className="size-3" /> Going
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs"
+                disabled={busy} onClick={() => void rsvp('tentative')}>
+                Maybe
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-muted-foreground"
+                disabled={busy} onClick={() => void rsvp('declined')}>
+                No
+              </Button>
+            </div>
+          ) : ['accepted', 'tentative', 'declined'].includes(meeting.myState ?? '') ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void rsvp('invited')}
+              className="rounded border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              title="Change your answer"
+            >
+              {meeting.myState === 'accepted' ? 'Going'
+                : meeting.myState === 'tentative' ? 'Maybe' : 'Not going'}
+            </button>
+          ) : null
+        )}
+
         {!ended && meeting.status !== 'cancelled' && (
           <Button
             size="sm"
@@ -539,6 +597,57 @@ function MeetingNotesDialog({
 
   const when = meeting.startedAt ?? meeting.scheduledAt;
 
+  const [filing, setFiling] = useState(false);
+  const allows = useAppStore(st => st.allows);
+
+  /**
+   * Write the notes into the workspace as a document.
+   *
+   * The header is assembled here rather than left to the reader because a
+   * page called "Weekly delivery review" with no date and no attendee list is
+   * the thing people find in a year and cannot use. Everything in it is a
+   * fact the meeting already carries; nothing is invented.
+   */
+  const fileToWorkspace = async () => {
+    setFiling(true);
+    try {
+      const when = meeting.startedAt ?? meeting.scheduledAt;
+      const header = [
+        `# ${meeting.title}`,
+        '',
+        when ? `**When** ${formatDateTime(when)}` : null,
+        meeting.hostName ? `**Host** ${meeting.hostName}` : null,
+        meeting.channelLabel ? `**Conversation** ${meeting.channelLabel}` : null,
+        meeting.projectName ? `**Project** ${meeting.projectName}` : null,
+        '',
+        '---',
+        '',
+      ].filter(v => v !== null).join('\n');
+
+      const page = await api<{ id: string }>('/api/workspace/pages', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: `${meeting.title} - notes`,
+          content: `${header}${notes}`,
+          icon: 'file-text',
+        }),
+      });
+
+      toast.success('Saved to Workspace', {
+        description: 'The meeting keeps its own copy as well.',
+        action: allows('workspace')
+          ? {
+            label: 'Open it',
+            onClick: () => useAppStore.getState().openRecord('workspace', 'page', page.id),
+          }
+          : undefined,
+      });
+    } catch (err: any) {
+      toast.error(err.message || 'Could not save that to Workspace');
+    } finally {
+      setFiling(false);
+    }
+  };
   const save = async () => {
     setSaving(true);
     try {
@@ -653,6 +762,30 @@ function MeetingNotesDialog({
               Unsaved changes - they are kept until you save.
             </span>
           )}
+          {/*
+            The record, kept where records are kept.
+
+            A meeting's notes live on the meeting, which is right for finding
+            them from the meeting and wrong for everything else: nobody
+            searches a meeting list for a decision six months later. This
+            writes them into the workspace as a document, with the meeting's
+            title, date and participants at the top - and leaves the original
+            alone, because a copy that replaces the original is a way to lose
+            things.
+
+            Offered only once there is something to keep.
+          */}
+          {notes.trim() && allows('workspace', 'create') && (
+            <Button
+              variant="outline"
+              className="gap-1.5"
+              disabled={filing}
+              onClick={() => void fileToWorkspace()}
+            >
+              {filing ? <Loader2 className="size-3.5 animate-spin" /> : <FileText className="size-3.5" />}
+              Save to Workspace
+            </Button>
+          )}
           <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
           {canEdit && (
             <Button
@@ -746,12 +879,27 @@ function ActionItemRow({ meeting }: { meeting: MeetingRow }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
 //  Scheduling
-// ═══════════════════════════════════════════════════════════════════════════
+// ===========================================================================
+
+/** One interval a person is already committed for. From `member_availability()`. */
+interface BusyWindow {
+  memberId: string;
+  busyFrom: string;
+  busyTo: string;
+  /** They accepted, as against having been invited and not answered. */
+  confirmed: boolean;
+}
+
+/** A slot in which nobody on the list is committed. */
+interface Suggestion {
+  startsAt: string;
+  endsAt: string;
+}
 
 export function ScheduleMeetingDialog({
-  open, onOpenChange, channels, directory, defaultChannelId, seed, onCreated,
+  open, onOpenChange, channels, directory, defaultChannelId, seed, defaultGuestId, onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -769,6 +917,14 @@ export function ScheduleMeetingDialog({
    * meeting in the wrong week.
    */
   seed?: { title: string; agenda: string } | null;
+  /**
+   * A colleague already on the guest list.
+   *
+   * Set by "Meet" on somebody's profile in People. It seeds the list and
+   * nothing else: who else should be there, and when, are decisions the
+   * profile screen has no business making.
+   */
+  defaultGuestId?: string | null;
   onCreated: (meeting: { meetingId: string; status: string }) => void;
 }) {
   const [title, setTitle] = useState(seed?.title ?? '');
@@ -781,14 +937,77 @@ export function ScheduleMeetingDialog({
   const [duration, setDuration] = useState('30');
   const [channelId, setChannelId] = useState(defaultChannelId ?? '');
   const [waitingRoom, setWaitingRoom] = useState(true);
-  const [picked, setPicked] = useState<string[]>([]);
+  const [picked, setPicked] = useState<string[]>(defaultGuestId ? [defaultGuestId] : []);
   const [filter, setFilter] = useState('');
   const [saving, setSaving] = useState(false);
+
+  /**
+   * Who is already committed, and when everybody is free.
+   *
+   * -- Why this is fetched rather than assumed ---------------------------
+   *
+   * `member_availability()` reads the real calendar: events, and the guests
+   * a scheduled meeting mirrors onto them. It answers with intervals only -
+   * no titles - which is the least that answers "can we meet at three" and
+   * the reason it can be answered about a colleague at all.
+   *
+   * Nothing here invents availability. If the endpoint returns nothing, the
+   * interface says it found no clash rather than claiming everybody is free.
+   */
+  const [busy, setBusy] = useState<BusyWindow[] | null>(null);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 
   const invitable = channels.filter(c => c.type !== 'direct' && !c.isArchived);
   const shown = directory.filter(d =>
     d.fullName.toLowerCase().includes(filter.trim().toLowerCase()));
 
+  /**
+   * The next seven days for the people currently on the list.
+   *
+   * Keyed on the picked ids and the duration rather than on the chosen time:
+   * moving the time re-reads the same window, and one request per keystroke
+   * in a datetime field is a request per keystroke.
+   */
+  const pickedKey = picked.join(",");
+
+  useEffect(() => {
+    if (!open || when !== "later" || !picked.length) {
+      return;
+    }
+    let cancelled = false;
+    const from = new Date();
+    const to = new Date(from.getTime() + 7 * 86_400_000);
+
+    void apiWithMeta<BusyWindow[]>(
+      `/api/communication/availability?memberIds=${encodeURIComponent(pickedKey)}`
+      + `&from=${from.toISOString()}&to=${to.toISOString()}`
+      + `&duration=${Number(duration) || 30}`)
+      .then(page => {
+        if (cancelled) return;
+        setBusy(page.data ?? []);
+        setSuggestions(Array.isArray(page.meta?.suggestions) ? page.meta.suggestions : []);
+      })
+      .catch(() => {
+        // A scheduler that cannot read the calendar still schedules. It just
+        // stops claiming to know who is free.
+        if (!cancelled) { setBusy(null); setSuggestions([]); }
+      });
+
+    return () => { cancelled = true; };
+  }, [open, when, pickedKey, duration, picked.length]);
+
+  /** Whether a given person is committed at the time currently chosen. */
+  const clashesAt = useCallback((memberId: string): boolean => {
+    if (!busy || when !== "later" || !scheduledAt) return false;
+    const start = new Date(scheduledAt).getTime();
+    if (Number.isNaN(start)) return false;
+    const end = start + (Number(duration) || 30) * 60_000;
+    return busy.some(w => w.memberId === memberId
+      && new Date(w.busyFrom).getTime() < end
+      && new Date(w.busyTo).getTime() > start);
+  }, [busy, when, scheduledAt, duration]);
+
+  const clashing = picked.filter(clashesAt);
   const submit = async () => {
     if (!title.trim()) return;
     setSaving(true);
@@ -873,6 +1092,35 @@ export function ScheduleMeetingDialog({
                 {when === 'later' && scheduledAt && new Date(scheduledAt) < new Date() && (
                   <p className="text-xs text-destructive">That time has already passed.</p>
                 )}
+
+                {/*
+                  When everybody is free.
+
+                  Offered only when somebody has been invited, because with
+                  nobody on the list every slot is free and the suggestion is
+                  a statement of the obvious. Read from the real calendar; if
+                  the endpoint finds nothing that fits, nothing is offered
+                  rather than a slot that will not work.
+                */}
+                {when === 'later' && picked.length > 0 && suggestions.length > 0 && (
+                  <div className="pt-1">
+                    <p className="pb-1 text-[11px] text-muted-foreground">
+                      Everyone invited is free at
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {suggestions.map(slot => (
+                        <button
+                          key={slot.startsAt}
+                          type="button"
+                          onClick={() => setScheduledAt(toLocalInput(slot.startsAt))}
+                          className="rounded-md border px-2 py-1 text-xs transition-colors hover:bg-accent"
+                        >
+                          {whenLabel(slot.startsAt)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="meeting-len">Length</Label>
@@ -910,6 +1158,18 @@ export function ScheduleMeetingDialog({
             <Label>
               Invite people <span className="text-muted-foreground">({picked.length} selected)</span>
             </Label>
+            {when === 'later' && scheduledAt && picked.length > 0 && (
+              <p className={cn(
+                'text-xs',
+                clashing.length ? 'text-warning' : 'text-muted-foreground',
+              )}>
+                {clashing.length
+                  ? `${clashing.length} of them ${clashing.length === 1 ? 'is' : 'are'} already booked then.`
+                  : busy === null
+                    ? 'Availability could not be read.'
+                    : 'Nobody invited has a clash at that time.'}
+              </p>
+            )}
             <Input placeholder="Filter colleagues…" value={filter}
               onChange={(e) => setFilter(e.target.value)} className="h-8 text-sm" />
             <ScrollArea className="h-40 rounded-md border">
@@ -931,6 +1191,19 @@ export function ScheduleMeetingDialog({
                         <span className="block truncate text-xs text-muted-foreground">{person.jobTitle}</span>
                       )}
                     </span>
+                    {/*
+                      Busy, from the calendar rather than from a guess.
+
+                      Shown against the time currently chosen, so it appears
+                      and disappears as the time moves - which is what makes
+                      it useful while deciding rather than a label to read
+                      afterwards.
+                    */}
+                    {clashesAt(person.memberId) && (
+                      <span className="shrink-0 rounded border border-warning/50 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+                        Busy
+                      </span>
+                    )}
                   </label>
                 ))}
                 {shown.length === 0 && (
@@ -3123,4 +3396,30 @@ function MeetingLobby({
       </div>
     </RoomShell>
   );
+}
+
+/**
+ * An ISO instant as a `datetime-local` value, in the reader's own zone.
+ *
+ * `toISOString().slice(0, 16)` is UTC, so pasting one into a local field
+ * offsets every suggestion by the reader's distance from Greenwich - which is
+ * silently wrong for everybody outside it and is exactly the class of bug that
+ * puts a meeting in the wrong hour.
+ */
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    + `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** "Today 15:30", "Tomorrow 09:00", "Thu 4 Sep 11:00". */
+function whenLabel(iso: string, locale = 'en-GB'): string {
+  const when = new Date(iso);
+  const today = new Date();
+  const tomorrow = new Date(Date.now() + 86_400_000);
+  const time = when.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  if (when.toDateString() === today.toDateString()) return `Today ${time}`;
+  if (when.toDateString() === tomorrow.toDateString()) return `Tomorrow ${time}`;
+  return `${when.toLocaleDateString(locale, { weekday: 'short', day: 'numeric', month: 'short' })} ${time}`;
 }

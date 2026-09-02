@@ -2495,6 +2495,137 @@ API: `communication/{inbox,saved,threads,files}` (new);
   It is the one surface in the product that is deliberately not on the app's
   palette, and it should get tokens of its own rather than borrowing Tailwind's.
 
+### Phase 9b - Home and Messages stop being the same screen (2026-08-31)
+
+The reported fault, in one sentence: **Communication Home and Messages felt
+too similar**. That was true and the cause was structural rather than
+decorative.
+
+Both had the conversation list down the left, because a previous pass had made
+the list render on every view on the reasoning that navigation should be
+available everywhere. And Home's largest band was *another* list of
+conversations. So the reader saw a column of conversations beside a column of
+conversations, and everything else on the page read as trimming around
+something they had already seen.
+
+#### The information architecture, corrected
+
+Four destinations, in a nav bar **above** the split rather than at the top of
+the conversation list:
+
+| | is | has a conversation list |
+|---|---|---|
+| **Home** | what is going on, and what needs me | no |
+| **Messages** | the conversations themselves | yes |
+| **People** | who works here | no |
+| **Meetings** | what is scheduled and what happened | no |
+
+Lifting the nav out of the sidebar is what makes the shape honest: four rooms,
+of which Messages is the one with a list in it. The online count, saved
+messages, search and the two "new" actions moved up with it, because three of
+the four screens could not reach them from where they were.
+
+#### Home, rebuilt around a different question
+
+Not "which conversations do I have" - Messages answers that - but **what is
+going on**. Different material, deliberately: people rather than rooms,
+today rather than history.
+
+1. **Needs you.** Mentions, replies, direct messages, announcements, and
+   meeting invitations **answerable in place**. Full width; the only place a
+   colour appears.
+2. **Today.** What is running and what is next. Announcements underneath,
+   quiet, because they are read once.
+3. **People.** Colleagues as faces, online first, with the presence dot telling
+   the truth and a click opening the conversation. This is the shortest path
+   from a thought to a message anywhere in the product: not "which channel",
+   but "is Ada there".
+
+The band is never empty even when nobody is online, because a panel that
+empties itself every evening is one people stop looking at - and opening a
+conversation does not require the other person to be at their desk.
+
+#### People, and one profile
+
+`/api/directory` has returned names, titles, departments, avatars and presence
+to every people picker in the application for months and nothing had ever laid
+them out as a directory. `people.tsx` groups by department (by size, with the
+unassigned last), filters to who is around, and opens a profile sheet with
+Message and Meet.
+
+The profile deliberately carries **nothing privileged**: name, role,
+department, presence, email, and how to mention them. Employment type, hire
+date, reporting line and last-seen timestamps stay on `v_org_directory` behind
+the HR and admin grants, and the panel says so rather than leaving a reader
+wondering what is missing.
+
+#### Migration 0038 - an invitation you can answer
+
+- **`meeting_participants.state` gained `accepted` and `tentative`.** It had
+  carried `declined` since 0023 and no opposite, so everybody intending to come
+  sat in `invited` - the same value as somebody who had never looked at it. A
+  host counting who was coming could not tell the difference. Two states, not
+  more: "maybe" is a real answer, anything past it is a form.
+- **`event_attendees` has never been written.** The table has existed since
+  0003 with exactly the RSVP vocabulary on it, and `sync_meeting_event()` put a
+  meeting on the calendar with nobody attached. So the calendar could not
+  answer whether anybody was busy. `sync_meeting_attendee()` now mirrors the
+  guest list onto the event, one-directionally: `meeting_participants` is the
+  meeting's truth and the calendar row is a projection of it.
+- **`member_availability()`** returns busy intervals and nothing else - no
+  title, no location, no attendees. That is what makes it safe as SECURITY
+  DEFINER, and definer is necessary: an invoker function returns nothing for a
+  colleague's private event, and a scheduler that reports somebody as free when
+  they are not is worse than one with no availability at all.
+
+`declined` is not busy. Somebody who said no is free at that time, which is the
+entire point of having said no.
+
+#### Scheduling that reads the real calendar
+
+The schedule dialog now shows **Busy** against anybody already committed at the
+time chosen, a line saying how many of the invited have a clash, and up to
+three slots where nobody does. The suggestions are computed in the endpoint,
+not in Postgres, because the slot length and the working day are presentation
+decisions and `member_availability()` has other callers.
+
+Nothing is invented. When the endpoint cannot be read the interface says
+availability could not be read rather than claiming everybody is free, and when
+no slot fits it offers none rather than one that will not work.
+
+#### Meeting to Workspace
+
+The notes dialog can file a meeting's notes into the workspace as a document,
+with the title, time, host, conversation and project at the top. The meeting
+keeps its own copy: a copy that replaces the original is a way to lose things.
+
+#### Two more replay breakages, same class as 0035's
+
+`db:apply` has no ledger and replays every file, so a migration that widens a
+function's return type breaks the earlier one that created it -
+`CREATE OR REPLACE` fails with "cannot change return type of existing
+function". 0037 widens three functions that 0023 and 0036 create, so both files
+now drop before creating, exactly as 0017's views do. The rule is now written
+in three places because it has bitten twice.
+
+#### Carried forward
+
+- **A meeting's chat.** The room has no messages of its own; the channel it was
+  started from is where anything said around it goes. That is defensible and it
+  is not the same as chat *during* a call, which needs a decision about whether
+  it survives the meeting.
+- **Device selection in the green room.** The lobby previews the default camera
+  and microphone. Choosing between devices needs `enumerateDevices` and a
+  persisted preference, and belongs with whichever pass takes the meeting room
+  itself.
+- **Teams.** The `teams` table exists and People groups only by department. A
+  team is a real second axis and it should not be added until something in the
+  product writes team membership.
+- **Availability across timezones.** The suggestions use the server's reckoning
+  of a working day. Every organisation carries a timezone and every member
+  could; using them is the right fix and it is the calendar module's decision
+  to make, not this one's.
+
 ---
 
 ## 6. The phases

@@ -407,6 +407,17 @@ GRANT EXECUTE ON FUNCTION public.channel_threads(uuid) TO authenticated;
 CREATE INDEX IF NOT EXISTS idx_messages_mentions
   ON messages USING gin (mentions) WHERE deleted_at IS NULL;
 
+/*
+   Dropped rather than replaced.
+
+   `db:apply` replays every migration in order, and 0037 widens this
+   function's return type. On a replay against a database that has reached
+   that migration, `CREATE OR REPLACE` fails with "cannot change return type
+   of existing function" and takes every later file with it. The drop makes
+   the file runnable from any starting point; the wider version is recreated
+   a few files later.
+*/
+DROP FUNCTION IF EXISTS public.communication_inbox(uuid, int, int);
 CREATE OR REPLACE FUNCTION public.communication_inbox(
   org uuid,
   lim int DEFAULT 40,
@@ -537,6 +548,17 @@ GRANT EXECUTE ON FUNCTION public.communication_inbox(uuid, int, int) TO authenti
 --  `message_search()` and `communication_inbox()`. Third and last copy; a
 --  fourth caller should make it a function of its own.
 
+/*
+   Dropped rather than replaced.
+
+   `db:apply` replays every migration in order, and 0037 widens this
+   function's return type. On a replay against a database that has reached
+   that migration, `CREATE OR REPLACE` fails with "cannot change return type
+   of existing function" and takes every later file with it. The drop makes
+   the file runnable from any starting point; the wider version is recreated
+   a few files later.
+*/
+DROP FUNCTION IF EXISTS public.saved_messages(uuid, int);
 CREATE OR REPLACE FUNCTION public.saved_messages(org uuid, lim int DEFAULT 100)
 RETURNS TABLE (
   save_id       uuid,

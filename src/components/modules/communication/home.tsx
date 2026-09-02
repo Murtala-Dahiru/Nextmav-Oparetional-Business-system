@@ -4,7 +4,7 @@ import * as React from 'react';
 import { toast } from 'sonner';
 import {
   Search, Plus, UserPlus, Video, Radio, Bookmark, Star, ArrowRight, Loader2,
-  Clock, X, Calendar, ChevronRight,
+  Clock, X, Calendar, ChevronRight, Megaphone, Check,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -17,58 +17,59 @@ import { formatRelativeTime, truncate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 import {
-  type ChannelRow, type InboxItem, type MeetingRow, type SavedMessage,
-  api, apiWithMeta, channelLabel, clockTime,
+  type ChannelRow, type DirectoryMember, type InboxItem, type MeetingRow,
+  type SavedMessage, api, apiWithMeta, clockTime,
 } from './types';
 import { plainPreview } from './rich-text';
-import { ChannelGlyph, InboxGlyph, INBOX_WORDS, LivePip, UnreadPill } from './ui';
+import { InboxGlyph, INBOX_WORDS } from './ui';
 
 /**
  * ===========================================================================
  *  Communication Home
  * ===========================================================================
  *
- *  -- What the first version got wrong -------------------------------------
+ *  -- The fault this version fixes -----------------------------------------
  *
- *  Five bands in two columns, each in its own bordered card: what needs you,
- *  your conversations, meetings, saved messages, recently shared files. Every
- *  one of them was defensible on its own and the page as a whole said nothing,
- *  because five boxes of equal weight is a page with no subject. It read as a
- *  dashboard about communication rather than as a place to communicate.
+ *  Home and Messages felt like the same screen, and the reason was structural
+ *  rather than decorative: both had the conversation list down the left, and
+ *  Home's largest band was *another* list of conversations. Whatever else was
+ *  on the page read as trimming around something the reader had already seen.
  *
- *  -- What it is now -------------------------------------------------------
+ *  So the list is gone from here entirely, in both places. Messages owns
+ *  conversations. Home owns the question **what is going on, and what needs
+ *  me** - which is a different question, answered with different material:
+ *  people rather than rooms, decisions rather than threads, today rather than
+ *  history.
  *
- *  One question, answered at the top in the page's own voice: **what needs
- *  you**. Underneath it, the two things a person reaches for next - their
- *  conversations and their meetings - side by side and visibly secondary.
- *  Nothing else.
+ *  -- What is on it, in the order it is read -------------------------------
  *
- *  Three changes carry that:
+ *    1. **Needs you.** Mentions, replies, direct messages, announcements and
+ *       meeting invitations - the last answerable in place. This is the
+ *       page's subject and it gets the full width.
+ *    2. **Today.** What is running now and what is next, with the people in
+ *       it. Absent entirely on a day with nothing in it, rather than
+ *       occupying a third of the screen to say "no meetings".
+ *    3. **Around now.** Who is at their desk, as faces. It is the fastest
+ *       route to a conversation that does not begin with a list of rooms,
+ *       and it is the thing a person actually wants at four in the
+ *       afternoon: not "which channel", but "is Ada there".
+ *    4. **Announcements.** The company's own voice, quiet and last, because
+ *       it is read once.
  *
- *  · **The boxes are gone.** A section is a small heading and a ruled list on
- *    the page, not a card. A border around a list says "this is a separate
- *    thing"; five of them said "these are five separate things of equal
- *    importance", which was the opposite of the intent.
- *  · **Attention is the only full-width column**, and the only place a
- *    coloured mark appears. Everything below it is ink and grey.
- *  · **Files and saved messages left.** A file belongs in the conversation it
- *    was posted in, where the details rail now lists it. Saved is one line at
- *    the foot of the page, because it is a shelf you visit, not news.
+ *  -- Why it is given three lists and fetches one --------------------------
  *
- *  -- Why it is given two lists and fetches one ----------------------------
- *
- *  The shell holds `channels` and `meetings` live. Refetching them here would
- *  mean two components disagreeing about the unread count on the same row. The
- *  inbox is Home's own.
+ *  The shell holds `channels`, `meetings` and the directory live, and
+ *  refetching any of them here would mean two components disagreeing about
+ *  the same number. The inbox is Home's own.
  */
-
 export function Home({
-  channels, meetings, presence, inCall, reloadKey, greeting,
-  onOpenChannel, onOpenMessage, onOpenMeeting, onOpenMeetings, onNewChannel,
-  onNewDirect, onSchedule, onSearch, onOpenSaved,
+  meetings, directory, presence, inCall, currentMemberId, reloadKey, greeting,
+  onOpenMessage, onOpenMeeting, onOpenMeetings, onOpenPeople, onNewChannel,
+  onNewDirect, onSchedule, onSearch, onOpenSaved, onMessagePerson, onRespond,
 }: {
-  channels: ChannelRow[];
   meetings: MeetingRow[];
+  directory: DirectoryMember[];
+  currentMemberId: string | null;
   presence: Record<string, PresenceRow>;
   /** Membership ids currently joined to a live meeting. */
   inCall: string[];
@@ -76,10 +77,14 @@ export function Home({
   reloadKey: number;
   /** The reader's first name, when the session has one. */
   greeting: string | null;
-  onOpenChannel: (id: string) => void;
   onOpenMessage: (channelId: string, messageId: string) => void;
   onOpenMeeting: (meeting: MeetingRow) => void;
   onOpenMeetings: () => void;
+  onOpenPeople: () => void;
+  /** Open, or start, the direct conversation with somebody. */
+  onMessagePerson: (memberId: string) => void;
+  /** Answer a meeting invitation without leaving this screen. */
+  onRespond: (meetingId: string, state: 'accepted' | 'tentative' | 'declined') => Promise<void>;
   onNewChannel: () => void;
   onNewDirect: () => void;
   onSchedule: () => void;
@@ -91,6 +96,20 @@ export function Home({
   const [kind, setKind] = React.useState<'all' | InboxItem['kind']>('all');
   const [query, setQuery] = React.useState('');
   const [showRead, setShowRead] = React.useState(false);
+  /** The invitation currently being answered, so its buttons can settle. */
+  const [answering, setAnswering] = React.useState<string | null>(null);
+
+  const answer = React.useCallback(async (
+    meetingId: string,
+    state: 'accepted' | 'tentative' | 'declined',
+  ) => {
+    setAnswering(meetingId);
+    try {
+      await onRespond(meetingId, state);
+    } finally {
+      setAnswering(null);
+    }
+  }, [onRespond]);
 
   const load = React.useCallback(async () => {
     /**
@@ -135,24 +154,45 @@ export function Home({
   const recentMeetings = meetings.filter(m => m.status === 'ended').slice(0, 2);
 
   /**
-   * The conversations worth putting in front of somebody.
+   * The last few announcements, read or not.
    *
-   * Starred first, because that is what starring is for; then anything with
-   * something unread in it; then whatever was spoken in most recently. Rooms
-   * nobody has joined are not here: they belong in the sidebar's list, which is
-   * where you go to find a channel rather than to catch up.
+   * Taken from the inbox rather than fetched: `communication_inbox()` already carries
+   * the kind, and a second request for the same rows would be a second answer
+   * to what the company has said.
    */
-  const conversations = React.useMemo(() => {
-    const rank = (c: ChannelRow) =>
-      (c.isFavourite ? 0 : 2) + (c.unreadCount || c.mentionCount ? -1 : 0);
-    return channels
-      .filter(c => c.isMember)
-      .slice()
-      .sort((a, b) => rank(a) - rank(b)
-        || (b.lastMessageAt ?? '').localeCompare(a.lastMessageAt ?? ''))
-      .slice(0, 9);
-  }, [channels]);
+  const announcements = React.useMemo(
+    () => (inbox ?? []).filter(i => i.kind === 'announcement').slice(0, 3),
+    [inbox]);
 
+  /**
+   * Colleagues who are at their desk.
+   *
+   * Online first, then away, then by name - so the row does not reshuffle
+   * every time somebody's heartbeat lands. Everybody but the reader: a wall
+   * of faces with your own in it is a mirror, not a directory.
+   */
+  const around = React.useMemo(() => {
+    const rank = (id: string) => {
+      const state = presence[id]?.presence;
+      return state === 'online' ? 0 : state === 'away' ? 1 : 2;
+    };
+    return directory
+      .filter(d => d.memberId !== currentMemberId)
+      .sort((a, b) => rank(a.memberId) - rank(b.memberId)
+        || a.fullName.localeCompare(b.fullName));
+  }, [directory, presence, currentMemberId]);
+
+  /**
+   * How many of them are actually about.
+   *
+   * The band shows colleagues whether or not anybody is online, because a
+   * panel that empties itself every evening is a panel people stop looking at
+   * - and because the useful act, opening a conversation with somebody, does
+   * not require them to be at their desk. The dot on each face tells the
+   * truth; this line says how much of it there is.
+   */
+  const aroundNow = around.filter(
+    d => (presence[d.memberId]?.presence ?? 'offline') !== 'offline').length;
   const nothingWaiting = inbox !== null && outstanding.length === 0 && invitations.length === 0;
 
   return (
@@ -246,24 +286,70 @@ export function Home({
 
           {/* A meeting invitation is a question, so it sits above the messages
               rather than in the meetings column with the answers. */}
+          {/*
+            An invitation, answerable where it is read.
+
+            The three buttons are the whole reason this row is on Home rather
+            than only in Meetings: an invitation is a question, and a question
+            you have to navigate somewhere else to answer is one people leave
+            unanswered. The row itself still opens the meeting for anybody who
+            wants the agenda before deciding.
+          */}
           {invitations.map(meeting => (
-            <button
+            <div
               key={meeting.meetingId}
-              onClick={onOpenMeetings}
-              className="flex w-full items-center gap-3 border-b py-3 text-left transition-colors hover:bg-accent/50"
+              className="flex items-center gap-3 border-b py-3 transition-colors hover:bg-accent/50"
             >
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
-                <Calendar className="size-4 text-muted-foreground" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-semibold">{meeting.title}</span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {meeting.hostName ? `${meeting.hostName} invited you` : 'You are invited'}
-                  {meeting.scheduledAt ? ` · ${whenWords(meeting.scheduledAt)}` : ''}
+              <button
+                onClick={() => onOpenMeeting(meeting)}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              >
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
+                  <Calendar className="size-4 text-muted-foreground" />
                 </span>
-              </span>
-              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-            </button>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold">{meeting.title}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {meeting.hostName ? `${meeting.hostName} invited you` : 'You are invited'}
+                    {meeting.scheduledAt ? ` · ${whenWords(meeting.scheduledAt)}` : ''}
+                    {meeting.invitedCount > 1 ? ` · ${meeting.invitedCount} invited` : ''}
+                  </span>
+                </span>
+              </button>
+
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1 px-2 text-xs"
+                  disabled={answering === meeting.meetingId}
+                  onClick={() => void answer(meeting.meetingId, 'accepted')}
+                >
+                  {answering === meeting.meetingId
+                    ? <Loader2 className="size-3 animate-spin" />
+                    : <Check className="size-3" />}
+                  Going
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs"
+                  disabled={answering === meeting.meetingId}
+                  onClick={() => void answer(meeting.meetingId, 'tentative')}
+                >
+                  Maybe
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs text-muted-foreground"
+                  disabled={answering === meeting.meetingId}
+                  onClick={() => void answer(meeting.meetingId, 'declined')}
+                >
+                  No
+                </Button>
+              </div>
+            </div>
           ))}
 
           {inbox === null ? (
@@ -357,95 +443,19 @@ export function Home({
         </section>
 
         {/* ---------------------------------------------------------------
-            Conversations, and what is on
+            Today, and who is around
+
+            Two columns, both secondary to the band above and both about
+            *now* rather than about history. Neither is a list of
+            conversations, which is the whole point: that list is one click
+            away in Messages and putting it here is what made the two
+            screens indistinguishable.
            --------------------------------------------------------------- */}
-        <div className="grid gap-10 md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+        <div className="grid gap-10 md:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
           <section className="min-w-0">
             <div className="flex items-center justify-between gap-3 border-b pb-2">
               <h3 className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
-                Conversations
-              </h3>
-              {conversations.length > 0 && (
-                <button
-                  onClick={() => onOpenChannel(conversations[0].channelId)}
-                  className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  Open all <ArrowRight className="size-3" />
-                </button>
-              )}
-            </div>
-
-            {conversations.length === 0 ? (
-              <p className="py-8 text-sm text-muted-foreground">
-                No conversations yet. Start a channel, or message a colleague.
-              </p>
-            ) : conversations.map(channel => {
-              const dmId = channel.type === 'direct' ? channel.counterpartId : null;
-              const unread = channel.unreadCount > 0 || channel.mentionCount > 0;
-              return (
-                <button
-                  key={channel.channelId}
-                  onClick={() => onOpenChannel(channel.channelId)}
-                  className="flex w-full items-center gap-3 border-b py-2.5 text-left transition-colors hover:bg-accent/50"
-                >
-                  {dmId ? (
-                    <PersonAvatar
-                      id={dmId}
-                      name={channel.counterpartName}
-                      src={channel.counterpartAvatar}
-                      size="sm"
-                      presence={presence[dmId]?.presence ?? 'offline'}
-                      lastSeenAt={presence[dmId]?.lastSeenAt}
-                      inCall={inCall.includes(dmId)}
-                      decorative
-                    />
-                  ) : (
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted">
-                      <ChannelGlyph type={channel.type} className="size-3.5" />
-                    </span>
-                  )}
-
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-1.5">
-                      {channel.isFavourite && (
-                        <Star className="size-3 shrink-0 fill-current text-brand" />
-                      )}
-                      <span className={cn('truncate text-sm', unread ? 'font-semibold' : 'font-medium')}>
-                        {channelLabel(channel)}
-                      </span>
-                      {channel.liveMeetingId && <LivePip />}
-                    </span>
-                    {channel.lastMessage !== null && (
-                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                        {channel.lastSender && (
-                          <span className="font-medium">{channel.lastSender}: </span>
-                        )}
-                        {truncate(plainPreview(channel.lastMessage) || 'Shared a file', 64)}
-                      </span>
-                    )}
-                  </span>
-
-                  <span className="flex shrink-0 items-center gap-2">
-                    {channel.lastMessageAt && !unread && (
-                      <span className="text-[11px] tabular-nums text-muted-foreground">
-                        {formatRelativeTime(channel.lastMessageAt)}
-                      </span>
-                    )}
-                    <UnreadPill
-                      unread={channel.unreadCount}
-                      mentions={channel.mentionCount}
-                      muted={channel.isMuted}
-                    />
-                  </span>
-                </button>
-              );
-            })}
-          </section>
-
-          <section className="min-w-0">
-            <div className="flex items-center justify-between gap-3 border-b pb-2">
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
-                Meetings
+                Today
               </h3>
               <button
                 onClick={onOpenMeetings}
@@ -456,9 +466,15 @@ export function Home({
             </div>
 
             {live.length === 0 && upcoming.length === 0 && recentMeetings.length === 0 ? (
-              <p className="py-8 text-sm text-muted-foreground">
-                Nothing scheduled. Start a call from any conversation.
-              </p>
+              <div className="py-7">
+                <p className="text-sm text-muted-foreground">Nothing scheduled.</p>
+                <button
+                  onClick={onSchedule}
+                  className="mt-1 text-xs font-medium underline-offset-2 hover:underline"
+                >
+                  Set up a meeting
+                </button>
+              </div>
             ) : (
               <>
                 {live.map(meeting => (
@@ -475,9 +491,103 @@ export function Home({
                 ))}
               </>
             )}
+
+            {/*
+              The company's own voice.
+
+              Under Today rather than beside it, because an announcement is
+              read once and then it is history - it does not deserve a column
+              of its own on every visit, and it does deserve to be somewhere
+              other than buried in a channel nobody opens.
+            */}
+            {announcements.length > 0 && (
+              <div className="pt-8">
+                <div className="border-b pb-2">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
+                    Announcements
+                  </h3>
+                </div>
+                {announcements.map(item => (
+                  <button
+                    key={item.messageId}
+                    onClick={() => onOpenMessage(item.channelId, item.messageId)}
+                    className="flex w-full items-start gap-3 border-b py-2.5 text-left transition-colors hover:bg-accent/50"
+                  >
+                    <Megaphone className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm">
+                        {truncate(plainPreview(item.body), 90)}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {item.senderName ?? 'Someone'} · {formatRelativeTime(item.createdAt)}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="min-w-0">
+            <div className="flex items-center justify-between gap-3 border-b pb-2">
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
+                  People
+                </h3>
+                <span className="text-[11px] text-muted-foreground/70">
+                  {aroundNow > 0 ? `${aroundNow} around` : 'nobody around'}
+                </span>
+              </div>
+              <button
+                onClick={onOpenPeople}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Everyone <ArrowRight className="size-3" />
+              </button>
+            </div>
+
+            {/*
+              Faces, not rows.
+
+              "Is Ada there" is the question that decides whether somebody
+              asks now or writes it down, and it is answered faster by a wall
+              of faces than by any list. Clicking one opens the conversation
+              with them - which is the shortest path from a thought to a
+              message that exists anywhere in this product.
+            */}
+            {around.length === 0 ? (
+              <p className="py-7 text-sm text-muted-foreground">
+                Nobody else has joined this workspace yet.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-x-4 gap-y-4 py-4">
+                {around.slice(0, 12).map(person => (
+                  <button
+                    key={person.memberId}
+                    onClick={() => onMessagePerson(person.memberId)}
+                    className="group flex w-16 flex-col items-center gap-1.5 text-center"
+                    title={`Message ${person.fullName}`}
+                  >
+                    <PersonAvatar
+                      id={person.memberId}
+                      name={person.fullName}
+                      src={person.avatarUrl}
+                      size="lg"
+                      presence={presence[person.memberId]?.presence ?? 'offline'}
+                      lastSeenAt={presence[person.memberId]?.lastSeenAt}
+                      inCall={inCall.includes(person.memberId)}
+                      decorative
+                      className="transition-transform group-hover:-translate-y-0.5"
+                    />
+                    <span className="w-full truncate text-[11px] leading-tight text-muted-foreground group-hover:text-foreground">
+                      {person.fullName.split(' ')[0]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </section>
         </div>
-
         {/* One line at the foot of the page for the shelf. Not a band: it is
             somewhere you go on purpose, not news. */}
         <div className="mt-10 border-t pt-4">

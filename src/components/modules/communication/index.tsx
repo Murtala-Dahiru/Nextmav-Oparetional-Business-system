@@ -52,6 +52,7 @@ import { Home, SavedPanel } from './home';
 import { ConversationPanel } from './panel';
 import { MessageActionDialog, type MessageActionTarget } from './actions';
 import { ChannelGlyph, LivePip, UnreadPill } from './ui';
+import { People } from './people';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -114,7 +115,7 @@ const PAGE_SIZE = 40;
  * Home answers it directly and is one click from every conversation, so
  * nothing is further away than it was.
  */
-type View = 'home' | 'messages' | 'meetings';
+type View = 'home' | 'messages' | 'people' | 'meetings';
 type Filter = 'all' | 'unread';
 
 export default function CommunicationModule() {
@@ -282,6 +283,8 @@ export default function CommunicationModule() {
     useState<'todo' | 'reminder' | 'crm' | 'task' | null>(null);
   /** A message the reader wants a meeting about; seeds the schedule dialog. */
   const [meetingSeed, setMeetingSeed] = useState<{ title: string; agenda: string } | null>(null);
+  /** A colleague the reader wants to meet, from their profile in People. */
+  const [meetingGuest, setMeetingGuest] = useState<string | null>(null);
 
   /**
    * The meeting room, held as an id rather than as a row.
@@ -1067,6 +1070,33 @@ export default function CommunicationModule() {
     void loadMeetings();
     void loadChannels();
   }, [loadMeetings, loadChannels]);
+  /**
+   * Answer a meeting invitation.
+   *
+   * Held here rather than in Home because two surfaces offer it - the
+   * attention band and the meeting card - and an RSVP that behaves
+   * differently depending on where it was pressed is two features.
+   *
+   * `PATCH .../participants` with no member id means "me", which is the only
+   * person this can answer for; the endpoint refuses anything else and says
+   * so.
+   */
+  const respondToMeeting = useCallback(async (
+    meetingId: string,
+    state: 'accepted' | 'tentative' | 'declined',
+  ) => {
+    try {
+      await api(`/api/communication/meetings/${meetingId}/participants`, {
+        method: 'PATCH',
+        body: JSON.stringify({ state }),
+      });
+      await loadMeetings();
+      toast.success(state === 'accepted' ? 'You are going'
+        : state === 'tentative' ? 'Marked as maybe' : 'You are not going');
+    } catch (err: any) {
+      toast.error(err.message || 'Could not send your answer');
+    }
+  }, [loadMeetings]);
   const openMeetingRoom = useCallback(
     (meeting: MeetingRow) => setActiveMeetingId(meeting.meetingId), []);
   const refreshMeetings = useCallback(() => {
@@ -1628,88 +1658,22 @@ export default function CommunicationModule() {
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
+  /**
+   * The conversation list.
+   *
+   * -- Why it belongs to Messages and to nothing else ---------------------
+   *
+   * It used to render on Home as well, on the reasoning that a list is
+   * navigation and navigation should be everywhere. That was the mistake
+   * that made the two screens feel like the same screen: Home showed a
+   * column of conversations beside a column of conversations, so whatever
+   * else was on it read as decoration around a list the reader had already
+   * seen. Home is an overview; Messages is where conversations are. The
+   * clearest way to say that is for only one of them to have this.
+   */
   const sidebar = (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-4">
-        <h2 className="text-lg font-semibold">Communication</h2>
-        <div className="flex items-center gap-0.5">
-          <TooltipProvider delayDuration={400}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-8" onClick={() => setSearchOpen(true)}>
-                  <Search className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Search every conversation · Ctrl+F</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-8" onClick={() => setDmOpen(true)}>
-                  <UserPlus className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Message a colleague</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="size-8" onClick={() => setCreateOpen(true)}>
-                  <Plus className="size-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>New channel</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      </div>
-
-      {/* Home, Messages and Meetings are three views of one module rather than
-          three modules: a meeting is a conversation with a time attached, and
-          the channel a team talks in is the channel they meet in. */}
-      <div className="mx-3 mb-3 grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
-        {([
-          ['home', 'Home', 0],
-          ['messages', 'Messages', unreadTotal],
-          ['meetings', 'Meetings', liveMeetings],
-        ] as const).map(([id, label, count]) => (
-          <button
-            key={id}
-            onClick={() => setView(id)}
-            className={cn(
-              'relative rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors',
-              view === id
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {label}
-            {count > 0 && (
-              <span className={cn(
-                'ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1',
-                'text-[10px] font-semibold tabular-nums',
-                id === 'meetings'
-                  ? 'bg-destructive text-white'
-                  : 'bg-primary text-primary-foreground',
-              )}>
-                {count > 99 ? '99+' : count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/*
-        The conversation list is the module's navigation, so it stays for Home
-        as well as for Messages.
-
-        It was gated on `view === 'messages'`, which left two thirds of the
-        sidebar empty whenever Home was open - and Home is what the module now
-        opens on, so that was the first thing anybody saw. It is also simply
-        wrong as navigation: the list is how you get *to* a conversation, and
-        hiding it on the landing screen means the landing screen is the one
-        place you cannot.
-      */}
-      {view !== 'meetings' && (
-        <>
+      <>
           <div className="px-3 pb-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -1782,76 +1746,76 @@ export default function CommunicationModule() {
             )}
           </ScrollArea>
         </>
-      )}
 
-      {view === 'meetings' && (
-        <div className="flex-1 px-4 py-2 text-sm text-muted-foreground">
-          <p>
-            {meetings.length === 0
-              ? 'No meetings yet.'
-              : `${meetings.length} meeting${meetings.length === 1 ? '' : 's'}`}
-          </p>
-          {liveMeetings > 0 && (
-            <p className="mt-1 flex items-center gap-1.5 text-destructive">
-              <Radio className="size-3.5" /> {liveMeetings} happening now
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="border-t px-3 py-2">
-        <button
-          type="button"
-          onClick={() => setSavedOpen(true)}
-          className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <Bookmark className="size-4 shrink-0" /> Saved
-        </button>
-        <p className="px-1.5 pt-1.5 text-xs text-muted-foreground">
-          <span className={cn('mr-1.5 inline-block size-2 rounded-full',
-            onlineCount > 0 ? 'bg-brand' : 'bg-muted-foreground/40')} />
-          {onlineCount} online
-        </p>
-        {/* Said plainly rather than hidden. Somebody who knows updates are on
-            a timer waits differently from somebody who believes nothing has
-            been said. */}
-        {degraded && (
-          <p className="mt-1 flex items-center gap-1.5 px-1.5 text-[11px] text-warning">
+      {/* Said plainly rather than hidden. Somebody who knows updates are on
+          a timer waits differently from somebody who believes nothing has
+          been said. */}
+      {degraded && (
+        <div className="border-t px-3 py-2">
+          <p className="flex items-center gap-1.5 text-[11px] text-warning">
             <Radio className="size-3 shrink-0" />
             Live updates are blocked here. Checking every few seconds instead.
           </p>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 
   return (
-    <div ref={moduleRef} className="flex h-full overflow-hidden">
-      {isMobile && showSidebar && (
-        <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setShowSidebar(false)} />
-      )}
+    <div ref={moduleRef} className="flex h-full flex-col overflow-hidden">
+      {/*
+        The module's own navigation, above everything.
 
-      <aside
-        className={cn(
-          'flex w-72 shrink-0 flex-col border-r bg-card',
-          isMobile && 'fixed inset-y-0 left-0 z-50 transition-transform',
-          isMobile && !showSidebar && '-translate-x-full',
-          isMobile && showSidebar && 'translate-x-0',
+        -- Why it left the sidebar ------------------------------------------
+
+        It used to sit at the top of the conversation list, which tied the
+        four destinations to a column that only one of them needs. Above the
+        split, it reads as what it is: four rooms in one module, of which
+        Messages happens to have a list down its left.
+      */}
+      <ModuleNav
+        view={view}
+        onChange={(next) => { setView(next); if (isMobile) setShowSidebar(false); }}
+        unread={unreadTotal}
+        mentions={mentionTotal}
+        live={liveMeetings}
+        online={onlineCount}
+        onSearch={() => { setSearchSeed(''); setSearchOpen(true); }}
+        onNewDirect={() => setDmOpen(true)}
+        onNewChannel={() => setCreateOpen(true)}
+        onSaved={() => setSavedOpen(true)}
+      />
+
+      <div className="flex min-h-0 flex-1">
+        {isMobile && showSidebar && view === 'messages' && (
+          <div className="fixed inset-0 z-40 bg-black/50" onClick={() => setShowSidebar(false)} />
         )}
-      >
-        {sidebar}
-      </aside>
 
+        {view === 'messages' && (
+          <aside
+            className={cn(
+              'flex w-72 shrink-0 flex-col border-r bg-card',
+              isMobile && 'fixed inset-y-0 left-0 z-50 pt-14 transition-transform',
+              isMobile && !showSidebar && '-translate-x-full',
+              isMobile && showSidebar && 'translate-x-0',
+            )}
+          >
+            {sidebar}
+          </aside>
+        )}
       <main className="flex min-w-0 flex-1 flex-col bg-background">
         {view === 'home' ? (
           <Home
-            channels={channels}
             meetings={meetings}
+            directory={directory}
+            currentMemberId={currentMemberId}
             presence={presence}
             inCall={inCall}
             reloadKey={homeKey}
             greeting={firstName}
-            onOpenChannel={openConversation}
+            onOpenPeople={() => setView('people')}
+            onMessagePerson={(memberId) => void startDirect(memberId)}
+            onRespond={respondToMeeting}
             onOpenMessage={openMessage}
             onOpenMeeting={(m) => {
               // A meeting that is running is joined; one that is not is read
@@ -1865,6 +1829,22 @@ export default function CommunicationModule() {
             onSchedule={() => setScheduleOpen(true)}
             onSearch={(seed) => { setSearchSeed(seed ?? ''); setSearchOpen(true); }}
             onOpenSaved={() => setSavedOpen(true)}
+          />
+        ) : view === 'people' ? (
+          <People
+            directory={directory}
+            presence={presence}
+            inCall={inCall}
+            currentMemberId={currentMemberId}
+            loading={!directory.length}
+            onMessage={(memberId) => void startDirect(memberId)}
+            /*
+              A meeting with one person, from their profile. The schedule
+              dialog opens with them already on the guest list rather than
+              creating anything - who else should be there, and when, are
+              decisions this screen has no business making.
+            */
+            onMeet={(person) => { setMeetingGuest(person.memberId); setScheduleOpen(true); }}
           />
         ) : view === 'meetings' ? (
           <MeetingsView
@@ -2408,16 +2388,21 @@ export default function CommunicationModule() {
       />
 
       <ScheduleMeetingDialog
-        key={scheduleOpen ? 'schedule-open' : 'schedule-closed'}
+        key={scheduleOpen ? `schedule-${meetingGuest ?? 'none'}` : 'schedule-closed'}
         open={scheduleOpen}
-        onOpenChange={(open) => { setScheduleOpen(open); if (!open) setMeetingSeed(null); }}
+        onOpenChange={(open) => {
+          setScheduleOpen(open);
+          if (!open) { setMeetingSeed(null); setMeetingGuest(null); }
+        }}
         channels={channels}
         directory={directory.filter(d => d.memberId !== currentMemberId)}
         defaultChannelId={selectedId}
         seed={meetingSeed}
+        defaultGuestId={meetingGuest}
         onCreated={() => {
           setScheduleOpen(false);
           setMeetingSeed(null);
+          setMeetingGuest(null);
           void loadMeetings();
           setView('meetings');
         }}
@@ -2487,6 +2472,7 @@ export default function CommunicationModule() {
           onClose={closeMeeting}
         />
       )}
+      </div>
     </div>
   );
 }
@@ -2669,6 +2655,150 @@ function ChannelGroup({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
+/*  The module's own navigation                                              */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Four destinations, one row, above everything.
+ *
+ * -- The problem it was written to fix -------------------------------------
+ *
+ * The tabs used to sit at the top of the conversation list, which said that
+ * the list was the module and the tabs were a mode of it. Home therefore
+ * opened with a column of conversations down its left and a column of
+ * conversations down its middle, and the two screens were, as far as anybody
+ * looking at them could tell, the same screen. Lifting the navigation above
+ * the split makes the shape honest: four rooms, of which Messages is the one
+ * with a list in it.
+ *
+ * -- What the counts mean --------------------------------------------------
+ *
+ * The same sentence as everywhere else in this module, which is why the
+ * numbers are passed in rather than derived here: a mention outranks a count,
+ * and muting silences a count and never a mention. Three copies of that rule
+ * would be three badges that eventually disagree in front of somebody.
+ */
+function ModuleNav({
+  view, onChange, unread, mentions, live, online,
+  onSearch, onNewDirect, onNewChannel, onSaved,
+}: {
+  view: View;
+  onChange: (view: View) => void;
+  unread: number;
+  mentions: number;
+  live: number;
+  online: number;
+  onSearch: () => void;
+  onNewDirect: () => void;
+  onNewChannel: () => void;
+  onSaved: () => void;
+}) {
+  const TABS: { id: View; label: string; count: number; tone: 'ink' | 'live' }[] = [
+    { id: 'home', label: 'Home', count: 0, tone: 'ink' },
+    { id: 'messages', label: 'Messages', count: unread, tone: 'ink' },
+    { id: 'people', label: 'People', count: 0, tone: 'ink' },
+    { id: 'meetings', label: 'Meetings', count: live, tone: 'live' },
+  ];
+
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b bg-card/60 px-2 sm:px-4">
+      <nav className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto" aria-label="Communication">
+        {TABS.map(tab => {
+          const active = view === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => onChange(tab.id)}
+              aria-current={active ? 'page' : undefined}
+              className={cn(
+                'relative shrink-0 border-b-2 px-3 py-3 text-[13px] font-medium transition-colors',
+                active
+                  ? 'border-foreground text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {tab.label}
+              {tab.count > 0 && (
+                <span className={cn(
+                  'ml-1.5 inline-flex h-[17px] min-w-[17px] items-center justify-center rounded-full px-1',
+                  'text-[10px] font-semibold tabular-nums',
+                  tab.tone === 'live'
+                    ? 'bg-destructive text-white'
+                    : 'bg-primary text-primary-foreground',
+                )}>
+                  {tab.count > 99 ? '99+' : tab.count}
+                </span>
+              )}
+              {/* Being named is the one fact that gets the accent, and it sits
+                  on Messages whether or not there is an unread count beside
+                  it: muting silences the count and never the mention. */}
+              {tab.id === 'messages' && mentions > 0 && (
+                <span className="ml-1 inline-flex h-[17px] items-center gap-0.5 rounded-full bg-brand px-1.5 text-[10px] font-semibold text-brand-fg">
+                  <AtSign className="size-2.5" />{mentions}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className="flex shrink-0 items-center gap-0.5">
+        {/* Who is about, said once, where every view can see it. It used to be
+            at the foot of the conversation list, which is the one place it
+            could not be read from three of the four screens. */}
+        <span className="mr-1 hidden items-center gap-1.5 text-xs text-muted-foreground md:flex">
+          <span className={cn('inline-block size-1.5 rounded-full',
+            online > 0 ? 'bg-brand' : 'bg-muted-foreground/40')} />
+          {online} online
+        </span>
+
+        <TooltipProvider delayDuration={400}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              {/* Hidden on a phone, where Home already offers all three
+                  actions as buttons and four icons beside four tabs is a row
+                  with nothing left to truncate. */}
+              <Button variant="ghost" size="icon" className="hidden size-8 sm:inline-flex" onClick={onSaved}
+                aria-label="Saved messages">
+                <Bookmark className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Saved messages</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8" onClick={onSearch}
+                aria-label="Search communication">
+                <Search className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Search · Ctrl+F</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="hidden size-8 sm:inline-flex" onClick={onNewDirect}
+                aria-label="Message a colleague">
+                <UserPlus className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Message a colleague</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="hidden size-8 sm:inline-flex" onClick={onNewChannel}
+                aria-label="New channel">
+                <Plus className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>New channel</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
     </div>
   );
 }

@@ -351,6 +351,17 @@ GRANT EXECUTE ON FUNCTION public.search_tsquery(text) TO authenticated;
  * is the other person, resolved the same way the sidebar resolves it — never
  * the `dm-<uuid>-<uuid>` slug.
  */
+/*
+   Dropped rather than replaced.
+
+   `db:apply` replays every migration in order, and 0037 widens this
+   function's return type. On a replay against a database that has reached
+   that migration, `CREATE OR REPLACE` fails with "cannot change return type
+   of existing function" and takes every later file with it. The drop makes
+   the file runnable from any starting point; the wider version is recreated
+   a few files later.
+*/
+DROP FUNCTION IF EXISTS public.message_search(uuid, text, int);
 CREATE OR REPLACE FUNCTION public.message_search(org uuid, q text, lim int DEFAULT 40)
 RETURNS TABLE (
   message_id    uuid,

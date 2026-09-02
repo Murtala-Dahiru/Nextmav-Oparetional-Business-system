@@ -204,7 +204,24 @@ export async function PATCH(req: Request, { params }: Params) {
   if ('camera_on' in b) update.camera_on = !!b.camera_on;
   if ('is_sharing' in b) update.is_sharing = !!b.is_sharing;
   if (b.state === 'left') { update.state = 'left'; update.left_at = now; }
-  if (b.state === 'declined' && isSelf) update.state = 'declined';
+  /**
+   * Answering the invitation.
+   *
+   * -- Why all three are one field ---------------------------------------
+   *
+   * `meeting_participants.state` already carried `declined` and had no
+   * opposite, so everybody who meant to come sat in `invited` - the same
+   * value as somebody who had not looked. 0038 added `accepted` and
+   * `tentative` beside it rather than a second column, because a person who
+   * has joined the room has self-evidently accepted and two columns would
+   * let those two facts disagree.
+   *
+   * Only about yourself. A host may remove somebody from a meeting; they
+   * may not answer on their behalf.
+   */
+  if (['accepted', 'declined', 'tentative'].includes(String(b.state)) && isSelf) {
+    update.state = String(b.state);
+  }
 
   // ── Host controls ──
   if ('is_muted' in b) update.is_muted = !!b.is_muted;

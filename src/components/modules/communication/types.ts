@@ -287,7 +287,18 @@ export interface MeetingParticipant {
   meetingId: string;
   memberId: string;
   role: 'host' | 'cohost' | 'attendee';
-  state: 'invited' | 'knocking' | 'admitted' | 'joined' | 'left' | 'removed' | 'declined';
+  /**
+   * Where this person stands.
+   *
+   * Their answer to the invitation before the meeting, and where they are in
+   * the room during it. One field because it is one question: somebody who
+   * has joined has self-evidently accepted. `accepted` and `tentative` were
+   * added in 0038 - before that an invitation could be refused and not
+   * accepted, so everybody intending to come sat in `invited`, which is the
+   * same value as somebody who had never looked at it.
+   */
+  state: 'invited' | 'accepted' | 'tentative' | 'declined'
+    | 'knocking' | 'admitted' | 'joined' | 'left' | 'removed';
   invitedAt: string;
   knockedAt: string | null;
   admittedAt: string | null;
