@@ -55,11 +55,27 @@ export async function GET(req: Request) {
 }
 
 /**
+ * The four fields that change a *job*, and are therefore not changed here.
+ *
+ * Department, manager, employment type and job title are what a promotion or a
+ * transfer is made of, and 0039 made them append-only history: they move
+ * through `apply_employment_change()`, which writes the membership row and the
+ * `employment_events` row in one transaction so the two can never disagree.
+ *
+ * Before that existed this route was the only writer and each of these was a
+ * plain UPDATE, so a promotion overwrote the fact that anybody had been
+ * promoted. Leaving that path in place beside the new one would be the shape
+ * this repository has paid for repeatedly - a second implementation next to a
+ * correct one, where half the writes silently skip the history.
+ */
+const HISTORY_FIELDS = ['department_id', 'manager_id', 'employment_type', 'job_title'] as const;
+
+/**
  * Update employment details on a membership.
  *
- * Changing someone's role or department is an administrative act, so this
- * requires `manage` rather than `edit`. Profile fields (name, avatar, phone)
- * belong to the person and are changed through their own profile, not here.
+ * Changing someone's role or number is an administrative act, so this requires
+ * `manage` rather than `edit`. Profile fields (name, avatar, phone) belong to
+ * the person and are changed through their own profile, not here.
  */
 export async function PATCH(req: Request) {
   const ctx = await authorize('hr', 'manage');
@@ -69,10 +85,23 @@ export async function PATCH(req: Request) {
     const b = acceptBody(await req.json());
     if (!b.member_id) return error('member_id is required', 422, 'VALIDATION_ERROR');
 
+    const attempted = HISTORY_FIELDS.filter(k => k in b);
+    if (attempted.length) {
+      return error(
+        `${attempted.join(', ')} ${attempted.length === 1 ? 'is' : 'are'} part of the ` +
+        'employment record and changing them has to be recorded. ' +
+        'Use PATCH /api/hr/people/<memberId>, which writes the change and its history together.',
+        422, 'USE_EMPLOYMENT_CHANGE',
+      );
+    }
+
     const update: Record<string, any> = {};
     for (const k of [
-      'role', 'department_id', 'manager_id', 'employee_number',
-      'employment_type', 'hired_on', 'is_active',
+      /* Administrative and descriptive facts, with no before-and-after worth
+         keeping: `role` is an access decision the audit log already records,
+         and the other three are corrections rather than events. */
+      'role', 'employee_number', 'hired_on', 'is_active',
+      'probation_ends_on', 'work_location',
     ]) {
       if (k in b) update[k] = b[k] === '' ? null : b[k];
     }
@@ -85,7 +114,8 @@ export async function PATCH(req: Request) {
       .update(update)
       .eq('organization_id', ctx.org.organizationId)
       .eq('id', b.member_id)
-      .select('id, role, department_id, manager_id, employment_type, hired_on, is_active')
+      .select('id, role, department_id, manager_id, employment_type, job_title, ' +
+              'hired_on, is_active, probation_ends_on, work_location, lifecycle_stage')
       .maybeSingle();
 
     // The last-owner trigger raises check_violation here when someone tries to
