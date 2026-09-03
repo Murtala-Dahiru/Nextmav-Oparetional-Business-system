@@ -2628,6 +2628,240 @@ in three places because it has bitten twice.
 
 ---
 
+## 5l. Phase 8 - HR becomes a People Operating System (2026-09-03)
+
+The largest phase so far, and the only one where most of the work was not
+redesign: three of the module's seven tabs had never stored a row.
+
+### What the audit found
+
+**Recruitment & Onboarding, Payroll & Compensation, and the HR Case Desk were
+`useState` arrays.** Every organisation on the platform saw Marcus Vance, Emily
+Chen and David Ross; the same three salaries; the same three cases. "Run
+Payroll Batch" was attached to nothing. "Avg Resolution Time: 18 Hours" and
+"SLA Compliance: 98.2%" were string literals.
+
+The case desk was the worst of the three, because its own dialogue said
+*"Private, confidential case submission directly to the HR Management team"*
+and then pushed onto an array and toasted success. Somebody could have typed a
+grievance into it.
+
+Four more, found on the way:
+
+- **`leave_balances` has existed since migration 0003** with entitlement, days
+  used and carry-over, and no endpoint had ever read or written it. The request
+  form asked people to book time off with no indication of whether they had
+  any.
+- **The People filter offered eight hard-coded department names** -
+  `'Engineering', 'Sales', 'HR', …` - so filtering by department returned an
+  empty table for every tenant that had not named its departments identically.
+- **`profiles_update` is `id = auth.uid()`**, and job title lives on
+  `profiles`. The head of HR could not record a promotion.
+- **`organization_members` was the whole of HR's memory.** Change somebody's
+  department and the fact that they used to be in Sales is gone, with the date
+  and the person who decided it.
+
+### Migrations 0039-0045
+
+**0039 - the employment record.** The membership row is the present tense;
+`employment_events` is the past. They are written together by one SECURITY
+DEFINER function, so they cannot disagree - the same discipline 0031 applied to
+incentives, applied to employment. `job_title`, `lifecycle_stage`,
+`probation_ends_on` and `work_location` move onto the membership;
+`lifecycle_stage` is descriptive and `is_active` remains the gate. 219
+memberships backfilled from `hired_on`/`joined_at`; the 19 terminated ones
+marked `former`. `v_hr_people` is a **new** view rather than a wider
+`v_org_directory`, because `db:apply` replays everything and an appended column
+makes the earlier statement fail on the next run.
+
+**0040 - recruitment.** Openings, candidates, applications, stage history,
+interviews, panel feedback, offers. A candidate is not an application: keeping
+them apart is what makes "have we spoken to this person before" answerable.
+Interviews write real `calendar_events` rows by trigger rather than growing a
+second calendar inside HR. `job_offers` is the only recruitment table gated on
+role - the hiring manager runs the process and does not see the number.
+
+**0041 - journeys.** An onboarding step *is* a to-do in My Work: one row in
+`employee_checklist_items`, one in `todos`, created together and ticking each
+other off in both directions. It uses 0026's existing source triple rather than
+adding a second mechanism. Finishing an onboarding promotes the person from
+`onboarding` to `active`; finishing an offboarding deliberately does **not**
+close the account, because the identity lifecycle is the only door to that.
+
+**0042 - compensation and payroll.** Effective-dated pay with closed
+predecessors, and a run whose lines freeze on approval. No jurisdiction's
+arithmetic is in the schema or the code: a ruleset is an ordered list of
+declarative steps over a named basis, so Nigerian PAYE and a UK banded system
+are two rows rather than two code paths. `is_statutory_complete` defaults false,
+cannot be set on create, and requires a written note saying what the rules were
+checked against.
+
+**0043 - cases and documents.** `is_restricted` is what makes raising a
+grievance about a colleague possible; `is_internal` on notes separates HR's
+margin from the correspondence. Documents add one column to `files` -
+`hr_category` - because `files_select` has enforced the HR document rule since
+0005 and a parallel table would be a second implementation of a working policy.
+
+**0044 and 0045** are the defects the harness and the screens found; see below.
+
+### The payroll engine, and the flag that governs it
+
+`lib/payroll.ts` is one pure function and 51 tests. `basis` may name `base`,
+`gross`, `taxable_gross`, `net_so_far` or an earlier step's code, which is what
+expresses "tax on pay after pension" without a special case. `annualise` exists
+because tax bands are annual figures everywhere, and running a monthly salary
+through them puts everybody in the lowest band - the single commonest way a
+hand-rolled payroll is wrong, and asserted against.
+
+`describeRuleset()` has three states and the dangerous one is the middle: a
+plausible ruleset nobody has certified computes something believable, which is
+exactly when a person believes it. The `Verdict` component renders it beside
+every payroll figure in the product, as text rather than a dismissible banner.
+
+### The composition
+
+```
+  HR Home
+  ┌──────────────────────────────────────────────────────────────────┐
+  │  date                                              [Refresh]     │
+  │  HEADCOUNT                    HEADCOUNT · LAST 12 MONTHS         │
+  │  14                            ╱‾‾‾‾‾‾‾‾‾╲___╱‾‾                 │
+  │  3 joined, 0 left in 30 days   Oct                    Sep        │
+  ├────────┬────────┬────────────┬──────────┬────────────────────────┤
+  │ IN     │ AWAY   │ AWAITING   │ HIRING   │ OPEN HR CASES          │
+  │ TODAY  │ TODAY  │ A DECISION │          │                        │
+  └────────┴────────┴────────────┴──────────┴────────────────────────┘
+
+  01 TODAY    attendance · who is away · what is waiting
+  02 SHAPE    headcount over a year · departments · employment types
+  03 MOVING   hiring · onboarding · leaving
+  04 PEOPLE   dates coming up · recent changes · cases
+```
+
+Ten sections in the order the lifecycle runs, in a sticky scrolling bar rather
+than a `TabsList` - ten pills wrap onto two rows below `xl`, and a pill on the
+second row is a destination people stop finding.
+
+### Two rules every figure obeys
+
+**Counted from rows the caller may see.** `v_hr_people` and the rest are
+`security_invoker` or RLS-bound, so an employee's Home is about themselves and
+the page says so. The alternative - compute organisation-wide with a privileged
+client and hide the detail - produces a screen where the total and the list
+disagree, and the total is the one that leaks.
+
+**Nothing is invented.** Turnover with nobody to divide by prints an em dash,
+not `0%`. Median tenure with no start dates prints "No start dates recorded
+yet". There are no birthdays, and the empty state says why: this product holds
+no date of birth and inventing one would be worse than the gap.
+
+### Defects found and fixed on the way
+
+1. **Two RLS policies pointing at each other.** `payroll_periods_select` read
+   `payroll_items` so an employee could see a paid run they were in;
+   `payroll_items_select` read `payroll_periods`. Each is correct alone;
+   together Postgres refuses with "infinite recursion detected in policy". The
+   reads moved into SECURITY DEFINER helpers. **Any two tables whose select
+   policies reference each other will recurse, and it cannot be found by
+   reading either one.**
+2. **A `CASE` does not shield a field that does not exist.**
+   `guard_frozen_payroll_rows()` is attached to two tables and chose its column
+   with `CASE TG_TABLE_NAME WHEN 'payroll_items' THEN NEW.period_id ELSE (…
+   NEW.item_id) END`. plpgsql substitutes every record reference before
+   execution, so `NEW.item_id` had to resolve on a row with no such column.
+   Calculating a pay run failed outright. `IF` is the guard; a `CASE` is not.
+3. **A promotion that said the person had no title before.**
+   `organization_members.job_title` is NULL until HR first changes it, so the
+   first promotion in every history read "→ Senior Engineer" from nothing. It
+   falls back to `profiles.job_title` now, and the rows already written are
+   corrected. The most expensive of the four, because nobody looks at a
+   promotion record until they need it.
+4. **Six ambiguous embeds.** `departments` has two foreign keys from
+   `organization_members` - `department_id` and `head_id` - so a nested
+   `department:departments(...)` is PGRST201. The checklist one failed
+   *quietly*: the route fell back to the RPC's return value and a journey came
+   back with no items.
+5. **The document rule was only half a rule** (0045). A step marked
+   `requires_document` refused completion at the endpoint - but 0041 gave every
+   step a to-do, so there were two doors and one was guarded. The onboarding
+   board showed "Signed contract on file" ticked with no file. The refusal moved
+   into the trigger, in the same words.
+6. **Two raw enums on HR Home.** `employment_events.reason` is free text for
+   most kinds and a stored enum for two, so "market_adjustment" and
+   "resignation" appeared under people's names. One `eventLine` describer now,
+   shared with the profile timeline.
+7. **A truncating child in a flex row needs `flex-1`.** `min-w-0` alone only
+   permits it to shrink below its content; it still sizes to that content, so a
+   long payslip explanation pushed the amount out of the dialogue and the whole
+   thing scrolled sideways.
+
+### Reused rather than rebuilt
+
+`auth_visible_member_ids()`, `authorize()`, `scopeWhere()`, the `notify_*`
+trigger convention, the realtime publication loop, `next_document_number()`,
+0026's to-do source triple, `files.is_confidential` and `files.member_id`, the
+`readout` primitives, `formatDay`/`relativeDay`/`todayISO` from `lib/format`.
+
+**`lib/provisioning.ts` is new and is the opposite of an addition**: completing
+a hire needed exactly the hundred and fifty lines `/api/admin/users` uses, so
+they moved out of that route and both call them. A duplicate would have got
+three of the four subtleties right.
+
+**`/api/hr/employees` PATCH lost four fields.** Department, manager, employment
+type and job title refuse now, with a message pointing at
+`PATCH /api/hr/people/<id>`. Two writers where one records history and one does
+not is how a promotion overwrites the evidence that anybody was promoted.
+
+### Verified
+
+`npm run hr:verify` - 164 assertions over real HTTP as an owner, a manager and
+an employee, so what is tested is the route guard, the validation, the RLS
+policy and the trigger together. `npm run test:payroll` - 51, no server needed.
+Both are in `verify:all`.
+
+`npm run hr:cleanup` removes what the harness cannot: an approved pay run
+refuses deletion, `employment_events` has no DELETE policy, and a ruleset a run
+has used is `ON DELETE RESTRICT` - all three correct, and all three accumulate
+in a workspace whose purpose is to be looked at.
+
+Every section was opened and read in the browser at 800px and at 375, including
+the Employee 360 and a payslip.
+
+### Changed
+
+Migrations 0039-0045. `src/lib/{hr,payroll,payroll-starters,hr-templates,
+provisioning}.ts` (new). Thirty-one route files under `src/app/api/hr/`, plus
+`api/admin/users` (delegates provisioning) and `api/hr/employees` (refuses the
+four history fields). `src/components/modules/hr/{types,data,ui,home,people,
+profile,forms,org,recruitment,journeys,leave,pay,cases,index}` - `index.tsx`
+went from 1,672 lines of everything to a 230-line shell. `attendance-tab.tsx`
+and `performance-tab.tsx` are unchanged and mounted as sections.
+`scripts/{hr-verify,hr-cleanup}.mjs` and `scripts/payroll.test.mts` (new),
+`contract-check.mjs` (points at the new types), `package.json`.
+
+**Not changed**: the attendance engine, the leave approval and policy logic,
+the identity lifecycle, `lib/permissions.ts` (no new role, no new module, no
+widened grant), or any Phase 5 performance table.
+
+### Carried forward
+
+- **Attendance and Performance are mounted, not redesigned.** Both are Phase 5
+  and earlier work and both still hold their own `fetch` helpers and
+  `emerald-*` classes. They are the two sections of ten that have not had this
+  pass, and they should get one.
+- **HR documents have no upload control.** The endpoint, the storage path
+  check, the confidentiality rule and the reader all exist; the profile lists
+  documents and nothing in the UI puts one there. It needs the same uploader
+  Workspace and Projects use, which is a shared component and not a new one.
+- **`contract:check` skips `Projects · Task` and `CRM · Activity`** - both
+  interfaces have moved out of the files it names. Outside this phase's fence.
+- **The org chart cannot be printed or exported**, and a department head is
+  read-only here: `departments.head_id` is written in Admin.
+- **Team membership** is displayed and not editable, for the reason Phase 9
+  gave: nothing in the product writes it yet.
+
+---
+
 ## 6. The phases
 
 | # | Phase | State |
@@ -2639,7 +2873,7 @@ in three places because it has bitten twice.
 | 5 | Performance, incentives and the HR layer | **done** |
 | 6 | Projects | **done** |
 | 7 | Finance | next |
-| 8 | HR (the rest: payroll, cases, onboarding) | |
+| 8 | HR — the People Operating System | **done** |
 | 9 | Communication | **done** (taken out of order) |
 | 10 | Support | |
 | 11 | Inventory | |

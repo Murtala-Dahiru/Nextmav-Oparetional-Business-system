@@ -124,7 +124,7 @@ const SUPPORT = 'src/components/modules/support/index.tsx';
 // copies of one response shape is precisely the drift this tool exists to find.
 const WORKSPACE = 'src/components/modules/workspace/types.ts';
 const FINANCE = 'src/components/modules/finance/index.tsx';
-const HR = 'src/components/modules/hr/index.tsx';
+const HR = 'src/components/modules/hr/types.ts';
 const ATTENDANCE = 'src/components/modules/hr/attendance-tab.tsx';
 // The communication shapes moved into their own module in 0023, for the same
 // reason My Work's did: the timeline, the composer, the dialogs and the
@@ -196,7 +196,13 @@ const LIST_CONTRACTS = [
   { label: 'Admin · Directory', file: ADMIN, iface: 'UserRecord', path: '/api/admin/users' },
   { label: 'HR · Directory',    file: HR,    iface: 'UserRecord', path: '/api/admin/users' },
   { label: 'HR · Attendance',   file: ATTENDANCE, iface: 'AttendanceRecord', path: '/api/hr/attendance' },
-  { label: 'HR · Leave',        file: HR,    iface: 'LeaveRequest', path: '/api/hr/leave' },
+  { label: 'HR · Leave',        file: HR,    iface: 'LeaveRow', path: '/api/hr/leave' },
+  // Phase 8. Ten screens read `hr/types.ts`, which is precisely the size of
+  // surface where one renamed column renders a blank cell nobody notices.
+  // `Person` is the shape six of them share, and `v_hr_people` always has rows
+  // — the other HR tables are empty in a fresh workspace, and a list endpoint
+  // with no rows tells this script nothing.
+  { label: 'HR · People',       file: HR, iface: 'Person', path: '/api/hr/people' },
   { label: 'Finance · Invoice', file: FINANCE, iface: 'InvoiceRecord', path: '/api/finance/invoices' },
   { label: 'Inventory · PO',    file: SUPPLY,  iface: 'PurchaseOrder', path: '/api/inventory/purchase-orders' },
   { label: 'Inventory · Movement', file: SUPPLY, iface: 'StockMovement', path: '/api/inventory/movements' },
