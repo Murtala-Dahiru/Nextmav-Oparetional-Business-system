@@ -583,7 +583,10 @@ let template = null, checklist = null;
       check(items.some(i => i.todoId),
         'and a to-do in the assignee\'s My Work - the step and the to-do are one obligation');
 
-      const owned = items.find(i => i.todoId && i.assigneeId);
+      /* An ordinary step. A document-requiring one refuses to be ticked from
+         either door (0045), which is asserted separately below - picking one
+         here would test the refusal and call it a sync failure. */
+      const owned = items.find(i => i.todoId && i.assigneeId && !i.requiresDocument);
       if (owned) {
         const todos = await owner('/api/todos?view=all');
         const mirrored = (todos.json?.data ?? []).find(t => t.id === owned.todoId);
@@ -613,6 +616,31 @@ let template = null, checklist = null;
         });
         check(forced.status === 422,
           'a step that requires a document cannot be ticked without one - otherwise "signed contract on file" certifies nothing');
+
+        /**
+         * The same rule, through the other door.
+         *
+         * 0041 gave every step a to-do, so there are two ways to complete one
+         * and only the endpoint checked. Ticking the to-do wrote is_done
+         * straight into the row, and the onboarding board showed a signed
+         * contract on file with no file. 0045 moved the refusal into the
+         * trigger, which is the only place both doors pass through.
+         */
+        if (needsDoc.todoId) {
+          const viaTodo = await owner(`/api/todos/${needsDoc.todoId}`, {
+            method: 'PATCH', body: JSON.stringify({ isDone: true }),
+          });
+          check(viaTodo.status >= 400,
+            'and ticking its to-do in My Work is refused for the same reason',
+            `status ${viaTodo.status}`);
+
+          const after = await owner(`/api/hr/checklists/${checklist.id}`);
+          const stillOpen = (after.json?.data?.items ?? []).find(i => i.id === needsDoc.id);
+          check(stillOpen?.isDone === false,
+            'so the step is still open, rather than certified by nothing');
+        } else {
+          skip('the document-requiring step has no to-do to tick');
+        }
       } else {
         skip('no document-requiring step in this template');
       }
