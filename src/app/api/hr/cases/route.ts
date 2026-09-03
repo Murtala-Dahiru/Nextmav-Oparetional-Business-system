@@ -12,7 +12,7 @@ const SELECT =
   'profiles!organization_members_user_id_fkey(full_name, avatar_url)), ' +
   'subject:organization_members!hr_cases_member_id_fkey(id, ' +
   'profiles!organization_members_user_id_fkey(full_name, avatar_url), ' +
-  'department:departments(id, name)), ' +
+  'department:departments!organization_members_department_id_fkey(id, name)), ' +
   'assignee:organization_members!hr_cases_assigned_to_fkey(id, ' +
   'profiles!organization_members_user_id_fkey(full_name, avatar_url))';
 

@@ -7,7 +7,7 @@ import { JOURNEY_KINDS } from '@/lib/hr';
 const SELECT =
   '*, member:organization_members!employee_checklists_member_id_fkey(id, ' +
   'profiles!organization_members_user_id_fkey(full_name, avatar_url), ' +
-  'department:departments(id, name)), ' +
+  'department:departments!organization_members_department_id_fkey(id, name)), ' +
   'items:employee_checklist_items(id, title, description, category, due_on, is_done, ' +
   'completed_at, requires_document, document_file_id, sort_order, todo_id, assignee_id, ' +
   'assignee:organization_members!employee_checklist_items_assignee_id_fkey(id, ' +

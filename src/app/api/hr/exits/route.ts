@@ -7,7 +7,7 @@ import { EXIT_TYPES } from '@/lib/hr';
 const SELECT =
   '*, member:organization_members!employee_exits_member_id_fkey(id, ' +
   'profiles!organization_members_user_id_fkey(full_name, avatar_url), ' +
-  'department:departments(id, name)), ' +
+  'department:departments!organization_members_department_id_fkey(id, name)), ' +
   'checklist:employee_checklists(id, status, name, anchor_date), ' +
   'recorder:organization_members!employee_exits_recorded_by_fkey(id, ' +
   'profiles!organization_members_user_id_fkey(full_name))';

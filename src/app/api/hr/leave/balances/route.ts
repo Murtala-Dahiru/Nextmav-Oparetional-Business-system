@@ -8,7 +8,7 @@ import { todayIn } from '@/lib/org-time';
 const SELECT =
   '*, member:organization_members!leave_balances_member_id_fkey(id, ' +
   'profiles!organization_members_user_id_fkey(full_name, avatar_url), ' +
-  'department:departments(id, name))';
+  'department:departments!organization_members_department_id_fkey(id, name))';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════

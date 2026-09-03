@@ -31,7 +31,7 @@ export async function GET(_req: Request, { params }: Params) {
     .select(
       '*, member:organization_members!payroll_items_member_id_fkey(id, employment_type, ' +
       'profiles!organization_members_user_id_fkey(full_name, avatar_url), ' +
-      'department:departments(id, name)), ' +
+      'department:departments!organization_members_department_id_fkey(id, name)), ' +
       'lines:payroll_lines(*)',
     )
     .eq('period_id', id)
