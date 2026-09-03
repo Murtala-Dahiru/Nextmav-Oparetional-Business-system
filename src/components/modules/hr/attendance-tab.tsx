@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import {
   Clock, LogIn, LogOut, CheckCircle2, AlertTriangle, CalendarOff,
-  Loader2, Wifi, TrendingUp, Users, CalendarDays, Pencil,
+  Loader2, Wifi, TrendingUp, Users, CalendarDays, Pencil, History, ShieldAlert,
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/shared/page-header';
@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/select';
 import { formatDate } from '@/lib/format';
 import { useAppStore } from '@/store/app-store';
+import { useModuleRealtime } from '@/hooks/use-realtime';
 import {
   formatDuration, STATUS_LABELS, ATTENDANCE_STATUSES, type AttendanceStatus,
 } from '@/lib/attendance';
@@ -32,11 +33,6 @@ import {
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
 // ═══════════════════════════════════════════════════════════════════════════
-
-interface AttendanceUser {
-  id: string; firstName: string; lastName: string;
-  department: string; jobTitle: string; avatar: string;
-}
 
 /**
  * A row of `/api/hr/attendance`.
@@ -55,19 +51,22 @@ interface AttendanceUser {
 interface AttendanceRecord {
   id: string; memberId: string; workDate: string;
   checkedInAt: string | null; checkedOutAt: string | null;
-  status: AttendanceStatus; workedMinutes: number; lateMinutes: number;
-  note: string; adjustedAt: string | null;
+  status: AttendanceStatus; workedMinutes: number; lateMinutes: number; earlyMinutes: number;
+  note: string; adjustedAt: string | null; adjustmentReason: string | null; adjustedBy: string | null;
   member?: {
     id: string;
     departmentId: string | null;
     profiles?: { fullName: string; avatarUrl: string | null };
+    department?: { id: string; name: string } | null;
   };
+  adjuster?: { id: string; profiles?: { fullName: string } } | null;
 }
 
 interface Summary {
   total: number; page: number; pageSize: number; totalPages: number;
-  daysRecorded: number; present: number; late: number; absent: number;
-  onLeave: number; remote: number; totalMinutes: number; averageMinutes: number;
+  daysRecorded: number; present: number; late: number; early: number; halfDay: number;
+  absent: number; onLeave: number; remote: number; attended: number;
+  totalMinutes: number; averageMinutes: number;
   totalLateMinutes: number; attendanceRate: number; punctualityRate: number;
   from: string; to: string; people: number; expectedDays: number;
 }
@@ -80,9 +79,21 @@ interface ClockState {
   canCheckOut: boolean;
 }
 
-const STATUS_STYLES: Record<string, string> = {
+/** One row of `attendance_adjustments` — what a correction changed. */
+interface Adjustment {
+  id: string; workDate: string; reason: string; createdAt: string;
+  previousStatus: AttendanceStatus | null;
+  previousCheckedInAt: string | null; previousCheckedOutAt: string | null; previousWorkedMinutes: number | null;
+  newStatus: AttendanceStatus;
+  newCheckedInAt: string | null; newCheckedOutAt: string | null; newWorkedMinutes: number;
+  adjuster?: { id: string; profiles?: { fullName: string; avatarUrl: string | null } } | null;
+}
+
+const STATUS_STYLES: Record<AttendanceStatus, string> = {
   present: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  early: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
   late: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  half_day: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
   absent: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
   on_leave: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
   remote: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
@@ -98,6 +109,9 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 
 const timeOf = (iso: string | null) =>
   iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+
+const dateTimeOf = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
 /** Current month as an ISO date, for the default period. */
 function monthBounds() {
@@ -140,6 +154,18 @@ function MyDay({ onChanged }: { onChanged: () => void }) {
     const t = setInterval(() => setNow(new Date()), 1000 * 30);
     return () => clearInterval(t);
   }, []);
+
+  /**
+   * Live, not just self-triggered.
+   *
+   * `onChanged` covers this device's own click. It does not cover a manager
+   * correcting today's row from the register while the employee's clock card
+   * is open, or a second device this same person is also signed into — both
+   * of which used to require a manual reload to notice. `attendance_records`
+   * has carried REPLICA IDENTITY FULL and a place in the publication since
+   * 0006; nothing before this subscribed to it.
+   */
+  useModuleRealtime('hr-attendance-clock', ['attendance_records'], load);
 
   const act = async (action: 'in' | 'out', remote = false) => {
     setBusy(true);
@@ -200,6 +226,13 @@ function MyDay({ onChanged }: { onChanged: () => void }) {
                 {rec.lateMinutes} min late
               </p>
             )}
+            {rec?.adjustedAt && (
+              <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+                <History className="size-3" />
+                Corrected by {rec.adjuster?.profiles?.fullName ?? 'HR'}
+                {rec.adjustmentReason ? ` — ${rec.adjustmentReason}` : ''}
+              </p>
+            )}
           </div>
         </div>
 
@@ -243,6 +276,94 @@ function MyDay({ onChanged }: { onChanged: () => void }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  History — what a correction actually changed
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * The audit trail for one record, read from `attendance_adjustments`.
+ *
+ * Available to anyone who can see the row it corrects — an employee reads
+ * their own, exactly as `attendance_adjustments_select` (0046) permits — not
+ * only to people who can make a correction. Being told your Tuesday was
+ * changed, by whom and why, is the assurance this table exists to give the
+ * person whose day it was, not a management convenience.
+ */
+function HistoryDialog({
+  record, open, onOpenChange,
+}: {
+  record: AttendanceRecord | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [rows, setRows] = useState<Adjustment[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async (attendanceId: string) => {
+    setLoading(true);
+    try {
+      const res = await api<{ data: Adjustment[] }>(`/api/hr/attendance/adjustments?attendanceId=${attendanceId}`);
+      setRows(res.data);
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open && record) void load(record.id);
+  }, [open, record, load]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Correction history</DialogTitle>
+          <DialogDescription>
+            {record?.member?.profiles?.fullName ? `${record.member.profiles.fullName} · ` : ''}
+            {record ? formatDate(record.workDate, { day: 'numeric', month: 'long', year: 'numeric' }) : ''}
+          </DialogDescription>
+        </DialogHeader>
+
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="text-muted-foreground size-5 animate-spin" />
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="text-muted-foreground py-6 text-center text-sm">No corrections recorded.</p>
+        ) : (
+          <div className="flex max-h-[360px] flex-col gap-3 overflow-y-auto">
+            {rows.map(a => (
+              <div key={a.id} className="rounded-lg border p-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{a.adjuster?.profiles?.fullName ?? 'HR'}</span>
+                  <span className="text-muted-foreground text-xs">{dateTimeOf(a.createdAt)}</span>
+                </div>
+                <p className="text-muted-foreground mt-1 text-xs italic">"{a.reason}"</p>
+                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div>
+                    <span className="text-muted-foreground">Before: </span>
+                    {STATUS_LABELS[a.previousStatus ?? 'absent'] ?? '—'}
+                    {a.previousCheckedInAt && ` · in ${timeOf(a.previousCheckedInAt)}`}
+                    {a.previousCheckedOutAt && ` · out ${timeOf(a.previousCheckedOutAt)}`}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">After: </span>
+                    {STATUS_LABELS[a.newStatus] ?? a.newStatus}
+                    {a.newCheckedInAt && ` · in ${timeOf(a.newCheckedInAt)}`}
+                    {a.newCheckedOutAt && ` · out ${timeOf(a.newCheckedOutAt)}`}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  Attendance tab
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -259,8 +380,11 @@ export default function AttendanceTab() {
 
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [editing, setEditing] = useState<AttendanceRecord | null>(null);
-  const [form, setForm] = useState({ status: 'present', checkIn: '', checkOut: '', note: '' });
+  const [form, setForm] = useState({ status: 'present', checkIn: '', checkOut: '', note: '', reason: '' });
   const [saving, setSaving] = useState(false);
+
+  const [historyRecord, setHistoryRecord] = useState<AttendanceRecord | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -279,6 +403,17 @@ export default function AttendanceTab() {
 
   useEffect(() => { load(); }, [load, version]);
 
+  /**
+   * The whole register, live.
+   *
+   * A colleague checking in, a manager correcting a row, a leave approval
+   * that reaches the same table — none of it used to touch a register that
+   * was already open. `attendance_adjustments` is included so the "adjusted"
+   * marker and the history dialog reflect a correction the moment it lands,
+   * not on the next reload.
+   */
+  useModuleRealtime('hr-attendance-register', ['attendance_records', 'attendance_adjustments'], () => load());
+
   const openAdjust = (r: AttendanceRecord) => {
     setEditing(r);
     setForm({
@@ -286,12 +421,24 @@ export default function AttendanceTab() {
       checkIn: r.checkedInAt ? new Date(r.checkedInAt).toISOString().slice(0, 16) : '',
       checkOut: r.checkedOutAt ? new Date(r.checkedOutAt).toISOString().slice(0, 16) : '',
       note: r.note ?? '',
+      reason: '',
     });
     setAdjustOpen(true);
   };
 
+  const openHistory = (r: AttendanceRecord) => {
+    setHistoryRecord(r);
+    setHistoryOpen(true);
+  };
+
+  const reasonMissing = adjustOpen && form.reason.trim() === '';
+
   const saveAdjust = async () => {
     if (!editing) return;
+    if (reasonMissing) {
+      toast.error('Say why this record is being corrected.');
+      return;
+    }
     setSaving(true);
     try {
       await api('/api/hr/attendance', {
@@ -300,9 +447,23 @@ export default function AttendanceTab() {
           memberId: editing.memberId,
           workDate: editing.workDate,
           status: form.status,
-          checkInAt: form.checkIn ? new Date(form.checkIn).toISOString() : null,
-          checkOutAt: form.checkOut ? new Date(form.checkOut).toISOString() : null,
+          /**
+           * `checkedInAt` / `checkedOutAt`, not `checkInAt` / `checkOutAt`.
+           *
+           * `acceptBody` snake-cases a camelCase key by inserting an
+           * underscore before every capital, so `checkInAt` becomes
+           * `check_in_at` — a column that has never existed; the real one is
+           * `checked_in_at`. This is what the dialog sent before this fix,
+           * silently: the request succeeded, the status and note were saved,
+           * and the two fields the form exists for were dropped on the floor
+           * every time. No harness caught it because none of them typed into
+           * this form — see `app:verify`'s own note about the gap between a
+           * green harness and a screen a person actually used.
+           */
+          checkedInAt: form.checkIn ? new Date(form.checkIn).toISOString() : null,
+          checkedOutAt: form.checkOut ? new Date(form.checkOut).toISOString() : null,
           note: form.note,
+          adjustmentReason: form.reason.trim(),
         }),
       });
       toast.success('Attendance corrected');
@@ -397,7 +558,9 @@ export default function AttendanceTab() {
                       <th className="p-3 text-left font-medium">Out</th>
                       <th className="p-3 text-left font-medium">Worked</th>
                       <th className="p-3 text-left font-medium">Status</th>
-                      {canAdjust && <th className="p-3 text-right font-medium">Adjust</th>}
+                      <th className="p-3 text-right font-medium">
+                        {canAdjust ? 'Adjust' : ''}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -405,11 +568,10 @@ export default function AttendanceTab() {
                       <tr key={r.id} className="hover:bg-accent/30 border-b last:border-0">
                         <td className="p-3 font-medium">
                           {r.member?.profiles?.fullName || '—'}
-                          {r.adjustedAt && (
-                            <span className="text-muted-foreground ml-1.5 text-[10px]">(adjusted)</span>
-                          )}
                         </td>
-                        <td className="text-muted-foreground p-3">{r.member?.departmentId ? 'Assigned' : '—'}</td>
+                        <td className="text-muted-foreground p-3">
+                          {r.member?.department?.name ?? '—'}
+                        </td>
                         <td className="p-3 tabular-nums">{timeOf(r.checkedInAt)}</td>
                         <td className="p-3 tabular-nums">{timeOf(r.checkedOutAt)}</td>
                         <td className="p-3 tabular-nums">{formatDuration(r.workedMinutes)}</td>
@@ -421,14 +583,23 @@ export default function AttendanceTab() {
                             <span className="ml-1.5 text-xs text-amber-600">+{r.lateMinutes}m</span>
                           )}
                         </td>
-                        {canAdjust && (
-                          <td className="p-3 text-right">
-                            <Button variant="ghost" size="icon" className="size-8"
-                              onClick={() => openAdjust(r)} aria-label="Adjust record">
-                              <Pencil className="size-3.5" />
-                            </Button>
-                          </td>
-                        )}
+                        <td className="p-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {r.adjustedAt && (
+                              <Button variant="ghost" size="icon" className="text-muted-foreground size-8"
+                                onClick={() => openHistory(r)} aria-label="View correction history"
+                                title={`Corrected by ${r.adjuster?.profiles?.fullName ?? 'HR'}`}>
+                                <History className="size-3.5" />
+                              </Button>
+                            )}
+                            {canAdjust && (
+                              <Button variant="ghost" size="icon" className="size-8"
+                                onClick={() => openAdjust(r)} aria-label="Adjust record">
+                                <Pencil className="size-3.5" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -453,7 +624,7 @@ export default function AttendanceTab() {
             <DialogDescription>
               {editing?.member?.profiles?.fullName ? `${editing.member.profiles.fullName} · ` : ''}
               {editing ? formatDate(editing.workDate, { day: 'numeric', month: 'long', year: 'numeric' }) : ''}
-              {' '}— the correction is recorded against your name.
+              {' '}— the correction is recorded against your name, and the times it replaces are kept.
             </DialogDescription>
           </DialogHeader>
 
@@ -481,16 +652,39 @@ export default function AttendanceTab() {
                   onChange={e => setForm({ ...form, checkOut: e.target.value })} />
               </div>
             </div>
+            {/*
+              Reason is separate from the note, and required.
+
+              The note is the record's own free-text field — an employee may
+              set it on their own row, and it can say something as ordinary as
+              "worked from the Lagos office". The reason is the audit trail: it
+              is kept forever in `attendance_adjustments`, next to who wrote it
+              and when, and the database refuses the write without one.
+              Conflating the two meant a correction's only trace of "why" was
+              whatever happened to be sitting in a field nobody was required to
+              fill in.
+            */}
             <div className="flex flex-col gap-1.5">
-              <Label className="text-sm font-medium">Reason for correction</Label>
-              <Textarea rows={2} value={form.note} placeholder="Forgot to clock out…"
+              <Label className="text-sm font-medium">
+                Reason for this correction <span className="text-destructive">*</span>
+              </Label>
+              <Textarea rows={2} value={form.reason} placeholder="Forgot to clock out…"
+                onChange={e => setForm({ ...form, reason: e.target.value })} />
+              <p className="text-muted-foreground flex items-center gap-1 text-[11px]">
+                <ShieldAlert className="size-3" />
+                Kept permanently with this correction. Visible to {editing?.member?.profiles?.fullName || 'this person'}.
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-sm font-medium">Note <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Textarea rows={2} value={form.note} placeholder="Anything worth recording on the day itself…"
                 onChange={e => setForm({ ...form, note: e.target.value })} />
             </div>
           </div>
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setAdjustOpen(false)}>Cancel</Button>
-            <Button onClick={saveAdjust} disabled={saving}
+            <Button onClick={saveAdjust} disabled={saving || reasonMissing}
               className="bg-emerald-600 text-white hover:bg-emerald-700">
               {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
               Save correction
@@ -498,6 +692,8 @@ export default function AttendanceTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <HistoryDialog record={historyRecord} open={historyOpen} onOpenChange={setHistoryOpen} />
     </div>
   );
 }

@@ -18,7 +18,7 @@
     "app:verify": "node scripts/app-verify.mjs",
     "identity:verify": "node scripts/identity-verify.mjs",
     "contract:check": "node scripts/contract-check.mjs",
-    "verify:all": "npm run db:verify && npm run schema:check && npm run security:check && npm run test:layout && npm run test:navigation && npm run test:dashboard && npm run test:import && npm run test:rate-limit && npm run test:payroll && npm run test:observability && npm run app:verify && npm run identity:verify && npm run contract:check && npm run realtime:verify && npm run hr:verify",
+    "verify:all": "npm run db:verify && npm run schema:check && npm run security:check && npm run test:layout && npm run test:navigation && npm run test:dashboard && npm run test:import && npm run test:rate-limit && npm run test:payroll && npm run test:attendance && npm run test:observability && npm run app:verify && npm run identity:verify && npm run contract:check && npm run realtime:verify && npm run hr:verify",
     "schema:check": "tsx scripts/schema-contract.mts",
     "test:rate-limit": "tsx scripts/rate-limit.test.mts",
     "test:observability": "tsx scripts/observability.test.mts",
@@ -34,7 +34,8 @@
     "workspace:verify": "node scripts/workspace-verify.mjs",
     "test:payroll": "tsx scripts/payroll.test.mts",
     "hr:verify": "node scripts/hr-verify.mjs",
-    "hr:cleanup": "node scripts/hr-cleanup.mjs"
+    "hr:cleanup": "node scripts/hr-cleanup.mjs",
+    "test:attendance": "node scripts/attendance-integrity.test.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

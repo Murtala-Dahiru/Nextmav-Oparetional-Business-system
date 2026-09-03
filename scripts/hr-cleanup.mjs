@@ -144,6 +144,27 @@ try {
       DELETE FROM candidates
        WHERE organization_id = $1 AND full_name LIKE '%' || $2 || '%'`],
 
+    /**
+     * The synthetic attendance day the harness corrects, and the history row
+     * that correction wrote.
+     *
+     * Not exposed through a DELETE endpoint — attendance is a record of what
+     * happened, correct it, never delete it, per the RLS policy comment in
+     * 0005 — so this is the same service-role escape hatch as the rest of the
+     * file. The adjustment is removed first: `attendance_id` is `ON DELETE
+     * SET NULL` rather than `CASCADE`, precisely so a deleted record does not
+     * take its own history with it, which means deleting the record first
+     * would leave an orphaned adjustment this script would then need a second
+     * pass to find.
+     */
+    ['attendance history', `
+      DELETE FROM attendance_adjustments
+       WHERE organization_id = $1 AND reason LIKE '%' || $2 || '%'`],
+    ['attendance records', `
+      DELETE FROM attendance_records
+       WHERE organization_id = $1
+         AND (note LIKE '%' || $2 || '%' OR adjustment_reason LIKE '%' || $2 || '%')`],
+
     /* The notifications the whole lot raised, which would otherwise leave the
        demo owner with a bell full of fixtures. */
     ['notifications', `

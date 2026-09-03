@@ -2,6 +2,7 @@ import { authorize, pgError } from '@/lib/auth-context';
 import { success } from '@/lib/api-response';
 import { todayIn } from '@/lib/org-time';
 import { OPEN_CASE_STATUSES } from '@/lib/hr';
+import { ATTENDED_STATUSES } from '@/lib/attendance';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -207,7 +208,19 @@ export async function GET() {
     date: today,
     expected: people.filter(p => !onLeaveIds.has(p.member_id) && p.lifecycle_stage !== 'onboarding').length,
     recorded: records.length,
-    present: records.filter((r: any) => ['present', 'late', 'half_day'].includes(r.status) && !r.is_remote).length,
+    /**
+     * In today, on site — from the one list attendance-wide statuses are
+     * counted from (see ATTENDED_STATUSES), not a fourth hand-written subset.
+     *
+     * This used to name three of the five statuses that mean "at work" and
+     * left out `early`, so anybody who arrived before the working day started
+     * was missing from the one figure on HR Home that says who is in. The
+     * `!is_remote` was already redundant — `is_remote` and `status='remote'`
+     * are set together by the same clock — and dropped, since "remote" is its
+     * own bucket immediately below.
+     */
+    present: records.filter((r: any) =>
+      (ATTENDED_STATUSES as readonly string[]).includes(r.status) && r.status !== 'remote').length,
     remote: records.filter((r: any) => r.is_remote || r.status === 'remote').length,
     late: records.filter((r: any) => (r.late_minutes ?? 0) > 0).length,
     absent: records.filter((r: any) => r.status === 'absent').length,

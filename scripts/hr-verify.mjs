@@ -1106,9 +1106,99 @@ section('16. The org chart is drawn from real records');
     'and sees no more of it than the owner does');
 }
 
-/* -- 17. Clean up --------------------------------------------------------- */
+/* -- 17. Attendance -------------------------------------------------------- */
 
-section('17. Clean up');
+/**
+ * The correction endpoint, driven exactly as the dialog drives it.
+ *
+ * `scripts/attendance-integrity.test.mjs` proves the invariants that live in
+ * Postgres - the clock is atomic, an employee cannot rewrite their own record,
+ * a correction is attributed and kept - by writing straight to the table, on
+ * purpose: that is the stronger claim, and it holds regardless of which
+ * client is asking.
+ *
+ * It cannot catch this section's bug. The dialog sent `checkInAt` /
+ * `checkOutAt`; `acceptBody` snake-cases those to `check_in_at` /
+ * `check_out_at`, a column that has never existed, while the real one is
+ * `checked_in_at`. The request still returned 201 - `.upsert()` on an unknown
+ * key is simply ignored - so every correction made through the product saved
+ * its status and its note and silently dropped the times the form exists to
+ * fix. A test that talks to Postgres directly cannot see a bug that lives
+ * entirely in what the browser sends, so this drives the same HTTP request
+ * the dialog makes and checks what comes back.
+ */
+section('17. Attendance: a correction is written, attributed, and readable back');
+let attendanceRecordId = null;
+{
+  if (!subject) {
+    skip('no subject');
+  } else {
+    const session = await owner('/api/auth/session');
+    const org = session.json?.data?.organization;
+
+    const workDate = plus(-45); // safely clear of anything an interactive session touched today
+    const checkedInAt = new Date(`${workDate}T09:00:00Z`).toISOString();
+    const checkedOutAt = new Date(`${workDate}T17:00:00Z`).toISOString();
+    /**
+     * Same instant, not same string.
+     *
+     * Postgres prints a `timestamptz` as `2026-07-20T09:00:00+00:00`; the
+     * client sent `2026-07-20T09:00:00.000Z`. `===` would fail on that
+     * difference and call it a stored-wrong-time bug, which is not what it
+     * is - `Date.parse` gives both the same millisecond count, which is the
+     * fact actually under test here.
+     */
+    const sameInstant = (a, b) => a != null && b != null && Date.parse(a) === Date.parse(b);
+
+    const noReason = await owner('/api/hr/attendance', {
+      method: 'POST',
+      body: JSON.stringify({
+        memberId: subject.memberId, workDate, status: 'present', checkedInAt, checkedOutAt,
+      }),
+    });
+    check(noReason.status === 422, 'a correction with no reason is refused', String(noReason.status));
+
+    const corrected = await owner('/api/hr/attendance', {
+      method: 'POST',
+      body: JSON.stringify({
+        memberId: subject.memberId, workDate, status: 'present', checkedInAt, checkedOutAt,
+        note: `Synthetic day for verification (${TAG})`,
+        adjustmentReason: `Verification fixture ${RUN} (${TAG})`,
+      }),
+    });
+    check(corrected.status === 201, 'HR corrects a record', corrected.json?.error?.message);
+    const row = corrected.json?.data;
+    attendanceRecordId = row?.id ?? null;
+
+    check(sameInstant(row?.checkedInAt, checkedInAt),
+      'the check-in time actually sent by the dialog is the one stored',
+      `sent ${checkedInAt}, got ${row?.checkedInAt}`);
+    check(sameInstant(row?.checkedOutAt, checkedOutAt),
+      'and so is the check-out time',
+      `sent ${checkedOutAt}, got ${row?.checkedOutAt}`);
+    /* Eight hours less the organisation's own unpaid break - attendance_derive()
+       reads it from `organizations.break_minutes`, never from the client. */
+    check(row?.workedMinutes === 480 - (org?.breakMinutes ?? 0),
+      'worked minutes are computed by the database from those times, not sent by the client',
+      `expected ${480 - (org?.breakMinutes ?? 0)}, got ${row?.workedMinutes}`);
+
+    if (attendanceRecordId) {
+      const history = await owner(`/api/hr/attendance/adjustments?attendanceId=${attendanceRecordId}`);
+      check(history.status === 200, 'GET /api/hr/attendance/adjustments', history.json?.error?.message);
+      const entry = (history.json?.data ?? [])[0];
+      check(!!entry, 'the correction wrote a history row reachable through the endpoint');
+      check(sameInstant(entry?.newCheckedInAt, checkedInAt) && sameInstant(entry?.newCheckedOutAt, checkedOutAt),
+        'and the history carries the same times the record now holds',
+        `${entry?.newCheckedInAt} / ${entry?.newCheckedOutAt}`);
+      check(entry?.reason === `Verification fixture ${RUN} (${TAG})`,
+        'with the reason that was given');
+    }
+  }
+}
+
+/* -- 18. Clean up --------------------------------------------------------- */
+
+section('18. Clean up');
 {
   let removed = 0, attempted = 0;
 

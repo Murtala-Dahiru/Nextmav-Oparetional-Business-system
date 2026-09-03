@@ -11,10 +11,42 @@
  * disagreeing with payroll.
  */
 
+/**
+ * Every value the `attendance_status` enum holds, in the order a day is read.
+ *
+ * All eight, which is the point. This list had six: `early` and `half_day`
+ * were missing, and both are written by the clock itself — `clock_in()`
+ * classifies an arrival before `work_start` as `early`, and `clock_out()`
+ * turns a day under four hours into `half_day`. On the live database at the
+ * time of writing, 28 of 53 attendance rows carried one of the two.
+ *
+ * Three things were wrong downstream because of it. The register rendered the
+ * raw column value — a row that said `half_day` — with the grey styling meant
+ * for a public holiday. The correction dialog could not set either status,
+ * so a record the clock had produced could not be corrected back. And
+ * `attended` in the register's summary counted six statuses out of eight, so
+ * everyone who arrived early was left out of the attendance rate: turning up
+ * before nine made you invisible to the figure that says you turned up.
+ */
 export const ATTENDANCE_STATUSES = [
-  'present', 'late', 'absent', 'on_leave', 'remote', 'holiday',
+  'present', 'late', 'early', 'remote', 'half_day', 'absent', 'on_leave', 'holiday',
 ] as const;
 export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number];
+
+/**
+ * The statuses that mean somebody was at work.
+ *
+ * Named once here because three places count them — the register's summary,
+ * the personal attendance record and the evidence layer — and three
+ * hand-written lists is how an attendance rate and a punctuality rate start
+ * disagreeing about the same person.
+ */
+export const ATTENDED_STATUSES: readonly AttendanceStatus[] =
+  ['present', 'late', 'early', 'remote', 'half_day'];
+
+/** Attended, and on time. `late` and `half_day` are attendance, not punctuality. */
+export const PUNCTUAL_STATUSES: readonly AttendanceStatus[] =
+  ['present', 'early', 'remote'];
 
 /**
  * Organisation working-hours policy.
@@ -111,9 +143,11 @@ export function formatDuration(minutes: number): string {
 export const STATUS_LABELS: Record<AttendanceStatus, string> = {
   present: 'Present',
   late: 'Late',
+  early: 'Early',
+  remote: 'Remote',
+  half_day: 'Half day',
   absent: 'Absent',
   on_leave: 'On leave',
-  remote: 'Remote',
   holiday: 'Holiday',
 };
 
@@ -148,7 +182,11 @@ export function summarise(
   const present = count('present');
   const late = count('late');
   const remote = count('remote');
-  const attended = present + late + remote;
+  /* Every status that means "at work", from the one list — see ATTENDED_STATUSES. */
+  const attended = records.filter(r =>
+    (ATTENDED_STATUSES as readonly string[]).includes(r.status)).length;
+  const punctual = records.filter(r =>
+    (PUNCTUAL_STATUSES as readonly string[]).includes(r.status)).length;
   const totalMinutes = records.reduce((sum, r) => sum + r.workedMinutes, 0);
 
   const pct = (part: number, whole: number) =>
@@ -167,7 +205,7 @@ export function summarise(
     attendanceRate: pct(attended, expectedDays),
     // Punctuality is measured against days actually attended, not expected
     // days — otherwise being on leave would look like being unpunctual.
-    punctualityRate: pct(present + remote, attended),
+    punctualityRate: pct(punctual, attended),
   };
 }
 

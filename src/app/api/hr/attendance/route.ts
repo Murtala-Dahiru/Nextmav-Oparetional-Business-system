@@ -2,11 +2,32 @@ import { isFilterValue } from '@/lib/filters';
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, paginated, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
-import { workingDaysBetween } from '@/lib/attendance';
+import { workingDaysBetween, ATTENDED_STATUSES, PUNCTUAL_STATUSES } from '@/lib/attendance';
 import { todayIn, startOfMonthIn } from '@/lib/org-time';
 
-const SELECT =
-  '*, member:organization_members!attendance_records_member_id_fkey(id, department_id, profiles!organization_members_user_id_fkey(full_name, avatar_url))';
+/**
+ * The department is named, not merely referenced.
+ *
+ * `department_id` alone is what the register had, and its Department column
+ * rendered the two words a foreign key can honestly support: "Assigned" or an
+ * em dash. A column that answers "yes there is one" is not a column.
+ *
+ * The constraint has to be named because `organization_members` has *two*
+ * foreign keys into `departments` — `department_id` and `head_id` — and an
+ * unqualified `department:departments(...)` is PGRST201, which this codebase
+ * has already had fail quietly in one route.
+ */
+const SELECT = `
+  *,
+  member:organization_members!attendance_records_member_id_fkey(
+    id, department_id,
+    profiles!organization_members_user_id_fkey(full_name, avatar_url, job_title),
+    department:departments!organization_members_department_id_fkey(id, name)
+  ),
+  adjuster:organization_members!attendance_records_adjusted_by_fkey(
+    id, profiles!organization_members_user_id_fkey(full_name)
+  )
+`;
 
 /**
  * The attendance register, with a summary of the same period.
@@ -74,7 +95,18 @@ export async function GET(req: Request) {
 
   const rowsAll = all ?? [];
   const countBy = (s: string) => rowsAll.filter(r => r.status === s).length;
-  const attended = countBy('present') + countBy('late') + countBy('remote') + countBy('half_day');
+  /**
+   * Attendance from the single list, not from a fourth hand-written one.
+   *
+   * This sum used to name four statuses out of the enum's eight, and `early`
+   * was not among them — so somebody who arrived before the working day
+   * started was counted as not having attended at all. Turning up early made
+   * you invisible to the figure that measures turning up.
+   */
+  const attended = rowsAll.filter(r =>
+    (ATTENDED_STATUSES as readonly string[]).includes(r.status)).length;
+  const punctual = rowsAll.filter(r =>
+    (PUNCTUAL_STATUSES as readonly string[]).includes(r.status)).length;
   const totalMinutes = rowsAll.reduce((sum, r) => sum + (r.worked_minutes ?? 0), 0);
   const people = new Set(rowsAll.map(r => r.member_id)).size;
 
@@ -128,9 +160,12 @@ export async function GET(req: Request) {
     averageMinutes: attended > 0 ? Math.round(totalMinutes / attended) : 0,
     totalLateMinutes: rowsAll.reduce((sum, r) => sum + (r.late_minutes ?? 0), 0),
     attendanceRate: pct(attended, perPerson),
+    early: countBy('early'),
+    halfDay: countBy('half_day'),
+    attended,
     // Measured against days actually attended, not days expected — otherwise
     // approved leave would count as unpunctual.
-    punctualityRate: pct(countBy('present') + countBy('remote'), attended),
+    punctualityRate: pct(punctual, attended),
   });
 }
 
@@ -152,20 +187,40 @@ export async function POST(req: Request) {
     if (!b.member_id || !b.work_date) {
       return error('member_id and work_date are required', 422, 'VALIDATION_ERROR');
     }
+
+    /**
+     * A correction says why, or it is not made.
+     *
+     * Checked here so the person gets a sentence about the form they are
+     * looking at rather than a database error, and checked again by the
+     * trigger in 0046 so it holds for a direct PostgREST write too. The
+     * endpoint is the courtesy; the trigger is the rule.
+     */
+    const reason = String(b.adjustment_reason ?? b.reason ?? b.note ?? '').trim();
+    if (!reason) {
+      return error(
+        'Say why this record is being corrected. The reason is kept with the change.',
+        422, 'REASON_REQUIRED',
+      );
+    }
     if (b.checked_in_at && b.checked_out_at && new Date(b.checked_out_at) <= new Date(b.checked_in_at)) {
       return error('Check-out must be after check-in.', 422, 'INVALID_INTERVAL');
     }
 
-    const worked =
-      b.checked_in_at && b.checked_out_at
-        ? Math.max(
-            0,
-            Math.round(
-              (new Date(b.checked_out_at).getTime() - new Date(b.checked_in_at).getTime()) / 60000,
-            ),
-          )
-        : 0;
-
+    /**
+     * Worked, late and early minutes are not sent.
+     *
+     * `attendance_derive()` computes all three from the supplied times against
+     * the organisation's own working hours, inside the same trigger that
+     * authorises the write. Computing them here meant two implementations of
+     * the same arithmetic, and this one was wrong: correcting only a check-in
+     * — the commonest correction there is, a forgotten check-out — sent
+     * `worked_minutes: 0` and wiped the hours already recorded for the day.
+     *
+     * `adjusted_by` and `adjusted_at` are not sent either. The trigger takes
+     * them from the session, because a client that names its own auditor is
+     * not being audited.
+     */
     const { data, error: e } = await ctx.supabase
       .from('attendance_records')
       .upsert(
@@ -176,13 +231,8 @@ export async function POST(req: Request) {
           checked_in_at: b.checked_in_at ?? null,
           checked_out_at: b.checked_out_at ?? null,
           status: b.status ?? (b.checked_in_at ? 'present' : 'absent'),
-          worked_minutes: worked,
           note: b.note ?? '',
-          // Marks this as a supervised correction. The server-time trigger
-          // honours the supplied times only when this is set.
-          adjusted_by: ctx.org.memberId,
-          adjusted_at: new Date().toISOString(),
-          adjustment_reason: b.adjustment_reason ?? b.note ?? '',
+          adjustment_reason: reason,
         },
         { onConflict: 'member_id,work_date' },
       )

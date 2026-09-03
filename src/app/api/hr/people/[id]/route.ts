@@ -3,6 +3,7 @@ import { success, error, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 import { todayIn } from '@/lib/org-time';
 import { CHANGE_KINDS, MEMBER_STAGES } from '@/lib/hr';
+import { ATTENDED_STATUSES, PUNCTUAL_STATUSES } from '@/lib/attendance';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -188,18 +189,46 @@ export async function GET(_req: Request, { params }: Params) {
   const records = attendance.data ?? [];
   const worked = records.reduce((s: number, r: any) => s + (r.worked_minutes ?? 0), 0);
   const late = records.filter((r: any) => (r.late_minutes ?? 0) > 0).length;
+  /**
+   * At work, from the one list — see ATTENDED_STATUSES in lib/attendance.
+   *
+   * This filter used to name four of the five statuses that mean "at work"
+   * and leave out `early`, so somebody who reliably arrived before opening
+   * time read on their own profile as attending less than they did. It is the
+   * same omission fixed in the register (`/api/hr/attendance`) and on HR Home
+   * (`/api/hr/overview`) — a fourth independent count of the same five
+   * statuses, and the fourth place it had drifted from the other three.
+   */
+  const attended = records.filter((r: any) =>
+    (ATTENDED_STATUSES as readonly string[]).includes(r.status)).length;
   const attendanceSummary = {
     from,
     to: today,
     days: records.length,
-    present: records.filter((r: any) => ['present', 'late', 'remote', 'half_day'].includes(r.status)).length,
+    present: attended,
     absent: records.filter((r: any) => r.status === 'absent').length,
     onLeave: records.filter((r: any) => r.status === 'on_leave').length,
     remote: records.filter((r: any) => r.is_remote).length,
     late,
     totalMinutes: worked,
-    averageMinutes: records.length ? Math.round(worked / records.length) : 0,
-    punctualityRate: records.length ? Math.round(((records.length - late) / records.length) * 100) : null,
+    averageMinutes: attended ? Math.round(worked / attended) : 0,
+    /**
+     * Punctuality, measured against days attended.
+     *
+     * It was measured against `records.length` — every recorded day,
+     * including absences and approved leave, neither of which is a lateness a
+     * person could have avoided. A member absent nine days out of ten and
+     * late on none of them read as 100% punctual, which is the figure this
+     * profile shows a manager deciding whether to trust somebody's timekeeping.
+     * `PUNCTUAL_STATUSES` is the same "on time" definition the register uses,
+     * so the two screens cannot compute the same fact two different ways.
+     */
+    punctualityRate: attended
+      ? Math.round(
+          (records.filter((r: any) => (PUNCTUAL_STATUSES as readonly string[]).includes(r.status)).length
+            / attended) * 100,
+        )
+      : null,
   };
 
   return success({
