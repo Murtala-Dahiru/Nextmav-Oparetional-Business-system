@@ -135,7 +135,7 @@ export const EVIDENCE_SOURCES: readonly EvidenceSource[] = [
     area: 'delivery',
     label: 'Delivered work',
     module: 'projects',
-    note: 'Tasks assigned to you in the shared tracker, and whether they landed by their due date',
+    note: 'Tasks from the shared tracker, and whether they landed by their due date',
     events: ['task.completed'],
     tables: [],
   },
@@ -143,7 +143,7 @@ export const EVIDENCE_SOURCES: readonly EvidenceSource[] = [
     area: 'goals',
     label: 'Goals',
     module: 'hr',
-    note: 'Goals set for you in a performance cycle',
+    note: 'Goals set in a performance cycle',
     events: ['goal.achieved'],
     tables: ['performance_goals'],
   },
@@ -159,7 +159,7 @@ export const EVIDENCE_SOURCES: readonly EvidenceSource[] = [
     area: 'commercial',
     label: 'Commercial',
     module: 'crm',
-    note: 'Deals and leads credited to you, at the values they were closed at',
+    note: 'Deals and leads credited to this person, at the values they were closed at',
     events: ['deal.won', 'deal.lost', 'lead.qualified', 'lead.converted', 'invoice.paid'],
     tables: [],
   },
@@ -167,7 +167,7 @@ export const EVIDENCE_SOURCES: readonly EvidenceSource[] = [
     area: 'recognition',
     label: 'Recognition',
     module: 'hr',
-    note: 'Recognition recorded for you by colleagues and managers',
+    note: 'Recognition recorded by colleagues and managers',
     events: [],
     tables: ['performance_achievements'],
   },
@@ -175,7 +175,7 @@ export const EVIDENCE_SOURCES: readonly EvidenceSource[] = [
     area: 'review',
     label: 'Reviews',
     module: 'hr',
-    note: 'Formal reviews that have been completed and shared with you',
+    note: 'Formal reviews that have been completed and shared',
     events: [],
     tables: ['performance_reviews'],
   },
@@ -247,7 +247,7 @@ export function deliveryEvidence(input: DeliveryInput): EvidenceSection {
       value: completed.length,
       unit: 'count',
       sample: completed.length,
-      basis: 'Tasks assigned to you that reached Done in this period',
+      basis: 'Assigned tasks that reached Done in this period',
       provenance: 'event',
     },
     {
@@ -266,7 +266,7 @@ export function deliveryEvidence(input: DeliveryInput): EvidenceSection {
       value: projects.size,
       unit: 'count',
       sample: projects.size,
-      basis: 'Distinct projects you completed at least one task in',
+      basis: 'Distinct projects with at least one task completed in this period',
       provenance: 'event',
     },
     {
@@ -275,7 +275,7 @@ export function deliveryEvidence(input: DeliveryInput): EvidenceSection {
       value: milestones.size,
       unit: 'count',
       sample: milestones.size,
-      basis: 'Distinct milestones you completed at least one task under',
+      basis: 'Distinct milestones with at least one task completed under them',
       provenance: 'event',
     },
     {
@@ -284,7 +284,7 @@ export function deliveryEvidence(input: DeliveryInput): EvidenceSection {
       value: overdue,
       unit: 'count',
       sample: openAssigned.length,
-      basis: 'Tasks still assigned to you whose due date has passed. Read live, so it changes as you work',
+      basis: 'Tasks still assigned and past their due date. Read live, so it moves as the work does',
       provenance: 'record',
     },
   ];
@@ -293,10 +293,10 @@ export function deliveryEvidence(input: DeliveryInput): EvidenceSection {
     area: 'delivery',
     label: 'Delivered work',
     module: 'projects',
-    note: 'Tasks assigned to you in the shared tracker. Your private My Work list is not counted here.',
+    note: 'Tasks from the shared tracker. The private My Work list is deliberately not counted here.',
     metrics,
     available: completed.length > 0 || openAssigned.length > 0,
-    unavailable: 'No tasks have been assigned to you in the shared tracker for this period.',
+    unavailable: 'No tasks were assigned in the shared tracker for this period.',
   };
 }
 
@@ -367,10 +367,10 @@ export function goalEvidence(goals: GoalRow[], achievedEvents: RawEvent[]): Evid
     area: 'goals',
     label: 'Goals',
     module: 'hr',
-    note: 'Goals set for you in a performance cycle by HR or your manager.',
+    note: 'Goals set in a performance cycle by HR or a manager.',
     metrics,
     available: goals.length > 0,
-    unavailable: 'No goals have been set for you. This is not a score of zero — there is nothing to measure yet.',
+    unavailable: 'No goals were set for this period. This is not a score of zero — there is nothing to measure yet.',
   };
 }
 
@@ -420,7 +420,7 @@ export function attendanceEvidence(rows: AttendanceRow[], expectedDays: number):
       unit: 'percent',
       sample: attended,
       basis: `${punctual} of ${attended} attended days began on time, within the organisation’s `
-        + 'grace period. Measured over days attended, so approved leave does not count against you.',
+        + 'grace period. Measured over days attended, so approved leave does not count against it.',
       provenance: 'record',
     },
     {
@@ -438,7 +438,7 @@ export function attendanceEvidence(rows: AttendanceRow[], expectedDays: number):
       value: onLeave,
       unit: 'count',
       sample: rows.length,
-      basis: 'Days recorded as approved leave. These are not absences and do not reduce your attendance rate.',
+      basis: 'Days recorded as approved leave. These are not absences and do not reduce the attendance rate.',
       provenance: 'record',
     },
     {
@@ -457,10 +457,10 @@ export function attendanceEvidence(rows: AttendanceRow[], expectedDays: number):
     area: 'attendance',
     label: 'Attendance',
     module: 'hr',
-    note: 'From the register. Corrections are kept with their reasons and are visible to you.',
+    note: 'From the register. Corrections are kept with their reasons and are visible to the person they concern.',
     metrics,
     available: rows.length > 0,
-    unavailable: 'Nothing has been recorded on the register for you in this period.',
+    unavailable: 'Nothing was recorded on the register for this period.',
   };
 }
 
@@ -481,7 +481,7 @@ export function recognitionEvidence(received: number, given: number): EvidenceSe
         value: received,
         unit: 'count',
         sample: received,
-        basis: 'Entries recorded about you in this period',
+        basis: 'Recognition entries recorded in this period',
         provenance: 'record',
       },
       {
@@ -490,7 +490,7 @@ export function recognitionEvidence(received: number, given: number): EvidenceSe
         value: given,
         unit: 'count',
         sample: given,
-        basis: 'Entries you recorded about colleagues. Shown because recognising others is '
+        basis: 'Entries recorded about colleagues. Shown because recognising others is '
           + 'contribution, not because giving more is better.',
         provenance: 'record',
       },
@@ -525,7 +525,7 @@ export function reviewEvidence(reviews: ReviewRow[]): EvidenceSection {
     area: 'review',
     label: 'Reviews',
     module: 'hr',
-    note: 'Formal reviews that have been shared with you. Ratings still in progress are not shown here.',
+    note: 'Formal reviews that have been shared. Ratings still in progress are not shown here.',
     metrics: [
       {
         key: 'reviews_completed',
@@ -533,7 +533,7 @@ export function reviewEvidence(reviews: ReviewRow[]): EvidenceSection {
         value: visible.length,
         unit: 'count',
         sample: reviews.length,
-        basis: 'Reviews that have been shared with you or closed',
+        basis: 'Reviews that have been shared or closed',
         provenance: 'record',
       },
       {
@@ -549,7 +549,7 @@ export function reviewEvidence(reviews: ReviewRow[]): EvidenceSection {
       },
     ],
     available: visible.length > 0,
-    unavailable: 'No review has been shared with you yet.',
+    unavailable: 'No review has been shared yet.',
   };
 }
 
@@ -570,7 +570,7 @@ export function commercialEvidence(
     area: 'commercial',
     label: 'Commercial',
     module: 'crm',
-    note: 'Only meaningful for people who own deals. An empty section here is not a gap in your record.',
+    note: 'Only meaningful for people who own deals. An empty section here is not a gap in the record.',
     metrics: [
       {
         key: 'revenue_won',
@@ -588,7 +588,7 @@ export function commercialEvidence(
         value: won.length,
         unit: 'count',
         sample: won.length + lost.length,
-        basis: 'Deals you owned that closed won in this period',
+        basis: 'Owned deals that closed won in this period',
         provenance: 'event',
       },
       {
@@ -597,7 +597,7 @@ export function commercialEvidence(
         value: rate(won.length, won.length + lost.length),
         unit: 'percent',
         sample: won.length + lost.length,
-        basis: `${won.length} won of ${won.length + lost.length} deals you closed either way`,
+        basis: `${won.length} won of ${won.length + lost.length} deals closed either way`,
         provenance: 'event',
       },
       {
@@ -606,12 +606,12 @@ export function commercialEvidence(
         value: qualified.length,
         unit: 'count',
         sample: qualified.length,
-        basis: 'Leads you moved to qualified in this period',
+        basis: 'Leads moved to qualified in this period',
         provenance: 'event',
       },
     ],
     available: events.length > 0,
-    unavailable: 'You do not own deals or leads, so there is nothing commercial to show.',
+    unavailable: 'No deals or leads are owned here, so there is nothing commercial to show.',
   };
 }
 

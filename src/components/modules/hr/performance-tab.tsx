@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { toast } from 'sonner';
 import {
-  Target as TargetIcon, Award, ClipboardCheck, Plus, Gauge, Send, Check,
+  Target as TargetIcon, Award, ClipboardCheck, Plus, Gauge, Send, Check, FileSearch,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { useAppStore } from '@/store/app-store';
 import { formatDate } from '@/lib/format';
+import { EvidenceRecord } from '@/components/modules/performance/evidence';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -145,6 +146,8 @@ export default function PerformanceTab() {
   const [cycleDialog, setCycleDialog] = React.useState(false);
   const [goalDialog, setGoalDialog] = React.useState(false);
   const [achDialog, setAchDialog] = React.useState(false);
+  /** The review whose evidence is being read, if any. */
+  const [evidenceFor, setEvidenceFor] = React.useState<Review | null>(null);
 
   const cycles = useList<Cycle>('/api/hr/cycles?pageSize=50', nonce);
   const goals = useList<Goal>('/api/hr/goals?pageSize=100', nonce);
@@ -334,6 +337,30 @@ export default function PerformanceTab() {
                   </span>
                 )}
 
+                {/*
+                  The evidence, before the judgement.
+
+                  A review written from memory is a review of the last three
+                  weeks. This opens the same cross-module record the person
+                  sees on their own Performance screen — delivered work, goals,
+                  attendance, recognition — for the cycle's own dates, so the
+                  reviewer is looking at the period they are reviewing rather
+                  than at this quarter.
+
+                  It is offered to anybody who can see the review, including
+                  the employee. Somebody about to read an assessment of
+                  themselves is entitled to the same evidence the assessor had,
+                  and RLS bounds every figure in it to what the viewer may
+                  already see, so this opens nothing that was closed.
+                */}
+                <Button
+                  size="sm" variant="ghost"
+                  className="h-7 shrink-0 gap-1 px-2 text-[12px] text-muted-foreground"
+                  onClick={() => setEvidenceFor(r)}
+                >
+                  <FileSearch className="size-3" /> Evidence
+                </Button>
+
                 {mayReview && r.status !== 'closed' && (
                   <div className="flex shrink-0 gap-1">
                     {r.status !== 'shared' && (
@@ -401,6 +428,12 @@ export default function PerformanceTab() {
         )}
       </section>
 
+      <ReviewEvidenceDialog
+        review={evidenceFor}
+        cycles={cycles.data}
+        onOpenChange={open => { if (!open) setEvidenceFor(null); }}
+      />
+
       <CycleDialog open={cycleDialog} onOpenChange={setCycleDialog} onSaved={reload} />
       <GoalDialog open={goalDialog} onOpenChange={setGoalDialog} onSaved={reload} cycles={cycles.data} />
       <AchievementDialog open={achDialog} onOpenChange={setAchDialog} onSaved={reload} />
@@ -409,6 +442,71 @@ export default function PerformanceTab() {
 }
 
 /* -------------------------------------------------------------------------- */
+
+/**
+ * The evidence behind one review, for the period the review covers.
+ *
+ * ── Why this is here and not a second implementation ─────────────────────
+ *
+ * `<EvidenceRecord>` is the same component the person sees on their own
+ * Performance screen, reading the same endpoint. A separate manager-facing
+ * summary would be a second answer to "how has this person done", and the two
+ * would drift — which is the failure this repository keeps paying for. The
+ * manager and the employee should be looking at the same page.
+ *
+ * ── Why the dates come from the cycle ────────────────────────────────────
+ *
+ * `<EvidenceRecord>` defaults to the current quarter. A review of H1 opened in
+ * October would then show the reviewer three months of work that the review is
+ * not about, which is worse than showing nothing: it looks like the answer.
+ * The cycle's own `periodStart`/`periodEnd` are the window, and the dialog
+ * says so on its face so nobody has to assume.
+ *
+ * ── What this deliberately does not do ───────────────────────────────────
+ *
+ * It does not rate anybody, and it writes nothing back to the review. The
+ * evidence informs a judgement that a person still has to make and sign. An
+ * employment decision made by arithmetic over these figures is exactly what
+ * `lib/evidence.ts` refuses to make possible.
+ */
+function ReviewEvidenceDialog({
+  review, cycles, onOpenChange,
+}: {
+  review: Review | null;
+  cycles: Cycle[];
+  onOpenChange: (open: boolean) => void;
+}) {
+  const cycle = review?.cycle?.id
+    ? cycles.find(c => c.id === review.cycle!.id) ?? null
+    : null;
+
+  const who = review?.member?.profiles?.fullName ?? 'this person';
+
+  return (
+    <Dialog open={Boolean(review)} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Evidence for {who}</DialogTitle>
+          <DialogDescription>
+            {cycle
+              ? `Everything recorded between ${formatDate(cycle.periodStart)} and `
+                + `${formatDate(cycle.periodEnd)}, the period ${cycle.name} covers.`
+              : 'This review has no cycle, so the current quarter is shown.'}
+            {' '}These are figures, not a verdict — the assessment is still yours to write.
+          </DialogDescription>
+        </DialogHeader>
+
+        {review && (
+          <EvidenceRecord
+            memberId={review.memberId}
+            from={cycle?.periodStart ?? null}
+            to={cycle?.periodEnd ?? null}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function Empty({ icon: Icon, title, body }: { icon: React.ElementType; title: string; body: string }) {
   return (

@@ -42,6 +42,17 @@ import { SectionHead, Figure, FigureRow, Spinner, Broken } from './ui';
  * rate, and showing it as 100% invites a conversation about noise. The count it
  * does have is shown instead, which is the honest version of the same fact.
  *
+ * ── Why nothing here says "you" ──────────────────────────────────────────
+ *
+ * This component has two readers. On `me.tsx` it describes the person looking
+ * at it; inside a review it describes somebody else, to their manager. Written
+ * in the second person it read correctly in the first case and wrongly in the
+ * second — "tasks assigned to you", shown to a manager, is about the wrong
+ * person entirely. Rather than pass the subject down to every string, or swap
+ * pronouns at render time, `lib/evidence.ts` writes every label and every
+ * `basis` in a neutral voice that is true for both. If you are editing one of
+ * those strings, keep it that way.
+ *
  * ── Why there is no overall score ────────────────────────────────────────
  *
  * The same reason `me.tsx` gives, and it is worth repeating where somebody
@@ -346,7 +357,7 @@ export function EvidenceRecord({
     reload,
   );
 
-  if (loading && !data) return <Spinner label="Gathering your evidence" />;
+  if (loading && !data) return <Spinner label="Gathering the evidence" />;
   if (error) return <Broken message={error} onRetry={reload} />;
   if (!data) return null;
 
