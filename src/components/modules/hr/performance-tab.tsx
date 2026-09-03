@@ -16,7 +16,10 @@ import {
 } from '@/components/ui/dialog';
 import { useAppStore } from '@/store/app-store';
 import { formatDate } from '@/lib/format';
-import { EvidenceRecord } from '@/components/modules/performance/evidence';
+import {
+  ReviewDialog, FeedbackInbox, CalibrationPanel, CompetencyFramework,
+  READINESS_WORD, type ReviewRow,
+} from './review';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -76,6 +79,9 @@ interface Review {
   selfComment: string;
   managerComment: string;
   overallRating: number | null;
+  /** 0048. Null means nobody has assessed it, which is not "not ready". */
+  promotionReadiness: 'too_early' | 'developing' | 'ready_within_a_year' | 'ready_now' | null;
+  readinessNote: string;
   incentiveEligible: boolean | null;
   eligibilityNote: string;
   sharedAt: string | null;
@@ -146,8 +152,10 @@ export default function PerformanceTab() {
   const [cycleDialog, setCycleDialog] = React.useState(false);
   const [goalDialog, setGoalDialog] = React.useState(false);
   const [achDialog, setAchDialog] = React.useState(false);
-  /** The review whose evidence is being read, if any. */
-  const [evidenceFor, setEvidenceFor] = React.useState<Review | null>(null);
+  /** The review being worked on, if any. */
+  const [openReview, setOpenReview] = React.useState<Review | null>(null);
+  /** Which cycle the calibration panel is reading. */
+  const [calibrating, setCalibrating] = React.useState<string>('');
 
   const cycles = useList<Cycle>('/api/hr/cycles?pageSize=50', nonce);
   const goals = useList<Goal>('/api/hr/goals?pageSize=100', nonce);
@@ -175,6 +183,16 @@ export default function PerformanceTab() {
 
   return (
     <div className="flex flex-col gap-6">
+      {/*
+        ── Anything asked of you ─────────────────────────────────────────
+
+        First, and it renders nothing at all when there is nothing pending.
+        A colleague's review is blocked until you answer, so this is an
+        errand rather than a section — putting it under four panels of
+        company-wide administration is how it goes unanswered for a fortnight.
+      */}
+      <FeedbackInbox onChanged={reload} />
+
       {/* ── Cycles ──────────────────────────────────────────────────────── */}
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -328,6 +346,16 @@ export default function PerformanceTab() {
                     {' · '}{REVIEW_WORD[r.status] ?? r.status}
                     {r.reviewer?.profiles?.fullName ? ` · ${r.reviewer.profiles.fullName}` : ''}
                     {r.sharedAt ? ` · shared ${formatDate(r.sharedAt)}` : ''}
+                    {/*
+                      Readiness on the row, because it is the thing somebody
+                      scanning a cycle is usually looking for. Absent rather
+                      than "not assessed" when null: a list of twelve people
+                      each saying "not assessed" is noise, and the dialog is
+                      where that distinction actually matters.
+                    */}
+                    {r.promotionReadiness
+                      ? ` · ${READINESS_WORD[r.promotionReadiness] ?? r.promotionReadiness}`
+                      : ''}
                   </p>
                 </div>
 
@@ -356,9 +384,9 @@ export default function PerformanceTab() {
                 <Button
                   size="sm" variant="ghost"
                   className="h-7 shrink-0 gap-1 px-2 text-[12px] text-muted-foreground"
-                  onClick={() => setEvidenceFor(r)}
+                  onClick={() => setOpenReview(r)}
                 >
-                  <FileSearch className="size-3" /> Evidence
+                  <FileSearch className="size-3" /> Open
                 </Button>
 
                 {mayReview && r.status !== 'closed' && (
@@ -428,10 +456,55 @@ export default function PerformanceTab() {
         )}
       </section>
 
-      <ReviewEvidenceDialog
-        review={evidenceFor}
-        cycles={cycles.data}
-        onOpenChange={open => { if (!open) setEvidenceFor(null); }}
+      {/*
+        ── The framework ─────────────────────────────────────────────────
+
+        Above calibration, because it is the thing that makes calibration
+        mean anything: two managers can only be compared on a question they
+        were both asked.
+      */}
+      <CompetencyFramework canManage={mayRunCycles} />
+
+      {/*
+        ── Calibration ───────────────────────────────────────────────────
+
+        Below the reviews rather than above them, because it is what you do
+        once they exist. Only offered to people who can move a rating: for
+        everybody else it is a distribution of numbers they cannot act on,
+        which is data about colleagues with no purpose attached.
+      */}
+      {mayReview && cycles.data.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h3 className="text-[15px] font-semibold tracking-[-0.015em]">Calibration</h3>
+            <p className="text-[12.5px] text-muted-foreground">
+              The same cycle read all at once, so “4” means one thing
+            </p>
+            <select
+              value={calibrating}
+              onChange={e => setCalibrating(e.target.value)}
+              aria-label="Cycle to calibrate"
+              className="ml-auto h-8 rounded-md border border-input bg-background px-2 text-[12.5px]"
+            >
+              <option value="">Choose a cycle</option>
+              {cycles.data.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          {calibrating && <CalibrationPanel cycleId={calibrating} />}
+        </section>
+      )}
+
+      <ReviewDialog
+        review={openReview as ReviewRow | null}
+        cycleDates={(() => {
+          const c = openReview?.cycle?.id
+            ? cycles.data.find(x => x.id === openReview.cycle!.id)
+            : null;
+          return c ? { start: c.periodStart, end: c.periodEnd } : null;
+        })()}
+        canAssess={mayReview}
+        onOpenChange={open => { if (!open) setOpenReview(null); }}
+        onSaved={reload}
       />
 
       <CycleDialog open={cycleDialog} onOpenChange={setCycleDialog} onSaved={reload} />
@@ -442,71 +515,6 @@ export default function PerformanceTab() {
 }
 
 /* -------------------------------------------------------------------------- */
-
-/**
- * The evidence behind one review, for the period the review covers.
- *
- * ── Why this is here and not a second implementation ─────────────────────
- *
- * `<EvidenceRecord>` is the same component the person sees on their own
- * Performance screen, reading the same endpoint. A separate manager-facing
- * summary would be a second answer to "how has this person done", and the two
- * would drift — which is the failure this repository keeps paying for. The
- * manager and the employee should be looking at the same page.
- *
- * ── Why the dates come from the cycle ────────────────────────────────────
- *
- * `<EvidenceRecord>` defaults to the current quarter. A review of H1 opened in
- * October would then show the reviewer three months of work that the review is
- * not about, which is worse than showing nothing: it looks like the answer.
- * The cycle's own `periodStart`/`periodEnd` are the window, and the dialog
- * says so on its face so nobody has to assume.
- *
- * ── What this deliberately does not do ───────────────────────────────────
- *
- * It does not rate anybody, and it writes nothing back to the review. The
- * evidence informs a judgement that a person still has to make and sign. An
- * employment decision made by arithmetic over these figures is exactly what
- * `lib/evidence.ts` refuses to make possible.
- */
-function ReviewEvidenceDialog({
-  review, cycles, onOpenChange,
-}: {
-  review: Review | null;
-  cycles: Cycle[];
-  onOpenChange: (open: boolean) => void;
-}) {
-  const cycle = review?.cycle?.id
-    ? cycles.find(c => c.id === review.cycle!.id) ?? null
-    : null;
-
-  const who = review?.member?.profiles?.fullName ?? 'this person';
-
-  return (
-    <Dialog open={Boolean(review)} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Evidence for {who}</DialogTitle>
-          <DialogDescription>
-            {cycle
-              ? `Everything recorded between ${formatDate(cycle.periodStart)} and `
-                + `${formatDate(cycle.periodEnd)}, the period ${cycle.name} covers.`
-              : 'This review has no cycle, so the current quarter is shown.'}
-            {' '}These are figures, not a verdict — the assessment is still yours to write.
-          </DialogDescription>
-        </DialogHeader>
-
-        {review && (
-          <EvidenceRecord
-            memberId={review.memberId}
-            from={cycle?.periodStart ?? null}
-            to={cycle?.periodEnd ?? null}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 function Empty({ icon: Icon, title, body }: { icon: React.ElementType; title: string; body: string }) {
   return (

@@ -819,6 +819,78 @@ export const updateReviewSchema = z.object({
   overallRating: z.coerce.number().int().min(1).max(5).nullable().optional(),
   incentiveEligible: z.boolean().nullable().optional(),
   eligibilityNote: z.string().optional(),
+  /**
+   * Readiness is a judgement, so it is written like one.
+   *
+   * Nullable because "not assessed" is a real state and is not the same as
+   * `too_early` - one says nobody has looked, the other says somebody looked
+   * and this is what they concluded.
+   */
+  promotionReadiness: z
+    .enum(['too_early', 'developing', 'ready_within_a_year', 'ready_now'])
+    .nullable().optional(),
+  readinessNote: z.string().optional(),
+  /**
+   * Why the overall rating moved.
+   *
+   * The database refuses a change to a settled rating without one
+   * (`require_calibration_reason`, 0048), so this exists to let the client
+   * supply it in the same request. It is not optional in effect, only in
+   * shape - a PATCH that does not touch the rating has no reason to carry it.
+   */
+  calibrationReason: z.string().optional(),
+});
+
+/**
+ * A competency in the organisation's framework.
+ *
+ * `isActive` is absent from the create schema and present on update, because
+ * a competency is created active and retired later - there is no reason to
+ * create one switched off, and offering it invites a framework full of rows
+ * nobody can see.
+ */
+export const createCompetencySchema = z.object({
+  name: z.string().min(1, 'Give the competency a name'),
+  description: z.string().default(''),
+  category: z.string().default(''),
+  sortOrder: z.coerce.number().int().default(0),
+});
+
+export const updateCompetencySchema = toUpdateSchema(createCompetencySchema).extend({
+  isActive: z.boolean().optional(),
+});
+
+/**
+ * Rating one competency inside one review.
+ *
+ * The competency and the review it belongs to are absent: both are fixed when
+ * the row is created, and a client that could move a rating between reviews
+ * could move a poor score onto somebody else's record.
+ */
+export const updateReviewCompetencySchema = z.object({
+  selfRating: z.coerce.number().int().min(1).max(5).nullable().optional(),
+  managerRating: z.coerce.number().int().min(1).max(5).nullable().optional(),
+  selfComment: z.string().optional(),
+  managerComment: z.string().optional(),
+});
+
+/**
+ * Answering a request for feedback.
+ *
+ * Only the four fields the respondent owns. `respondentId`, `subjectId`,
+ * `reviewId` and `requestedBy` are all absent: every one of them is a claim
+ * about who said what about whom, and the RLS policy that restricts UPDATE to
+ * the respondent would be pointless if the respondent could then rewrite
+ * whose feedback it was.
+ *
+ * `submittedAt` is absent because the trigger owns it, for the same reason
+ * `sharedAt` is absent from a review.
+ */
+export const updateFeedbackSchema = z.object({
+  status: z.enum(['pending', 'submitted', 'declined']).optional(),
+  strengths: z.string().optional(),
+  improvements: z.string().optional(),
+  rating: z.coerce.number().int().min(1).max(5).nullable().optional(),
 });
 
 /**
