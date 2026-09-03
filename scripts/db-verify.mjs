@@ -428,6 +428,15 @@ try {
     // for — without it a filtered subscription matches nothing and fails
     // silently.
     'meetings', 'meeting_participants',
+    // 0046. The register's correction history, subscribed by the attendance
+    // tab alongside `attendance_records` so a correction made by HR reaches an
+    // open register without a reload.
+    'attendance_adjustments',
+    // 0047. The performance evidence record subscribes to the spine and to the
+    // four tables its sections read live, so completing a task or checking in
+    // updates somebody's record while they are looking at it.
+    'business_events', 'performance_goals',
+    'performance_achievements', 'performance_reviews',
   ];
 
   const publishedRows = await q(

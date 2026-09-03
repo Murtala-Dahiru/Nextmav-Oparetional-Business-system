@@ -4,18 +4,19 @@ import * as React from 'react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell,
 } from 'recharts';
-import { Trophy, XCircle, Handshake, Target as TargetIcon, ArrowRight } from 'lucide-react';
+import { Handshake, Target as TargetIcon } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
 import { formatNumber } from '@/lib/format';
 import { useViz, axisTick, tickStyle, GRID_DASH, TipShell, TipRow } from '@/components/shared/readout/viz';
 
-import { useEndpoint, money, metricValue, percent, targetStanding, formatDay, monthLabel, STAGE_LABELS, EVENT_LABELS } from './data';
+import { useEndpoint, money, metricValue, percent, targetStanding, monthLabel, STAGE_LABELS } from './data';
 import {
   SectionHead, Avatar, Standing, TargetBar, Figure, FigureRow,
   Blank, Spinner, Broken, periodChoices, type PeriodChoice,
 } from './ui';
+import { EvidenceRecord } from './evidence';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -24,25 +25,40 @@ import {
  *
  * ── What this screen is for ──────────────────────────────────────────────
  *
- * Telling one person whether they are on track, and what to do about it. That
- * is the whole brief, and it is why this is not a second Executive Overview:
- * everything that does not serve that question belongs on CRM Home, which
- * already answers the commercial one well.
+ * Telling one person how they are doing here, and what the evidence for it is.
  *
- * The order of the page is the order the questions are actually asked:
+ * It used to answer something narrower — *how are your deals going* — which is
+ * the right question for a salesperson and the wrong one for everybody else in
+ * the company. A developer, a designer, a support agent and an accountant all
+ * opened their own performance screen and found an empty pipeline chart.
  *
- *   1. Am I going to make it?      Targets, with the period's pace on them.
- *   2. What have I done?           Won, lost, win rate, cycle.
- *   3. What is still in play?      Open pipeline by stage.
- *   4. What happened lately?       The event stream, in plain words.
+ * The page is now in two parts:
+ *
+ *   1. The evidence record.   Delivered work, goals, attendance, recognition,
+ *                             reviews and commercial, each figure printed with
+ *                             what it was computed from. `evidence.tsx`.
+ *   2. The commercial detail. Targets against pace, closures, open pipeline —
+ *                             everything this screen used to be, now shown
+ *                             only to people who have a commercial record.
  *
  * ── Why there is no "score" ──────────────────────────────────────────────
  *
  * A single composite number would be easy to render and impossible to act on,
  * and inventing one would make this the gamified system the brief rules out.
  * Every figure here is a thing that happened, traceable to the event that
- * recorded it.
+ * recorded it. `lib/evidence.ts` states the same rule where the figures are
+ * actually computed, because that is where somebody would go to add one.
  */
+
+/**
+ * Hoisted so the prop keeps its identity between renders.
+ *
+ * A fresh `['commercial']` on every render is a new object every time, which
+ * is the shape of bug that turns a memoised child into one that re-renders
+ * with the parent for no reason. Cheap to avoid, tedious to find later.
+ */
+const HIDE_COMMERCIAL = ['commercial'] as const;
+const HIDE_NOTHING: readonly string[] = [];
 
 interface Overview {
   member: { id: string; name: string; jobTitle: string | null; avatarUrl: string | null; role: string | null; department: string | null };
@@ -91,6 +107,18 @@ export function MyPerformance({ memberId }: { memberId?: string | null }) {
   const { achievement: a, pipeline: p, currency } = data;
   const pace = data.period.pace;
 
+  /**
+   * Does this person have a commercial record at all?
+   *
+   * Three independent signs, because any one of them alone would hide the
+   * sections from somebody who legitimately needs them: a new salesperson has
+   * a target and no closures, somebody mid-quarter has closures and an empty
+   * pipeline, and a manager may hold a target against a pipeline they do not
+   * personally own.
+   */
+  const hasCommercial =
+    p.count > 0 || data.targets.length > 0 || a.dealsWon + a.dealsLost > 0;
+
   return (
     <div className="flex flex-col gap-6">
       {/* ── Who, and when ───────────────────────────────────────────────── */}
@@ -126,6 +154,39 @@ export function MyPerformance({ memberId }: { memberId?: string | null }) {
         </div>
       </div>
 
+      {/*
+        ── The evidence record ───────────────────────────────────────────
+
+        First on the page, and first deliberately. Everything below this is
+        commercial, and for most of the company the commercial sections are
+        empty — a designer opening their own performance screen used to find a
+        pipeline chart with nothing in it and reasonably concluded the feature
+        was not for them.
+
+        It takes its dates from this screen's period control rather than
+        owning one, so the two halves of the page cannot end up describing
+        different quarters.
+      */}
+      <EvidenceRecord
+        memberId={data.member.id}
+        from={period.from}
+        to={period.to}
+        hideAreas={hasCommercial ? HIDE_COMMERCIAL : HIDE_NOTHING}
+      />
+
+      {/*
+        ── The commercial detail, for the people it applies to ────────────
+
+        Shown when there is something to show: an owned pipeline, a target, or
+        a deal closed either way in this period. The alternative — rendering
+        three empty charts for everybody who does not sell — is the thing that
+        made this screen feel broken to most of its users.
+
+        This is a display decision and nothing more. The figures were already
+        bounded by RLS long before they reached here.
+      */}
+      {hasCommercial && (
+        <>
       {/* ── 1. Am I going to make it ────────────────────────────────────── */}
       <section className="flex flex-col gap-3">
         <SectionHead
@@ -352,65 +413,17 @@ export function MyPerformance({ memberId }: { memberId?: string | null }) {
         )}
       </section>
 
-      {/* ── 4. What happened lately ─────────────────────────────────────── */}
-      <section className="flex flex-col gap-3">
-        <SectionHead title="Lately" note="Every entry here is an event the system recorded, not a summary" />
-
-        {data.recent.length === 0 ? (
-          <div className="rounded-xl border border-border bg-card shadow-e1">
-            <Blank
-              icon={TargetIcon}
-              title="Nothing recorded in this period"
-              body="Wins, losses, qualified leads and paid invoices all appear here as they happen."
-            />
-          </div>
-        ) : (
-          <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-e1">
-            {data.recent.map((e, i) => {
-              const won = e.type === 'deal.won';
-              const lost = e.type === 'deal.lost';
-              const isDeal = e.type.startsWith('deal.');
-              return (
-                <li key={`${e.entityId}-${e.at}-${i}`}>
-                  <button
-                    type="button"
-                    disabled={!isDeal}
-                    onClick={() => isDeal && openRecord('crm', 'deal', e.entityId)}
-                    className={cn(
-                      'flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors',
-                      isDeal && 'hover:bg-accent',
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        'flex size-6 shrink-0 items-center justify-center rounded-full',
-                        won ? 'bg-success/12 text-success'
-                          : lost ? 'bg-destructive/12 text-destructive'
-                            : 'bg-muted text-muted-foreground',
-                      )}
-                    >
-                      {won ? <Trophy className="size-3" />
-                        : lost ? <XCircle className="size-3" />
-                          : <ArrowRight className="size-3" />}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] text-foreground">{e.title}</span>
-                      <span className="block text-[11.5px] text-muted-foreground">
-                        {EVENT_LABELS[e.type] ?? e.type} · {formatDay(e.at)}
-                      </span>
-                    </span>
-                    {e.value > 0 && (
-                      <span className="shrink-0 text-[13px] font-medium tabular-nums text-foreground">
-                        {money(e.value, currency)}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+      {/*
+        The commercial event stream used to live here as a fifth section
+        called "Lately". It has been removed rather than kept: the evidence
+        timeline above already lists these same events, alongside completed
+        tasks, achieved goals, recognition and closed reviews, and it opens
+        the same records on click. Two timelines on one screen, one of them a
+        strict subset of the other, is the duplication this pass exists to
+        remove.
+      */}
+        </>
+      )}
     </div>
   );
 }
