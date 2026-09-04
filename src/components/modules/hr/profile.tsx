@@ -26,7 +26,7 @@ import {
   PersonCell, StagePill, Field, Blank, Skeleton, Pill, Restricted, day, eventLine,
 } from './ui';
 import type { Profile360 } from './types';
-import { EmploymentChangeDialog } from './forms';
+import { EmploymentChangeDialog, ExitDialog } from './forms';
 import { DocumentUploadDialog } from './document-upload';
 
 /**
@@ -86,6 +86,8 @@ export function EmployeeProfile({
   const organizationId = useAppStore(s => s.organization?.id ?? null);
   /** Whether the file-a-document dialog is open. */
   const [filing, setFiling] = React.useState(false);
+  /** Whether the record-an-exit dialog is open. */
+  const [exiting, setExiting] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -173,9 +175,33 @@ export function EmployeeProfile({
           </div>
 
           {data.viewer.isHr ? (
-            <Button size="sm" className="h-8 text-[12.5px]" onClick={() => setChanging(true)}>
-              Record a change
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" className="h-8 text-[12.5px]" onClick={() => setChanging(true)}>
+                Record a change
+              </Button>
+              {/*
+                Recording an exit had no way in.
+
+                `ExitDialog` has existed complete in `forms.tsx` — the exit
+                type, the two dates, the offboarding template, the note that
+                the account stays open — and nothing in the product rendered
+                it. The endpoint worked, the verification harness drove it, and
+                a person using the application could not offboard anybody.
+
+                Offered only for somebody still here: an exit is recorded once,
+                the row is UNIQUE on the member, and putting the control in
+                front of a former employee invites an error the database will
+                refuse anyway.
+              */}
+              {p.lifecycleStage !== 'former' && p.isActive ? (
+                <Button
+                  size="sm" variant="outline" className="h-8 text-[12.5px]"
+                  onClick={() => setExiting(true)}
+                >
+                  Record an exit
+                </Button>
+              ) : null}
+            </div>
           ) : null}
         </div>
 
@@ -711,6 +737,15 @@ export function EmployeeProfile({
           open={changing}
           onClose={() => setChanging(false)}
           onSaved={() => { setChanging(false); load(); }}
+        />
+      ) : null}
+
+      {exiting ? (
+        <ExitDialog
+          person={p}
+          open={exiting}
+          onClose={() => setExiting(false)}
+          onSaved={() => { setExiting(false); load(); }}
         />
       ) : null}
 
