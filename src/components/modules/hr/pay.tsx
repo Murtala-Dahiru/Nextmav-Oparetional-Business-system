@@ -436,10 +436,169 @@ function PayRun({ periodId, onBack }: { periodId: string; onBack: () => void }) 
         )}
       </Card>
 
+      <PostingPanel periodId={periodId} status={period.status} />
+
       {openItem ? (
         <PayslipDialog item={openItem} onClose={() => setOpenItem(null)} />
       ) : null}
     </div>
+  );
+}
+
+interface Posting {
+  posted: boolean;
+  reason?: string;
+  period: { currency: string; expenseId: string | null; status: string };
+  categories: { category: string; label: string; owedTo: string; amount: number; note: string }[];
+  totals: {
+    gross: number; netPay: number; deductions: number; employerContributions: number;
+    totalCost: number; dueToEmployees: number; dueToThirdParties: number; currency: string;
+  } | null;
+  byDepartment: {
+    departmentId: string | null; department: string;
+    netPay: number; deductions: number; employerContributions: number; employees: number;
+  }[];
+  reconciles: {
+    netMatchesPeriod: boolean; deductionsMatchPeriod: boolean;
+    employerMatchesPeriod: boolean; grossHolds: boolean; note: string;
+  } | null;
+}
+
+/**
+ * What this run owes, and to whom.
+ *
+ * ── Why this is on the payroll screen and not in Finance ─────────────────
+ *
+ * Finance is not being rebuilt here, and this writes nothing into it. What it
+ * does is show the seam: the three obligations a run creates, already
+ * aggregated so that no individual pay is derivable, in the shape a finance
+ * team can act on. The single expense row Finance actually receives (0042) is
+ * named at the bottom so nobody has to guess whether the two are about the
+ * same money.
+ *
+ * ── Why the reconciliation is shown rather than assumed ──────────────────
+ *
+ * The posting and the run's own totals come from the same items, so they
+ * agree — right up until something is wrong, and that is the moment somebody
+ * is about to file a return from these numbers. A line that says "this
+ * balances" is worth the space; the alternative is a table that looks equally
+ * convincing either way.
+ */
+function PostingPanel({ periodId, status }: { periodId: string; status: string }) {
+  const [data, setData] = React.useState<Posting | null>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let live = true;
+    setLoading(true);
+    getOne<Posting>(`/api/hr/payroll/periods/${periodId}/posting`)
+      .then(d => { if (live) setData(d); })
+      .catch(() => { if (live) setData(null); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [periodId, status]);
+
+  if (loading) return <Card><Skeleton rows={3} /></Card>;
+  if (!data) return null;
+
+  if (!data.posted) {
+    return (
+      <Card>
+        <div className="px-4 pt-3.5">
+          <Head title="What this run owes" />
+        </div>
+        <Blank title="Not yet stated" note={data.reason ?? 'A run states what it owes once it has been approved.'} />
+      </Card>
+    );
+  }
+
+  const t = data.totals!;
+  const r = data.reconciles!;
+  const balanced = r.grossHolds && r.netMatchesPeriod
+    && r.deductionsMatchPeriod && r.employerMatchesPeriod;
+
+  return (
+    <Card>
+      <div className="px-4 pt-3.5">
+        <Head title="What this run owes" />
+        <p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">
+          The figures a finance team needs, aggregated so no individual&rsquo;s pay can be worked
+          out from them. Nothing here is posted to an account — payroll says what it owes and
+          Finance does the accounting.
+        </p>
+      </div>
+
+      <ul className="mt-2.5 divide-y divide-border border-t border-border">
+        {data.categories.map(c => (
+          <li key={c.category} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-medium text-foreground">{c.label}</p>
+              <p className="text-[11.5px] leading-relaxed text-muted-foreground">{c.note}</p>
+            </div>
+            <span className="shrink-0 text-[13.5px] font-semibold tabular-nums text-foreground">
+              {money(c.amount, t.currency)}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="grid grid-cols-2 divide-x divide-y divide-border border-t border-border sm:grid-cols-3 sm:divide-y-0">
+        <Stat label="Leaves on the pay date" value={money(t.dueToEmployees, t.currency)} />
+        <Stat label="Held and remitted later" value={money(t.dueToThirdParties, t.currency)} />
+        <Stat label="Total cost to the company" value={money(t.totalCost, t.currency)} />
+      </div>
+
+      {data.byDepartment.length > 1 && (
+        <div className="border-t border-border px-2 pb-2 pt-2.5">
+          <div className="px-2">
+            <Head title="By cost centre" count={data.byDepartment.length} />
+          </div>
+          <div className="mt-1.5 overflow-x-auto">
+            <THead columns="grid-cols-[minmax(0,1.4fr)_auto_auto_auto]">
+              <span>Department</span>
+              <span className="text-right">Net</span>
+              <span className="text-right">Withheld</span>
+              <span className="text-right">Employer</span>
+            </THead>
+            {data.byDepartment.map(d => (
+              <TRow key={d.departmentId ?? 'none'} columns="grid-cols-[minmax(0,1.4fr)_auto_auto_auto]">
+                <span className="truncate text-[12.5px] text-foreground">
+                  {d.department}
+                  <span className="ml-1.5 text-[11px] text-muted-foreground">
+                    {d.employees} {d.employees === 1 ? 'person' : 'people'}
+                  </span>
+                </span>
+                <span className="text-right text-[12.5px] tabular-nums text-muted-foreground">
+                  {money(d.netPay, t.currency)}
+                </span>
+                <span className="text-right text-[12.5px] tabular-nums text-muted-foreground">
+                  {money(d.deductions, t.currency)}
+                </span>
+                <span className="text-right text-[12.5px] tabular-nums text-muted-foreground">
+                  {money(d.employerContributions, t.currency)}
+                </span>
+              </TRow>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className={cn(
+        'border-t border-border px-4 py-2.5 text-[11.5px] leading-relaxed',
+        balanced ? 'text-muted-foreground' : 'text-warning',
+      )}>
+        {balanced
+          ? `Net pay plus what was withheld equals the gross, and every total agrees with the run. ${r.note}`
+          : `These figures do not agree with the run's own totals. ${r.note} If nobody is on hold, this needs looking at before anything is filed from it.`}
+      </p>
+
+      {data.period.expenseId && (
+        <p className="border-t border-border px-4 py-2.5 text-[11.5px] text-muted-foreground">
+          Finance has one expense row for this run, carrying the total and naming nobody. This
+          panel explains that row; it does not duplicate it.
+        </p>
+      )}
+    </Card>
   );
 }
 
