@@ -3,17 +3,14 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import {
-  Clock, LogIn, LogOut, CheckCircle2, AlertTriangle, CalendarOff,
-  Loader2, Wifi, TrendingUp, Users, CalendarDays, Pencil, History, ShieldAlert,
+  Clock, LogIn, LogOut, CheckCircle2, CalendarOff,
+  Loader2, Wifi, Users, Pencil, History, ShieldAlert,
 } from 'lucide-react';
 
-import { PageHeader } from '@/components/shared/page-header';
+import { cn } from '@/lib/utils';
 import { ExportButton } from '@/components/shared/export-button';
-import { StatCard } from '@/components/shared/stat-card';
-import { EmptyState } from '@/components/shared/empty-state';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, Head, Stat, THead, TRow } from '@/components/shared/readout/primitives';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -29,6 +26,8 @@ import { useModuleRealtime } from '@/hooks/use-realtime';
 import {
   formatDuration, STATUS_LABELS, ATTENDANCE_STATUSES, type AttendanceStatus,
 } from '@/lib/attendance';
+
+import { PersonCell, Blank, Pill } from './ui';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Types
@@ -89,15 +88,33 @@ interface Adjustment {
   adjuster?: { id: string; profiles?: { fullName: string; avatarUrl: string | null } } | null;
 }
 
-const STATUS_STYLES: Record<AttendanceStatus, string> = {
-  present: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  early: 'bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300',
-  late: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  half_day: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-  absent: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-  on_leave: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
-  remote: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300',
-  holiday: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+/**
+ * Eight statuses, five tones.
+ *
+ * ── Why this replaced eight hand-picked colour pairs ─────────────────────
+ *
+ * The previous version wrote out `bg-emerald-100 text-emerald-700
+ * dark:bg-emerald-900/40 …` for each status — eight bespoke palettes that
+ * belonged to no design system, invented here and used nowhere else in the
+ * product. Two consequences, and the second is the one that mattered: nothing
+ * kept them in step with the tokens the rest of HR uses, and a reader had to
+ * learn that violet means remote on this screen and nothing anywhere else.
+ *
+ * `Pill`'s tones are the module's existing vocabulary. There are five, which
+ * is fewer than eight on purpose: the colour says *how to feel* about a day
+ * and the label says what it was. Present, early and remote are all "somebody
+ * worked", and giving them three colours implied a distinction the register
+ * does not make.
+ */
+const STATUS_TONE: Record<AttendanceStatus, 'quiet' | 'good' | 'warn' | 'bad' | 'accent'> = {
+  present: 'good',
+  early: 'good',
+  remote: 'good',
+  late: 'warn',
+  half_day: 'warn',
+  absent: 'bad',
+  on_leave: 'accent',
+  holiday: 'quiet',
 };
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -185,9 +202,13 @@ function MyDay({ onChanged }: { onChanged: () => void }) {
   };
 
   if (loading) {
-    return <Card><CardContent className="flex h-[128px] items-center justify-center">
-      <Loader2 className="text-muted-foreground size-5 animate-spin" />
-    </CardContent></Card>;
+    return (
+      <Card>
+        <div className="flex h-[128px] items-center justify-center">
+          <Loader2 className="size-5 animate-spin text-muted-foreground" />
+        </div>
+      </Card>
+    );
   }
   if (!state) return null;
 
@@ -198,36 +219,45 @@ function MyDay({ onChanged }: { onChanged: () => void }) {
 
   return (
     <Card>
-      <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-4">
-          <div className={`flex size-12 shrink-0 items-center justify-center rounded-xl ${
-            state.onLeave ? 'bg-sky-500/10 text-sky-600'
-              : rec?.checkedOutAt ? 'bg-gray-500/10 text-gray-500'
-                : rec?.checkedInAt ? 'bg-emerald-500/10 text-emerald-600'
-                  : 'bg-amber-500/10 text-amber-600'
-          }`}>
+      <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3.5">
+          {/*
+            The one place on this screen where a colour is doing real work.
+
+            It answers "am I clocked in" from across a room, which is the
+            question this card exists for. The tokens are the product's, not
+            hand-picked Tailwind shades: the previous version used sky, gray,
+            emerald and amber 500s that matched nothing else in HR.
+          */}
+          <div className={cn(
+            'flex size-11 shrink-0 items-center justify-center rounded-lg',
+            state.onLeave ? 'bg-[var(--chart-1)]/12 text-[var(--chart-1)]'
+              : rec?.checkedOutAt ? 'bg-muted text-muted-foreground'
+                : rec?.checkedInAt ? 'bg-success/12 text-success'
+                  : 'bg-warning/12 text-warning',
+          )}>
             {state.onLeave ? <CalendarOff className="size-5" /> : <Clock className="size-5" />}
           </div>
           <div>
-            <p className="text-sm font-semibold">
+            <p className="text-[13.5px] font-semibold text-foreground">
               {state.onLeave
                 ? `On approved ${state.onLeave.type} leave`
                 : rec?.checkedOutAt ? 'Day complete'
                   : rec?.checkedInAt ? 'Currently checked in'
                     : 'Not checked in yet'}
             </p>
-            <p className="text-muted-foreground text-xs">
+            <p className="text-[11.5px] text-muted-foreground">
               {formatDate(state.date, { weekday: 'long', day: 'numeric', month: 'long' })}
               {rec?.checkedInAt && ` · in ${timeOf(rec.checkedInAt)}`}
               {rec?.checkedOutAt && ` · out ${timeOf(rec.checkedOutAt)}`}
             </p>
             {rec && rec.lateMinutes > 0 && (
-              <p className="mt-0.5 text-xs font-medium text-amber-600">
+              <p className="mt-0.5 text-[11.5px] font-medium text-warning">
                 {rec.lateMinutes} min late
               </p>
             )}
             {rec?.adjustedAt && (
-              <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              <p className="mt-0.5 flex items-center gap-1 text-[11.5px] font-medium text-muted-foreground">
                 <History className="size-3" />
                 Corrected by {rec.adjuster?.profiles?.fullName ?? 'HR'}
                 {rec.adjustmentReason ? ` — ${rec.adjustmentReason}` : ''}
@@ -236,41 +266,53 @@ function MyDay({ onChanged }: { onChanged: () => void }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           {(rec?.checkedInAt || rec?.workedMinutes) && (
             <div className="text-right">
-              <p className="text-muted-foreground text-xs">
+              <p className="text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">
                 {rec?.checkedOutAt ? 'Worked' : 'Elapsed'}
               </p>
-              <p className="text-xl font-semibold tabular-nums">{formatDuration(elapsed)}</p>
+              <p className="text-[19px] font-semibold leading-none tabular-nums tracking-[-0.02em]">
+                {formatDuration(elapsed)}
+              </p>
             </div>
           )}
 
           {state.canCheckIn && (
+            /*
+              The check-in control keeps its own emphasis, and only it.
+
+              This is the one action on the screen somebody came here to
+              perform, so it stays a filled button — but in the product's own
+              primary treatment rather than a hard-coded emerald that appeared
+              nowhere else and did not follow the theme.
+            */
             <div className="flex gap-2">
-              <Button onClick={() => act('in')} disabled={busy}
-                className="bg-emerald-600 text-white hover:bg-emerald-700">
+              <Button onClick={() => act('in')} disabled={busy} className="gap-2">
                 {busy ? <Loader2 className="size-4 animate-spin" /> : <LogIn className="size-4" />}
-                <span className="ml-2">Check in</span>
+                Check in
               </Button>
-              <Button variant="outline" onClick={() => act('in', true)} disabled={busy} title="Check in as remote">
+              <Button
+                variant="outline" onClick={() => act('in', true)} disabled={busy}
+                title="Check in as remote" aria-label="Check in as remote"
+              >
                 <Wifi className="size-4" />
               </Button>
             </div>
           )}
           {state.canCheckOut && (
-            <Button onClick={() => act('out')} disabled={busy} variant="outline">
+            <Button onClick={() => act('out')} disabled={busy} variant="outline" className="gap-2">
               {busy ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4" />}
-              <span className="ml-2">Check out</span>
+              Check out
             </Button>
           )}
           {!state.canCheckIn && !state.canCheckOut && !state.onLeave && (
-            <Badge className={STATUS_STYLES.present}>
+            <Pill tone="good">
               <CheckCircle2 className="mr-1 size-3" /> Recorded
-            </Badge>
+            </Pill>
           )}
         </div>
-      </CardContent>
+      </div>
     </Card>
   );
 }
@@ -493,11 +535,21 @@ export default function AttendanceTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        title="Attendance"
-        description="Clock in and out, review the register, and correct records."
-        icon={Clock}
-      >
+      {/*
+        The module's own header, not the generic PageHeader.
+
+        Every other HR tab opens with a title, a sentence and its controls on
+        one line; this screen used a shared PageHeader with an icon block that
+        appears nowhere else in HR, which is most of why it read as a different
+        product from the tab beside it.
+      */}
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">
+          <h2 className="text-[17px] font-semibold tracking-[-0.018em] text-foreground">Attendance</h2>
+          <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+            Clock in and out, review the register, and correct records.
+          </p>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Input type="date" value={period.from} className="h-9 w-[150px]"
             onChange={e => setPeriod(p => ({ ...p, from: e.target.value }))} />
@@ -515,97 +567,127 @@ export default function AttendanceTab() {
           </Select>
           <ExportButton module="hr" datasets={[{ key: 'attendance', label: 'Attendance' }]} />
         </div>
-      </PageHeader>
+      </div>
 
       <MyDay onChanged={() => setVersion(v => v + 1)} />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Attendance rate" value={`${summary?.attendanceRate ?? 0}%`} icon={TrendingUp} />
-        <StatCard label="Punctuality" value={`${summary?.punctualityRate ?? 0}%`} icon={CheckCircle2} />
-        <StatCard label="Hours logged" value={formatDuration(summary?.totalMinutes ?? 0)} icon={Clock} />
-        <StatCard label="Late arrivals" value={summary?.late ?? 0} icon={AlertTriangle} />
-      </div>
+      {/*
+        One divided strip rather than four floating cards.
+
+        Four separate bordered cards with icons is the pattern this module
+        replaced everywhere else: it spends a lot of ink on decoration and
+        makes the four figures harder to read across, which is the only thing
+        a row of figures is for.
+      */}
+      <Card>
+        <div className="grid grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
+          <Stat label="Attendance rate" value={`${summary?.attendanceRate ?? 0}%`} />
+          <Stat label="Punctuality" value={`${summary?.punctualityRate ?? 0}%`} />
+          <Stat label="Hours logged" value={formatDuration(summary?.totalMinutes ?? 0)} />
+          <Stat
+            label="Late arrivals"
+            value={summary?.late ?? 0}
+            tone={(summary?.late ?? 0) > 0 ? 'warning' : 'default'}
+          />
+        </div>
+      </Card>
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="text-muted-foreground size-6 animate-spin" />
         </div>
       ) : byDay.length === 0 ? (
-        <EmptyState
-          icon={CalendarDays}
-          title="No attendance in this period"
-          description="Records appear here once people check in, or once a manager records them."
-        />
+        <Card>
+          <Blank
+            title="No attendance in this period"
+            note="Records appear here once people check in, or once a manager records them."
+          />
+        </Card>
       ) : (
         <div className="flex flex-col gap-4">
-          {byDay.map(([day, rows]) => (
-            <div key={day} className="overflow-hidden rounded-lg border bg-card">
-              <div className="bg-muted/40 flex items-center justify-between border-b px-4 py-2">
-                <span className="text-sm font-medium">
-                  {formatDate(day, { weekday: 'long', day: 'numeric', month: 'long' })}
-                </span>
-                <span className="text-muted-foreground text-xs">
-                  {rows.length} record{rows.length === 1 ? '' : 's'}
-                </span>
+          {byDay.map(([workDay, rows]) => (
+            <Card key={workDay}>
+              <div className="px-4 pt-3.5">
+                <Head
+                  title={formatDate(workDay, { weekday: 'long', day: 'numeric', month: 'long' })}
+                  count={rows.length}
+                />
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-muted-foreground border-b text-xs">
-                      <th className="p-3 text-left font-medium">Employee</th>
-                      <th className="p-3 text-left font-medium">Department</th>
-                      <th className="p-3 text-left font-medium">In</th>
-                      <th className="p-3 text-left font-medium">Out</th>
-                      <th className="p-3 text-left font-medium">Worked</th>
-                      <th className="p-3 text-left font-medium">Status</th>
-                      <th className="p-3 text-right font-medium">
-                        {canAdjust ? 'Adjust' : ''}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map(r => (
-                      <tr key={r.id} className="hover:bg-accent/30 border-b last:border-0">
-                        <td className="p-3 font-medium">
-                          {r.member?.profiles?.fullName || '—'}
-                        </td>
-                        <td className="text-muted-foreground p-3">
-                          {r.member?.department?.name ?? '—'}
-                        </td>
-                        <td className="p-3 tabular-nums">{timeOf(r.checkedInAt)}</td>
-                        <td className="p-3 tabular-nums">{timeOf(r.checkedOutAt)}</td>
-                        <td className="p-3 tabular-nums">{formatDuration(r.workedMinutes)}</td>
-                        <td className="p-3">
-                          <Badge className={STATUS_STYLES[r.status] ?? STATUS_STYLES.holiday}>
-                            {STATUS_LABELS[r.status] ?? r.status}
-                          </Badge>
-                          {r.lateMinutes > 0 && (
-                            <span className="ml-1.5 text-xs text-amber-600">+{r.lateMinutes}m</span>
-                          )}
-                        </td>
-                        <td className="p-3 text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            {r.adjustedAt && (
-                              <Button variant="ghost" size="icon" className="text-muted-foreground size-8"
-                                onClick={() => openHistory(r)} aria-label="View correction history"
-                                title={`Corrected by ${r.adjuster?.profiles?.fullName ?? 'HR'}`}>
-                                <History className="size-3.5" />
-                              </Button>
-                            )}
-                            {canAdjust && (
-                              <Button variant="ghost" size="icon" className="size-8"
-                                onClick={() => openAdjust(r)} aria-label="Adjust record">
-                                <Pencil className="size-3.5" />
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+
+              {/*
+                The module's own row grid, not a bare <table>.
+
+                / are what every other list in HR uses, and they
+                carry the behaviour a hand-rolled table here did not: a
+                consistent hit area, the same hover treatment, and column
+                hiding at narrow widths rather than a table that forces the
+                page sideways on a phone.
+              */}
+              <div className="mt-2.5 px-2 pb-2">
+                <THead columns="grid-cols-[minmax(0,1.6fr)_auto_auto] md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto_auto_auto_auto]">
+                  <span>Employee</span>
+                  <span className="hidden md:block">Department</span>
+                  <span className="hidden text-right md:block">In</span>
+                  <span className="hidden text-right md:block">Out</span>
+                  <span className="text-right">Worked</span>
+                  <span className="text-right">Status</span>
+                  <span className="hidden text-right md:block">{canAdjust ? 'Adjust' : ''}</span>
+                </THead>
+
+                {rows.map(r => (
+                  <TRow
+                    key={r.id}
+                    columns="grid-cols-[minmax(0,1.6fr)_auto_auto] md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_auto_auto_auto_auto_auto]"
+                  >
+                    <PersonCell
+                      id={r.member?.id ?? r.memberId}
+                      name={r.member?.profiles?.fullName}
+                      avatarUrl={r.member?.profiles?.avatarUrl}
+                      secondary={r.member?.department?.name}
+                    />
+                    <span className="hidden truncate text-[12.5px] text-muted-foreground md:block">
+                      {r.member?.department?.name ?? '—'}
+                    </span>
+                    <span className="hidden text-right text-[12.5px] tabular-nums text-muted-foreground md:block">
+                      {timeOf(r.checkedInAt)}
+                    </span>
+                    <span className="hidden text-right text-[12.5px] tabular-nums text-muted-foreground md:block">
+                      {timeOf(r.checkedOutAt)}
+                    </span>
+                    <span className="text-right text-[12.5px] tabular-nums text-foreground">
+                      {formatDuration(r.workedMinutes)}
+                    </span>
+                    <span className="flex items-center justify-end gap-1.5">
+                      <Pill tone={STATUS_TONE[r.status] ?? 'quiet'}>
+                        {STATUS_LABELS[r.status] ?? r.status}
+                      </Pill>
+                      {r.lateMinutes > 0 && (
+                        <span className="text-[11px] tabular-nums text-warning">+{r.lateMinutes}m</span>
+                      )}
+                    </span>
+                    <span className="hidden items-center justify-end gap-1 md:flex">
+                      {r.adjustedAt && (
+                        <Button
+                          variant="ghost" size="icon" className="size-7 text-muted-foreground"
+                          onClick={() => openHistory(r)} aria-label="View correction history"
+                          title={`Corrected by ${r.adjuster?.profiles?.fullName ?? 'HR'}`}
+                        >
+                          <History className="size-3.5" />
+                        </Button>
+                      )}
+                      {canAdjust && (
+                        <Button
+                          variant="ghost" size="icon" className="size-7"
+                          onClick={() => openAdjust(r)} aria-label="Adjust record"
+                        >
+                          <Pencil className="size-3.5" />
+                        </Button>
+                      )}
+                    </span>
+                  </TRow>
+                ))}
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}

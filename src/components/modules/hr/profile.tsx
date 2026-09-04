@@ -3,7 +3,7 @@
 import * as React from 'react';
 import {
   ArrowLeft, Briefcase, CalendarDays, Clock, FileText, GitBranch,
-  Target, Wallet, Users, FolderKanban, MessageSquareWarning, Plus,
+  Target, Wallet, Users, FolderKanban, MessageSquareWarning, Plus, Upload,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -27,6 +27,7 @@ import {
 } from './ui';
 import type { Profile360 } from './types';
 import { EmploymentChangeDialog } from './forms';
+import { DocumentUploadDialog } from './document-upload';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -81,6 +82,10 @@ export function EmployeeProfile({
    * which reads as "the module will not render" and is caught by no harness.
    */
   const openRecord = useAppStore(s => s.openRecord);
+  const allows = useAppStore(s => s.allows);
+  const organizationId = useAppStore(s => s.organization?.id ?? null);
+  /** Whether the file-a-document dialog is open. */
+  const [filing, setFiling] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -556,7 +561,18 @@ export function EmployeeProfile({
       <div className="grid gap-4 lg:grid-cols-3">
         <Card>
           <div className="px-4 pt-3.5">
-            <Head title="Documents" count={data.documents.length || undefined} />
+            <div className="flex flex-wrap items-center gap-2">
+              <Head title="Documents" count={data.documents.length || undefined} />
+              {allows('hr', 'manage') && organizationId ? (
+                <Button
+                  size="sm" variant="outline"
+                  className="ml-auto h-7 gap-1.5 px-2 text-[12px]"
+                  onClick={() => setFiling(true)}
+                >
+                  <Upload className="size-3.5" /> File one
+                </Button>
+              ) : null}
+            </div>
           </div>
           {data.documents.length ? (
             <ul className="divide-y divide-border">
@@ -695,6 +711,17 @@ export function EmployeeProfile({
           open={changing}
           onClose={() => setChanging(false)}
           onSaved={() => { setChanging(false); load(); }}
+        />
+      ) : null}
+
+      {filing && organizationId ? (
+        <DocumentUploadDialog
+          open={filing}
+          memberId={p.memberId}
+          memberName={p.fullName}
+          organizationId={organizationId}
+          onClose={() => setFiling(false)}
+          onSaved={load}
         />
       ) : null}
     </div>

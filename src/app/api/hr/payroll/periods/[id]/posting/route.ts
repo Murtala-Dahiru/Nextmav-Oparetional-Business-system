@@ -47,7 +47,7 @@ export async function GET(_req: Request, { params }: Params) {
   const { id } = await params;
   const orgId = ctx.org.organizationId;
 
-  const [{ data: period, error: pe }, { data: lines, error: le }] = await Promise.all([
+  const [{ data: periodRow, error: pe }, { data: lines, error: le }] = await Promise.all([
     ctx.supabase
       .from('payroll_periods')
       .select('id, name, period_start, period_end, pay_date, status, currency, '
@@ -72,7 +72,17 @@ export async function GET(_req: Request, { params }: Params) {
    * exists but is not for you" is itself information about the company's
    * payroll calendar.
    */
-  if (!period) return error('No such pay run.', 404, 'NOT_FOUND');
+  if (!periodRow) return error('No such pay run.', 404, 'NOT_FOUND');
+
+  /**
+   * Narrowed once, here.
+   *
+   * PostgREST's generated types resolve a hand-written multi-line `select`
+   * to a union that includes an error shape, so every field access below
+   * would otherwise need its own cast. The row has already been checked for
+   * existence; this names that fact once instead of twenty times.
+   */
+  const period = periodRow as any;
 
   /**
    * A run before approval has no posting, and that is not an error.

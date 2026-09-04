@@ -1196,9 +1196,57 @@ let attendanceRecordId = null;
   }
 }
 
-/* -- 18. Clean up --------------------------------------------------------- */
+/* -- 18. What a leaver is still carrying ---------------------------------- */
 
-section('18. Clean up');
+/**
+ * The handover read.
+ *
+ * It changes nothing, so it needs no cleanup and can run against whoever
+ * happens to be in the demo organisation. What is being checked is that it
+ * asks the *other* modules rather than guessing — a task assigned in Projects
+ * has to appear here — and that it is not a read an ordinary employee can make
+ * about a colleague.
+ */
+section('18. Handover: what is still attached to somebody');
+{
+  const people = await owner('/api/hr/people?pageSize=50');
+  const target = (people.json?.data ?? []).find(p => p.lifecycleStage === 'active');
+
+  if (!target) { skip('no active employee to read'); }
+  else {
+    const res = await owner(`/api/hr/people/${target.memberId}/handover`);
+    check(res.status === 200, 'GET /api/hr/people/:id/handover', String(res.status));
+
+    const d = res.json?.data;
+    const keys = (d?.groups ?? []).map(g => g.key);
+    check(keys.includes('reports') && keys.includes('tasks') && keys.includes('projects'),
+      'it asks Projects and the reporting line, not just HR', keys.join(','));
+    check(keys.includes('reviewing') && keys.includes('feedback'),
+      'and the review work they would leave behind');
+    check(typeof d?.outstanding === 'number',
+      'it totals what is outstanding');
+    check((d?.groups ?? []).every(g => typeof g.why === 'string' && g.why.length > 0),
+      'every group says why it matters, not just how many');
+
+    /**
+     * Empty groups are kept.
+     *
+     * A screen that only receives non-empty groups cannot tell "nothing
+     * outstanding" from "not checked", and those are different assurances to
+     * give somebody signing off an exit.
+     */
+    check((d?.groups ?? []).length >= 8,
+      'groups with nothing in them are still returned', `${(d?.groups ?? []).length} groups`);
+
+    const asEmployee = await employee(`/api/hr/people/${target.memberId}/handover`);
+    check(asEmployee.status === 403,
+      'an employee cannot read what a colleague is carrying', String(asEmployee.status));
+  }
+}
+
+/* -- 19. Clean up --------------------------------------------------------- */
+
+section('19. Clean up');
 {
   let removed = 0, attempted = 0;
 

@@ -25,6 +25,7 @@ import {
 import { LEAVE_TYPES, TICKET_PRIORITIES, statusLabel } from '@/lib/constants';
 
 import { getOne, getList, post, patch, todayISO } from './data';
+import { HandoverPanel } from './handover';
 import type { Person, OrgDepartment, ChecklistTemplate, StarterTemplateOption } from './types';
 
 /**
@@ -883,7 +884,7 @@ export function ExitDialog({
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Record an exit</DialogTitle>
           <DialogDescription>
@@ -891,6 +892,17 @@ export function ExitDialog({
             until their last day, because the handover needs them there.
           </DialogDescription>
         </DialogHeader>
+
+        {/*
+          What they are carrying, before the exit is recorded.
+
+          Above the form rather than below it, because it is the thing that
+          changes what somebody types into the form — a person with three
+          direct reports and eleven open tasks needs a different last working
+          day from one with none. Reading it afterwards would be reading it
+          too late.
+        */}
+        <HandoverPanel memberId={person.memberId} />
 
         <form onSubmit={submit} className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
