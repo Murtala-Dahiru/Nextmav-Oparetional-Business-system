@@ -22,7 +22,7 @@ try {
   assert.equal(worker.active, true); console.log('SERVICE WORKER ' + JSON.stringify(worker));
   if (process.env.TEST_WEB_PUSH === '1') {
     await recipient.grantPermissions(['notifications'], { origin: base });
-    await page.getByRole('button', { name: 'Enable this browser' }).click();
+    await page.getByRole('button', { name: 'Enable Notifications' }).click();
     try {
       await page.getByText(/This browser is connected/).waitFor({ timeout: 45000 });
       console.log('PUSH subscription created and registered for isolated Edge profile');

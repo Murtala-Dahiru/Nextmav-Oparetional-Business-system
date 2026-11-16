@@ -1,0 +1,102 @@
+{
+  "checkedAt": "2026-11-16T20:37:04.781Z",
+  "configuration": {
+    "VAPID_PUBLIC_KEY": true,
+    "VAPID_PRIVATE_KEY": true,
+    "VAPID_SUBJECT": true,
+    "NOTIFICATION_DISPATCH_SECRET": true
+  },
+  "worker": [
+    {
+      "worker_id": "dispatcher",
+      "last_started_at": "2026-11-16T20:36:56.752Z",
+      "last_success_at": "2026-11-16T20:36:58.365Z",
+      "last_sweep_at": null,
+      "configuration_ready": true
+    },
+    {
+      "worker_id": "scheduler",
+      "last_started_at": "2026-11-16T20:18:00.313Z",
+      "last_success_at": "2026-11-16T20:37:00.561Z",
+      "last_sweep_at": "2026-11-16T20:37:00.561Z",
+      "configuration_ready": true
+    }
+  ],
+  "deliveries": [
+    {
+      "state": "skipped",
+      "count": 1,
+      "oldest": "2026-11-16T11:31:32.728Z"
+    },
+    {
+      "state": "accepted",
+      "count": 65,
+      "oldest": "2026-11-16T11:47:47.855Z"
+    }
+  ],
+  "devices": [
+    {
+      "enabled": true,
+      "retired": false,
+      "count": 1,
+      "last_acceptance": "2026-11-16T20:36:57.937Z"
+    },
+    {
+      "enabled": false,
+      "retired": true,
+      "count": 5,
+      "last_acceptance": "2026-11-16T13:33:47.533Z"
+    }
+  ],
+  "recentResults": [
+    {
+      "result": "accepted",
+      "provider_code": 201,
+      "count": 65,
+      "last_attempt": "2026-11-16T20:36:56.826Z"
+    },
+    {
+      "result": "skipped",
+      "provider_code": null,
+      "count": 1,
+      "last_attempt": "2026-11-16T11:47:58.774Z"
+    }
+  ],
+  "scheduler": [
+    {
+      "jobname": "nextmav-push-recovery",
+      "schedule": "* * * * *",
+      "active": true
+    }
+  ],
+  "extensions": [
+    {
+      "name": "pg_net",
+      "installed_version": "0.20.4"
+    },
+    {
+      "name": "pg_cron",
+      "installed_version": "1.6.4"
+    },
+    {
+      "name": "supabase_vault",
+      "installed_version": "0.3.1"
+    }
+  ],
+  "wakeConfiguration": [
+    {
+      "name": "notification_dispatch_url"
+    },
+    {
+      "name": "notification_dispatch_secret"
+    }
+  ],
+  "recentWakeErrors": [],
+  "recentWakeResponses": [
+    {
+      "status_code": 200,
+      "timed_out": false,
+      "count": 5
+    }
+  ]
+}

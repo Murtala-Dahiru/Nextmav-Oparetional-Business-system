@@ -336,7 +336,7 @@ export function Header() {
               </Button>
             )}
           </DropdownMenuLabel>
-          <DropdownMenuItem asChild><a href="/settings/notifications" className="text-xs">History, preferences & devices</a></DropdownMenuItem>
+          <DropdownMenuItem asChild><a href="/settings/notifications" className="text-xs">Notification settings</a></DropdownMenuItem>
           <DropdownMenuSeparator className="my-0" />
 
           {notifications.length === 0 ? (

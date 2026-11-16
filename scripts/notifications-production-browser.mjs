@@ -31,7 +31,7 @@ try {
   const settings = (await api(ctx.request,'/api/notifications/settings')).data;
   assert.equal(settings.pushReady,true,'Production push configuration must be ready');
   const saved = page.waitForResponse(r=>r.url()===base+'/api/notifications/devices' && r.request().method()==='POST');
-  await page.getByRole('button',{name:'Enable this browser'}).click();
+  await page.getByRole('button',{name:'Enable Notifications'}).click();
   await page.getByText(/This browser is connected/).waitFor({timeout:90000});
   const device = (await (await saved).json()).data.id;
   const state = await page.evaluate(async()=>{const r=await navigator.serviceWorker.ready;return {secure:isSecureContext,permission:Notification.permission,scope:new URL(r.scope).pathname,active:!!r.active,subscription:!!await r.pushManager.getSubscription()};});
@@ -91,6 +91,17 @@ try {
   await api(ctx.request,'/api/notifications/settings','PUT',{...prefs,messagePreviews:false});
   const hidden=(await api(sender,'/api/communication/messages','POST',{channelId:fixture.channelId,body:'Hidden preview acceptance'})).data;
   await receipt((await eventNotice(hidden.id)).id,/^New message$/, /^Open NextMav to view the details\.$/);
+  if (process.env.OBSERVE_CLICK==='1') {
+    await api(ctx.request,'/api/notifications/settings','PUT',prefs);
+    const clicked=ctx.waitForEvent('page',{timeout:120000}).catch(()=>null);
+    const clickText='Click this notification to verify the production conversation.';
+    const clickMessage=(await api(sender,'/api/communication/messages','POST',{channelId:fixture.channelId,body:clickText})).data;
+    await receipt((await eventNotice(clickMessage.id)).id,/Sender sent you a message/,/Click this notification/);
+    console.log('WAITING_FOR_OS_CLICK: click the latest NextMav notification on this laptop.');
+    const opened=await clicked;
+    if(opened){await opened.waitForURL(url=>url.searchParams.get('channel')===fixture.channelId,{timeout:60000});await opened.getByText(clickText,{exact:true}).last().waitFor({timeout:60000});console.log('PASS actual operating-system notification click opened the conversation and actual message');}
+    else console.log('OS_CLICK_NOT_OBSERVED: manual click verification remains pending');
+  }
   console.log('PASS production test, messages, closed-tab receipt, task, approval, hidden previews, and authorized destinations. OS display/click and physical mobile remain separate checks.');
 } finally {
   await sender.dispose();await ctx.close();await client.end();

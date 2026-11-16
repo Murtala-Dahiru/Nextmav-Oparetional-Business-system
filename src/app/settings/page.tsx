@@ -1,5 +1,6 @@
 'use client';
 
+import { NotificationSettingsLink } from '@/components/shared/notification-settings-link';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -202,6 +203,8 @@ export default function SettingsPage() {
             <p className="text-muted-foreground text-sm">{profile?.email}</p>
           </div>
         </div>
+
+        <NotificationSettingsLink />
 
         {profile?.forcePasswordChange && (
           <div

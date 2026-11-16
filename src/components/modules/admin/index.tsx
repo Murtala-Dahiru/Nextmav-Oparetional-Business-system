@@ -1,5 +1,6 @@
 'use client';
 
+import { NotificationSettingsLink } from '@/components/shared/notification-settings-link';
 import { useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import { toast } from 'sonner';
@@ -1224,6 +1225,7 @@ export default function AdminModule() {
         ════════════════════════════════════════════════════════ */}
         <TabsContent value="settings" className="space-y-6">
           <PageHeader title="Settings" description="Configure your organization settings." icon={Settings} />
+          <NotificationSettingsLink />
 
           <SectionCard title="General" icon={Briefcase}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

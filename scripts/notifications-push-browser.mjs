@@ -35,7 +35,7 @@ try {
       return {secure:isSecureContext,scope:new URL(r.scope).pathname,pushSupported:'PushManager' in window,
         preexistingSubscription:!!await r.pushManager.getSubscription()};
     })}));
-  const button=page.getByRole('button',{name:'Enable this browser'});
+  const button=page.getByRole('button',{name:'Enable Notifications'});
   const saved=page.waitForResponse(r=>r.url()===base+'/api/notifications/devices' && r.request().method()==='POST',{timeout:120000}).then(r=>r.json()).catch(()=>null);
   await button.click({timeout:60000});
   const result=await Promise.race([
@@ -52,7 +52,7 @@ try {
   }
   if(state.subscription&&result==='connected' && process.env.SKIP_TEST_PUSH !== '1') {
     const testRequest = page.waitForResponse(r=>r.url()===base+'/api/notifications/test' && r.request().method()==='POST');
-    await page.getByRole('button',{name:'Send test'}).first().click();
+    await page.getByRole('button',{name:'Send Test Notification'}).first().click();
     await page.getByText(/Test queued/).waitFor(); console.log('PASS real test notification queued');
     const response=await testRequest;
     assert.ok(response.ok());
@@ -129,7 +129,7 @@ try {
             await app.waitForLoadState('domcontentloaded');
             await app.getByRole('heading',{name:'Notifications',exact:true}).waitFor();
             console.log({installedPWA:await app.evaluate(()=>matchMedia('(display-mode: standalone)').matches)});
-            await app.getByRole('button',{name:'Send test'}).first().click();
+            await app.getByRole('button',{name:'Send Test Notification'}).first().click();
             await app.getByText(/Test queued/).waitFor();
             const pwaTest=(await inbox()).find(n=>n.type==='push_test');
             await dispatch(); console.log({installedReceipt:await observed(pwaTest.id)});
