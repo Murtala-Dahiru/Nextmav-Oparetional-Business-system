@@ -83,7 +83,8 @@ const permissionsPolicy = (media: string) => ({
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  serverExternalPackages: ['pdfkit'],
+  serverExternalPackages: ['pdfkit', 'pg'],
+  outputFileTracingIncludes: { '/api/internal/notifications/dispatch': ['./scripts/supabase-root-2021.crt'] },
 
   /**
    * Normally `.next`. Overridable so two dev servers can run against this

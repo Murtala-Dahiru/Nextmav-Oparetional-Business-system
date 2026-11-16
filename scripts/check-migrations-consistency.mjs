@@ -82,6 +82,16 @@ const exempt=new Set(['profiles','team_members','project_members','task_dependen
 for(const m of joined.matchAll(/CREATE TABLE IF NOT EXISTS (\w+) \(([\s\S]*?)\n\);/g)){
   const [,name,body]=m;
   if(exempt.has(name)) continue;
+  // Operational counters have no tenant content and are inaccessible to ordinary
+  // clients. Require all three protections; this is not a blanket table exemption.
+  if (['notification_worker_health','notification_dispatch_requests'].includes(name)) {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const rls = new RegExp(`ALTER TABLE (?:public\\.)?${escaped} ENABLE ROW LEVEL SECURITY`).test(joined);
+    const revoked = new RegExp(`REVOKE ALL ON (?:public\\.)?${escaped} FROM PUBLIC,anon,authenticated`).test(joined);
+    const denied = new RegExp(`CREATE POLICY \\w+ ON public\\.${escaped} FOR ALL TO authenticated USING\\(false\\) WITH CHECK\\(false\\)`).test(joined);
+    if (!rls || !revoked || !denied) fail(`operator table ${name} must explicitly deny ordinary client access`);
+    continue;
+  }
   const tenantAdded = new RegExp(`ALTER TABLE ${name} ADD COLUMN IF NOT EXISTS organization_id uuid`).test(joined) && new RegExp(`ALTER TABLE ${name} ALTER COLUMN organization_id SET NOT NULL`).test(joined);
   if(!/organization_id\s+uuid\s+NOT NULL/.test(body) && !tenantAdded)
     fail(`table ${name} has no organization_id NOT NULL (cross-tenant leak risk)`);

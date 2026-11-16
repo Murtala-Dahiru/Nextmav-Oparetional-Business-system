@@ -15,7 +15,7 @@ async function asUser(user, fn) {
 }
 try {
   await q('BEGIN');
-  for (const file of ['0150_notification_delivery.sql', '0151_notification_visibility.sql', '0152_notification_lifecycle.sql', '0153_notification_business_events.sql', '0154_notification_deadlines.sql', '0155_notification_preferences.sql', '0156_notification_delivery_guards.sql', '0157_notification_claim.sql', '0158_notification_business_api.sql', '0159_notification_scope.sql']) await q(readFileSync('supabase/migrations/' + file, 'utf8'));
+  for (const file of ['0150_notification_delivery.sql', '0151_notification_visibility.sql', '0152_notification_lifecycle.sql', '0153_notification_business_events.sql', '0154_notification_deadlines.sql', '0155_notification_preferences.sql', '0156_notification_delivery_guards.sql', '0157_notification_claim.sql', '0158_notification_business_api.sql', '0159_notification_scope.sql', '0160_notification_dispatch.sql', '0161_notification_serverless.sql']) await q(readFileSync('supabase/migrations/' + file, 'utf8'));
   const users = await q('SELECT id FROM profiles WHERE is_active AND auth_deleted_at IS NULL LIMIT 3');
   assert.equal(users.length, 3, 'Three existing profiles required for rollback-only authorization tests');
   const org = (await q("INSERT INTO organizations(name,slug) VALUES('Notification rollback acceptance',$1) RETURNING id", ['notification-test-' + randomUUID()]))[0].id;
@@ -30,7 +30,7 @@ try {
   const message = (await q("INSERT INTO messages(organization_id,channel_id,sender_id,body,mentions) VALUES($1,$2,$3,'PRIVATE TEST CONTENT',$4) RETURNING id", [org, channel, members[0], [members[2]]]))[0].id;
   const notices = await q('SELECT * FROM notifications WHERE entity_id=$1', [message]);
   check(notices.length === 1 && notices[0].recipient_id === members[1], 'Message targets channel member; sender and outsider mention excluded');
-  check(!notices[0].body.includes('PRIVATE'), 'Message preview is generic');
+  check(notices[0].body.includes('PRIVATE TEST CONTENT') && !!notices[0].actor_id, 'Authorized inbox includes source message and actor');
   check((await q('SELECT * FROM notification_deliveries WHERE notification_id=$1', [notices[0].id])).length === 2, 'One durable job per registered device');
   console.log('MEASURE transaction message insert + durable fanout + query ' + Math.round(performance.now() - start) + 'ms (one sample, not p95 realtime)');
   await q("INSERT INTO notifications(organization_id,recipient_id,type,title,dedupe_key) SELECT organization_id,recipient_id,type,title,dedupe_key FROM notifications WHERE id=$1 ON CONFLICT DO NOTHING", [notices[0].id]);
@@ -66,6 +66,15 @@ try {
   await q('UPDATE channel_members SET is_muted=true WHERE channel_id=$1 AND member_id=$2', [channel, members[1]]);
   const muted = (await q("INSERT INTO messages(organization_id,channel_id,sender_id,body) VALUES($1,$2,$3,'Muted') RETURNING id", [org, channel, members[0]]))[0].id;
   check((await q('SELECT * FROM notifications WHERE entity_id=$1', [muted])).length === 0, 'Muted conversation suppresses routine message');
+  const mention = (await q("INSERT INTO messages(organization_id,channel_id,sender_id,body,mentions,parent_id) VALUES($1,$2,$3,'Reply mentioning you',$4,$5) RETURNING id", [org,channel,members[0],[members[1]],message]))[0].id;
+  check((await q("SELECT * FROM notifications WHERE entity_id=$1 AND type='message_mention'", [mention])).length===1, 'Mention reaches muted conversation member');
+  await q('UPDATE channel_members SET is_muted=false WHERE channel_id=$1 AND member_id=$2',[channel,members[1]]);
+  const reply = (await q("INSERT INTO messages(organization_id,channel_id,sender_id,body,parent_id) VALUES($1,$2,$3,'Thread reply',$4) RETURNING id", [org,channel,members[0],message]))[0].id;
+  check((await q("SELECT * FROM notifications WHERE entity_id=$1 AND title LIKE '% replied'", [reply])).length===1, 'Reply carries actual sender and reply description');
+  await asUser(users[1].id,async()=>{
+    await q('SELECT notification_preferences($1,$2)',[org,{push:true,messagePreviews:true,businessPreviews:false}]);
+    check((await q('SELECT notification_prefs FROM organization_members WHERE id=$1',[members[1]]))[0].notification_prefs.messagePreviews===true,'Message preview opt-in persists');
+  });
   await q('DELETE FROM channel_members WHERE channel_id=$1 AND member_id=$2', [channel, members[1]]);
   await asUser(users[1].id, async () => check(!(await q('SELECT notification_record_visible($1,$2,$3,$4) allowed', [org, 'message_received', 'message', message]))[0].allowed, 'Conversation revocation blocks queued delivery'));
   const task = (await q("INSERT INTO tasks(organization_id,title,assignee_id,due_date) VALUES($1,'Rollback task',$2,current_date) RETURNING id", [org, members[1]]))[0].id;
@@ -79,6 +88,9 @@ try {
   check(await noticeFor(leave,'leave_requested',members[0]), 'HR leave request reaches authorized approver');
   await q("UPDATE leave_requests SET status='approved',approved_by=$2 WHERE id=$1", [leave,members[0]]);
   check(await noticeFor(leave,'leave_approved',members[1]), 'HR leave approval reaches employee');
+  const rejectedLeave = (await q('INSERT INTO leave_requests(organization_id,member_id,start_date,end_date) VALUES($1,$2,current_date+20,current_date+21) RETURNING id',[org,members[1]]))[0].id;
+  await q("UPDATE leave_requests SET status='rejected',approved_by=$2 WHERE id=$1",[rejectedLeave,members[0]]);
+  check(await noticeFor(rejectedLeave,'leave_rejected',members[1]),'HR rejection reaches requesting employee');
   const expense = (await q("INSERT INTO expenses(organization_id,title,amount,submitted_by) VALUES($1,'Test expense',20,$2) RETURNING id", [org,members[1]]))[0].id;
   check(await noticeFor(expense,'expense_submitted',members[0]), 'Finance expense review reaches approver');
   await q("UPDATE expenses SET status='approved',approved_by=$2 WHERE id=$1", [expense,members[0]]);

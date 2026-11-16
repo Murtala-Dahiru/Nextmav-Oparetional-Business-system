@@ -18,3 +18,9 @@ assert.ok(navigated[0].startsWith('https://nextmav.example/api/notifications/ope
 handlers.get('notificationclick')({ notification: { close() {}, data: { url: 'https://attacker.example' } }, waitUntil: promise => pending = promise }); await pending;
 assert.equal(navigated[1], 'https://nextmav.example/dashboard');
 console.log('PASS 7 service-worker handler assertions; no provider delivery or OS display simulated as evidence');
+
+handlers.get('push')({ data: { json: () => ({ id: '43', organizationId: '12345678-1234-1234-1234-123456789abc', presentation: { title: 'Alex sent you a message', body: 'Review the proposal.' } }) }, waitUntil: promise => pending = promise }); await pending;
+assert.equal(shown[1].title, 'Alex sent you a message');
+assert.equal(shown[1].options.body, 'Review the proposal.');
+assert.ok(!shown[1].options.data.url.includes('proposal'));
+console.log('PASS 3 rich service-worker presentation assertions');

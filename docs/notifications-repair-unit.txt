@@ -1,0 +1,9 @@
+
+> nextjs_tailwind_shadcn_ts@0.2.0 notifications:test
+> tsx scripts/notifications.test.mts && tsx scripts/notifications-dispatch.test.mts && node scripts/notifications-sw.test.mjs
+
+PASS 18 notification policy assertions (quiet hours, timezone, validation, URLs, retry, privacy category)
+PASS 9 preview policy assertions (opt-in, sensitive categories, truncation)
+PASS dispatch transport policy, access revocation, privacy, retry, retirement, fencing and machine authentication tests (mock transport)
+PASS 7 service-worker handler assertions; no provider delivery or OS display simulated as evidence
+PASS 3 rich service-worker presentation assertions

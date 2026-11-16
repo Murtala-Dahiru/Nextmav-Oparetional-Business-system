@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { authenticate as authenticateNotificationDispatcher } from '@/lib/notifications/dispatch-auth';
 import {
   SESSION_COOKIES, BACKGROUND_HEADER, expiryOf,
   ABSOLUTE_TIMEOUT_MS, type ExpiryReason,
@@ -236,6 +237,11 @@ function handle(req: NextRequest, requestId: string) {
     headers.set(REQUEST_ID_HEADER, requestId);
     return NextResponse.next({ request: { headers } });
   };
+  // This exact machine route uses a separate bearer credential in both proxy and handler.
+  if (pathname === '/api/internal/notifications/dispatch') {
+    const denied = authenticateNotificationDispatcher(req);
+    return denied ?? forward();
+  }
   const authed = hasSession(req);
   const isApi = pathname === '/api' || pathname.startsWith('/api/');
   const now = Date.now();

@@ -4,6 +4,8 @@ export const categories = ['communication', 'projects', 'hr', 'crm', 'commercial
 export type Category = typeof categories[number];
 export const preferencesSchema = z.object({
   push: z.boolean().default(false),
+  messagePreviews: z.boolean().default(false),
+  businessPreviews: z.boolean().default(false),
   categories: z.record(z.enum(categories), z.boolean()).default(Object.fromEntries(categories.map(c => [c, true])) as Record<Category, boolean>),
   inAppCategories: z.record(z.enum(categories), z.boolean()).default(Object.fromEntries(categories.map(c => [c, true])) as Record<Category, boolean>),
   quietStart: z.number().int().min(0).max(23).default(22),
@@ -60,7 +62,7 @@ export function eventFromRow(row: {
 }
 
 export function categoryOf(type: string, entity?: string | null): Category {
-  if (entity === 'agreement') return 'sign';
+  if (entity === 'agreement' || type.startsWith('sign_')) return 'sign';
   if (type in eventRegistry) return eventRegistry[type as keyof typeof eventRegistry].category;
   const prefix = type.split('_')[0];
   if (['message', 'mention', 'channel', 'meeting'].includes(prefix)) return 'communication';
@@ -71,6 +73,34 @@ export function categoryOf(type: string, entity?: string | null): Category {
   if (['ticket', 'support'].includes(prefix)) return 'support';
   if (prefix === 'commercial') return 'commercial';
   return 'system';
+}
+
+/** Minimal encrypted push text. Call only after current recipient access is checked.
+ * Sensitive categories never carry record details to a lock screen. */
+export function pushPresentation(row: { type: string; entity_type?: string; title?: string; body?: string }, prefs: NotificationPreferences) {
+  const category = categoryOf(row.type, row.entity_type);
+  const rich = category === 'communication' ? prefs.messagePreviews && row.entity_type === 'message'
+    : prefs.businessPreviews && ['projects', 'crm', 'support'].includes(category);
+  const safeTitles: Record<string, string> = {
+    message_received: 'New message', message_mention: 'You were mentioned', message_reply: 'New reply',
+    task_assigned: 'New task assigned', task_due: 'Task deadline approaching', task_overdue: 'Task overdue',
+    leave_requested: 'Leave request awaiting review', leave_approved: 'Leave request approved', leave_rejected: 'Leave request rejected',
+    lead_assigned: 'New lead assigned', ticket_assigned: 'New support ticket assigned',
+    commercial_approved: 'Proposal approved', commercial_executed: 'Contract executed',
+    expense_submitted: 'Expense approval requested', access_changed: 'Workspace access changed',
+    push_test: 'NextMav push test',
+  };
+  return {
+    title: rich ? plainPreview(row.title, 100) || safeTitles[row.type] || 'Workspace update'
+      : safeTitles[row.type] || `${category[0].toUpperCase() + category.slice(1)} update`,
+    body: row.type === 'push_test' ? 'This notification travelled through the server push pipeline.'
+      : rich ? plainPreview(row.body, 240) || 'Open NextMav to view the details.' : 'Open NextMav to view the details.',
+  };
+}
+
+export function plainPreview(value: string | undefined, limit: number): string {
+  const text = (value || '').replace(/<[^>]*>/g, ' ').replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, ' ').replace(/\s+/g, ' ').trim();
+  return Array.from(text).length > limit ? Array.from(text).slice(0, limit - 1).join('') + '…' : text;
 }
 
 export function isQuiet(now: Date, prefs: NotificationPreferences): boolean {

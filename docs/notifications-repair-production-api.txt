@@ -1,0 +1,13 @@
+PASS Two independent authenticated accounts
+PASS Recipient inbox contains persisted message event
+PASS Sender receives no self notification
+PASS Unread total returned separately from page
+PASS Mark read persists across requests
+PASS Mark unread persists across requests
+PASS Authorized click resolves exact conversation
+PASS Preferences and timezone persist
+PASS Invalid preference rejected
+PASS Invalid push registration rejected
+PASS Mark all read clears unread count
+PASS Closed-session click preserves destination through login
+PASS 12 authenticated API checks; isolated fixture retained for browser verification

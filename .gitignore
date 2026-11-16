@@ -78,3 +78,7 @@ dev.out.log
 
 # Next.js verification caches are generated output, never Tailwind source.
 /.next-*/
+
+# The authenticated push-test API is application source, not a test output folder.
+!src/app/api/notifications/test/
+!src/app/api/notifications/test/route.ts

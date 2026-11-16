@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { NotificationCategoryIcon } from '@/components/shared/notification-category-icon';
 import { Menu, Search, Bell, CheckCheck, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
@@ -358,6 +359,7 @@ export function Header() {
                   )}
                 >
                   <div className="flex w-full items-start gap-2.5">
+                    <NotificationCategoryIcon type={notification.type} />
                     {/* An unread marker that survives greyscale and does not
                         rely on the row tint alone. */}
                     <span

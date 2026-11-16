@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { defaultPreferences, preferencesSchema, isQuiet, safeDestination, retryDelay, permanentFailure, categoryOf } from '../src/lib/notifications/model';
+import { defaultPreferences, preferencesSchema, isQuiet, safeDestination, retryDelay, permanentFailure, categoryOf, pushPresentation, plainPreview } from '../src/lib/notifications/model';
 assert.equal(isQuiet(new Date('2026-11-15T23:00:00Z'), { ...defaultPreferences, quietEnabled: true }), true);
 assert.equal(isQuiet(new Date('2026-11-15T12:00:00Z'), { ...defaultPreferences, quietEnabled: true }), false);
 assert.equal(isQuiet(new Date('2026-11-15T21:30:00Z'), { ...defaultPreferences, quietEnabled: true, timezone: 'Africa/Lagos' }), true);
@@ -15,3 +15,15 @@ assert.equal(permanentFailure(410), true); assert.equal(permanentFailure(429), f
 assert.equal(categoryOf('crm_automation', 'agreement'), 'sign');
 assert.equal(categoryOf('leave_approved'), 'hr');
 console.log('PASS 18 notification policy assertions (quiet hours, timezone, validation, URLs, retry, privacy category)');
+
+const message = { type: 'message_received', entity_type: 'message', title: 'Alex sent you a message', body: '<b>Review proposal</b> · Project' };
+assert.equal(pushPresentation(message, defaultPreferences).title, 'New message');
+assert.ok(!pushPresentation(message, defaultPreferences).body.includes('proposal'));
+assert.equal(pushPresentation(message, { ...defaultPreferences, messagePreviews: true }).body, 'Review proposal · Project');
+for (const [type, entity_type] of [['leave_approved','leave_request'],['expense_submitted','expense'],['crm_automation','agreement'],['commercial_executed','commercial']]) {
+  const presentation = pushPresentation({type, entity_type, title:'SECRET',body:'SECRET'}, {...defaultPreferences,messagePreviews:true,businessPreviews:true});
+  assert.ok(!JSON.stringify(presentation).includes('SECRET'));
+}
+assert.equal(plainPreview('x'.repeat(300),240).length,240);
+assert.equal(categoryOf('sign_deadline'), 'sign');
+console.log('PASS 9 preview policy assertions (opt-in, sensitive categories, truncation)');
