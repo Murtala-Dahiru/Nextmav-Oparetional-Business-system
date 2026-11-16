@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
 import { success, error, serverError } from '@/lib/api-response';
-import { normalizeRole, capabilitySummary } from '@/lib/permissions';
+import { getContext } from '@/lib/auth-context';
+import { capabilitySummary } from '@/lib/permissions';
 import { accessStateFor, describeState, isBlocked } from '@/lib/account-state';
 import { enforceRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
@@ -110,16 +111,9 @@ export async function POST(request: NextRequest) {
       .eq('id', data.user.id)
       .maybeSingle();
 
-    const { data: memberships } = await supabase
-      .from('organization_members')
-      .select('id, organization_id, role, department_id, organizations!organization_members_organization_id_fkey(id, name, slug, currency, timezone, settings)')
-      .eq('user_id', data.user.id)
-      .eq('is_active', true);
-
-    const membership = memberships?.[0];
-    const orgRel = membership?.organizations as any;
-    const organization = Array.isArray(orgRel) ? orgRel[0] : orgRel;
-    const role = normalizeRole(membership?.role);
+    const context = await getContext();
+    const membership = context?.org;
+    const role = membership?.role ?? 'employee';
 
     return success({
       user: {
@@ -130,10 +124,10 @@ export async function POST(request: NextRequest) {
         fullName: profile?.full_name ?? '',
         avatarUrl: profile?.avatar_url ?? null,
         jobTitle: profile?.job_title ?? null,
-        organizationId: membership?.organization_id ?? null,
-        organizationName: organization?.name ?? null,
-        organizationSlug: organization?.slug ?? null,
-        memberId: membership?.id ?? null,
+        organizationId: membership?.organizationId ?? null,
+        organizationName: membership?.organizationName ?? null,
+        organizationSlug: membership?.organizationSlug ?? null,
+        memberId: membership?.memberId ?? null,
         role,
         isActive: true,
         capabilities: capabilitySummary(role),

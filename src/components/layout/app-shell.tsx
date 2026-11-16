@@ -29,8 +29,8 @@ export function AppShell() {
     const moduleId = params.get('module');
     const target = MODULES.find(m => m.id === moduleId);
     if (!target) return;
-    const type = ['channel', 'agreement', 'commercial', 'task', 'project', 'ticket', 'lead', 'deal', 'company', 'contact', 'invoice', 'expense'].find(key => params.has(key));
-    if (type) useAppStore.getState().openRecord(target.id, type, params.get(type)!);
+    const type = ['channel', 'case', 'member', 'interview', 'review', 'goal', 'event', 'page', 'agreement', 'commercial', 'task', 'project', 'ticket', 'lead', 'deal', 'company', 'contact', 'invoice', 'expense'].find(key => params.has(key));
+    if (type) useAppStore.getState().openRecord(target.id, type === 'case' ? 'hr_case' : type, params.get(type)!);
     else useAppStore.getState().setActiveModule(target.id);
   }, []);
 

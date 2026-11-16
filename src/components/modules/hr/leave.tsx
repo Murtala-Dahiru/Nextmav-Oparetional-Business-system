@@ -64,6 +64,18 @@ export function Leave({
   const [deciding, setDeciding] = React.useState<string | null>(null);
   const [view, setView] = React.useState<'mine' | 'pending' | 'calendar' | 'balances'>('mine');
 
+  const [opened, setOpened] = React.useState<LeaveRow | null>(null);
+  const [unavailable, setUnavailable] = React.useState(false);
+  React.useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('leave');
+    if (!id) return;
+    let active = true;
+    getOne<LeaveRow>('/api/hr/leave/' + encodeURIComponent(id)).then(row => {
+      if (active) setOpened(row);
+    }).catch(() => { if (active) setUnavailable(true); });
+    return () => { active = false; };
+  }, []);
+
   const policies = useAppStore(s => s.organization?.policies);
 
   const leavePolicy = (policies?.leavePolicy ?? {}) as {
@@ -138,6 +150,12 @@ export function Leave({
 
   return (
     <div className="nm-enter space-y-4">
+      {opened && <section aria-label="Selected leave request" className="rounded-xl border p-4">
+        <h2 className="font-semibold">{statusLabel(opened.type)} leave</h2>
+        <p>{day(opened.startDate)} – {day(opened.endDate)} · {statusLabel(opened.status)}</p>
+      </section>}
+      {unavailable && <p role="alert">This leave request is unavailable in your workspace.</p>}
+
       <div className="grid grid-cols-2 divide-x divide-y divide-border rounded-xl border border-border bg-card sm:grid-cols-4 sm:divide-y-0">
         <Stat
           label="Your days left"

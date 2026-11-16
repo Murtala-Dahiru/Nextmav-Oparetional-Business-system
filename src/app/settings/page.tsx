@@ -204,6 +204,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        <Link href="/settings/workspaces" className="text-sm font-medium underline">View or switch workspaces</Link>
         <NotificationSettingsLink />
 
         {profile?.forcePasswordChange && (

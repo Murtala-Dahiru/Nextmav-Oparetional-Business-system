@@ -1,5 +1,6 @@
 'use client';
 
+import { useFocusRequest } from '@/hooks/use-focus-request';
 import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import {
@@ -321,6 +322,9 @@ function ClientPortal() {
   const [companyId, setCompanyId] = useState<string>('');
 
   const [openProject, setOpenProject] = useState<string | null>(null);
+  useFocusRequest('portal', ({ type, id }) => {
+    if (type === 'project') setOpenProject(id);
+  });
 
   /**
    * Staff need a company to preview. Clients never send one — the endpoint

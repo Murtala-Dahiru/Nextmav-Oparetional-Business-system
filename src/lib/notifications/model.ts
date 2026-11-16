@@ -128,7 +128,7 @@ export function safeDestination(value: string | null | undefined): string {
   if (!value || !value.startsWith('/dashboard') || value.startsWith('//')) return '/dashboard';
   const url = new URL(value, 'https://nextmav.invalid');
   if (url.origin !== 'https://nextmav.invalid' || url.pathname !== '/dashboard') return '/dashboard';
-  const allowed = new Set(['module', 'tab', 'case', 'task', 'project', 'ticket', 'invoice', 'expense', 'event', 'page', 'deal', 'lead', 'contact', 'company', 'channel', 'commercial', 'agreement']);
+  const allowed = new Set(['module', 'tab', 'case', 'member', 'review', 'interview', 'checklist', 'item', 'feedback', 'goal', 'task', 'project', 'ticket', 'invoice', 'expense', 'event', 'page', 'deal', 'lead', 'contact', 'company', 'channel', 'commercial', 'agreement']);
   for (const key of [...url.searchParams.keys()]) if (!allowed.has(key)) url.searchParams.delete(key);
   return url.pathname + url.search;
 }

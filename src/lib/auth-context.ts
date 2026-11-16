@@ -3,7 +3,7 @@ import { supabaseServer } from '@/lib/supabase/server';
 import { error, currentRequestId } from '@/lib/api-response';
 import { log, serializeError } from '@/lib/logger';
 import type { ModuleId, RoleId } from '@/lib/constants';
-import { normalizeRole, can, canAccessModule, type Action } from '@/lib/permissions';
+import { normalizeRole, isExternalRole, can, canAccessModule, type Action } from '@/lib/permissions';
 import { currencyOf } from '@/lib/locale';
 import { accessStateFor, describeState } from '@/lib/account-state';
 import { cookies } from 'next/headers';
@@ -76,7 +76,7 @@ export interface RequestContext {
 export async function getContext(
   preferredOrgId?: string,
 ): Promise<RequestContext | null> {
-  preferredOrgId ??= (await cookies()).get('nm-organization')?.value;
+
   const supabase = await supabaseServer();
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -110,16 +110,21 @@ export async function getContext(
     // resolves. It is never a way in, and `is_active` alone would already
     // exclude it — this is belt and braces on the one query that decides
     // whether somebody is in the building.
-    .is('deleted_at', null);
+    .is('deleted_at', null)
+    .order('joined_at')
+    .order('id');
 
   if (!memberships?.length) return null;
 
-  // Honour the requested organization when the caller genuinely belongs to it;
-  // otherwise fall back to the first. Never trust the parameter on its own —
-  // that would be a tenant-selection bypass.
-  const membership =
-    (preferredOrgId && memberships.find(m => m.organization_id === preferredOrgId)) ||
-    memberships[0];
+  // An explicit target must match exactly. Only a previously confirmed choice
+  // for this account may override its default workspace on ordinary requests.
+  const stored = (await cookies()).get('nm-organization')?.value;
+  const selected = memberships.find(m => stored === user.id + ':' + m.organization_id);
+  const membership = preferredOrgId !== undefined
+    ? memberships.find(m => m.organization_id === preferredOrgId)
+    : selected ?? memberships.find(m => normalizeRole(m.role) === 'owner')
+      ?? memberships.find(m => !isExternalRole(normalizeRole(m.role))) ?? memberships[0];
+  if (!membership) return null;
 
   const orgRel = membership.organizations as any;
   const organization = Array.isArray(orgRel) ? orgRel[0] : orgRel;

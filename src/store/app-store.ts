@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { ModuleId, RoleId } from '@/lib/constants';
 import {
-  normalizeRole, canAccessModule, defaultModuleFor, allowedModules, scopeFor,
+  normalizeRole, isExternalRole, canAccessModule, defaultModuleFor, allowedModules, scopeFor,
   type CapabilitySummary, type Action, type Scope,
 } from '@/lib/permissions';
 import { configureFormatting } from '@/lib/format';
@@ -53,7 +53,12 @@ export interface CurrentUser {
  * not send. `entityType`/`entityId` are what make a notification clickable;
  * `link` is the pre-built destination where a trigger knew one.
  */
+function canOpenWorkspaceModule(role: RoleId, module: ModuleId) {
+  return canAccessModule(role, module) && !(isExternalRole(role) && module === 'projects');
+}
+
 export interface Notification {
+  organizationId: string;
   id: string;
   type: string;
   title: string;
@@ -313,6 +318,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     set({ notificationsLoading: true });
     try {
+      const recipient = get().user?.memberId;
       const res = await fetch('/api/notifications?pageSize=20', {
         /**
          * A poll is not the user doing something.
@@ -327,6 +333,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const json = await res.json();
       if (json?.error) throw new Error(json.error.message);
 
+      if (get().user?.memberId !== recipient) return;
       set({
         notifications: json?.data ?? [],
         // The server counts unread across the whole tray. Deriving it from the
@@ -399,7 +406,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setActiveModule: (m) => {
     // Guard the transition itself: a stale link, command-palette entry or
     // dashboard widget must not be able to open a module this role lacks.
-    if (!canAccessModule(get().activeRole, m)) return;
+    if (!canOpenWorkspaceModule(get().activeRole, m)) return;
     set({ activeModule: m });
 
     /**
@@ -441,7 +448,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .catch(() => get().fetchNotifications());
   },
   openRecord: (module, type, id) => {
-    if (!canAccessModule(get().activeRole, module)) return;
+    if (!canOpenWorkspaceModule(get().activeRole, module)) return;
     // Through `setActiveModule` rather than a bare `set`, so opening a record
     // clears the module's badge exactly as clicking the sidebar does.
     get().setActiveModule(module);
@@ -524,7 +531,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       if (userData) {
         const role = normalizeRole(userData.capabilities?.role ?? userData.role);
-        const { activeModule } = get();
+        const { activeModule, user: previous } = get();
+        const changed = previous?.id !== userData.id || previous?.organizationId !== userData.organizationId || previous?.role !== role;
 
         /**
          * Point the formatters at this organization before anything renders.
@@ -547,7 +555,8 @@ export const useAppStore = create<AppState>((set, get) => ({
           // If the stored module is one this role cannot open (e.g. after
           // switching accounts), fall back to their natural landing module
           // rather than rendering a module they have no access to.
-          activeModule: canAccessModule(role, activeModule)
+          ...(changed ? { notifications: [], unreadTotal: 0, unreadByModule: {}, focusRequest: null } : {}),
+          activeModule: !changed && canOpenWorkspaceModule(role, activeModule)
             ? activeModule
             : defaultModuleFor(role),
         });

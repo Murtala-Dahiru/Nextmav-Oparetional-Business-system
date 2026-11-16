@@ -27,17 +27,6 @@ import { MODULES } from '@/lib/constants';
 import { formatRelativeTime } from '@/lib/format';
 
 /**
- * The record parameters a notification link may carry, in the order they are
- * looked for. Each producer writes exactly one, so the order only decides what
- * happens to a malformed link that carries two.
- */
-const RECORD_PARAMS = [
-  'deal', 'lead', 'contact', 'company',
-  'task', 'project', 'ticket', 'invoice', 'expense', 'event', 'page', 'channel', 'commercial', 'agreement',
-] as const;
-
-
-/**
  * ═══════════════════════════════════════════════════════════════════════════
  *  The top bar
  * ═══════════════════════════════════════════════════════════════════════════
@@ -77,8 +66,6 @@ export function Header() {
     fetchNotifications,
     markNotificationsRead,
     dismissNotification,
-    setActiveModule,
-    openRecord,
   } = useAppStore();
 
   const unreadCount = unreadTotal;
@@ -134,54 +121,10 @@ export function Header() {
     };
   }, [isAuthenticated, fetchNotifications, notificationsLive]);
 
-  /**
-   * Open whatever a notification is about.
-   *
-   * Triggers write a `link` shaped `/dashboard?module=crm&deal=<id>`. Rather
-   * than navigating — which would remount the whole shell — the module is
-   * switched in place, the record is handed to it, and the parameters are
-   * pushed into the URL so the page stays shareable.
-   */
-  const openNotification = React.useCallback((n: typeof notifications[number]) => {
-    if (!n.isRead) markNotificationsRead([n.id]);
-    if (!n.link) return;
-
-    try {
-      const url = new URL(n.link, window.location.origin);
-      if (url.origin !== window.location.origin || url.pathname !== '/dashboard') return;
-      const target = url.searchParams.get('module');
-      if (!target || !MODULES.some(m => m.id === target)) return;
-
-      /**
-       * The second half of the link, which nothing was reading.
-       *
-       * Every producer has written `&deal=<id>`, `&task=<id>`, `&ticket=<id>`
-       * beside the module for as long as the links have existed, and the
-       * handler only ever switched the module - so "Deal assigned to you"
-       * opened CRM and left the reader to find the deal themselves. That is
-       * the same hole 0027 fixed at the other end of the chain, one step
-       * further along.
-       *
-       * `openRecord` is the mechanism that already exists for this: it switches
-       * the module *and* raises a focus request that `useFocusRequest`
-       * delivers, and it refuses a module the role cannot open.
-       */
-      const record = RECORD_PARAMS
-        .map(type => ({ type, id: url.searchParams.get(type) }))
-        .find(hit => hit.id);
-
-      if (record?.id) {
-        openRecord(target as (typeof MODULES)[number]['id'], record.type, record.id);
-      } else {
-        setActiveModule(target as (typeof MODULES)[number]['id']);
-      }
-
-      window.history.replaceState(null, '', url.pathname + url.search);
-    } catch {
-      // A malformed link is not worth failing the click over; the notification
-      // is still marked read, which is the part the user asked for.
-    }
-  }, [markNotificationsRead, setActiveModule, openRecord]);
+  const openNotification = (notice: typeof notifications[number]) => {
+    const query = new URLSearchParams({ id: String(notice.id), organizationId: notice.organizationId });
+    window.location.assign('/api/notifications/open?' + query);
+  };
 
   /**
    * Which workspace this is — the one piece of tenant identity the shell

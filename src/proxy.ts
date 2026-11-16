@@ -250,7 +250,7 @@ function handle(req: NextRequest, requestId: string) {
   if (pathname === '/api/notifications/open' && (!authed || expiryOf(readClock(req, now), now))) {
     const login = new URL('/login', req.url);
     login.searchParams.set('next', pathname + search);
-    const response = NextResponse.redirect(login);
+    const response = NextResponse.redirect(login, req.method === 'POST' ? 303 : 307);
     if (authed) clearSession(req, response);
     return response;
   }
