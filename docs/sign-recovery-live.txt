@@ -1,0 +1,23 @@
+PASS malformed PDF rejected
+PASS unauthorized MIME rejected
+PASS valid two-page PDF parsed and privately stored
+PASS draft saves and reopens page-relative fields
+PASS send locks prepared agreement
+PASS issued draft mutation rejected
+PASS future signer cannot receive usable signing link
+PASS invalid link denied
+PASS passwordless access grants only assigned recipient
+PASS recipient downloads exact immutable original
+PASS recipient session cannot access internal BOS API
+PASS completion without explicit consent rejected
+PASS required fields enforced
+PASS another recipient field rejected
+PASS document-open and completion race both succeed
+PASS first signer completion leaves agreement incomplete
+PASS concurrent completion commits a successful action
+PASS exactly two recipient actions and one completed agreement
+PASS original, completed, certificate and evidence chain integrity verified
+PASS authorized completed download
+PASS authorized certificate download
+PASS revoked link denied
+22 live acceptance assertions passed.

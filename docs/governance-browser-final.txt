@@ -1,0 +1,11 @@
+PASS Field created through actual settings UI
+PASS Layout draft and preview work in UI
+PASS Published layout persists through API
+PASS Custom field form saves with the record
+PASS Custom filter excludes nonmatching records
+PASS Custom field value appears in actual record details
+PASS Record fits mobile viewport
+PASS API rejects invalid typed value
+PASS API rejects missing required value
+PASS No browser runtime errors
+10 browser/API checks passed. Synthetic tenant retained for review; no messages sent.

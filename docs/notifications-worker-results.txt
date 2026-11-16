@@ -1,0 +1,6 @@
+
+> nextjs_tailwind_shadcn_ts@0.2.0 notifications:worker
+> tsx scripts/notifications-worker.mts
+
+{"examined":0,"accepted":0,"skipped":0,"deferred":0,"failed":0,"retried":0,"push":"blocked_missing_vapid"}
+{"examined":0,"accepted":0,"skipped":0,"deferred":0,"failed":0,"retried":0}

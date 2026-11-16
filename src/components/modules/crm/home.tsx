@@ -24,6 +24,8 @@ import {
   SectionHead, StageTag, StageSplit, LeadStatusTag, OwnerTag, Blank, Broken, Spinner, personName,
 } from './ui';
 import { buildCrmAttention } from './attention';
+import { InsightCharts } from './insight-charts';
+import { SalesIntelligence } from './sales-intelligence';
 import { NextActions, Timeline, whenOf } from './record-parts';
 import { ActivityDialog } from './activity-dialog';
 import { DealDialog, LeadDialog } from './forms';
@@ -86,11 +88,12 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
 
   React.useEffect(() => {
     let cancelled = false;
-    getOne<CrmOverview>('/api/crm/overview')
+    const controller = new AbortController();
+    getOne<CrmOverview>('/api/crm/overview', controller.signal)
       .then(d => { if (!cancelled) { setData(d); setError(null); } })
       .catch((e: Error) => { if (!cancelled) setError(e.message); })
       .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [nonce]);
 
   /**
@@ -114,6 +117,8 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
   /* ── The plate's series ─────────────────────────────────────────────────── */
 
   const months = r.byMonth;
+  const windowWonCount = months.reduce((sum, month) => sum + month.wonCount, 0);
+  const windowLostCount = months.reduce((sum, month) => sum + month.lostCount, 0);
   const trace = months.map(m => m.won);
   const traceLabels = months.map(m => monthLabel(m.period));
   const anyWon = trace.some(n => n > 0);
@@ -143,136 +148,28 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
 
   return (
     <div className="flex flex-col gap-7">
-      {/* ═══ The plate ═══════════════════════════════════════════════════════ */}
-      <Plate>
-        <div className="grid grid-cols-1 gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:gap-10 lg:p-6">
-          <div className="min-w-0">
-            <p className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-panel-muted">
-              {scoped ? 'Your pipeline' : 'Open pipeline'}
-            </p>
-            <p className="mt-2.5 text-[38px] font-semibold leading-none tabular-nums tracking-[-0.035em] text-panel-fg sm:text-[46px]">
-              {money(r.pipelineValue, data.currency)}
-            </p>
-            <p className="mt-3 text-[13px] text-panel-muted">
-              {r.openCount} open {r.openCount === 1 ? 'deal' : 'deals'}
-              {' · '}
-              <span className="text-panel-fg/80">{money(r.weightedPipeline, data.currency)} weighted</span>
-            </p>
-
-            {/*
-              The composition of the open book, by stage.
-
-              A single figure says how much is in play; the bar says what shape
-              it is in. A pipeline that is nine tenths prospecting and one that
-              is nine tenths negotiation are the same number and completely
-              different situations, and the ramp is what makes the difference
-              visible without reading a word.
-            */}
-            <div className="mt-5">
-              <StageSplit segments={openStages.map(s => ({ stage: s.stage, value: s.value }))} />
-              <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-panel-muted">
-                {openStages.map(s => (
-                  <span key={s.stage} className="tabular-nums">
-                    {STAGE_LABELS[s.stage]}{' '}
-                    <span className="text-panel-fg/70">{s.count}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Twelve months of won revenue, at a size worth reading. */}
-          <div className="min-w-0">
-            <div className="flex items-baseline justify-between gap-3">
-              <p className="text-[10.5px] font-medium uppercase tracking-[0.14em] text-panel-muted">
-                Won, last 12 months
-              </p>
-              <p className="text-[15px] font-semibold tabular-nums text-panel-fg">
-                {money(r.wonThisYear, data.currency)}
-              </p>
-            </div>
-            {anyWon ? (
-              <Trace
-                className="mt-3"
-                values={trace}
-                labels={traceLabels}
-                colour="var(--panel-accent)"
-                height={92}
-                format={n => vizMoney(n)}
-              />
-            ) : (
-              <p className="mt-6 text-[12.5px] leading-relaxed text-panel-muted">
-                Nothing won in the last twelve months yet. Close a deal and the trend starts here.
-              </p>
-            )}
-          </div>
+      {error && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+          <p>CRM could not refresh. The figures below are from the last successful load.</p>
+          <Button size="sm" variant="outline" onClick={reload}>Retry refresh</Button>
         </div>
-
-        {/* The instruments. */}
-        <div className="grid grid-cols-2 divide-x divide-y divide-panel-line border-t border-panel-line sm:grid-cols-3 lg:grid-cols-5 lg:divide-y-0">
-          {/*
-            The notes use the abbreviated format, not the full one.
-
-            `Signal` truncates its note, and at two columns on a phone
-            "up on ₦16,000,000 last month" was cut to "up on ₦16,000,000 last
-            ...". Abbreviating the comparison figure - which is a reference
-            point, not a figure anybody adds up - is what makes the sentence
-            fit rather than shortening the sentence until it says less.
-          */}
-          <Signal
-            className="px-5 py-4"
-            label="Won this month"
-            value={money(r.wonThisMonth, data.currency)}
-            note={
-              r.wonLastMonth > 0
-                ? `${r.wonThisMonth >= r.wonLastMonth ? 'up' : 'down'} on ${vizMoney(r.wonLastMonth)} last month`
-                : 'No comparison yet'
-            }
-            noteTone={r.wonLastMonth > 0 && r.wonThisMonth >= r.wonLastMonth ? 'good' : 'default'}
-          />
-          <Signal
-            className="px-5 py-4"
-            label="Weighted forecast"
-            value={money(r.weightedPipeline, data.currency)}
-            note={`of ${vizMoney(r.pipelineValue)} in play`}
-          />
-          <Signal
-            className="px-5 py-4"
-            label="Win rate"
-            value={r.winRate === null ? 'Not yet' : `${r.winRate}%`}
-            note={
-              r.winRate === null
-                ? 'Nothing decided in 12 months'
-                : `${r.wonCount} won, ${r.lostCount} lost`
-            }
-            segments={
-              r.wonCount + r.lostCount > 0
-                ? [
-                  { value: r.wonCount, tone: 'accent', title: 'Won' },
-                  { value: r.lostCount, tone: 'bad', title: 'Lost' },
-                ]
-                : undefined
-            }
-          />
-          <Signal
-            className="px-5 py-4"
-            label="Average deal"
-            value={r.averageDeal > 0 ? money(r.averageDeal, data.currency) : 'Not yet'}
-            note={r.averageDeal > 0 ? `Across ${r.wonCount} won this year` : 'Nothing won yet'}
-          />
-          <Signal
-            className="px-5 py-4"
-            label="Sales cycle"
-            value={r.averageCycleDays === null ? 'Not yet' : `${r.averageCycleDays} days`}
-            note={
-              r.averageCycleDays === null
-                ? 'Needs a won deal to measure'
-                : 'Written down to won'
-            }
-          />
-        </div>
-      </Plate>
-
+      )}
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b pb-5">
+        <div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">NextMav CRM</p><h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">Revenue command centre</h1><p className="mt-2 max-w-xl text-sm text-muted-foreground">{scoped?'Your relationships, opportunities and next actions.':'Your sales position, customer relationships and next actions.'}</p></div>
+        <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={()=>setLeadOpen(true)}><Plus className="mr-1.5 size-4"/>New lead</Button><Button size="sm" onClick={()=>setDealOpen(true)}><Handshake className="mr-1.5 size-4"/>New deal</Button></div>
+      </header>
+      <p className="text-xs text-muted-foreground">Opportunity amounts below are {data.currency} only. Review other currencies separately in Pipelines; no exchange rates are applied.</p>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6" aria-label="Sales performance metrics">
+        {[
+          {label:'Open pipeline',value:money(r.pipelineValue,data.currency),note:`${r.openCount} open opportunities`,go:'pipeline'},
+          {label:'Weighted forecast',value:money(r.weightedPipeline,data.currency),note:'Current probability-weighted value',go:'pipeline'},
+          {label:'Won this month',value:money(r.wonThisMonth,data.currency),note:r.wonLastMonth>0?`${money(r.wonLastMonth,data.currency)} last month`:'No prior-month comparison',go:'deals'},
+          {label:'Win rate',value:r.winRate===null?'—':`${r.winRate}%`,note:`${windowWonCount} won · ${windowLostCount} lost in 12 months`,go:'deals'},
+          {label:'Average won deal',value:r.averageDeal>0?money(r.averageDeal,data.currency):'—',note:'Closed business · last 12 months',go:'deals'},
+          {label:'Average sales cycle',value:r.averageCycleDays===null?'—':`${r.averageCycleDays} days`,note:'Created to won · recorded dates',go:'deals'},
+        ].map((metric,i)=><button key={metric.label} onClick={()=>onGo(metric.go as CrmSection)} className={cn('min-w-0 rounded-xl border bg-card p-4 text-left shadow-sm transition-colors hover:border-primary/40 focus-visible:outline-2 focus-visible:outline-primary',i===0&&'border-primary/20 bg-primary/[0.025]')}><p className="text-[11px] font-medium text-muted-foreground">{metric.label}</p><p className="mt-2 break-words text-xl font-semibold tabular-nums tracking-tight lg:text-2xl">{metric.value}</p><p className="mt-2 text-[10px] leading-relaxed text-muted-foreground">{metric.note}</p></button>)}
+      </div>
+      <InsightCharts data={data} onGo={onGo} />
       {/* ═══ 01 Attention ════════════════════════════════════════════════════ */}
       <section className="flex flex-col gap-3">
         <Band index="01" title="Attention" note="What needs somebody today" />
@@ -337,6 +234,8 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
         )}
       </section>
 
+      <SalesIntelligence onGo={onGo}/>
+      <details className="group rounded-xl border bg-card p-4"><summary className="cursor-pointer text-sm font-semibold">Detailed sales reports<span className="ml-2 font-normal text-muted-foreground">Pipeline, outcomes and lead lifecycle</span></summary><div className="mt-5 flex flex-col gap-6">
       {/* ═══ 02 Pipeline ═════════════════════════════════════════════════════ */}
       <section className="flex flex-col gap-3">
         <Band index="02" title="Pipeline" note="Where the money is sitting" />
@@ -464,7 +363,7 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
 
       {/* ═══ 03 Revenue ══════════════════════════════════════════════════════ */}
       <section className="flex flex-col gap-3">
-        <Band index="03" title="Revenue" note="Won against lost, and who is winning it" />
+        <Band index="03" title="Closed business" note="Won deal value, not invoiced or collected revenue" />
 
         <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
           <Card className="p-4">
@@ -513,11 +412,11 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
                 <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 border-t border-border pt-3">
                   <span className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
                     <span className="size-2 rounded-full" style={{ background: v.cash }} /> Won
-                    <span className="tabular-nums text-foreground">{money(r.wonAll, data.currency)}</span>
+                    <span className="tabular-nums text-foreground">{money(months.reduce((sum, month) => sum + month.won, 0), data.currency)}</span>
                   </span>
                   <span className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
                     <span className="size-2 rounded-full" style={{ background: v.bad, opacity: 0.55 }} /> Lost
-                    <span className="tabular-nums text-foreground">{money(r.lostAll, data.currency)}</span>
+                    <span className="tabular-nums text-foreground">{money(months.reduce((sum, month) => sum + month.lost, 0), data.currency)}</span>
                   </span>
                 </div>
               </>
@@ -525,7 +424,7 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
           </Card>
 
           <Card className="p-4">
-            <Head title="By owner" count={data.owners.length} />
+            <Head title="By owner" count={data.owners.length} note="All time" />
 
             {data.owners.length === 0 ? (
               <p className="mt-3 text-[12.5px] text-muted-foreground">
@@ -564,7 +463,7 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
 
       {/* ═══ 04 Leads ════════════════════════════════════════════════════════ */}
       <section className="flex flex-col gap-3">
-        <Band index="04" title="Leads" note="The funnel above the pipeline" />
+        <Band index="04" title="Leads" note="Current lead statuses and follow-up priorities" />
 
         <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <Card className="p-4">
@@ -648,9 +547,9 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
 
           <Card className="p-4">
             <Head
-              title="Not worked yet"
-              count={data.leads.unworked.length}
-              note="New, and nobody has been in touch"
+              title="New leads to review"
+              count={data.queueCounts?.unworked ?? data.leads.unworked.length}
+              note="Status: New · showing up to 12 oldest"
             />
 
             {data.leads.unworked.length === 0 ? (
@@ -692,6 +591,7 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
         </div>
       </section>
 
+      </div></details>
       {/* ═══ 05 Diary ════════════════════════════════════════════════════════ */}
       <section className="flex flex-col gap-3">
         <Band index="05" title="Diary" note="What you owe, and what has been logged" />
@@ -711,7 +611,7 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
           <Card className="p-4">
             <Head
               title="Your follow-ups"
-              count={data.followups.length}
+              count={data.queueCounts ? data.queueCounts.overdue + data.queueCounts.today + data.queueCounts.upcoming : data.followups.length}
               action={{ label: 'Open Activities', onClick: () => onGo('activities') }}
             />
 
@@ -739,9 +639,9 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
             ) : (
               <>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Chip label="Overdue" count={overdue.length} tone="critical" active={false} onClick={() => onGo('activities')} />
-                  <Chip label="Today" count={today.length} tone="warning" active={false} onClick={() => onGo('activities')} />
-                  <Chip label="Coming up" count={upcoming.length} tone="info" active={false} onClick={() => onGo('activities')} />
+                  <Chip label="Overdue" count={data.queueCounts?.overdue ?? overdue.length} tone="critical" active={false} onClick={() => onGo('activities', { type: 'activity-view', id: 'overdue' })} />
+                  <Chip label="Today" count={data.queueCounts?.today ?? today.length} tone="warning" active={false} onClick={() => onGo('activities', { type: 'activity-view', id: 'today' })} />
+                  <Chip label="Coming up" count={data.queueCounts?.upcoming ?? upcoming.length} tone="info" active={false} onClick={() => onGo('activities', { type: 'activity-view', id: 'upcoming' })} />
                 </div>
 
                 <div className="mt-3 border-t border-border pt-2">
@@ -755,7 +655,7 @@ export function CrmHome({ onGo }: { onGo: (section: CrmSection, focus?: { type: 
           </Card>
 
           <Card className="p-4">
-            <Head title="Activity logged" note="Last eight weeks" />
+            <Head title="Activity logged" note="Organization · last eight weeks" />
 
             {data.activityByWeek.every(w => w.count === 0) ? (
               <p className="mt-3 text-[12.5px] text-muted-foreground">

@@ -1,0 +1,15 @@
+PASS directory displays actual records and live connection
+PASS keyboard-accessible action reorder works
+PASS browser save and reopen preserves conditions
+PASS browser publishes valid workflow
+PASS tablet editor has no document horizontal overflow
+PASS mobile editor has no document horizontal overflow
+PASS tablet directory has no document horizontal overflow
+PASS mobile directory has no document horizontal overflow
+PASS pause and resume work in browser
+PASS realtime refresh shows new execution without manual reload
+PASS execution detail exposes step history and record navigation
+PASS eleven supported templates visible
+PASS cancelled navigation preserves unsaved workflow
+PASS no browser runtime errors ()
+14 browser assertions passed. Screenshots require separate visual inspection.

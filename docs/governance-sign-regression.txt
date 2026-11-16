@@ -1,0 +1,23 @@
+PASS six independent customer and witness fields
+PASS signature does not require name or date fields
+PASS name does not force a signature field
+PASS required entered name enforced
+PASS entered name retained separately from signature
+PASS witness cannot submit customer fields
+PASS customer cannot submit witness fields
+PASS client cannot supply actual signing date
+PASS witness waits in sequential workflow
+PASS parallel witness active
+PASS manual calendar date retained
+PASS invalid calendar date rejected
+PASS tampered readonly value replaced
+PASS unsafe signature defaults rejected
+PASS cross recipient date linkage rejected
+PASS viewer cannot own fields
+PASS Unicode name validation
+PASS invalid text validation rejected
+PASS multiline text fits without truncation
+PASS unreadable overflow rejected instead of silently clipping
+PASS invalid locked calendar default rejected before issue
+PASS optional blank date omitted from PDF values
+22 customization assertions passed.

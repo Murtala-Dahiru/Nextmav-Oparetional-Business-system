@@ -1,0 +1,8 @@
+PASS daily queue opens customer communication context
+PASS workspace has no horizontal page overflow at 1440px
+PASS workspace has no horizontal page overflow at 1280px
+PASS workspace has no horizontal page overflow at 768px
+PASS workspace has no horizontal page overflow at 390px
+PASS mobile call logging persists and refreshes customer history
+locator.selectOption: Timeout 90000ms exceeded.
+

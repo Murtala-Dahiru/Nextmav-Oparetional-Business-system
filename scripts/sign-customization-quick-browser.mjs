@@ -1,0 +1,41 @@
+import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {randomUUID} from 'node:crypto';
+import {PDFDocument} from 'pdf-lib';
+import sharp from 'sharp';
+import assert from 'node:assert/strict';
+const {chromium}=await import(pathToFileURL(join(tmpdir(),'nextmav-browser/node_modules/playwright/index.mjs')).href);
+const fixture=JSON.parse(readFileSync(join(tmpdir(),'nextmav-sign-fixture.json')));const base=process.env.APP_URL||'http://localhost:3018';
+const browser=await chromium.launch({channel:'msedge',headless:true});let passed=0;const errors=[];
+function check(ok,label){assert.ok(ok,label);console.log('PASS '+label);passed++;}
+mkdirSync('docs/sign-evidence',{recursive:true});
+try{const internal=await browser.newContext({viewport:{width:1440,height:1000}});internal.setDefaultTimeout(90000);const login=await internal.request.post(base+'/api/auth/login',{data:{email:fixture.email,password:fixture.password}});assert.equal(login.status(),200);
+const page=await internal.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/dashboard',{waitUntil:'domcontentloaded',timeout:180000});await page.getByRole('button',{name:'Customers & revenue',exact:true}).click({timeout:90000});await page.getByRole('navigation',{name:'CRM sections'}).waitFor({timeout:90000});const select=page.getByRole('combobox',{name:'CRM destination'});if(await select.isVisible())await select.selectOption('commercial');else await page.getByRole('button',{name:'Commercial Hub',exact:true}).click();await page.getByRole('button',{name:'NextMav Sign',exact:true}).click();await page.getByRole('heading',{name:'NextMav Sign',exact:true}).waitFor();check(true,'Commercial Hub contextual navigation opens Sign');await page.screenshot({path:'docs/sign-evidence/internal-overview.png',fullPage:true});
+const started=Date.now();
+await page.getByRole('button',{name:'Quick Send',exact:true}).first().click();
+if(process.env.QUICK_UPLOAD==='1'){const pdf=await PDFDocument.create();pdf.addPage().drawText('TEST ONLY - Quick Send uploaded PDF');await page.getByLabel('Quick Send PDF').setInputFiles({name:'TEST ONLY - Uploaded Quick Send.pdf',mimeType:'application/pdf',buffer:Buffer.from(await pdf.save())});}else await page.getByRole('button',{name:'Try a practice document',exact:true}).click();
+await page.getByLabel('Recipient name',{exact:true}).fill('Quick Practice Signer');
+await page.getByRole('button',{name:'Continue to fields',exact:true}).click();
+await page.waitForFunction(()=>document.querySelector('#pdf-page-1 canvas')?.width>260);
+const paper=page.locator('#pdf-page-1');let box=await paper.boundingBox();
+await page.getByRole('button',{name:'Signature',exact:true}).click();await paper.click({position:{x:box.width*.2,y:box.height*.65}});
+const field=page.getByRole('button',{name:/^Signature \(required\), page 1/});
+check(await field.evaluate(el=>['dashed','solid'].includes(getComputedStyle(el).borderTopStyle)),'preparation signature boundary is visible');const initialLeft=await field.evaluate(el=>parseFloat(el.style.left));await field.focus();await page.keyboard.press('ArrowRight');
+let pos=await field.evaluate(el=>parseFloat(el.style.left));check(Math.abs(pos-initialLeft-.5)<.1,'keyboard placement preserves normalized coordinates');
+let fb=await field.boundingBox();await page.mouse.move(fb.x+15,fb.y+15);await page.mouse.down();await page.mouse.move(fb.x+55,fb.y+35,{steps:5});await page.mouse.up();
+check(await field.evaluate(el=>parseFloat(el.style.left))>pos,'signature field can be dragged');
+const handle=field.locator('[data-resize]');await handle.scrollIntoViewIfNeeded();const hb=await handle.boundingBox();await page.mouse.move(hb.x+5,hb.y+5);await page.mouse.down();await page.mouse.move(hb.x+30,hb.y+15,{steps:5});await page.mouse.up();
+check(await field.evaluate(el=>parseFloat(el.style.width))>26,'signature field can be resized');
+await page.getByRole('button',{name:'Undo',exact:true}).click();check(Math.abs(await field.evaluate(el=>parseFloat(el.style.width))-26)<.1,'undo restores prior field dimensions');
+check(await page.locator('[data-resize]').count()===1,'signature adds no forced name or date');await page.getByRole('button',{name:'Full Name',exact:true}).click();await paper.click({position:{x:box.width*.2,y:box.height*.5}});await page.getByLabel('Font size (pt)',{exact:true}).fill('18');check(await page.getByLabel('Font size (pt)',{exact:true}).inputValue()==='18','sender adjusts name font size');await page.getByRole('button',{name:'Date Signed',exact:true}).click();await paper.click({position:{x:box.width*.2,y:box.height*.8}});check(await page.locator('[data-resize]').count()===3,'name and date added independently');const before=await field.evaluate(el=>el.style.left);await page.getByRole('button',{name:'Zoom in',exact:true}).click();check(await field.evaluate(el=>el.style.left)===before,'Quick Send zoom preserves placement');
+await page.screenshot({path:'docs/sign-evidence/quick-preparation.png',fullPage:true});await page.getByRole('button',{name:'Save draft',exact:true}).click();await page.getByRole('status').filter({hasText:'Draft saved'}).waitFor();
+await page.getByRole('button',{name:'Create secure link',exact:true}).click();const linkInput=page.getByLabel('Quick Send secure link');await linkInput.waitFor({timeout:90000});const link=await linkInput.inputValue();check(true,'Quick Send generates a real link without email or Settings');
+console.log('Quick Send elapsed seconds: '+Math.round((Date.now()-started)/1000));
+check(await page.getByText(/No email has been sent/).isVisible(),'success screen does not claim email delivery');
+await page.screenshot({path:'docs/sign-evidence/quick-success.png',fullPage:true,mask:[linkInput]});
+for(const width of [1440,1280,768,390,360]){await page.setViewportSize({width,height:1000});check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Quick Send success fits '+width);}
+const recipientContext=await browser.newContext();const portal=await recipientContext.newPage();await portal.goto(link);await portal.getByRole('textbox',{name:/^Full Name/}).fill('Quick Legal Name');await portal.getByText('Add signature',{exact:true}).click();await portal.getByLabel('Typed signature').fill('Quick Practice Signer');await portal.getByRole('button',{name:'Apply signature',exact:true}).click();await portal.getByRole('checkbox').check();await portal.getByRole('button',{name:'Review & confirm',exact:true}).click();await portal.getByRole('button',{name:'Confirm & sign',exact:true}).click();await portal.getByRole('heading',{name:'Agreement completed',exact:true}).waitFor({timeout:90000});check(true,'email-free recipient completes real portal signing without an account');
+await page.getByRole('button',{name:'View agreement status',exact:true}).click();await page.getByRole('button',{name:'evidence',exact:true}).click();await page.getByRole('button',{name:'Verify integrity',exact:true}).click();await page.getByRole('status').filter({hasText:'authenticated evidence chain verified'}).waitFor({timeout:90000});check(true,'completed PDF certificate and evidence verify');const agreements=await (await internal.request.get(base+'/api/sign?search=TEST%20ONLY')).json();const completed=agreements.data.find(e=>e.status==='completed'&&e.data.recipients[0]?.name==='Quick Practice Signer');assert.ok(completed);const dateField=completed.data.fields.find(f=>f.type==='date');assert.ok(dateField&&!dateField.signatureFieldId);const action=completed.data.actions.find(a=>a.recipientId===dateField.recipientId);assert.ok(action.values[dateField.id]);check(true,'independent date records server event without forced signature linkage');await internal.request.post(base+'/api/sign/'+completed.id,{data:{operation:'revoke_access',revision:completed.revision,recipientId:completed.data.recipients[0].id}});check(errors.length===0,'no uncaught browser errors');console.log(passed+' Quick Send browser assertions passed.');
+}catch(err){console.error(String(err.message).replace(/#[A-Za-z0-9_-]{43}/g,'#[redacted]'));process.exitCode=1;}finally{await browser.close();}

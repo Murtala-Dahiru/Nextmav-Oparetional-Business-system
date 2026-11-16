@@ -572,14 +572,14 @@ export function SectionHead({
   className?: string;
 }) {
   return (
-    <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-2', className)}>
-      <h2 className="text-[17px] font-semibold tracking-[-0.018em] text-foreground">{title}</h2>
+      <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border pb-4', className)}>
+        <h2 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h2>
       {count !== undefined && (
         <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
           {count}
         </span>
       )}
-      {note && <span className="hidden text-[12.5px] text-muted-foreground sm:inline">{note}</span>}
+        {note && <span className="text-[12.5px] text-muted-foreground">{note}</span>}
       {children && <div className="ml-auto flex items-center gap-2">{children}</div>}
     </div>
   );

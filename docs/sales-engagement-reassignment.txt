@@ -1,0 +1,2 @@
+PASS administrator reassigns persisted activity to an active CRM colleague
+PASS reassigned activity leaves original owner daily queue

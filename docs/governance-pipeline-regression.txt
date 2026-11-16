@@ -1,0 +1,10 @@
+✔ pipeline configuration rejects duplicate stages, foreign transitions and invalid revisions (24.7453ms)
+✔ configured pipelines enforce requirements, approvals, isolation and historical compatibility (16613.586ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16734.0562

@@ -1,0 +1,6 @@
+PASS Windows Edge headless recipient history renders real message
+BROWSER {"secure":true,"pushAPI":true,"notificationAPI":true,"permission":"default","serviceWorker":true}
+SERVICE WORKER {"active":true,"subscription":false}
+PASS desktop and phone-width layouts, no horizontal overflow
+PASS unread filter and empty state
+PASS two browser contexts, live bell, click opens correct conversation and message

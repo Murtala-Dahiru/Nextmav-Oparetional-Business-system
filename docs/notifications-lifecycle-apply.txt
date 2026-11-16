@@ -1,0 +1,2 @@
+Validated 0152_notification_lifecycle.sql
+Notification migrations committed

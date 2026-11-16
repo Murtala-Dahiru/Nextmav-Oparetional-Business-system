@@ -1,0 +1,5 @@
+PASS access revocation deletes credentials and invalidates loaded signing revisions
+PASS credential issuance after concurrent revocation rejects stale revision
+PASS completion begun before access revocation cannot commit afterward
+PASS template version snapshots cannot be overwritten by authenticated clients
+4 database hardening assertions passed; synthetic transaction rolled back.

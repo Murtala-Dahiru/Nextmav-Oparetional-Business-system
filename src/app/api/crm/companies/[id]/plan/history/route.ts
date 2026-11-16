@@ -1,0 +1,4 @@
+import {authorize,pgError} from '@/lib/auth-context';
+import {success,error} from '@/lib/api-response';
+import {z} from 'zod';
+export async function GET(req:Request,{params}:{params:Promise<{id:string}>}){const ctx=await authorize('crm','view');if(ctx instanceof Response)return ctx;const{id}=await params;const page=z.coerce.number().int().min(1).max(10000).safeParse(new URL(req.url).searchParams.get('page')??1);if(!z.uuid().safeParse(id).success||!page.success)return error('Invalid history request',422);const result=await ctx.supabase.from('crm_account_plan_revisions').select('version,snapshot,changed_at,changed_by',{count:'exact'}).eq('organization_id',ctx.org.organizationId).eq('company_id',id).order('version',{ascending:false}).range((page.data-1)*10,page.data*10-1);if(result.error)return pgError(result.error);return success(result.data,{page:page.data,total:result.count??0,pageSize:10})}

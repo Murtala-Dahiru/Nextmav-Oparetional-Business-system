@@ -1,0 +1,49 @@
+PASS Field created through actual settings UI
+PASS Layout draft and preview work in UI
+PASS Published layout persists through API
+PASS Custom field form saves with the record
+PASS Custom filter excludes nonmatching records
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+locator.click: Timeout 90000ms exceeded.
+Call log:
+  - waiting for getByText('Governance prospect', { exact: true }).first()
+    - locator resolved to <span class="truncate">Governance prospect</span>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is not visible
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is not visible
+    - retrying click action
+      - waiting 100ms
+    170 × waiting for element to be visible, enabled and stable
+        - element is not visible
+      - retrying click action
+        - waiting 500ms
+
+    at C:\Users\murta\Downloads\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\scripts\crm-governance-browser.mjs:79:72 {
+  log: [
+    "  - waiting for getByText('Governance prospect', { exact: true }).first()",
+    '    - locator resolved to <span class="truncate">Governance prospect</span>',
+    '  - attempting click action',
+    '    2 × waiting for element to be visible, enabled and stable',
+    '      - element is not visible',
+    '    - retrying click action',
+    '    - waiting 20ms',
+    '    2 × waiting for element to be visible, enabled and stable',
+    '      - element is not visible',
+    '    - retrying click action',
+    '      - waiting 100ms',
+    '    170 × waiting for element to be visible, enabled and stable',
+    '        - element is not visible',
+    '      - retrying click action',
+    '        - waiting 500ms'
+  ],
+  name: 'TimeoutError'
+}
+
+Node.js v24.16.0

@@ -1,0 +1,24 @@
+PASS agreement event accepted by existing Automation Studio validator
+PASS proposal binds to exact approved/issued snapshot
+PASS concurrent reminders reuse one existing CRM follow-up
+PASS proposal external approver completes
+PASS proposal updates through existing authorized lifecycle rules
+PASS quote binds to exact approved/issued snapshot
+PASS concurrent reminders reuse one existing CRM follow-up
+PASS quote external approver completes
+PASS quote updates through existing authorized lifecycle rules
+PASS contract binds to exact approved/issued snapshot
+PASS concurrent reminders reuse one existing CRM follow-up
+PASS contract external signer completes
+PASS contract updates through existing authorized lifecycle rules
+PASS three completion events execute through existing durable worker
+PASS automation replay does not duplicate effects
+PASS authenticated BOS users cannot read credential hashes
+PASS direct client mutation bypass denied
+PASS RLS hides cross-tenant agreements
+PASS API denies cross-tenant agreement access
+PASS invalid OTP rejected
+PASS OTP transaction consumes correct bound code
+PASS consumed OTP replay rejected
+PASS expired OTP rejected
+23 integration/security assertions passed. Email delivery was not simulated or claimed.

@@ -265,7 +265,7 @@ function UserFormDialog({
     role: editing.role,
     departmentId: editing.departmentId ?? '',
     clientCompanyId: editing.clientCompanyId ?? '',
-  } : { ...defaultUserForm, role: roles[0]?.id || 'employee' };
+  } : { ...defaultUserForm, role: 'employee' };
 
   const [form, setForm] = useState<UserFormState>(getInitialForm);
 
@@ -281,8 +281,8 @@ function UserFormDialog({
         </DialogHeader>
         <div className="grid gap-4 py-2">
           <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2"><Label htmlFor="u-first">First Name</Label><Input id="u-first" value={form.firstName} onChange={(e) => update('firstName', e.target.value)} /></div>
-            <div className="grid gap-2"><Label htmlFor="u-last">Last Name</Label><Input id="u-last" value={form.lastName} onChange={(e) => update('lastName', e.target.value)} /></div>
+            <div className="grid gap-2"><Label htmlFor="u-first">First Name</Label><Input id="u-first" disabled={!!editing} value={form.firstName} onChange={(e) => update('firstName', e.target.value)} /></div>
+            <div className="grid gap-2"><Label htmlFor="u-last">Last Name</Label><Input id="u-last" disabled={!!editing} value={form.lastName} onChange={(e) => update('lastName', e.target.value)} /></div>
           </div>
           <div className="grid gap-2">
             <Label htmlFor="u-email">Email</Label>
@@ -354,7 +354,7 @@ function UserFormDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>Cancel</Button>
-          <Button onClick={() => onSubmit(form)} disabled={isLoading || !form.firstName || !form.lastName || !form.email}
+          <Button onClick={() => onSubmit(form)} disabled={isLoading || (!editing && (!form.firstName || !form.lastName || !form.email))}
             className="bg-emerald-600 text-white hover:bg-emerald-700">
             {isLoading && <Loader2 className="size-4 animate-spin" />}
             {editing ? 'Save Changes' : 'Create User'}

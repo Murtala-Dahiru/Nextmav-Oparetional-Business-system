@@ -1,0 +1,11 @@
+PASS queue RPC cannot read a foreign tenant directly
+PASS direct RPC cannot create templates in another tenant
+PASS direct table writes cannot bypass template RPC authorization
+PASS cross-tenant sequence publication refused
+PASS database rejects meeting end before start
+PASS null revision cannot bypass template optimistic concurrency
+PASS RLS hides another employee personal template directly
+PASS template RPC rejects another employee write
+PASS sales staff cannot publish administrator-owned automation
+PASS security-invoker history hides restricted lead activities
+10 direct database security checks passed; all fixture mutations rolled back.

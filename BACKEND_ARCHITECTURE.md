@@ -213,3 +213,7 @@ Steps 1 and 3 need you. Everything after is mechanical once they are settled.
 The last two are the ones that matter, and they cannot be established without
 credentials. Every serious bug found in this project so far surfaced at
 runtime, not at compile time — that pattern should be assumed to continue.
+
+### CRM activity and automation boundary
+
+CRM activity logging, assignment, reminders and record timelines share the existing CRM activity table and its access rules. Automation Studio owns scheduled work. Commercial Hub and NextMav Sign retain their own guarded lifecycles. Migrations 0148 and 0149 retire the former sales mailbox and sequence services and preserve historical records under restricted custody. See [decommission operations](docs/crm-decommission/OPERATIONS.md).

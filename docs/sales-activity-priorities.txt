@@ -1,0 +1,4 @@
+PASS persisted high priority sorts first within overdue work
+PASS priority preserves explainable due-date reasons
+PASS direct invalid priority rejected by database constraint
+3 activity priority database checks passed; synthetic records rolled back.

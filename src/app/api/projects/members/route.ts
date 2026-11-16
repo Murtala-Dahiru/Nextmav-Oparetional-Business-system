@@ -1,7 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
-import { log, serializeError } from '@/lib/logger';
 
 /**
  * Who is on a project.
@@ -122,26 +121,6 @@ export async function POST(req: Request) {
         return error('That person is already on this project.', 409, 'ALREADY_ON_PROJECT');
       }
       return pgError(e);
-    }
-
-    /**
-     * Tell them they are on it.
-     *
-     * Matches the existing task-assignment notification: being given work is
-     * the event worth knowing about, and adding yourself is not news.
-     */
-    if (memberId !== ctx.org.memberId) {
-      await ctx.supabase.from('notifications').insert({
-        organization_id: ctx.org.organizationId,
-        recipient_id: memberId,
-        type: 'project_assigned',
-        title: `Added to ${project.name}`,
-        body: `You are now a ${role} on this project.`,
-        entity_type: 'project',
-        entity_id: projectId,
-      }).then(undefined, (err: unknown) => log.warn('project notification failed', {
-        projectId, err: serializeError(err),
-      }));
     }
 
     return success(data, undefined, 201);

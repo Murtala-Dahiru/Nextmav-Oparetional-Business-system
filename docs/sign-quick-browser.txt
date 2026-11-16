@@ -1,0 +1,19 @@
+PASS Commercial Hub contextual navigation opens Sign
+PASS keyboard placement preserves normalized coordinates
+PASS signature field can be dragged
+PASS signature field can be resized
+PASS undo restores prior field dimensions
+PASS Quick Send zoom preserves placement
+PASS Quick Send generates a real link without email or Settings
+Quick Send elapsed seconds: 75
+PASS success screen does not claim email delivery
+PASS Quick Send success fits 1440
+PASS Quick Send success fits 1280
+PASS Quick Send success fits 768
+PASS Quick Send success fits 390
+PASS Quick Send success fits 360
+PASS email-free recipient completes real portal signing without an account
+locator.click: Timeout 90000ms exceeded.
+Call log:
+  - waiting for getByRole('button', { name: 'Verify integrity', exact: true })
+

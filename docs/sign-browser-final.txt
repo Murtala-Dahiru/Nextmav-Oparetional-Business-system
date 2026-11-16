@@ -1,0 +1,27 @@
+PASS Commercial Hub contextual navigation opens Sign
+PASS browser adds recipient and places required field on PDF page
+PASS field remains attached after zoom
+PASS recipient token is removed from browser URL
+PASS portal blocks referrer leakage
+PASS real PDF pages render in browser
+PASS portal has no horizontal page overflow at 1440px
+PASS portal has no horizontal page overflow at 1280px
+PASS portal has no horizontal page overflow at 768px
+PASS portal has no horizontal page overflow at 390px
+PASS portal has no horizontal page overflow at 360px
+STEP signature dialog 0
+PASS signature dialog retains keyboard focus
+PASS typed signature completed with separate explicit confirmation
+PASS recipient token is removed from browser URL
+PASS portal blocks referrer leakage
+PASS real PDF pages render in browser
+STEP signature dialog 1
+PASS drawn signature completed with separate explicit confirmation
+PASS recipient token is removed from browser URL
+PASS portal blocks referrer leakage
+PASS real PDF pages render in browser
+STEP signature dialog 2
+PASS uploaded signature completed with separate explicit confirmation
+PASS parallel three-signer browser journey completes
+PASS no uncaught browser errors: 
+23 browser assertions passed.

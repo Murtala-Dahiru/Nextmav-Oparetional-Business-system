@@ -103,7 +103,7 @@ export async function GET(request: Request) {
 
     supabase
       .from('deals')
-      .select('owner_id, value, probability')
+      .select('owner_id, value, probability, currency')
       .eq('organization_id', orgId).is('deleted_at', null)
       .in('owner_id', visible)
       .in('stage', ['prospecting', 'qualification', 'proposal', 'negotiation'])
@@ -144,8 +144,8 @@ export async function GET(request: Request) {
   for (const d of (pipelineRes.data ?? []) as any[]) {
     if (!d.owner_id) continue;
     const cur = pipelineBy.get(d.owner_id) ?? { open: 0, weighted: 0, count: 0 };
-    cur.open += Number(d.value ?? 0);
-    cur.weighted += (Number(d.value ?? 0) * Number(d.probability ?? 0)) / 100;
+    cur.open += (d.currency===org.currency?Number(d.value??0):0);
+    cur.weighted += ((d.currency===org.currency?Number(d.value??0):0) * Number(d.probability ?? 0)) / 100;
     cur.count += 1;
     pipelineBy.set(d.owner_id, cur);
   }
@@ -153,6 +153,7 @@ export async function GET(request: Request) {
   const targetBy = new Map<string, number>();
   for (const t of (targetsRes.data ?? []) as any[]) {
     if (t.metric !== metric) continue;
+    if(['revenue_won','revenue_collected'].includes(metric)&&t.currency!==org.currency)continue;
     targetBy.set(t.subject_id, Number(t.target_value ?? 0));
   }
 
@@ -160,7 +161,7 @@ export async function GET(request: Request) {
 
   const members = ((peopleRes.data ?? []) as any[])
     .map(p => {
-      const achievement = rollUp(eventsBy.get(p.id) ?? []);
+      const achievement = rollUp(eventsBy.get(p.id) ?? [],org.currency);
       const activities = activityBy.get(p.id) ?? 0;
       const pipe = pipelineBy.get(p.id) ?? { open: 0, weighted: 0, count: 0 };
       const target = targetBy.get(p.id) ?? null;

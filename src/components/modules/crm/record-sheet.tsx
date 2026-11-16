@@ -1,6 +1,18 @@
 'use client';
 
 import * as React from 'react';
+import { CustomFields } from './custom-fields';
+import { DuplicateReview } from './duplicate-review';
+import {DealBrief} from './deal-brief';
+import {DealPlan} from './deal-plan';
+import {DealAudit} from './deal-audit';
+import { DealPipelinePanel } from './deal-pipeline-panel';
+import { QualificationPanel } from './qualification-panel';
+import { AssignmentPanel } from './assignment-panel';
+import { LeadEngagementPanel } from './lead-engagement-panel';
+import { LeadPreferencesPanel } from './lead-preferences-panel';
+import { RelationshipProfile } from './relationship-profile';
+import { CrmAttachments } from './attachments';
 import { toast } from 'sonner';
 import {
   Building2, Mail, Phone, Handshake, Trophy, XCircle, Pencil, Plus,
@@ -11,6 +23,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
+import { DealAccountContext } from './deal-account-context';
+import { CommercialRelated } from './commercial-related';
+import { useRealtime } from '@/hooks/use-realtime';
 import { AddToMyWorkButton } from '@/components/shared/add-to-my-work';
 import { formatDate } from '@/lib/format';
 import { statusLabel } from '@/lib/constants';
@@ -20,7 +35,7 @@ import {
   StageTag, LeadStatusTag, Gauge, OwnerTag, Monogram, personName, sourceLabel,
   Spinner, Broken, Blank,
 } from './ui';
-import { Facts, Panel, NextActions, Timeline, useDeleteActivity, whenOf } from './record-parts';
+import { Panel, NextActions, Timeline, useDeleteActivity, whenOf } from './record-parts';
 import { ActivityDialog } from './activity-dialog';
 import { LeadDialog, ContactDialog, DealDialog, CloseDealDialog } from './forms';
 import { ConvertLeadDialog } from './convert-dialog';
@@ -182,6 +197,8 @@ export function RecordSheet({
   onChanged: () => void;
 }) {
   const openRecord = useAppStore(s => s.openRecord);
+  const mayCreateLeadActivity = useAppStore(s => s.allows('crm', 'create'));
+  const mayEditLead = useAppStore(s => s.allows('crm', 'edit'));
 
   const [record, setRecord] = React.useState<any>(null);
   const [activities, setActivities] = React.useState<CrmActivity[]>([]);
@@ -189,6 +206,8 @@ export function RecordSheet({
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [moving, setMoving] = React.useState(false);
+  const [workspaceSection, setWorkspaceSection] = React.useState('overview');
+  const loadController = React.useRef<AbortController | null>(null);
 
   const [logOpen, setLogOpen] = React.useState(false);
   const [followOpen, setFollowOpen] = React.useState(false);
@@ -199,42 +218,54 @@ export function RecordSheet({
 
   const load = React.useCallback(async () => {
     if (!id) return;
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
     setLoading(true);
     setError(null);
     try {
       const [row, acts] = await Promise.all([
-        getOne<any>(`${ENDPOINT[kind]}/${id}`),
+        getOne<any>(`${ENDPOINT[kind]}/${id}`, controller.signal),
         getList<CrmActivity>(
-          `/api/crm/activities?${listQuery({ [FILTER_KEY[kind]]: id, pageSize: 100, sort: 'created_at', sortDir: 'desc' })}`,
+          `/api/crm/activities?${listQuery({ [FILTER_KEY[kind]]: id, pageSize: 100, sort: 'created_at', sortDir: 'desc' })}`, controller.signal,
         ),
       ]);
+      if (controller.signal.aborted) return;
       setRecord(row);
       setActivities(acts.data);
 
       if (kind === 'deal') {
         try {
-          const history = await getOne<{ events: StageEvent[] }>(`/api/crm/deals/${id}/history`);
+          const history = await getOne<{ events: StageEvent[] }>(`/api/crm/deals/${id}/history`, controller.signal);
+          if (controller.signal.aborted) return;
           setEvents(history.events ?? []);
         } catch {
           // The history is a nicety. A deal panel without it still works, and
           // a deployment that has not run 0028 should not lose the whole sheet.
-          setEvents([]);
+          if (!controller.signal.aborted) setEvents([]);
         }
       }
     } catch (e: any) {
+      if (controller.signal.aborted) return;
       setError(e.message || 'This record could not be loaded');
       setRecord(null);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [id, kind]);
 
   React.useEffect(() => {
+    setRecord(null); setActivities([]); setEvents([]); setWorkspaceSection('overview');
     if (open && id) void load();
     if (!open) { setRecord(null); setActivities([]); setEvents([]); setError(null); }
+    return () => loadController.current?.abort();
   }, [open, id, load]);
 
   const refresh = React.useCallback(() => { void load(); onChanged(); }, [load, onChanged]);
+  useRealtime({invalidateOnSubscribe:true,name:`crm-record-${kind}-${id}`,enabled:open&&Boolean(id),onChange:load,tables:[
+    {table:kind === 'lead' ? 'leads' : kind === 'deal' ? 'deals' : 'contacts',filter:`id=eq.${id}`},
+    {table:'crm_activities',filter:`${kind}_id=eq.${id}`},
+  ]});
   const deleteActivity = useDeleteActivity(refresh);
 
   const owed = activities.filter(a => a.dueAt && !a.completedAt);
@@ -249,7 +280,7 @@ export function RecordSheet({
       await fetch(`/api/crm/deals/${record.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ stage, probability: PROBABILITY[stage] ?? record.probability }),
+        body: JSON.stringify({ pipelineVersion:record.pipelineVersion, stage, probability: PROBABILITY[stage] ?? record.probability }),
       }).then(async r => {
         const j = await r.json().catch(() => null);
         if (!r.ok) throw new Error(j?.error?.message ?? 'That did not work');
@@ -292,8 +323,9 @@ export function RecordSheet({
           customer.
         */}
         <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-2xl">
-          <SheetHeader className="border-b border-border py-4 pl-5 pr-12 text-left">
-            <div className="flex items-start gap-3">
+        <SheetHeader className="border-b border-border bg-muted/20 py-5 pl-5 pr-12 text-left">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">{kind === 'deal' ? 'Opportunity workspace' : kind === 'lead' ? 'Lead workspace' : 'Contact workspace'}</p>
+            <div className="flex flex-wrap items-start gap-3">
               {kind === 'deal'
                 ? (
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
@@ -303,7 +335,7 @@ export function RecordSheet({
                 : <Monogram name={title} className="size-9 text-[12px]" />}
 
               <div className="min-w-0 flex-1">
-                <SheetTitle className="truncate text-[16px] leading-tight">{title}</SheetTitle>
+                <SheetTitle className="break-words text-xl font-semibold leading-tight tracking-tight">{title}</SheetTitle>
                 <SheetDescription className="mt-0.5 text-[12.5px]">
                   {record
                     ? kind === 'deal'
@@ -318,10 +350,10 @@ export function RecordSheet({
                   {kind === 'deal' ? (
                     <>
                       <p className="text-[17px] font-semibold leading-none tabular-nums text-foreground">
-                        {exact(record.value)}
+                        {exact(record.value,record.currency)}
                       </p>
                       <p className="mt-1 text-[11.5px] text-muted-foreground">
-                        {record.probability}% · {exact(record.value * record.probability / 100)}
+                        {record.probability}% · {exact(record.value * record.probability / 100,record.currency)}
                       </p>
                     </>
                   ) : kind === 'lead' ? (
@@ -334,25 +366,25 @@ export function RecordSheet({
             {/* ── The five things people do next ──────────────────────────── */}
             {record && (
               <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
-                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" onClick={() => setLogOpen(true)}>
+                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" disabled={!mayCreateLeadActivity} onClick={() => setLogOpen(true)}>
                   <Plus className="size-3.5" /> Log activity
                 </Button>
-                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" onClick={() => setFollowOpen(true)}>
+                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" disabled={!mayCreateLeadActivity} onClick={() => setFollowOpen(true)}>
                   <CornerUpRight className="size-3.5" /> Follow up
                 </Button>
 
                 {kind === 'lead' && !record.convertedContactId && (
-                  <Button size="sm" className="h-8 gap-1.5 text-[12.5px]" onClick={() => setConvertOpen(true)}>
+                  <Button size="sm" className="h-8 gap-1.5 text-[12.5px]" disabled={!mayCreateLeadActivity} onClick={() => setConvertOpen(true)}>
                     <ArrowRight className="size-3.5" /> Convert
                   </Button>
                 )}
 
                 {kind === 'deal' && record.stage !== 'closed_won' && record.stage !== 'closed_lost' && (
                   <>
-                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" onClick={() => setClosing('closed_won')}>
+                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" disabled={!mayEditLead} onClick={() => setClosing('closed_won')}>
                       <Trophy className="size-3.5" /> Won
                     </Button>
-                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" onClick={() => setClosing('closed_lost')}>
+                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" disabled={!mayEditLead} onClick={() => setClosing('closed_lost')}>
                       <XCircle className="size-3.5" /> Lost
                     </Button>
                   </>
@@ -370,7 +402,7 @@ export function RecordSheet({
 
                 <Button
                   size="sm" variant="ghost" className="h-8 gap-1.5 text-[12.5px]"
-                  onClick={() => setEditOpen(true)}
+                  disabled={kind === 'lead' && !mayEditLead} onClick={() => setEditOpen(true)}
                 >
                   <Pencil className="size-3.5" /> Edit
                 </Button>
@@ -384,10 +416,17 @@ export function RecordSheet({
             <div className="p-5"><Broken message={error} onRetry={load} /></div>
           ) : !record ? null : (
             <div className="flex flex-col gap-4 p-5">
+              <nav aria-label="Record workspace" className="flex flex-wrap gap-1 rounded-lg bg-muted/40 p-1">
+                {[['overview','Overview'],['activity','Activity'],['details',kind === 'lead' ? 'Qualification & consent' : kind === 'deal' ? 'Sales details' : 'Relationship'],...(kind === 'lead' ? [['assignment','Ownership'],['duplicates','Duplicates']] : []),...(kind === 'deal' ? [['audit','Audit trail']] : []),['files','Documents']].map(([value,label]) => <Button key={value} size="sm" variant={workspaceSection === value ? 'secondary' : 'ghost'} aria-pressed={workspaceSection === value} onClick={() => setWorkspaceSection(value)}>{label}</Button>)}
+              </nav>
+              <div hidden={workspaceSection !== 'overview'} className="space-y-4">
+              {kind === 'deal' && <DealBrief deal={record as Deal}/>}
+              {kind === 'lead' && <LeadEngagementPanel lead={record as Lead} />}
+              {kind === 'lead' && record.communicationPreferences?.doNotContact && <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">Do not contact — review communication preferences before any outreach.</p>}
               {/* ── Where it is ─────────────────────────────────────────── */}
               {kind === 'deal' && (
                 <Panel title="Stage">
-                  <StageRail deal={record as Deal} events={events} onMove={move} busy={moving} />
+                  {(record as Deal).pipelineId ? <div className="flex items-center justify-between gap-3"><p className="text-xs text-muted-foreground">This opportunity follows configured stage requirements and approvals.</p><Button size="sm" variant="outline" onClick={()=>setWorkspaceSection('details')}>Review stage & move</Button></div> : <StageRail deal={record as Deal} events={events} onMove={move} busy={moving||!mayEditLead} />}
                 </Panel>
               )}
 
@@ -416,8 +455,29 @@ export function RecordSheet({
 
               {/* ── The facts ───────────────────────────────────────────── */}
               <Panel title="Details">
-                <Facts items={factsFor(kind, record, events)} />
+                
+                <CustomFields standardFields={factsFor(kind, record, events)} object={kind === 'lead' ? 'leads' : kind === 'contact' ? 'contacts' : 'deals'} values={record.customValues ?? {}} />
               </Panel>
+              </div>
+              <div hidden={workspaceSection !== 'duplicates'} className="space-y-4">
+              {kind === 'lead' && <DuplicateReview key={record.id} lead={record as Lead} onMerged={() => { onChanged(); onOpenChange(false); }} />}
+              </div>
+              <div hidden={workspaceSection !== 'details'} className="space-y-4">
+              {kind === 'lead' && <QualificationPanel key={`qualification-${record.id}`} lead={record as Lead} onChanged={refresh}/>}
+              {kind === 'lead' && <LeadPreferencesPanel key={`preferences-${record.id}`} lead={record as Lead} onChanged={refresh}/>}
+              {kind === 'deal' && (record as Deal).pipelineVersion !== undefined && <DealPipelinePanel key={record.id} deal={record as Deal} onChanged={refresh}/>}
+              {kind === 'deal' && <DealPlan key={`plan-${record.id}`} deal={record as Deal} onChanged={refresh}/>}
+              {kind === 'deal' && record.company?.id && <DealAccountContext key={`context-${record.id}`} companyId={record.company.id}/>}
+              {kind === 'deal' && <CommercialRelated dealId={record.id}/>}
+              {kind === 'contact' && <RelationshipProfile key={record.id} kind="contact" id={record.id} onChanged={refresh}/>}
+              </div>
+              {kind === 'lead' && <div hidden={workspaceSection !== 'assignment'}><AssignmentPanel key={`assignment-${record.id}`} lead={record as Lead} onChanged={refresh}/></div>}
+              {kind === 'deal' && workspaceSection === 'audit' && <DealAudit key={record.id} id={record.id} revision={(record as Deal).pipelineVersion}/>}
+              <div hidden={workspaceSection !== 'files'}>
+              <CrmAttachments key={`files-${record.id}`} kind={kind} id={record.id}/>
+              </div>
+              <div hidden={workspaceSection !== 'activity'} className="space-y-4">
+              <p className="text-xs text-muted-foreground">Showing activity from the latest 100 records. Open Activities for the full searchable history.</p>
 
               {/* ── What happened ───────────────────────────────────────── */}
               <Panel
@@ -440,6 +500,7 @@ export function RecordSheet({
                   }
                 />
               </Panel>
+              </div>
 
               {/* ── Where else this record lives ────────────────────────── */}
               {(record.company?.id || record.contact?.id || record.convertedContactId) && (
@@ -567,12 +628,14 @@ function linkFor(kind: Kind, record: any) {
 }
 
 function factsFor(kind: Kind, r: any, events: StageEvent[]) {
-  const mail = r.email
+  const emailBlocked = kind === 'lead' && (r.communicationPreferences?.doNotContact || r.communicationPreferences?.email !== 'granted');
+  const phoneBlocked = kind === 'lead' && (r.communicationPreferences?.doNotContact || r.communicationPreferences?.phone !== 'granted');
+  const mail = emailBlocked ? <span>{r.email || 'Not recorded'}<span className="block text-[10px] text-muted-foreground">Review email permission before outreach</span></span> : r.email
     ? <a href={`mailto:${r.email}`} className="inline-flex items-center gap-1.5 hover:underline">
       <Mail className="size-3.5 text-muted-foreground" />{r.email}
     </a>
     : '';
-  const tel = r.phone
+  const tel = phoneBlocked ? <span>{r.phone || 'Not recorded'}<span className="block text-[10px] text-muted-foreground">Review phone permission before outreach</span></span> : r.phone
     ? <a href={`tel:${r.phone}`} className="inline-flex items-center gap-1.5 hover:underline">
       <Phone className="size-3.5 text-muted-foreground" />{r.phone}
     </a>
@@ -584,8 +647,8 @@ function factsFor(kind: Kind, r: any, events: StageEvent[]) {
     const opened = events[0]?.createdAt ?? r.createdAt;
 
     return [
-      { label: 'Value', value: exact(r.value) },
-      { label: 'Weighted', value: settled ? '' : exact(r.value * r.probability / 100) },
+      { label: 'Value', value: exact(r.value,r.currency) },
+      { label: 'Weighted', value: settled ? '' : exact(r.value * r.probability / 100,r.currency) },
       /**
        * One date, and which one depends on whether it is over.
        *
@@ -627,8 +690,9 @@ function factsFor(kind: Kind, r: any, events: StageEvent[]) {
       { label: 'Company', value: r.companyName || '' },
       { label: 'Job title', value: r.jobTitle || '' },
       { label: 'Source', value: r.source ? statusLabel(r.source) : '' },
+      { label: 'Campaign', value: r.campaign || 'Not recorded' },
       { label: 'Estimated value', value: r.estimatedValue ? exact(r.estimatedValue) : '' },
-      { label: 'Score', value: <Gauge value={r.score ?? 0} label="Score" /> },
+      { label: 'Recorded score', value: <Gauge value={r.score ?? 0} label="Manually recorded score" /> },
       { label: 'Owner', value: <OwnerTag member={r.owner} /> },
       { label: 'Added', value: formatDate(r.createdAt) },
       { label: 'Notes', value: r.notes || '', full: true },

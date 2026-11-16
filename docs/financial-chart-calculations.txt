@@ -1,0 +1,2 @@
+PASS: receipt dates, partial payments, currency isolation, drafts, calendar continuity and aging boundaries
+PASS signed values, small/large amounts, future exclusion and date-window totals

@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "scripts/sign.test.mts",
+    "scripts/sign-worker.mts",
+    ".next-sign-continuation/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

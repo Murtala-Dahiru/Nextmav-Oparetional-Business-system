@@ -1,6 +1,17 @@
 'use client';
+import { CustomFields } from './custom-fields';
 
 import * as React from 'react';
+import type { RelationshipSignal } from '@/lib/crm/account-signals';
+import { RelatedRecords } from './related-records';
+import { CommercialRelated } from './commercial-related';
+import { AccountCommitments } from './account-commitments';
+import { AccountHierarchy } from './account-hierarchy';
+import { useModuleRealtime } from '@/hooks/use-realtime';
+import { AccountPlanPanel } from './account-plan';
+import { RelationshipProfile } from './relationship-profile';
+import { RelationshipTimeline } from './relationship-timeline';
+import { CrmAttachments } from './attachments';
 import { toast } from 'sonner';
 import {
   Building2, Users, Handshake, FolderKanban, Receipt, LifeBuoy, CalendarDays,
@@ -65,7 +76,11 @@ import type { CrmActivity } from './types';
  */
 
 interface Overview {
+  accountTeam?:{id:string;name:string}[];
+  intelligence: { status: string; signals: RelationshipSignal[] };
+  collectedPayments?: {currency:string;collected:number}[];
   company: {
+    customValues?: import('@/lib/crm/customization').CustomValues; crmProfile?: {segment?:string;tags?:string[]}; accountTeamIds?:string[];
     id: string; name: string; industry: string | null; website: string | null;
     email: string | null; phone: string | null; address: string | null;
     city: string | null; country: string | null; notes: string;
@@ -74,10 +89,10 @@ interface Overview {
   };
   contacts: {
     id: string; firstName: string; lastName: string; email: string | null;
-    phone: string | null; jobTitle: string | null; isActive: boolean;
+    phone: string | null; jobTitle: string | null; isActive: boolean; crmProfile?:{relationshipRole?:string};
   }[];
   deals: {
-    id: string; name: string; stage: string; value: number; probability: number;
+    id: string; name: string; stage: string; value: number; currency:string; probability: number;
     expectedClose: string | null; closedAt: string | null; owner: { fullName: string } | null;
   }[];
   projects?: {
@@ -97,19 +112,22 @@ interface Overview {
     id: string; title: string; startsAt: string; endsAt: string;
     allDay: boolean; location: string | null;
   }[];
-  activities: CrmActivity[];
+  activities: CrmActivity[]; commitments: CrmActivity[];
   timeline: {
     id: number; module: string; action: string; title: string;
     createdAt: string; user: { fullName: string } | null;
   }[];
   summary: {
+    dealCurrencies?:{currency:string;openCount:number;openValue:number;wonValue:number}[];
     contacts: number; openDeals: number; openDealValue: number; wonDealValue: number;
     activeProjects: number; projectsAtRisk: number; outstandingInvoiced: number;
     overdueInvoices: number; openTickets: number; currency: string;
+    invoiceBalances: { currency: string; outstanding: number; overdue: number }[];
+    lastContact: string | null; nextFollowUp: string | null;
   };
 }
 
-type Tab = 'overview' | 'people' | 'deals' | 'work' | 'money' | 'support' | 'activity';
+type Tab = 'overview' | 'people' | 'deals' | 'work' | 'money' | 'support' | 'activity' | 'plan' | 'profile' | 'documents';
 
 /* -------------------------------------------------------------------------- */
 /*  Summary                                                                   */
@@ -169,6 +187,8 @@ export function CompanyDetail({
   onChanged?: () => void;
 }) {
   const openRecord = useAppStore(s => s.openRecord);
+  const mayCreate = useAppStore(s=>s.allows('crm','create'));
+  const mayEdit = useAppStore(s=>s.allows('crm','edit'));
 
   const [data, setData] = React.useState<Overview | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -180,27 +200,37 @@ export function CompanyDetail({
   const [dealOpen, setDealOpen] = React.useState(false);
   const [contactOpen, setContactOpen] = React.useState(false);
   const [editingActivity, setEditingActivity] = React.useState<CrmActivity | null>(null);
+  const pending = React.useRef<AbortController | null>(null);
 
   const load = React.useCallback(async () => {
     if (!companyId) return;
+    pending.current?.abort();
+    const controller = new AbortController();
+    pending.current = controller;
     setLoading(true);
     setError(null);
     try {
-      setData(await getOne<Overview>(`/api/crm/companies/${companyId}/overview`));
+      const result = await getOne<Overview>(`/api/crm/companies/${companyId}/overview`, controller.signal);
+      if (!controller.signal.aborted) setData(result);
     } catch (e: any) {
+      if (controller.signal.aborted) return;
       setError(e.message || 'This customer could not be loaded');
       setData(null);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [companyId]);
 
   React.useEffect(() => {
+    setData(null);
     if (open && companyId) void load();
     if (!open) { setData(null); setTab('overview'); setError(null); }
+    return () => pending.current?.abort();
   }, [open, companyId, load]);
 
   const refresh = React.useCallback(() => { void load(); onChanged?.(); }, [load, onChanged]);
+
+  useModuleRealtime(`crm-company-${companyId}`, ['companies','contacts','deals','crm_activities','projects','invoices','payments','support_tickets','milestones','crm_account_plans'], load, open && Boolean(companyId));
 
   const c = data?.company;
   const s = data?.summary;
@@ -214,7 +244,7 @@ export function CompanyDetail({
   /* ── The two facts nothing used to show ────────────────────────────────── */
 
   const owed = React.useMemo(
-    () => (data?.activities ?? []).filter(a => a.dueAt && !a.completedAt)
+    () => (data?.commitments ?? []).filter(a => a.dueAt && !a.completedAt)
       .sort((a, b) => (a.dueAt ?? '').localeCompare(b.dueAt ?? '')),
     [data],
   );
@@ -222,33 +252,37 @@ export function CompanyDetail({
     () => (data?.activities ?? []).filter(a => !a.dueAt || a.completedAt),
     [data],
   );
-  const lastContact = history[0]?.completedAt ?? history[0]?.createdAt ?? null;
-  const nextFollowUp = owed[0]?.dueAt ?? null;
+  const lastContact = s?.lastContact ?? null;
+  const nextFollowUp = s?.nextFollowUp ?? null;
   const overdueCount = owed.filter(a => whenOf(a.dueAt) === 'overdue').length;
 
   const link = c ? { kind: 'company' as const, id: c.id, label: c.name } : null;
 
   const tabs: { id: Tab; label: string; count?: number; shown: boolean }[] = [
     { id: 'overview', label: 'Overview', shown: true },
-    { id: 'people', label: 'People', count: data?.contacts.length, shown: true },
-    { id: 'deals', label: 'Deals', count: data?.deals.length, shown: true },
-    { id: 'work', label: 'Work', count: data?.projects?.length, shown: Boolean(data?.projects) },
-    { id: 'money', label: 'Money', count: data?.invoices?.length, shown: Boolean(data?.invoices) },
+    { id: 'people', label: 'Contacts', count: data?.contacts.length, shown: true },
+    { id: 'deals', label: 'Opportunities', count: data?.deals.length, shown: true },
+    { id: 'work', label: 'Projects', count: data?.projects?.length, shown: Boolean(data?.projects) },
+    { id: 'money', label: 'Finance', count: data?.invoices?.length, shown: Boolean(data?.invoices) },
     { id: 'support', label: 'Support', count: data?.tickets?.length, shown: Boolean(data?.tickets) },
-    { id: 'activity', label: 'Activity', count: data?.activities.length, shown: true },
+    { id: 'activity', label: 'Timeline', count: data?.activities.length, shown: true },
+    { id: 'plan', label: 'Account plan', shown: true },
+    { id: 'profile', label: 'Relationships', shown: true },
+    { id: 'documents', label: 'Documents', shown: true },
   ];
 
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-2xl">
-          <SheetHeader className="border-b border-border py-4 pl-5 pr-12 text-left">
+        <SheetContent className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-[95vw] xl:max-w-6xl">
+          <SheetHeader className="border-b border-border bg-slate-50/70 py-6 pl-6 pr-12 text-left">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">Account 360</p>
             <div className="flex items-start gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                <Building2 className="size-5" />
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-700">
+                <span className="text-sm font-semibold">{c?initialsOf(c.name):<Building2 className="size-5"/>}</span>
               </span>
               <div className="min-w-0 flex-1">
-                <SheetTitle className="truncate text-[17px] leading-tight">
+                <SheetTitle className="break-words text-xl font-semibold leading-tight tracking-tight">
                   {c?.name ?? (loading ? 'Loading' : 'Customer')}
                 </SheetTitle>
                 <SheetDescription className="mt-0.5 text-[12.5px]">
@@ -297,18 +331,19 @@ export function CompanyDetail({
               </div>
             )}
 
+            {c && <div className="mt-4 flex flex-wrap gap-2 text-[11px]"><span className="rounded-full border bg-white px-2.5 py-1 font-medium">{data?.intelligence?.status ?? 'Insufficient information'}</span>{c.crmProfile?.segment&&<span className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-blue-800">{c.crmProfile.segment}</span>}{c.crmProfile?.tags?.map(tag=><span key={tag} className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-600">{tag}</span>)}{!c.owner&&<span className="px-2 py-1 text-slate-500">Owner unassigned</span>}{Boolean(c.accountTeamIds?.length)&&<span className="px-2 py-1 text-slate-500">Team: {data?.accountTeam?.map(m=>m.name).join(', ') || `${c.accountTeamIds!.length} members`}</span>}</div>}
             {c && (
               <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
-                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" onClick={() => setLogOpen(true)}>
+                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" disabled={!mayCreate} onClick={() => setLogOpen(true)}>
                   <Plus className="size-3.5" /> Log activity
                 </Button>
-                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" onClick={() => setFollowOpen(true)}>
+                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" disabled={!mayCreate} onClick={() => setFollowOpen(true)}>
                   <CornerUpRight className="size-3.5" /> Follow up
                 </Button>
-                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" onClick={() => setDealOpen(true)}>
+                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" disabled={!mayCreate} onClick={() => setDealOpen(true)}>
                   <Handshake className="size-3.5" /> New deal
                 </Button>
-                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" onClick={() => setContactOpen(true)}>
+                <Button size="sm" variant="outline" className="h-8 gap-1.5 text-[12.5px]" disabled={!mayCreate} onClick={() => setContactOpen(true)}>
                   <Users className="size-3.5" /> Add contact
                 </Button>
                 <AddToMyWorkButton
@@ -319,7 +354,7 @@ export function CompanyDetail({
                 {onEdit && (
                   <Button
                     size="sm" variant="ghost" className="h-8 gap-1.5 text-[12.5px]"
-                    onClick={() => { onOpenChange(false); onEdit(c.id); }}
+                    disabled={!mayEdit} onClick={() => { onOpenChange(false); onEdit(c.id); }}
                   >
                     <Pencil className="size-3.5" /> Edit
                   </Button>
@@ -342,34 +377,35 @@ export function CompanyDetail({
               <div className="grid grid-cols-2 divide-x divide-y divide-border border-b border-border sm:grid-cols-3">
                 <Fig
                   label="Open pipeline"
-                  value={exact(s.openDealValue, s.currency)}
+                  value={s.dealCurrencies?.length?s.dealCurrencies.filter(c=>c.openCount>0).map(c=>exact(c.openValue,c.currency)).join(' · ')||exact(0,s.currency):exact(s.openDealValue,s.currency)}
                   note={`${s.openDeals} ${s.openDeals === 1 ? 'deal' : 'deals'}`}
                 />
                 <Fig
                   label="Won to date"
-                  value={exact(s.wonDealValue, s.currency)}
+                  value={s.dealCurrencies?.length?s.dealCurrencies.filter(c=>c.wonValue>0).map(c=>exact(c.wonValue,c.currency)).join(' · ')||exact(0,s.currency):exact(s.wonDealValue,s.currency)}
                   tone={s.wonDealValue > 0 ? 'good' : 'default'}
                 />
                 <Fig
-                  label="Last contact"
-                  value={lastContact ? relativeDay(lastContact) : 'Never'}
-                  note={lastContact ? formatDate(lastContact) : 'Nothing has been logged'}
+                  label="Last engagement"
+                  value={lastContact ? relativeDay(lastContact) : 'Not recorded'}
+                  note={lastContact ? formatDate(lastContact) : 'Completed calls, emails and meetings'}
                   tone={!lastContact ? 'warn' : 'default'}
                 />
                 <Fig
                   label="Next follow-up"
                   value={nextFollowUp ? relativeDay(nextFollowUp) : 'None'}
-                  note={owed[0]?.subject}
-                  tone={overdueCount ? 'warn' : 'default'}
+                  note={nextFollowUp ? formatDate(nextFollowUp) : undefined}
+                  tone={nextFollowUp && whenOf(nextFollowUp) === 'overdue' ? 'warn' : 'default'}
                 />
-                {data.invoices && (
+                {data.invoices && (s.invoiceBalances.length ? s.invoiceBalances : [{ currency: s.currency, outstanding: 0, overdue: 0 }]).map(balance => (
                   <Fig
-                    label="Outstanding"
-                    value={exact(s.outstandingInvoiced, s.currency)}
-                    note={s.overdueInvoices ? `${s.overdueInvoices} overdue` : 'Nothing overdue'}
-                    tone={s.overdueInvoices ? 'warn' : 'default'}
+                    key={balance.currency}
+                    label={`Outstanding (${balance.currency})`}
+                    value={exact(balance.outstanding, balance.currency)}
+                    note={balance.overdue ? `${balance.overdue} overdue` : 'Nothing overdue'}
+                    tone={balance.overdue ? 'warn' : 'default'}
                   />
-                )}
+                ))}
                 {data.tickets && (
                   <Fig
                     label="Open tickets"
@@ -382,24 +418,36 @@ export function CompanyDetail({
 
               {/* ── Sections ──────────────────────────────────────────────── */}
               <div className="border-b border-border px-5 py-2.5">
-                <FilterRow
-                  ariaLabel="Section"
-                  value={tab}
-                  onChange={v => setTab(v as Tab)}
-                  options={tabs.filter(t => t.shown).map(t => ({
-                    value: t.id, label: t.label, count: t.count,
-                  }))}
-                />
+                <p className="mb-2 text-xs text-muted-foreground">Totals cover all accessible records. Related lists below show recent records; tab counts describe those previews.</p>
+                <nav aria-label="Account sections" className="flex flex-wrap gap-1">
+                  {tabs.filter(t => t.shown).map(t => <button key={t.id} type="button" aria-current={tab === t.id ? 'page' : undefined} onClick={() => setTab(t.id as Tab)} className={cn('inline-flex min-h-9 items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-primary', tab === t.id ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground')}>
+                    {t.label}{t.count !== undefined && <span className="rounded bg-background/70 px-1.5 py-0.5 text-[10px] tabular-nums">{t.count}</span>}
+                  </button>)}
+                </nav>
               </div>
 
               <div className="flex flex-col gap-4 p-5">
                 {tab === 'overview' && (
                   <>
+                    <section className="rounded-xl border border-slate-200 bg-white p-5">
+                      <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-base font-semibold tracking-tight">Relationship briefing</h3><p className="mt-1 text-xs leading-5 text-slate-500">Verified account context and explainable follow-up priorities.</p></div><span className="rounded-full border bg-slate-50 px-3 py-1 text-xs font-medium">{data.intelligence?.status ?? 'Insufficient information'}</span></div>
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">{data.intelligence?.signals.map(signal=><div key={signal.key} className="rounded-lg border bg-slate-50/40 p-3"><div className="flex items-start gap-2"><span className={cn('mt-1 size-1.5 shrink-0 rounded-full',signal.severity==='risk'?'bg-amber-600':signal.severity==='attention'?'bg-blue-600':'bg-slate-400')}/><div><h4 className="text-xs font-semibold">{signal.title}</h4><p className="mt-1 text-xs leading-5 text-slate-500">{signal.evidence}</p><button className="mt-2 text-xs font-medium text-blue-700 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-blue-600" onClick={()=>setTab(signal.section)}>{signal.action} →</button></div></div></div>)}</div>
+                      <p className="mt-3 text-[11px] leading-5 text-slate-500">Status reflects the visible records and rules above. Healthy means no current rule is flagged; it does not predict retention or future revenue.</p>
+                    </section>
+                    <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
+                      <Panel title="Current opportunities" count={s.openDeals}>{data.deals.filter(d=>!['closed_won','closed_lost'].includes(d.stage)).slice(0,4).map(d=><Row key={d.id} onOpen={()=>go('crm','deal',d.id)}><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{d.name}</p><StageTag stage={d.stage}/></div><span className="text-xs tabular-nums">{exact(d.value,d.currency)}</span></Row>)}{!s.openDeals&&<p className="text-xs leading-5 text-muted-foreground">No open opportunities recorded. Create an opportunity when a verified customer need emerges.</p>}<button className="mt-3 text-xs font-medium text-blue-700" onClick={()=>setTab('deals')}>Review opportunities →</button></Panel>
+                      <Panel title="Key relationships" count={s.contacts}>{data.contacts.filter(p=>p.isActive).slice(0,4).map(p=><Row key={p.id} onOpen={()=>go('crm','contact',p.id)}><Monogram name={`${p.firstName} ${p.lastName}`}/><div className="min-w-0"><p className="truncate text-sm font-medium">{p.firstName} {p.lastName}</p><p className="truncate text-xs text-muted-foreground">{p.crmProfile?.relationshipRole || p.jobTitle || 'Role not recorded'}</p></div></Row>)}{!s.contacts&&<p className="text-xs leading-5 text-muted-foreground">No contacts recorded. Add the people involved in this relationship.</p>}<button className="mt-3 text-xs font-medium text-blue-700" onClick={()=>setTab('people')}>Review contacts →</button></Panel>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <Panel title="Delivery">{data.projects?<><p className="text-xl font-semibold tabular-nums">{s.activeProjects}</p><p className="mt-1 text-xs text-muted-foreground">Active or planning projects · {s.projectsAtRisk} flagged at risk</p><button className="mt-3 text-xs font-medium text-blue-700" onClick={()=>setTab('work')}>Review projects →</button></>:<p className="text-xs text-muted-foreground">Project context is unavailable with your current access.</p>}</Panel>
+                      <Panel title="Collections">{data.invoices?<>{data.collectedPayments?.length?data.collectedPayments.map(p=><div key={p.currency}><p className="text-lg font-semibold tabular-nums">{exact(p.collected,p.currency)}</p><p className="text-xs text-muted-foreground">Recorded payments · {p.currency}</p></div>):<p className="text-xs text-muted-foreground">No payments recorded.</p>}<button className="mt-3 text-xs font-medium text-blue-700" onClick={()=>setTab('money')}>Review finance →</button></>:<p className="text-xs text-muted-foreground">Financial context is unavailable with your current access.</p>}</Panel>
+                      <Panel title="Customer support">{data.tickets?<><p className="text-xl font-semibold tabular-nums">{s.openTickets}</p><p className="mt-1 text-xs text-muted-foreground">Unresolved tickets</p><button className="mt-3 text-xs font-medium text-blue-700" onClick={()=>setTab('support')}>Review support →</button></>:<p className="text-xs text-muted-foreground">Support context is unavailable with your current access.</p>}</Panel>
+                    </div>
                     <Panel
                       title="Next"
                       count={owed.length}
                       action={
-                        <Button size="sm" variant="ghost" className="h-7 gap-1 text-[12px]" onClick={() => setFollowOpen(true)}>
+                        <Button size="sm" variant="ghost" className="h-7 gap-1 text-[12px]" disabled={!mayCreate} onClick={() => setFollowOpen(true)}>
                           <Plus className="size-3" /> Add
                         </Button>
                       }
@@ -412,7 +460,7 @@ export function CompanyDetail({
                         />
                       ) : (
                         <p className="py-1 text-[12.5px] text-muted-foreground">
-                          Nothing scheduled with this customer.
+                          No open CRM follow-ups. Account-plan actions are managed in Account Plan.
                         </p>
                       )}
                     </Panel>
@@ -425,7 +473,7 @@ export function CompanyDetail({
                           onClick={() => setTab('activity')}
                           className="mt-2 text-[12.5px] font-medium text-foreground hover:underline"
                         >
-                          See all {history.length}
+                          Open full timeline
                         </button>
                       )}
                     </Panel>
@@ -461,245 +509,18 @@ export function CompanyDetail({
                   </>
                 )}
 
-                {tab === 'people' && (
-                  <Panel
-                    title="Contacts"
-                    count={data.contacts.length}
-                    action={
-                      <Button size="sm" variant="ghost" className="h-7 gap-1 text-[12px]" onClick={() => setContactOpen(true)}>
-                        <Plus className="size-3" /> Add
-                      </Button>
-                    }
-                  >
-                    {data.contacts.length === 0 ? (
-                      <p className="py-1 text-[12.5px] text-muted-foreground">
-                        Nobody recorded here yet.
-                      </p>
-                    ) : (
-                      <div className="flex flex-col divide-y divide-border">
-                        {data.contacts.map(p => (
-                          <Row key={p.id} onOpen={() => go('crm', 'contact', p.id)}>
-                            <Monogram name={`${p.firstName} ${p.lastName}`} />
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-[13px] text-foreground">
-                                {`${p.firstName} ${p.lastName}`.trim()}
-                                {!p.isActive && (
-                                  <span className="ml-2 text-[11.5px] text-muted-foreground">no longer here</span>
-                                )}
-                              </p>
-                              <p className="truncate text-[11.5px] text-muted-foreground">
-                                {[p.jobTitle, p.email].filter(Boolean).join(' · ') || 'No title or email'}
-                              </p>
-                            </div>
-                          </Row>
-                        ))}
-                      </div>
-                    )}
-                  </Panel>
-                )}
+                {c && tab==='people' && <RelatedRecords key={`contacts-${c.id}`} companyId={c.id} kind="contacts"/>}
+                {c && tab==='deals' && <><RelatedRecords key={`deals-${c.id}`} companyId={c.id} kind="deals"/><CommercialRelated companyId={c.id}/></>}
+                {c && tab==='work' && data.projects && <><RelatedRecords companyId={c.id} kind="projects"/><RelatedRecords companyId={c.id} kind="milestones"/></>}
+                {c && tab==='money' && data.invoices && <><RelatedRecords companyId={c.id} kind="invoices"/><RelatedRecords companyId={c.id} kind="payments"/></>}
+                {c && tab==='support' && data.tickets && <RelatedRecords companyId={c.id} kind="tickets"/>}
 
-                {tab === 'deals' && (
-                  <Panel
-                    title="Deals"
-                    count={data.deals.length}
-                    action={
-                      <Button size="sm" variant="ghost" className="h-7 gap-1 text-[12px]" onClick={() => setDealOpen(true)}>
-                        <Plus className="size-3" /> Add
-                      </Button>
-                    }
-                  >
-                    {data.deals.length === 0 ? (
-                      <p className="py-1 text-[12.5px] text-muted-foreground">
-                        No deals with this customer yet.
-                      </p>
-                    ) : (
-                      <div className="flex flex-col divide-y divide-border">
-                        {data.deals.map(d => {
-                          const left = daysUntil(d.expectedClose);
-                          const late = left !== null && left < 0
-                            && d.stage !== 'closed_won' && d.stage !== 'closed_lost';
-                          return (
-                            <Row key={d.id} onOpen={() => go('crm', 'deal', d.id)}>
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-[13px] text-foreground">{d.name}</p>
-                                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11.5px] text-muted-foreground">
-                                  <StageTag stage={d.stage} />
-                                  {/*
-                                    A closed deal is dated by when it closed.
-                                    "closes 15 Dec" on something already won is
-                                    a forecast for the past.
-                                  */}
-                                  {d.closedAt ? (
-                                    <span>on {formatDay(d.closedAt)}</span>
-                                  ) : d.expectedClose ? (
-                                    <span className={cn(late && 'font-medium text-destructive')}>
-                                      closes {formatDay(d.expectedClose)}
-                                    </span>
-                                  ) : null}
-                                </p>
-                              </div>
-                              <div className="shrink-0 text-right">
-                                <p className="text-[13px] font-medium tabular-nums">
-                                  {exact(d.value, s.currency)}
-                                </p>
-                                <p className="text-[11.5px] text-muted-foreground">{d.probability}%</p>
-                              </div>
-                            </Row>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </Panel>
-                )}
-
-                {tab === 'work' && data.projects && (
-                  <Panel title="Projects" count={data.projects.length}>
-                    {data.projects.length === 0 ? (
-                      <p className="py-1 text-[12.5px] text-muted-foreground">
-                        No projects are linked to this customer.
-                      </p>
-                    ) : (
-                      <div className="flex flex-col gap-3">
-                        {data.projects.map(p => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => go('projects', 'project', p.id)}
-                            className="group rounded-md p-1.5 text-left transition-colors hover:bg-accent/60"
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="truncate text-[13px] font-medium">{p.name}</span>
-                              {p.isAtRisk && (
-                                <span className="inline-flex items-center gap-1 rounded border border-warning/40 px-1.5 py-0.5 text-[10px] font-medium text-warning">
-                                  <AlertTriangle className="size-3" /> At risk
-                                </span>
-                              )}
-                              <span className="ml-auto shrink-0 text-[12px] tabular-nums text-muted-foreground">
-                                {p.progressPct}%
-                              </span>
-                            </div>
-                            <Progress value={p.progressPct} className="mt-1.5 h-1.5" />
-                            <p className="mt-1 text-[11.5px] text-muted-foreground">
-                              {p.completedTasks}/{p.totalTasks} tasks
-                              {p.overdueTasks > 0 && ` · ${p.overdueTasks} overdue`}
-                              {p.endDate && ` · due ${formatDay(p.endDate)}`}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {data.meetings && data.meetings.length > 0 && (
-                      <div className="mt-4 border-t border-border pt-3">
-                        <p className="mb-2 text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">
-                          Coming up
-                        </p>
-                        <div className="flex flex-col divide-y divide-border">
-                          {data.meetings.map(m => (
-                            <Row key={m.id}>
-                              <CalendarDays className="size-3.5 shrink-0 text-muted-foreground" />
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-[13px]">{m.title}</p>
-                                <p className="text-[11.5px] text-muted-foreground">
-                                  {formatDate(m.startsAt)}
-                                  {m.location ? ` · ${m.location}` : ''}
-                                </p>
-                              </div>
-                            </Row>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </Panel>
-                )}
-
-                {tab === 'money' && data.invoices && (
-                  <Panel title="Invoices" count={data.invoices.length}>
-                    {data.invoices.length === 0 ? (
-                      <p className="py-1 text-[12.5px] text-muted-foreground">Nothing has been invoiced yet.</p>
-                    ) : (
-                      <div className="flex flex-col divide-y divide-border">
-                        {data.invoices.map(i => {
-                          const overdue = i.dueDate && i.dueDate < new Date().toISOString().slice(0, 10);
-                          const unpaid = i.status !== 'paid' && i.status !== 'cancelled';
-                          return (
-                            <Row key={i.id} onOpen={() => go('finance', 'invoice', i.id)}>
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-[13px] text-foreground">{i.invoiceNumber}</p>
-                                <p className={cn(
-                                  'text-[11.5px]',
-                                  unpaid && overdue ? 'font-medium text-destructive' : 'text-muted-foreground',
-                                )}>
-                                  Issued {formatDay(i.issueDate)} · due {formatDay(i.dueDate)}
-                                  {unpaid && overdue ? ' · overdue' : ''}
-                                </p>
-                              </div>
-                              <div className="shrink-0 text-right">
-                                <p className="text-[13px] font-medium tabular-nums">
-                                  {exact(i.total, i.currency || s.currency)}
-                                </p>
-                                <p className="text-[11.5px] capitalize text-muted-foreground">
-                                  {i.status.replace(/_/g, ' ')}
-                                </p>
-                              </div>
-                            </Row>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </Panel>
-                )}
-
-                {tab === 'support' && data.tickets && (
-                  <Panel title="Tickets" count={data.tickets.length}>
-                    {data.tickets.length === 0 ? (
-                      <p className="py-1 text-[12.5px] text-muted-foreground">
-                        This customer has raised nothing.
-                      </p>
-                    ) : (
-                      <div className="flex flex-col divide-y divide-border">
-                        {data.tickets.map(t => (
-                          <Row key={t.id} onOpen={() => go('support', 'ticket', t.id)}>
-                            <LifeBuoy className="size-3.5 shrink-0 text-muted-foreground" />
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-[13px] text-foreground">{t.subject}</p>
-                              <p className="text-[11.5px] capitalize text-muted-foreground">
-                                {t.ticketNumber} · {t.status.replace(/_/g, ' ')} · {t.priority}
-                              </p>
-                            </div>
-                            <span className="shrink-0 text-[11.5px] text-muted-foreground">
-                              {formatRelativeTime(t.createdAt)}
-                            </span>
-                          </Row>
-                        ))}
-                      </div>
-                    )}
-                  </Panel>
-                )}
-
+                {c && <><div hidden={tab !== 'profile'}><CustomFields object="companies" values={c.customValues ?? {}} standardFields={[{label:"Company",value:c.name},{label:"Industry",value:c.industry},{label:"Email",value:c.email},{label:"Phone",value:c.phone},{label:"Website",value:c.website},{label:"Notes",value:c.notes}]} /><RelationshipProfile key={c.id} kind="company" id={c.id} onChanged={refresh}/>{tab === 'profile' && <AccountHierarchy companyId={c.id}/>}</div><div hidden={tab !== 'plan'}>{tab==='plan'&&<AccountCommitments companyId={c.id}/>}<AccountPlanPanel key={c.id} companyId={c.id}/></div>{tab === 'documents' && <CrmAttachments key={c.id} kind="company" id={c.id}/>}</>}
                 {tab === 'activity' && (
                   <>
-                    <Panel
-                      title="History"
-                      count={history.length}
-                      action={
-                        <Button size="sm" variant="ghost" className="h-7 gap-1 text-[12px]" onClick={() => setLogOpen(true)}>
-                          <Plus className="size-3" /> Log
-                        </Button>
-                      }
-                    >
-                      <Timeline
-                        items={history}
-                        empty={
-                          <p className="py-1 text-[12.5px] text-muted-foreground">
-                            Nothing logged against this customer yet.
-                          </p>
-                        }
-                      />
-                    </Panel>
-
+                    {c&&<Panel title="Unified relationship timeline"><RelationshipTimeline companyId={c.id}/></Panel>}
                     {data.timeline.length > 0 && (
-                      <Panel title="Changes" count={data.timeline.length}>
+                      <details className="rounded-xl border bg-white p-4"><summary className="cursor-pointer text-sm font-semibold">Record change history</summary>
                         <ul className="flex flex-col divide-y divide-border">
                           {data.timeline.map(t => (
                             <li key={t.id} className="flex items-center gap-3 py-2">
@@ -713,7 +534,7 @@ export function CompanyDetail({
                             </li>
                           ))}
                         </ul>
-                      </Panel>
+                      </details>
                     )}
                   </>
                 )}

@@ -1,0 +1,1 @@
+PASS both isolated acceptance logins disabled, passwords rotated, temporary credentials removed

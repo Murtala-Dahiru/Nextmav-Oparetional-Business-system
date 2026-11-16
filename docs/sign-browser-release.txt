@@ -1,0 +1,76 @@
+PASS Commercial Hub contextual navigation opens Sign
+Skip to content
+SA
+NextMav
+Business operating system
+Workspace
+NextMav Sign acceptance c64b123f
+Customers & revenue
+CRM
+Support
+Client Portal
+Company Owner
+Access assigned by your organization
+
+NextMav Sign acceptance c64b123f
+
+CRM
+
+Search your workspace
+Ctrl K
+9+
+
+NextMav CRM
+
+Revenue & relationships
+
+Export
+Overview
+Leads
+Contacts
+Companies
+Deals
+Pipeline
+Activities
+Automation
+Commercial Hub
+More
+Commercial Hub
+
+COMMERCIAL HUB / AGREEMENTS
+
+NextMav Sign
+
+From the first review to the final signature.
+
+New agreement
+Sign overview
+Agreements
+Prepare & send
+Templates
+Settings
+
+Failed to execute 'json' on 'Response': Unexpected end of JSON input
+
+Start with your PDF
+
+Upload the exact document your recipients will review. Up to 20 MB and 100 pages. Encrypted PDFs and active content are not supported.
+
+Choose a PDF
+Use an approved document
+
+Use the immutable issued quote or proposal, or the approved contract version. Existing approval rules stay in effect.
+
+Find commercial document
+Commercial document
+Select an authorized document
+Sign acceptance proposal · proposal
+Sign acceptance proposal · proposal
+Prepare document
+Command Palette
+
+Search for a command to run...
+locator.waitFor: Timeout 60000ms exceeded.
+Call log:
+  - waiting for getByRole('heading', { name: 'Browser prepared agreement', exact: true }) to be visible
+

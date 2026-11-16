@@ -76,6 +76,11 @@ export function useCrmList<T>(
   const [error, setError] = React.useState<string | null>(null);
 
   const [search, setSearchRaw] = React.useState('');
+  const [debouncedSearch, setDebouncedSearch] = React.useState('');
+  React.useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
   const [filters, setFilters] = React.useState<Record<string, string>>({});
   const [sort, setSortKey] = React.useState(defaultSort);
   const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>(defaultSortDir);
@@ -88,6 +93,7 @@ export function useCrmList<T>(
 
   React.useEffect(() => {
     const id = ++request.current;
+    const controller = new AbortController();
     setLoading(true);
 
     const query = listQuery({
@@ -95,27 +101,28 @@ export function useCrmList<T>(
       pageSize,
       sort,
       sortDir,
-      search: search || undefined,
+      search: debouncedSearch || undefined,
       ...filters,
       ...(fixed ?? {}),
     });
 
-    getList<T>(`${endpoint}?${query}`)
+    getList<T>(`${endpoint}?${query}`, controller.signal)
       .then(res => {
-        if (request.current !== id) return;
+        if (request.current !== id || controller.signal.aborted) return;
         setRows(res.data);
         setMeta(res.meta);
         setError(null);
       })
       .catch((e: Error) => {
-        if (request.current !== id) return;
+        if (request.current !== id || controller.signal.aborted) return;
         setRows([]);
         setError(e.message);
       })
       .finally(() => {
-        if (request.current === id) setLoading(false);
+        if (request.current === id && !controller.signal.aborted) setLoading(false);
       });
-  }, [endpoint, page, pageSize, sort, sortDir, search, filters, fixedKey, nonce]);
+    return () => controller.abort();
+  }, [endpoint, page, pageSize, sort, sortDir, debouncedSearch, filters, fixedKey, nonce]);
 
   const reload = React.useCallback(() => setNonce(n => n + 1), []);
 

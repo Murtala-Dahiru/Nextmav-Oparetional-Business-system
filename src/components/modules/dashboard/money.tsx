@@ -1,88 +1,49 @@
 'use client';
 
 import * as React from 'react';
+import { useCommandPalette, ChartEmpty, CommandTooltip, Sparkline } from './chart-system';
 import {
   ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ReferenceArea,
-  ResponsiveContainer,
+  ResponsiveContainer, Bar, BarChart, Cell,
 } from 'recharts';
 
 import { cn } from '@/lib/utils';
-import { formatCurrencyCompact } from '@/lib/format';
-import { Head, Meter, Segmented, TRow } from '@/components/shared/readout/primitives';
+import { activeLocaleCode, formatCurrency } from '@/lib/format';
+import { Head, Meter, TRow } from '@/components/shared/readout/primitives';
 import {
-  useViz, axisTick, tickStyle, GRID_DASH, TipShell, TipRow, Key, AreaFill, pct, money,
+  axisTick, tickStyle, GRID_DASH, TipShell, TipRow, AreaFill, pct, money,
 } from '@/components/shared/readout/viz';
 import type { DashboardFinance } from './types';
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- *  Financial performance, and what is still owed
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * ── The question this section answers ─────────────────────────────────────
- *
- * Not "what is our revenue" — the plate at the top of the page already says
- * that. This section answers *how the money is moving*, which is three
- * different questions the same chart can carry:
- *
- *   Are we earning more than we spend?    revenue against spend
- *   Are we being paid for what we sell?   collected against invoiced
- *   Is that getting better or worse?      the shape of both over time
- *
- * The second is the one the previous version could not ask. `invoiced` has
- * been a column on `v_finance_monthly` since migration 0007 and the endpoint
- * simply never mapped it, so a month where the studio billed ₦171k and
- * collected ₦143k looked identical to one where it billed ₦143k and collected
- * all of it. The gap between those two lines *is* the receivables problem,
- * drawn in the place where it can be seen developing.
- *
- * ── Why three series and not five ─────────────────────────────────────────
- *
- * Everything else the payload offers — net, margin, the ageing split — is a
- * derivative of these three and belongs in the figures above the chart or in
- * the tooltip. A time-series with five lines is a plate of spaghetti; the
- * discipline is that a line has to be a *quantity measured over time*, and
- * "margin" is a ratio, so it gets a bar.
- */
-
-/** Whole months only, and only the ones the payload can actually fill. */
-const RANGES = [3, 6, 12] as const;
-
-function rangesFor(count: number): { value: number; label: string; title: string }[] {
-  const offered = RANGES.filter(r => r < count);
-  // The full extent is always the last option, however odd a number it is —
-  // five months of invoices offers "3M" and "5M", not "3M" and a fictional 6th.
-  return [...offered, count].map(r => ({
-    value: r,
-    label: `${r}M`,
-    title: r === count ? `All ${r} months on record` : `The last ${r} months`,
-  }));
-}
+/** Payment receipts, issued invoices and approved costs use independent date bases.
+ * Their difference is not receivables or accounting profit. */
 
 /* -------------------------------------------------------------------------- */
 /*  Tooltip                                                                   */
 /* -------------------------------------------------------------------------- */
-function MoneyTip({ active, payload, label }: any) {
-  const v = useViz();
+type FinancialPoint = DashboardFinance['revenueByMonth'][number] & { momRevenue: number | null; prevMonth: string | null };
+function MoneyTip({ active, payload, label, currency }: {
+  active?: boolean;
+  payload?: { dataKey?: string | number; payload?: FinancialPoint }[];
+  label?: string | number;
+  currency?: string;
+}) {
+  const v = useCommandPalette();
   if (!active || !payload?.length) return null;
 
   const row = payload[0]?.payload;
   if (!row) return null;
 
   const net = row.revenue - row.expenses;
-  const uncollected = row.invoiced - row.revenue;
+
 
   return (
     <TipShell
-      title={label}
+      title={String(label ?? row.month)}
+      className="cc-tooltip"
       footer={
         <>
-          <TipRow label="Net" value={formatCurrencyCompact(net)} shape="none" strong />
-          {uncollected > 0 ? (
-            <p className="mt-1 text-[11.5px] text-muted-foreground">
-              {formatCurrencyCompact(uncollected)} invoiced, not yet collected
-            </p>
-          ) : null}
+          <TipRow label="Receipts less cost" value={formatCurrency(net, currency)} shape="none" strong />
           {typeof row.momRevenue === 'number' ? (
             <p className="mt-1 text-[11.5px] text-muted-foreground">
               Collected {pct(row.momRevenue)} on {row.prevMonth}
@@ -97,9 +58,9 @@ function MoneyTip({ active, payload, label }: any) {
         </>
       }
     >
-      <TipRow colour={v.cash} label="Collected" value={formatCurrencyCompact(row.revenue)} />
-      <TipRow colour={v.claim} label="Invoiced" value={formatCurrencyCompact(row.invoiced)} shape="line" />
-      <TipRow colour={v.cost} label="Spend" value={formatCurrencyCompact(row.expenses)} shape="diamond" />
+      {payload.some(p=>p.dataKey==='revenue') && <TipRow colour={v.cash} label="Collected" value={formatCurrency(row.revenue, currency)} />}
+      {payload.some(p=>p.dataKey==='invoiced') && <TipRow colour={v.claim} label="Invoiced" value={formatCurrency(row.invoiced, currency)} shape="line" />}
+      {payload.some(p=>p.dataKey==='expenses') && <TipRow colour={v.cost} label="Spend" value={formatCurrency(row.expenses, currency)} shape="diamond" />}
     </TipShell>
   );
 }
@@ -110,19 +71,20 @@ function MoneyTip({ active, payload, label }: any) {
 export function FinancialPerformance({
   finance,
   onOpenFinance,
+  range = 12,
 }: {
+  range?: number;
   finance: DashboardFinance;
   onOpenFinance: () => void;
 }) {
-  const v = useViz();
+  const v = useCommandPalette();
+  const [chartMode, setChartMode] = React.useState<'trend' | 'bars'>('trend');
+  const [visible, setVisible] = React.useState({ revenue: true, expenses: true, invoiced: true });
+  const toggle = (key: keyof typeof visible) => setVisible(previous => {
+    if (previous[key] && Object.values(previous).filter(Boolean).length === 1) return previous;
+    return { ...previous, [key]: !previous[key] };
+  });
   const months = finance.revenueByMonth;
-  const options = rangesFor(months.length);
-  const [range, setRange] = React.useState(months.length);
-
-  // A payload that grows between renders (a refresh landing a new month) must
-  // not leave the control pointing at a range that no longer exists.
-  React.useEffect(() => { setRange(months.length); }, [months.length]);
-
   const window = React.useMemo(
     () => months.slice(Math.max(0, months.length - range)),
     [months, range],
@@ -141,7 +103,7 @@ export function FinancialPerformance({
     return {
       ...m,
       prevMonth: prev?.month ?? null,
-      momRevenue: prev && prev.revenue > 0
+      momRevenue: !m.current && prev && prev.revenue > 0
         ? ((m.revenue - prev.revenue) / prev.revenue) * 100
         : null,
     };
@@ -153,8 +115,6 @@ export function FinancialPerformance({
   const net = collected - spend;
   const margin = collected > 0 ? (net / collected) * 100 : null;
   const avg = window.length ? collected / window.length : 0;
-  // What proportion of what we billed actually arrived, over this window.
-  const collectionRate = invoiced > 0 ? (collected / invoiced) * 100 : null;
 
   const latest = data[data.length - 1];
   const trend = latest?.momRevenue ?? null;
@@ -163,8 +123,9 @@ export function FinancialPerformance({
   const partial = !!latest?.current;
   const mtd = finance.monthToDate ?? null;
 
-  const plottable = window.length >= 3;
-  const flat = window.length === 0 || window.every(m => !m.revenue && !m.expenses && !m.invoiced);
+  const empty = window.length === 0;
+  const flat = !empty && window.every(m => !m.revenue && !m.expenses && !m.invoiced);
+  const axisNumber = new Intl.NumberFormat(activeLocaleCode(), { notation: 'compact', maximumSignificantDigits: 3 });
 
   const figures: {
     label: string;
@@ -187,47 +148,22 @@ export function FinancialPerformance({
           on {latest.prevMonth}
           {partial ? <span className="text-muted-foreground/75"> · part month</span> : null}
         </>
-      ) : 'Paid invoices in this window',
+      ) : 'Payments received in this window',
     },
     {
       label: 'Invoiced',
       value: money(invoiced),
-      note: collectionRate === null
-        ? 'Nothing billed in this window'
-        : `${collectionRate.toFixed(0)}% of it collected`,
-      /**
-       * The collection rate, drawn.
-       *
-       * It is the second of the two ratios on this strip with a natural
-       * ceiling — you cannot collect more than you billed — so it can honestly
-       * be a proportion, and it is the figure that connects this section to
-       * Receivables directly beneath it: the unfilled part of this bar *is*
-       * the outstanding book, accumulating in front of the reader.
-       *
-       * It carries no threshold colour. There was one — amber below ninety per
-       * cent — and it was removed: what counts as a healthy collection rate
-       * depends on the payment terms a business actually offers, which this
-       * page does not know, and colouring a normal 88% as a problem is the
-       * dashboard inventing an opinion. Whether the uncollected part is a
-       * *problem* is answered honestly one section below, where the same money
-       * is split into what is inside terms and what is past due.
-       */
-      meter: collectionRate === null
-        ? undefined
-        : {
-            value: Math.max(0, Math.min(100, collectionRate)),
-            tone: 'brand' as const,
-          },
+      note: 'Issued invoices; excludes drafts',
     },
     { label: 'Spend', value: money(spend), note: 'Approved expenses' },
     {
-      label: 'Net position',
+      label: 'Receipts less cost',
       value: money(net),
       tone: net >= 0 ? 'good' : 'bad',
       note: net >= 0 ? 'Collected above spend' : 'Spend above collected',
     },
     {
-      label: 'Margin',
+      label: 'Surplus / receipts',
       value: margin === null ? '—' : `${margin.toFixed(1)}%`,
       // A bar rather than a second number: margin is the only figure here with
       // a natural ceiling, so it is the only one that can honestly be drawn as
@@ -240,42 +176,26 @@ export function FinancialPerformance({
   ];
 
   return (
-    <section className="min-w-0">
+    <section className="min-w-0" aria-label="Financial performance: payment receipts, issued invoices and approved expenses">
       <Head
-        title="Financial performance"
+        title="Revenue & expense trends"
         note={
           window.length
             ? `${window.length} ${window.length === 1 ? 'month' : 'months'}${range === months.length ? ' to date' : ''}`
             : undefined
         }
-        control={
-          options.length > 1 ? (
-            <Segmented
-              options={options}
-              value={range}
-              onChange={setRange}
-              ariaLabel="How many months of financial history to show"
-            />
-          ) : undefined
-        }
+        control={<span className="cc-segmented" role="group" aria-label="Financial chart display"><button type="button" aria-pressed={chartMode==='trend'} onClick={()=>setChartMode('trend')}>Trend</button><button type="button" aria-pressed={chartMode==='bars'} onClick={()=>setChartMode('bars')}>Bars</button></span>}
         action={{ label: 'Finance', onClick: onOpenFinance }}
       />
 
+      <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{window.length ? `${window[0].month} – ${window.at(-1)?.month} · ` : ''}{finance.currency} only. Receipts use payment dates; approved costs are not cash outflows.</p>
+      <details className="mt-2 text-xs text-muted-foreground"><summary className="cursor-pointer">Metric definitions & accessible data</summary><p className="my-2">Collected: recorded payments, including partial payments. Invoiced: issued invoice totals by issue date. Spend: approved or reimbursed expenses by expense date. Receipts and invoices may relate to different periods. Current month is incomplete.</p><div className="overflow-auto"><table className="w-full text-left"><caption className="sr-only">Financial history</caption><thead><tr><th>Month</th><th>Collected</th><th>Invoiced</th><th>Spend</th></tr></thead><tbody>{window.map(m => <tr key={m.month}><th>{m.month}</th><td>{formatCurrency(m.revenue, finance.currency)}</td><td>{formatCurrency(m.invoiced, finance.currency)}</td><td>{formatCurrency(m.expenses, finance.currency)}</td></tr>)}</tbody></table></div></details>
       <div className="mt-3 overflow-hidden rounded-xl border border-border bg-card shadow-e1">
-        <div className="grid grid-cols-2 divide-border border-b border-border sm:grid-cols-3 lg:grid-cols-5 lg:divide-x">
-          {figures.map((f, i) => (
+        <div className="cc-finance-metrics">
+          {figures.slice(0,3).map((f, i) => (
             <div
               key={f.label}
-              className={cn(
-                'border-b border-border px-4 py-3.5 lg:border-b-0',
-                // The divider grid is 2 / 3 / 5 across; only the last cell in
-                // the final row should lose its bottom rule at each width.
-                i >= figures.length - 1 && 'border-b-0',
-                // Five cells into two columns leaves the fifth alone with an
-                // empty half-row beside it. Let it take the width it is
-                // already occupying.
-                i === figures.length - 1 && 'max-sm:col-span-2',
-              )}
+              className="cc-finance-metric"
             >
               <p className="text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">
                 {f.label}
@@ -293,6 +213,7 @@ export function FinancialPerformance({
               {f.note ? (
                 <p className="mt-1.5 text-[11.5px] text-muted-foreground">{f.note}</p>
               ) : null}
+              {i === 0 || i === 2 ? <Sparkline values={window.map(m=>i===0 ? m.revenue : m.expenses)} label={i===0 ? 'Collections by month' : 'Approved cost by month'} color={i===0 ? v.cash : v.cost}/> : null}
               {f.meter ? (
                 <div className="mt-2.5">
                   <Meter value={f.meter.value} tone={f.meter.tone} />
@@ -302,20 +223,24 @@ export function FinancialPerformance({
           ))}
         </div>
 
-        {flat ? (
+        {empty ? (
           <p className="px-4 py-10 text-center text-[12.5px] text-muted-foreground">
-            No invoices or expenses recorded {months.length ? 'in this period' : 'yet'}.
+            No financial periods available for this selection.
           </p>
-        ) : plottable ? (
+        ) : (
           <>
             <div className="px-1 pb-1 pt-4">
-              <div className="h-[268px] w-full">
+              {flat && <p role="status" className="px-3 text-xs text-muted-foreground">No financial activity in this period. All reported amounts are zero.</p>}
+              <div className="cc-finance-chart w-full" data-mode={chartMode}>
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart
+                    key={chartMode}
+                    barGap={1}
+                    barCategoryGap="15%"
+                    accessibilityLayer
                     data={data}
                     margin={{ top: 8, right: 18, left: 0, bottom: 0 }}
-                    onClick={onOpenFinance}
-                    className="cursor-pointer [&_.recharts-surface]:outline-none"
+                    className="[&_.recharts-surface]:outline-none"
                   >
                     <defs>
                       <AreaFill id="nm-fin-collected" colour={v.cash} />
@@ -323,18 +248,17 @@ export function FinancialPerformance({
 
                     <CartesianGrid stroke={v.border} strokeDasharray={GRID_DASH} vertical={false} />
                     <XAxis
-                      dataKey="month" tickLine={false} axisLine={false}
+                      dataKey="month" tickLine={false} axisLine={false} minTickGap={30}
                       tick={tickStyle(v)} dy={10} padding={{ left: 6, right: 6 }}
                     />
                     <YAxis
                       tickLine={false} axisLine={false} tick={tickStyle(v)}
-                      width={54} tickFormatter={axisTick}
-                      // From zero, always. An area chart on a truncated axis
-                      // exaggerates every movement it draws.
-                      domain={[0, 'auto']}
+                      width={54} tickFormatter={value => axisNumber.format(value)}
+                      // Always include zero, while retaining refunds and other negative values.
+                      domain={[(min: number) => Math.min(0, min), (max: number) => Math.max(0, max) || 1]}
                     />
                     <Tooltip
-                      content={<MoneyTip />}
+                      content={<MoneyTip currency={finance.currency} />}
                       cursor={{ stroke: v.axis, strokeWidth: 1, strokeDasharray: '3 3' }}
                       allowEscapeViewBox={{ x: false, y: true }}
                       offset={12}
@@ -377,7 +301,7 @@ export function FinancialPerformance({
                       />
                     ) : null}
 
-                    {window.length >= 4 ? (
+                    {visible.revenue && window.length >= 4 ? (
                       <ReferenceLine
                         y={avg} stroke={v.cash} strokeOpacity={0.45} strokeDasharray="5 5"
                         /* Clear of the axis. The average of a real year lands
@@ -390,84 +314,28 @@ export function FinancialPerformance({
                       />
                     ) : null}
 
-                    {/* Collected is the subject: filled, heaviest stroke. */}
-                    <Area
-                      type="monotone" dataKey="revenue" name="Collected"
-                      stroke={v.cash} strokeWidth={2.25} fill="url(#nm-fin-collected)"
-                      dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: v.surface }}
-                      animationDuration={650}
-                    />
-                    {/* Invoiced sits above it by definition — a dashed ceiling
-                        rather than a second filled area, so the gap between the
-                        two reads as the gap and not as a third quantity. */}
-                    <Line
-                      type="monotone" dataKey="invoiced" name="Invoiced"
-                      stroke={v.claim} strokeWidth={1.75} strokeDasharray="5 4"
-                      dot={false} activeDot={{ r: 3.5, strokeWidth: 2, stroke: v.surface }}
-                      animationDuration={650}
-                    />
-                    <Line
-                      type="monotone" dataKey="expenses" name="Spend"
-                      stroke={v.cost} strokeWidth={1.75}
-                      dot={{ r: 2.5, fill: v.cost, strokeWidth: 0 }}
-                      activeDot={{ r: 4, strokeWidth: 2, stroke: v.surface }}
-                      animationDuration={650}
-                    />
+                    {/* Keep series as direct children: Recharts 2's react-is cannot unwrap React 19 fragments. */}
+                      {chartMode === 'trend' && visible.revenue && <Area type="linear" dataKey="revenue" name="Collected" stroke={v.cash} strokeWidth={2.5} fill="url(#nm-fin-collected)" dot={{r: 2.5, strokeWidth: 1, fill: v.surface}} activeDot={{r:5,strokeWidth:2,stroke:v.surface}} isAnimationActive={false}/>}
+                      {chartMode === 'trend' && visible.invoiced && <Line type="linear" dataKey="invoiced" name="Invoiced" stroke={v.claim} strokeWidth={1.8} strokeDasharray="5 4" dot={{r: 2.5, strokeWidth: 1, fill: v.surface}} activeDot={{r:4}} isAnimationActive={false}/>}
+                      {chartMode === 'trend' && visible.expenses && <Line type="linear" dataKey="expenses" name="Spend" stroke={v.cost} strokeWidth={2} dot={{r: 2.5, strokeWidth: 1, fill: v.surface}} activeDot={{r:4}} isAnimationActive={false}/>}
+                      {chartMode === 'bars' && visible.revenue && <Bar dataKey="revenue" name="Collected" fill={v.cash} radius={2} maxBarSize={22} isAnimationActive={false}/>}
+                      {chartMode === 'bars' && visible.invoiced && <Bar dataKey="invoiced" name="Invoiced" fill={v.claim} radius={2} maxBarSize={22} isAnimationActive={false}/>}
+                      {chartMode === 'bars' && visible.expenses && <Bar dataKey="expenses" name="Spend" fill={v.cost} radius={2} maxBarSize={22} isAnimationActive={false}/>}
+                    <ReferenceLine y={0} stroke={v.border} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-border px-4 py-2.5">
-              <Key colour={v.cash} shape="area" label="Collected" value={money(collected)} />
-              <Key colour={v.claim} shape="line" label="Invoiced" value={money(invoiced)} />
-              <Key colour={v.cost} shape="line" label="Spend" value={money(spend)} />
-              <span className="ml-auto hidden text-[11px] text-muted-foreground sm:inline">
-                Select a month to open Finance
-              </span>
+              {([{key:'revenue',label:'Collected',color:v.cash},{key:'invoiced',label:'Invoiced',color:v.claim},{key:'expenses',label:'Spend',color:v.cost}] as const).map(series=><button key={series.key} type="button" className="cc-series-toggle" aria-pressed={visible[series.key]} onClick={()=>toggle(series.key)}><span className="cc-dot" style={{background:series.color}}/>{series.label}</button>)}
+              <span className="cc-chart-hint">Toggle a series · at least one stays visible</span>
             </div>
           </>
-        ) : (
-          /* Two months cannot carry a trend line, so they are drawn as what
-             they are: two comparisons. */
-          <ul className="p-2">
-            {window.map(m => {
-              const peak = Math.max(...window.map(x => Math.max(x.invoiced, x.revenue, x.expenses)), 1);
-              return (
-                <li key={m.month}>
-                  <TRow columns="grid-cols-[2.5rem_minmax(0,1fr)]" className="py-2">
-                    <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                      {m.month}
-                    </span>
-                    <span className="min-w-0 space-y-2">
-                      {[
-                        { k: 'In', v: m.revenue, tone: 'brand' as const, strong: true },
-                        { k: 'Billed', v: m.invoiced, tone: 'default' as const, strong: false },
-                        { k: 'Out', v: m.expenses, tone: 'warning' as const, strong: false },
-                      ].map(row => (
-                        <span key={row.k} className="flex items-center gap-3">
-                          <span className="w-10 shrink-0 text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
-                            {row.k}
-                          </span>
-                          <Meter value={(row.v / peak) * 100} tone={row.tone} className="flex-1" />
-                          <span
-                            className={cn(
-                              'w-28 shrink-0 text-right text-[12px] tabular-nums',
-                              row.strong ? 'font-medium text-foreground' : 'text-muted-foreground',
-                            )}
-                          >
-                            {formatCurrencyCompact(row.v)}
-                          </span>
-                        </span>
-                      ))}
-                    </span>
-                  </TRow>
-                </li>
-              );
-            })}
-          </ul>
+
         )}
       </div>
+      <div className="cc-finance-footer"><span>Receipts less approved cost <strong>{money(net)}</strong></span><span>Surplus / receipts <strong>{margin === null ? '—' : `${margin.toFixed(1)}%`}</strong></span></div>
     </section>
   );
 }
@@ -495,217 +363,15 @@ const BUCKET_LABEL: Record<string, string> = {
   '90+': 'Over 90 days',
 };
 
-export function Receivables({
-  finance,
-  onOpenFinance,
-  onOpenInvoice,
-}: {
-  finance: DashboardFinance;
-  onOpenFinance: () => void;
-  onOpenInvoice: ((id: string) => void) | null;
-}) {
-  const v = useViz();
-  const r = finance.receivables;
-
-  const shade: Record<string, string> = {
-    current: v.claim,
-    '1-30': v.warn,
-    '31-60': v.warn,
-    '61-90': v.bad,
-    '90+': v.bad,
-  };
-  // Two bands share a colour on each side of the line, so opacity carries the
-  // step between them — the severity is ordinal, not five separate meanings.
-  const fade: Record<string, number> = {
-    current: 1, '1-30': 0.62, '31-60': 0.92, '61-90': 0.72, '90+': 1,
-  };
-
-  const bands = r.buckets.filter(b => b.value > 0);
-  const total = r.outstanding;
-  const overduePct = total > 0 ? (r.overdueValue / total) * 100 : 0;
-
-  /**
-   * The oldest thing in the book, in days.
-   *
-   * `worst` is already ordered by `days_overdue` descending in the route, so
-   * this is a read rather than a scan. It is the one figure that says how bad
-   * the *tail* is, as distinct from how big it is — ₦24k spread over two weeks
-   * and ₦24k that has been sitting for three months are the same number and
-   * not the same problem.
-   */
-  const oldest = r.worst[0]?.daysOverdue ?? 0;
-
-  return (
-    <section className="min-w-0">
-      <Head
-        title="Receivables"
-        count={r.invoiceCount || undefined}
-        note={r.invoiceCount ? 'unpaid invoices' : 'Nothing outstanding'}
-        action={{ label: 'Finance', onClick: onOpenFinance }}
-      />
-
-      {/*
-        ── Why this is laid out across rather than down ──────────────────────
-
-        It used to be a narrow panel in a row of three: two figures, then the
-        ageing bar, then a legend, then a list, stacked. That shape was chosen
-        when receivables was grouped with Support and Stock by silhouette. It
-        now sits directly under the financial chart, at the width of the page,
-        because it is the second half of that chart's sentence — the chart says
-        what was billed and what arrived, and this says where the difference
-        went.
-
-        Three regions, left to right, which is also the order the question is
-        asked in: *how much*, *how late*, *who*.
-      */}
-      <div className="mt-3 overflow-hidden rounded-xl border border-border bg-card shadow-e1">
-        <div className="grid lg:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,17rem)_minmax(0,1fr)_minmax(0,20rem)]">
-          {/* ── How much ───────────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 border-b border-border lg:grid-cols-1 lg:border-b-0 lg:border-r">
-            <div className="border-r border-border px-4 py-3.5 lg:border-b lg:border-r-0">
-              <p className="text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">
-                Outstanding
-              </p>
-              <p className="mt-1.5 text-[26px] font-semibold leading-none tabular-nums tracking-[-0.03em] text-foreground">
-                {money(total)}
-              </p>
-              <p className="mt-1.5 text-[11.5px] text-muted-foreground">Invoiced, not yet paid</p>
-            </div>
-            <div className="px-4 py-3.5">
-              <p className="text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">
-                Overdue
-              </p>
-              <p
-                className={cn(
-                  'mt-1.5 text-[26px] font-semibold leading-none tabular-nums tracking-[-0.03em]',
-                  r.overdueValue > 0 ? 'text-destructive' : 'text-success',
-                )}
-              >
-                {money(r.overdueValue)}
-              </p>
-              <p className="mt-1.5 text-[11.5px] text-muted-foreground">
-                {r.overdueCount === 0
-                  ? 'Every invoice is within terms'
-                  : `${r.overdueCount} ${r.overdueCount === 1 ? 'invoice' : 'invoices'} · ${overduePct.toFixed(0)}% of the book`}
-              </p>
-            </div>
-          </div>
-
-          {/* ── How late ───────────────────────────────────────────────── */}
-          {total === 0 ? (
-            <p className="px-4 py-8 text-center text-[12.5px] text-muted-foreground xl:col-span-2">
-              Nothing is outstanding. Every invoice raised has been paid or cancelled.
-            </p>
-          ) : (
-            <div className="border-b border-border px-4 py-4 xl:border-b-0 xl:border-r">
-              <div className="flex items-baseline justify-between gap-3">
-                <p className="text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">
-                  Ageing
-                </p>
-                <p className="text-[11.5px] text-muted-foreground">
-                  {oldest > 0
-                    ? `Oldest is ${oldest} ${oldest === 1 ? 'day' : 'days'} past due`
-                    : 'Nothing past due'}
-                </p>
-              </div>
-
-              {/* One bar, five bands, time running left to right — so the
-                  right-hand end is always the worst news. */}
-              <div
-                className="mt-3 flex h-3 w-full overflow-hidden rounded-full bg-muted"
-                role="img"
-                aria-label={
-                  `${formatCurrencyCompact(total)} outstanding: ` +
-                  bands.map(b => `${BUCKET_LABEL[b.bucket]} ${formatCurrencyCompact(b.value)}`).join(', ')
-                }
-              >
-                {bands.map(b => (
-                  <span
-                    key={b.bucket}
-                    className="h-full transition-[width] duration-500 ease-[var(--ease-brand)] first:rounded-l-full last:rounded-r-full"
-                    style={{
-                      width: `${(b.value / total) * 100}%`,
-                      backgroundColor: shade[b.bucket],
-                      opacity: fade[b.bucket],
-                    }}
-                    title={`${BUCKET_LABEL[b.bucket]} — ${formatCurrencyCompact(b.value)}`}
-                  />
-                ))}
-              </div>
-
-              {/*
-                The legend runs across at this width rather than down.
-
-                Four bands stacked in a full-page column is four short rows
-                with a metre of nothing to the right of each one; across, each
-                band is a small block of label / count / value and the four sit
-                as a rank, which is how they are actually compared.
-              */}
-              {/* Left-packed rather than a four-column grid: a workspace with
-                  three live bands should not leave a quarter of the row empty
-                  where a fourth band would have been. */}
-              <ul className="mt-4 flex flex-wrap gap-x-9 gap-y-3">
-                {bands.map(b => (
-                  <li key={b.bucket} className="min-w-0">
-                    <span className="flex items-center gap-1.5">
-                      <span
-                        className="size-2 shrink-0 rounded-[2px]"
-                        style={{ backgroundColor: shade[b.bucket], opacity: fade[b.bucket] }}
-                        aria-hidden="true"
-                      />
-                      <span className="truncate text-[11.5px] text-muted-foreground">
-                        {BUCKET_LABEL[b.bucket]}
-                      </span>
-                    </span>
-                    <span className="mt-1 flex items-baseline gap-1.5">
-                      <span className="text-[14px] font-semibold tabular-nums tracking-[-0.02em] text-foreground">
-                        {money(b.value)}
-                      </span>
-                      <span className="whitespace-nowrap text-[11px] tabular-nums text-muted-foreground/70">
-                        {b.count} {b.count === 1 ? 'invoice' : 'invoices'}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* ── Who ────────────────────────────────────────────────────── */}
-          {r.worst.length > 0 ? (
-            <div className="px-4 py-4">
-              <p className="text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">
-                Most overdue
-              </p>
-              {/* An ageing chart says there is a problem; a list says whose. */}
-              <ul className="mt-1.5 -ml-3">
-                {r.worst.map(inv => (
-                  <li key={inv.id}>
-                    <TRow
-                      columns="grid-cols-[minmax(0,1fr)_auto]"
-                      onClick={onOpenInvoice ? () => onOpenInvoice(inv.id) : undefined}
-                      ariaLabel={onOpenInvoice ? `Open invoice ${inv.number}` : undefined}
-                      className="py-1.5"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-[13px] text-foreground">
-                          {inv.company ?? inv.number}
-                        </span>
-                        <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
-                          {inv.number} · {inv.daysOverdue} {inv.daysOverdue === 1 ? 'day' : 'days'} overdue
-                        </span>
-                      </span>
-                      <span className="text-[12.5px] font-medium tabular-nums text-destructive">
-                        {money(inv.balance)}
-                      </span>
-                    </TRow>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </section>
-  );
+export function Receivables({ finance, onOpenFinance, onOpenInvoice }: { finance: DashboardFinance; onOpenFinance:()=>void; onOpenInvoice:((id:string)=>void)|null }) {
+  const v=useCommandPalette();
+  const r=finance.receivables;
+  const colors=[v.claim,v.warn,'#c77d42',v.bad,'#a44250'];
+  const buckets=r.buckets.map((b,i)=>({...b,label:BUCKET_LABEL[b.bucket],color:colors[i]}));
+  return <section aria-label="Receivables aging"><Head title="Receivables aging" note="Current outstanding balances" action={{label:'Finance',onClick:onOpenFinance}}/>
+    <div className="cc-receivables-grid"><div><div className="cc-receivables-totals"><div><span>Outstanding</span><strong>{money(r.outstanding)}</strong></div><div><span>Past due</span><strong className="text-destructive">{money(r.overdueValue)}</strong></div><div><span>Unpaid invoices</span><strong>{r.invoiceCount}</strong></div></div>
+      {r.outstanding > 0 ? <div className="cc-aging-chart" role="img" aria-label={buckets.map(b=>`${b.label}: ${money(b.value)} across ${b.count} invoices`).join(', ')}><ResponsiveContainer width="100%" height="100%"><BarChart data={buckets} layout="vertical" margin={{top:12,right:24,left:0,bottom:0}}><CartesianGrid horizontal={false} stroke={v.border} strokeDasharray="2 5"/><XAxis type="number" domain={[0,'auto']} tickFormatter={axisTick} tick={tickStyle(v)} axisLine={false} tickLine={false}/><YAxis dataKey="label" type="category" width={94} tick={tickStyle(v)} axisLine={false} tickLine={false}/><Tooltip content={<CommandTooltip currency/>} cursor={{fill:v.border,fillOpacity:.3}}/><Bar dataKey="value" name="Outstanding" radius={[0,4,4,0]} maxBarSize={18} isAnimationActive={false}>{buckets.map(b=><Cell key={b.bucket} fill={b.color}/>)}</Bar></BarChart></ResponsiveContainer></div> : <ChartEmpty title="No outstanding receivables" detail="No issued invoices currently have an unpaid balance."/>}
+      <details className="command-data"><summary>View aging amounts</summary><table><thead><tr><th>Age</th><th>Invoices</th><th>Balance</th></tr></thead><tbody>{buckets.map(b=><tr key={b.bucket}><th>{b.label}</th><td>{b.count}</td><td>{formatCurrency(b.value)}</td></tr>)}</tbody></table></details>
+    </div><div className="cc-collection-list"><div className="cc-list-heading"><h3>Collection priorities</h3><span>Oldest overdue first</span></div>{r.worst.length ? <ul>{r.worst.map(invoice=><li key={invoice.id}><TRow columns="grid-cols-[minmax(0,1fr)_auto]" onClick={onOpenInvoice?()=>onOpenInvoice(invoice.id):undefined} ariaLabel={`Open invoice ${invoice.number}`}><span><strong className="block text-sm font-medium">{invoice.company ?? invoice.number}</strong><span className="block text-xs text-muted-foreground">{invoice.number} · {invoice.daysOverdue} days overdue</span></span><strong className="text-sm font-medium tabular-nums">{money(invoice.balance)}</strong></TRow></li>)}</ul> : <p className="cc-footnote">No overdue invoices to review.</p>}<p className="cc-footnote">Invoice total less recorded payments. Partial payments are deducted once. Aging uses the organization’s local date.</p></div></div>
+  </section>;
 }

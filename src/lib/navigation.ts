@@ -19,33 +19,10 @@ import { MODULES, type ModuleId, type RoleId } from '@/lib/constants';
 import { isExternalRole } from '@/lib/permissions';
 
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- *  The shape of the product's navigation
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * `constants.ts` says which modules exist and `permissions.ts` says who may
- * open them. Neither says how they relate to each other, and that gap is what
- * the sidebar rendered: thirteen rows, one flat list, every item the same
- * weight, in roughly the order they were built.
- *
- * Thirteen flat items is the point at which navigation stops being read and
- * starts being scanned — and somebody scanning cannot tell that CRM and
- * Support are two views of the same customer, or that Admin configures the
- * other twelve. The grouping below answers four questions, in the order a
- * person actually asks them:
- *
- *     What is mine, right now?        Dashboard, My Work
- *     Who am I working with?          Communication, Calendar, Workspace
- *     Who do we sell to and serve?    CRM, Support, Client Portal
- *     What do we run the company on?  Projects, Finance, HR, Inventory
- *     How is this configured?         Admin
- *
- * ── What this file is not ─────────────────────────────────────────────────
- *
- * It is not an access decision. `visibleModules()` — the capability list the
- * server resolved — decides what a person may see; this decides only where a
- * permitted item sits and what it is called. `navigationFor()` takes that set
- * as an argument and can only remove from it, never add.
+ * Presentation-only navigation registry shared by the sidebar and palette.
+ * Groups describe the work: customers & revenue, operations, people & finance,
+ * and platform configuration. The server-resolved capability set remains the
+ * authority; navigationFor can only remove from that set, never add to it.
  */
 
 export interface ModuleMeta {
@@ -145,37 +122,13 @@ interface NavGroupSpec {
 }
 
 const NAV_GROUPS: NavGroupSpec[] = [
-  { id: 'personal', label: null, modules: ['dashboard', 'mywork'] },
-  {
-    id: 'collaboration',
-    label: 'Collaboration',
-    modules: ['communication', 'calendar', 'workspace'],
-  },
-  {
-    id: 'customers',
-    label: 'Customers',
-    /**
-     * The portal sits with CRM and Support rather than off on its own: all
-     * three are the same person from three angles — the one being sold to,
-     * the one who has raised a ticket, and the one signing in to look at
-     * their project.
-     */
-    modules: ['crm', 'support', 'portal'],
-  },
-  {
-    id: 'operations',
-    label: 'Operations',
-    /**
-     * Performance sits beside HR, not beside CRM.
-     *
-     * It is fed by the CRM, but the question it answers is about people:
-     * what somebody committed to, what they achieved, and what that earns.
-     * Its other two audiences - a manager reviewing a team and Finance
-     * approving a payout - have no business in the pipeline.
-     */
-    modules: ['projects', 'finance', 'performance', 'hr', 'inventory'],
-  },
-  { id: 'administration', label: 'Administration', modules: ['admin'] },
+  { id: 'overview', label: 'Executive Overview', modules: ['dashboard'] },
+  { id: 'personal', label: 'My Work', modules: ['mywork'] },
+  { id: 'customers', label: 'Customers & revenue', modules: ['crm', 'support', 'portal'] },
+  { id: 'operations', label: 'Operations', modules: ['projects', 'inventory', 'workspace', 'calendar'] },
+  { id: 'people', label: 'People & finance', modules: ['hr', 'performance', 'finance'] },
+  { id: 'collaboration', label: 'Collaboration', modules: ['communication'] },
+  { id: 'administration', label: 'Platform', modules: ['admin'] },
 ];
 
 export interface NavItem {

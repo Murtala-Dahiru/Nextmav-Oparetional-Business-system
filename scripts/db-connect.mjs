@@ -52,6 +52,7 @@
 import { readFileSync } from 'node:fs';
 import { Resolver } from 'node:dns/promises';
 import pg from 'pg';
+import { rootCertificates } from 'node:tls';
 
 /** Resolution failures the fallback is allowed to act on, and nothing else. */
 const DNS_ERRORS = new Set(['EAI_AGAIN', 'ENOTFOUND', 'ESERVFAIL', 'ETIMEOUT']);
@@ -113,10 +114,13 @@ export async function connect(connectionString, { statement_timeout } = {}) {
     password: decodeURIComponent(url.password),
     database: url.pathname.slice(1) || 'postgres',
     port: Number(url.port) || 5432,
-    // Supabase terminates TLS with a certificate this client does not have the
-    // chain for; unchanged from the original scripts, and the reason an
-    // address-based connection is possible at all.
-    ssl: { rejectUnauthorized: false, servername: url.hostname },
+    ssl: {
+      rejectUnauthorized: true,
+      servername: url.hostname,
+      ...(url.hostname.endsWith('.supabase.com') || url.hostname.endsWith('.supabase.co')
+        ? { ca: [...rootCertificates, readFileSync(new URL('./supabase-root-2021.crt', import.meta.url), 'utf8')] }
+        : {}),
+    },
     ...(statement_timeout ? { statement_timeout } : {}),
   };
 

@@ -1,0 +1,12 @@
+PASS HTTP mailbox list includes the synthetic owned mailbox
+PASS unconfigured provider fails without a simulated connection
+PASS OAuth callback rejects missing browser proof and state
+PASS private synchronized body is rendered as inert text
+PASS browser CRM association persists for authorized recipient
+PASS private mailbox fits 1440px viewport
+PASS private mailbox fits 768px viewport
+PASS private mailbox fits 390px viewport
+PASS missing CRM template variables block composition
+PASS composer template uses selected CRM contact
+PASS no mailbox browser runtime errors
+11 synthetic private-mail browser checks passed. No live OAuth, sync or send was tested.

@@ -1,0 +1,21 @@
+PASS six customer/witness fields and distinct effective date persist
+PASS field template persisted
+PASS template reuses roles and fields without actions
+PASS template contains role placeholders, no recipient credentials
+PASS template revision cannot change issued agreement
+PASS issued configuration immutable
+PASS sequential witness link blocked until customer signs
+PASS portal exposes only assigned fields for signer
+PASS foreign-field write blocked for signer
+PASS entered legal name retained for signer
+PASS completed action is not duplicated
+PASS portal exposes only assigned fields for witness
+PASS foreign-field write blocked for witness
+PASS entered legal name retained for witness
+PASS completed action is not duplicated
+PASS customer and witness complete real stored PDF
+PASS date signed uses own server event for signer
+PASS date signed uses own server event for witness
+PASS effective date remains distinct from signing event
+PASS completed document and evidence chain verify
+20 live customization assertions passed.

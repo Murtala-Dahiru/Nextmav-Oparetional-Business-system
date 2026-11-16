@@ -1,0 +1,4 @@
+[standalone] copied .\node_modules\@img\sharp-win32-x64 -> .\.next-engagement-recovery\standalone\node_modules\@img\sharp-win32-x64
+[standalone] copied .\.next-engagement-recovery\static -> .\.next-engagement-recovery\standalone\.next-engagement-recovery\static
+[standalone] copied .\public -> .\.next-engagement-recovery\standalone\public
+[standalone] ready — run: node .next-engagement-recovery/standalone/server.js

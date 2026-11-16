@@ -1,0 +1,68 @@
+{
+  "routines": [
+    {
+      "proname": "crm_automation_retention"
+    }
+  ],
+  "events": [
+    {
+      "archived_admin_events": 3
+    }
+  ],
+  "tables": [
+    {
+      "relname": "crm_mail_associations",
+      "relrowsecurity": true
+    },
+    {
+      "relname": "crm_mail_credentials",
+      "relrowsecurity": true
+    },
+    {
+      "relname": "crm_mail_messages",
+      "relrowsecurity": true
+    },
+    {
+      "relname": "crm_mail_oauth_states",
+      "relrowsecurity": true
+    },
+    {
+      "relname": "crm_mail_outbox",
+      "relrowsecurity": true
+    },
+    {
+      "relname": "crm_mailboxes",
+      "relrowsecurity": true
+    },
+    {
+      "relname": "crm_sales_enrollments",
+      "relrowsecurity": true
+    },
+    {
+      "relname": "crm_sales_sequences",
+      "relrowsecurity": true
+    },
+    {
+      "relname": "crm_sales_templates",
+      "relrowsecurity": true
+    }
+  ],
+  "schedules": [
+    {
+      "jobname": "crm-automation-account-schedules",
+      "active": true
+    },
+    {
+      "jobname": "crm-automation-retention",
+      "active": true
+    },
+    {
+      "jobname": "crm-automation-schedules",
+      "active": true
+    },
+    {
+      "jobname": "crm-automation-worker",
+      "active": true
+    }
+  ]
+}

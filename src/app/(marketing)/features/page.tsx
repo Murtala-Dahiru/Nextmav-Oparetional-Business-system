@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { ConnectedWork } from '@/components/marketing/connected-work';
+import { ProductPreview } from '@/components/marketing/product-preview';
 import type { Metadata } from 'next';
 import { ArrowRight, Layers, Network, Zap, Check } from 'lucide-react';
 import { Container, Section, Eyebrow, buttonClass } from '@/components/public/ui';
@@ -13,7 +15,7 @@ import {
 export const metadata: Metadata = {
   title: 'Platform — NextMav',
   description:
-    'Sixteen capability areas on one shared data model, with a unified permission model and one source of truth — and each area’s status stated plainly.',
+    'Explore NextMav’s connected business modules, from CRM and project delivery to people, performance and shared knowledge. Each capability’s availability is stated clearly.',
 };
 
 /**
@@ -41,7 +43,7 @@ const PILLARS = [
   {
     icon: Layers,
     title: 'One shared data model',
-    body: 'Every capability reads from the same organization, permission model and records. Data never silos between modules, because there are no modules to silo between.',
+    body: 'Every capability reads from the same organization, permission model and records. Related records stay within one platform, so teams can work from shared context.',
   },
   {
     icon: Network,
@@ -73,13 +75,12 @@ export default function FeaturesPage() {
         <Container className="nm-page-hero-content">
           <Eyebrow>Platform</Eyebrow>
           <h1 className="nm-page-hero-title nm-page-hero-title-dark">
-            {CAPABILITIES.length} capability areas.{' '}
-            <span className="nm-serif">One shared data model.</span>
+            The whole business.{' '}
+            <span className="nm-serif">One connected workspace.</span>
           </h1>
           <p className="nm-page-hero-sub nm-page-hero-sub-dark">
             Every department works from the same platform — a unified permission
-            model, shared workflows and a single source of truth. No integrations
-            to maintain, no data to reconcile. {LIVE_CAPABILITIES.length} areas are
+            model, shared workflows and a single source of truth. Keep related records together across the built-in modules. {LIVE_CAPABILITIES.length} areas are
             available today; the rest say exactly where they stand.
           </p>
           <div className="nm-page-hero-actions">
@@ -98,11 +99,7 @@ export default function FeaturesPage() {
           <Container>
             <div className="nm-features-showcase-grid">
               <div className="nm-features-showcase-image nm-img-overlay">
-                <EditorialImage
-                  src={PHOTO.analytics}
-                  alt="A wall of screens showing charts and operational readouts"
-                  sizes="(min-width: 980px) 46vw, 92vw"
-                />
+                <ProductPreview />
               </div>
               <div className="nm-features-showcase-text">
                 <Eyebrow>How it works</Eyebrow>
@@ -111,7 +108,7 @@ export default function FeaturesPage() {
                   <span className="nm-serif">everything connects.</span>
                 </h2>
                 <p className="nm-lead" style={{ marginTop: 'var(--nm-space-5)' }}>
-                  Most organizations stitch together seven or more tools. NextMav
+                  Different teams often work in separate tools. NextMav
                   replaces them with one operational layer — where every approval,
                   document, spend line and person is linked through the same
                   organization structure.
@@ -134,6 +131,7 @@ export default function FeaturesPage() {
           </Container>
         </Section>
       </ScrollReveal>
+      <ConnectedWork />
 
       <Section className="nm-features-caps" aria-labelledby="capabilities">
         <Container>
@@ -152,7 +150,7 @@ export default function FeaturesPage() {
           <div className="nm-cap-grid">
             {CAPABILITIES.map((cap, i) => (
               <ScrollReveal key={cap.id} delay={(i % 3) as 0 | 1 | 2}>
-                <div className="nm-cap-card">
+                <div id={cap.id} className="nm-cap-card">
                   <div className="nm-cap-card-head">
                     <div className="nm-cap-icon">
                       <cap.icon size={20} />

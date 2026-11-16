@@ -59,6 +59,8 @@ const AUTH_PAGES = ['/login', '/signup', '/forgot-password'];
  * it cannot require a session.
  */
 const PUBLIC_API = new Set([
+  '/api/sign-portal',               // recipient-scoped capability/session only; never authorizes internal APIs
+  '/api/crm-capture',                // narrow hosted intake; signed challenge, validation and database rate limits
   '/api',                            // liveness; no dependencies, no detail
   '/api/health',                     // readiness; status code for anyone, detail for HEALTH_TOKEN
   '/api/auth/login',
@@ -207,6 +209,19 @@ export default function proxy(req: NextRequest) {
 
 function handle(req: NextRequest, requestId: string) {
   const { pathname, search } = req.nextUrl;
+  if (pathname === '/client-portal' || pathname === '/api/sign-portal') {
+    const nonce = btoa(crypto.randomUUID());
+    const csp = `default-src 'self'; script-src 'self' 'nonce-${nonce}'${process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; worker-src 'self' blob:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`;
+    const headers = new Headers(req.headers);
+    headers.set('Content-Security-Policy', csp);
+    headers.set('x-nonce', nonce);
+    const res = NextResponse.next({request:{headers}});
+    res.headers.set('Content-Security-Policy', csp);
+    res.headers.set('Cache-Control', 'private, no-store');
+    res.headers.set('Referrer-Policy', 'no-referrer');
+    res.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    return res;
+  }
 
   /**
    * Continue to the handler, with the identifier on the *request*.
@@ -224,6 +239,15 @@ function handle(req: NextRequest, requestId: string) {
   const authed = hasSession(req);
   const isApi = pathname === '/api' || pathname.startsWith('/api/');
   const now = Date.now();
+  // A notification click is navigation, so preserve it through sign-in instead
+  // of showing an API JSON error in a newly opened browser window.
+  if (pathname === '/api/notifications/open' && (!authed || expiryOf(readClock(req, now), now))) {
+    const login = new URL('/login', req.url);
+    login.searchParams.set('next', pathname + search);
+    const response = NextResponse.redirect(login);
+    if (authed) clearSession(req, response);
+    return response;
+  }
 
   /**
    * Does this request move the idle clock?

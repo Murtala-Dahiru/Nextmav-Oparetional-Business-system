@@ -1,6 +1,7 @@
 import { recordHandlers } from '@/lib/supabase/crud';
+import { activeOwnedScope } from '@/lib/supabase/crm-scope';
 import { SELECTS } from '@/lib/supabase/selects';
-import { updateLeadSchema } from '@/lib/validations';
+import { leadPatchSchema } from '@/lib/crm/lead-input';
 
 /**
  * A single lead.
@@ -18,8 +19,9 @@ import { updateLeadSchema } from '@/lib/validations';
  */
 export const { GET, PATCH, PUT, DELETE } = recordHandlers({
   table: 'leads',
+  scope: activeOwnedScope,
   module: 'crm',
   select: SELECTS.leads,
   softDelete: true,
-  updateSchema: updateLeadSchema,
+  updateSchema: leadPatchSchema,
 });

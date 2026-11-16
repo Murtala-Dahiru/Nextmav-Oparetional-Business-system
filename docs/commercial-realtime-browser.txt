@@ -1,0 +1,5 @@
+PASS record appears through realtime without manual refresh
+PASS reconnect invalidates stale directory and displays missed update
+PASS catalog selection is available in quote editor
+PASS browser saves edited proposal as reusable organization template
+4 realtime/template browser assertions passed.

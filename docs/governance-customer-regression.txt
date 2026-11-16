@@ -1,0 +1,13 @@
+✔ health is explicit, has no fabricated numeric score and requires engagement evidence (6.5939ms)
+✔ unavailable financial and support context creates no signals (0.9027ms)
+✔ buying role is explicit and only relevant when opportunities exist (0.742ms)
+✔ action and opportunity rules retain traceable explanations and destinations (1.2118ms)
+✔ structured plan rejects invalid progress, dates, identifiers and overlarge arrays (21.9092ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 97.8073

@@ -1,0 +1,12 @@
+PASS credential tenant must match its mailbox even for privileged writes
+PASS organization owner cannot read employee private mailbox
+PASS provider credentials inaccessible through authenticated role
+PASS OAuth proofs inaccessible through authenticated role
+PASS clients cannot call service-only mailbox lease RPC
+PASS mailbox lease serializes refresh and operations
+PASS replayed provider message stored once
+PASS organization owner cannot read employee private message
+PASS connecting employee can read their private message
+PASS direct mailbox mutation cannot bypass lifecycle
+PASS disconnect atomically deletes credentials and synchronized content
+11 mailbox database security checks passed; all synthetic mailbox data rolled back.

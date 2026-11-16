@@ -1,0 +1,13 @@
+PASS explicit stakeholder relationship persists
+PASS stale close plan rejected
+PASS simultaneous commercial writes have exactly one winner
+PASS own-scope cannot read another owner deal
+PASS own-scope aggregates exclude other owners
+PASS own-scope audit has no leaked events
+PASS restricted role cannot configure pipelines
+PASS own-scope cannot transition another owner deal
+PASS cross-tenant deal read denied
+PASS cross-tenant workspace values empty
+PASS cross-tenant audit empty
+PASS cross-tenant pipeline mutation denied
+12 live security, planning and concurrency assertions passed. Only isolated test organizations modified.

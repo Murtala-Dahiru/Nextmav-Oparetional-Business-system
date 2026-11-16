@@ -1,4 +1,5 @@
 'use client';
+import '@/styles/application.css';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
 import { ModuleContent } from './module-content';
@@ -6,6 +7,8 @@ import { CommandPalette } from './command-palette';
 import { usePresence } from '@/hooks/use-presence';
 import { SessionGuard } from './session-guard';
 import { useAppStore } from '@/store/app-store';
+import { useEffect } from 'react';
+import { MODULES } from '@/lib/constants';
 
 export function AppShell() {
   /**
@@ -21,9 +24,18 @@ export function AppShell() {
    */
   const isAuthenticated = useAppStore(s => s.isAuthenticated);
   usePresence(isAuthenticated);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const moduleId = params.get('module');
+    const target = MODULES.find(m => m.id === moduleId);
+    if (!target) return;
+    const type = ['channel', 'agreement', 'commercial', 'task', 'project', 'ticket', 'lead', 'deal', 'company', 'contact', 'invoice', 'expense'].find(key => params.has(key));
+    if (type) useAppStore.getState().openRecord(target.id, type, params.get(type)!);
+    else useAppStore.getState().setActiveModule(target.id);
+  }, []);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="nm-app flex overflow-hidden bg-background">
       {/*
         The first thing in the tab order, and invisible until it is reached.
 
@@ -40,7 +52,7 @@ export function AppShell() {
       </a>
 
       <Sidebar />
-      <div className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
+      <div className="nm-app-frame flex-1 flex flex-col overflow-hidden min-w-0">
         <Header />
         <ModuleContent />
         <CommandPalette />

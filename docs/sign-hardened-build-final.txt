@@ -1,0 +1,17 @@
+
+> nextjs_tailwind_shadcn_ts@0.2.0 build
+> node scripts/check-env.mjs && next build && node scripts/prepare-standalone.mjs
+
+[check-env] Supabase configuration present.
+▲ Next.js 16.4.3 (Turbopack)
+- Environments: .env
+✓ Running next.config.ts took 429ms
+
+> Build error occurred
+Error: EPERM: operation not permitted, unlink 'C:\Users\murta\Downloads\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\.next-sign-hardened\standalone\node_modules\@img\sharp-win32-x64\lib\libvips-42.dll'
+    at ignore-listed frames {
+  errno: -4048,
+  code: 'EPERM',
+  syscall: 'unlink',
+  path: 'C:\\Users\\murta\\Downloads\\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\\.next-sign-hardened\\standalone\\node_modules\\@img\\sharp-win32-x64\\lib\\libvips-42.dll'
+}

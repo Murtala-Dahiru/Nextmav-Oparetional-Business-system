@@ -1,0 +1,2 @@
+Validated 0158_notification_business_api.sql
+Notification migrations committed

@@ -1,0 +1,33 @@
+
+> nextjs_tailwind_shadcn_ts@0.2.0 lint
+> eslint .
+
+
+C:\Users\murta\Downloads\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\scripts\attendance.test.ts
+  7:67  warning  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+
+C:\Users\murta\Downloads\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\scripts\dashboard-attention.test.mts
+  29:3  warning  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+
+C:\Users\murta\Downloads\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\scripts\navigation.test.mts
+  32:3  warning  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+
+C:\Users\murta\Downloads\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\scripts\stage-layout.test.ts
+  17:3  warning  Expected an assignment or function call and instead saw an expression  @typescript-eslint/no-unused-expressions
+
+C:\Users\murta\Downloads\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\src\components\shared\data-table.tsx
+  241:17  warning  Compilation Skipped: Use of incompatible library
+
+This API returns functions which cannot be memoized without leading to stale UI. To prevent this, by default React Compiler will skip memoizing this component/hook. However, you may see issues if values from this API are passed to other components/hooks that are memoized.
+
+C:\Users\murta\Downloads\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\src\components\shared\data-table.tsx:241:17
+  239 |
+  240 |   // Table instance ----------------------------------------------------------
+> 241 |   const table = useReactTable({
+      |                 ^^^^^^^^^^^^^ TanStack Table's `useReactTable()` API returns functions that cannot be memoized safely
+  242 |     data,
+  243 |     columns,
+  244 |     onSortingChange: handleSortingChange,  react-hooks/incompatible-library
+
+✖ 5 problems (0 errors, 5 warnings)
+

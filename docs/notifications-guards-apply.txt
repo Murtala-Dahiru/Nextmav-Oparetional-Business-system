@@ -1,0 +1,2 @@
+Validated 0156_notification_delivery_guards.sql
+Notification migrations committed

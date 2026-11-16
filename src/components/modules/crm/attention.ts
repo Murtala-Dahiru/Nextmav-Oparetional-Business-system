@@ -46,31 +46,33 @@ export function buildCrmAttention(data: CrmOverview): CrmAttentionItem[] {
 
   const overdue = data.followups.filter(f => f.when === 'overdue');
   const dueToday = data.followups.filter(f => f.when === 'today');
+  const overdueCount = data.queueCounts?.overdue ?? overdue.length;
+  const todayCount = data.queueCounts?.today ?? dueToday.length;
 
-  if (overdue.length) {
-    const one = overdue.length === 1 ? overdue[0] : null;
+  if (overdueCount) {
+    const one = overdueCount === 1 ? overdue[0] : null;
     items.push({
       id: 'followups-overdue',
       severity: 'critical',
       title: one
         ? one.subject
-        : `${overdue.length} ${plural(overdue.length, 'follow-up')} overdue`,
+        : `${overdueCount} ${plural(overdueCount, 'follow-up')} overdue`,
       detail: one
         ? (one.company?.name ?? one.deal?.name ?? personName(one.contact ?? one.lead) ?? 'No customer named')
-        : 'The oldest is ' + relativeAge(overdue[overdue.length - 1]?.dueAt),
+        : 'The oldest is ' + relativeAge(overdue[0]?.dueAt),
       state: 'Past due',
-      go: { label: 'Open Activities', section: 'activities' },
+      go: { label: 'Open Activities', section: 'activities', focus: { type: 'activity-view', id: 'overdue' } },
     });
   }
 
-  if (dueToday.length) {
+  if (todayCount) {
     items.push({
       id: 'followups-today',
       severity: 'warning',
-      title: `${dueToday.length} ${plural(dueToday.length, 'follow-up')} due today`,
-      detail: dueToday.slice(0, 2).map(f => f.subject).join(' · '),
+      title: `${todayCount} ${plural(todayCount, 'follow-up')} due today`,
+      detail: dueToday.length ? dueToday.slice(0, 2).map(f => f.subject).join(' · ') : 'Open Activities to review today’s follow-ups.',
       state: 'Today',
-      go: { label: 'Open Activities', section: 'activities' },
+      go: { label: 'Open Activities', section: 'activities', focus: { type: 'activity-view', id: 'today' } },
     });
   }
 
@@ -93,7 +95,7 @@ export function buildCrmAttention(data: CrmOverview): CrmAttentionItem[] {
       title: one ? one.name : `${late.length} deals past their close date`,
       detail: one
         ? `${money(one.value, data.currency)} · was due ${relativeAge(one.expectedClose)}`
-        : `${money(value, data.currency)} still open`,
+        : `${money(value, data.currency)} still open in the displayed preview`,
       state: 'Date passed',
       go: one
         ? { label: 'Open deal', section: 'deals', focus: { type: 'deal', id: one.id } }
@@ -137,8 +139,8 @@ export function buildCrmAttention(data: CrmOverview): CrmAttentionItem[] {
     items.push({
       id: 'deals-stale',
       severity: 'warning',
-      title: `${data.stale.length} ${plural(data.stale.length, 'deal')} nobody has touched in a month`,
-      detail: `${money(value, data.currency)} · oldest ${relativeAge(data.stale[0]?.updatedAt)}`,
+      title: `${data.queueCounts?.stale ?? data.stale.length} ${plural(data.queueCounts?.stale ?? data.stale.length, 'deal')} unchanged for 30 days`,
+      detail: `${money(value, data.currency)} in preview · oldest ${relativeAge(data.stale[0]?.updatedAt)}`,
       state: 'Gone quiet',
       go: { label: 'Open Pipeline', section: 'pipeline' },
     });
@@ -158,7 +160,7 @@ export function buildCrmAttention(data: CrmOverview): CrmAttentionItem[] {
     items.push({
       id: 'leads-cold',
       severity: 'warning',
-      title: `${cold.length} new ${plural(cold.length, 'lead')} not yet contacted`,
+      title: `${cold.length} new ${plural(cold.length, 'lead')} aged 3+ days in this preview`,
       detail: cold.slice(0, 2)
         .map(l => personName(l) || l.companyName || 'Unnamed')
         .join(' · '),
@@ -176,7 +178,7 @@ export function buildCrmAttention(data: CrmOverview): CrmAttentionItem[] {
     items.push({
       id: 'leads-unowned',
       severity: 'info',
-      title: `${unowned.length} ${plural(unowned.length, 'lead')} with no owner`,
+      title: `${unowned.length} ${plural(unowned.length, 'lead')} with no owner in this preview`,
       detail: 'Nobody is on the hook for these.',
       state: 'Unassigned',
       go: { label: 'Open Leads', section: 'leads' },

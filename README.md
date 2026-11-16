@@ -230,3 +230,7 @@ Honest list of what is not built, as distinct from broken:
   a header, and the loosened version would look like protection and not be it.
 - **No multi-factor authentication.** Supabase supports TOTP enrolment; nothing
   in this application offers it, and no policy can require it.
+
+## CRM product scope
+
+CRM includes the Revenue Command Centre, lead management, Customer 360, sales pipelines, native activities and follow-ups, Automation Studio, Commercial Hub, NextMav Sign, and governance. Native activities retain calls, meetings, notes, reminders, and record associations. The CRM has no connected sales mailbox or outbound sequence service. See [CRM decommission operations](docs/crm-decommission/OPERATIONS.md) for archived data and provider revocation.

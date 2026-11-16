@@ -1,0 +1,9 @@
+┌─────────┬─────────────────────────┬────────────────┬──────────┬─────────────┬───────────────┐
+│ (index) │ relname                 │ relrowsecurity │ policies │ anon_select │ member_select │
+├─────────┼─────────────────────────┼────────────────┼──────────┼─────────────┼───────────────┤
+│ 0       │ 'crm_mail_credentials'  │ true           │ 0        │ false       │ false         │
+│ 1       │ 'crm_mail_oauth_states' │ true           │ 0        │ false       │ false         │
+│ 2       │ 'sign_credentials'      │ true           │ 0        │ false       │ false         │
+│ 3       │ 'sign_limits'           │ true           │ 0        │ false       │ false         │
+│ 4       │ 'sign_reminders'        │ true           │ 0        │ false       │ false         │
+└─────────┴─────────────────────────┴────────────────┴──────────┴─────────────┴───────────────┘

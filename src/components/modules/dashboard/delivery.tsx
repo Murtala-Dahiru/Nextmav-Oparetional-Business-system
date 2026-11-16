@@ -1,6 +1,8 @@
 'use client';
 
 import * as React from 'react';
+import { useCommandPalette } from './chart-system';
+import { projectBand, type ProjectBand } from './visual-model';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 import { cn } from '@/lib/utils';
@@ -8,8 +10,8 @@ import { formatDate } from '@/lib/format';
 import { statusLabel } from '@/lib/constants';
 /* `Bar` is already recharts' in this file; the primitive comes in under a
    name that cannot collide with it. */
-import { Head, TRow, THead, Rail, Meter, Stat, Bar as SplitBar } from '@/components/shared/readout/primitives';
-import { useViz, tickStyle, GRID_DASH, TipShell, TipRow, niceTicks } from '@/components/shared/readout/viz';
+import { Head, TRow, THead, Rail, Meter, Stat } from '@/components/shared/readout/primitives';
+import { tickStyle, GRID_DASH, TipShell, TipRow, niceTicks } from '@/components/shared/readout/viz';
 import type { DashboardProjects, DashboardWork } from './types';
 
 /**
@@ -60,7 +62,11 @@ export function ProjectHealth({
   projects,
   onOpenProjects,
   onOpenProject,
+  filter = null,
+  onClearFilter,
 }: {
+  filter?: ProjectBand | null;
+  onClearFilter?: () => void;
   projects: DashboardProjects;
   onOpenProjects: () => void;
   onOpenProject: (id: string) => void;
@@ -77,9 +83,7 @@ export function ProjectHealth({
   }), [projects.progress]);
 
   /* The exact partition of the tracked rows — see the note on the strip. */
-  const late = rows.filter(p => p.daysLeft !== null && p.daysLeft < 0).length;
-  const flagged = rows.filter(p => p.atRisk && !(p.daysLeft !== null && p.daysLeft < 0)).length;
-  const settled = rows.length - late - flagged;
+  const visibleRows = filter ? rows.filter(p=>projectBand(p)===filter) : rows;
 
   /**
    * Name and progress on a phone; six columns from `md`.
@@ -88,7 +92,7 @@ export function ProjectHealth({
    * only cell whose *length* is the information.
    */
   const cols =
-    'grid-cols-[minmax(0,1fr)_5.5rem] md:grid-cols-[minmax(0,1fr)_5rem_4.5rem_5rem_13rem_5rem]';
+    'cc-project-row';
 
   return (
     <section className="min-w-0">
@@ -105,90 +109,30 @@ export function ProjectHealth({
         action={{ label: 'Projects', onClick: onOpenProjects }}
       />
 
-      {/*
-        ── The three states, as one bar and three counts ────────────────────
+      <p className="cc-footnote">Delivery priorities, ordered by missed deadlines and recorded health flags. {projects.atRisk} projects carry a risk flag, including any delayed projects.</p>
 
-        This was three `Stat` cells across the full page: about three hundred
-        and seventy pixels of card each, carrying a label and a single digit.
-        A strip whose cells are 95% empty is what a reader means when they say
-        a screen looks padded.
-
-        `atRisk` and `delayed` overlap in the payload — a project past its end
-        date is very often also flagged at risk — so the three counts must
-        never be summed, and the API's `onTrack` is defined as neither. The
-        partition that *is* exact is therefore: late, at risk but not yet late,
-        and everything else. It is computed here from the same `progress` rows
-        the table below renders, so the bar and the table can never disagree,
-        and the three headline counts stay exactly as the endpoint reported
-        them.
-      */}
-      <div className="mt-3 flex flex-wrap items-center gap-x-8 gap-y-4 rounded-xl border border-border bg-card px-4 py-3.5 shadow-e1">
-        <span className="flex flex-wrap items-center gap-x-7 gap-y-3">
-          {[
-            { label: 'On track', value: projects.onTrack, tone: 'success' as const },
-            { label: 'At risk', value: projects.atRisk, tone: 'warning' as const },
-            { label: 'Past deadline', value: projects.delayed, tone: 'critical' as const },
-          ].map(s => (
-            <span key={s.label} className="flex items-baseline gap-2">
-              <span
-                className={cn(
-                  'text-[21px] font-semibold leading-none tabular-nums tracking-[-0.02em]',
-                  s.value === 0 ? 'text-muted-foreground'
-                    : s.tone === 'success' ? 'text-success'
-                      : s.tone === 'warning' ? 'text-warning' : 'text-destructive',
-                )}
-              >
-                {s.value}
-              </span>
-              <span className="text-[11px] font-medium uppercase tracking-[0.09em] text-muted-foreground">
-                {s.label}
-              </span>
-            </span>
-          ))}
-        </span>
-
-        {/* Capped: a five-project composition drawn across seven hundred
-            pixels reads as a decorative rule, not as a proportion. */}
-        <span className="ml-auto flex w-full min-w-[13rem] max-w-md items-center gap-3">
-          <SplitBar
-            segments={[
-              { value: settled, tone: 'accent', title: 'On schedule' },
-              { value: flagged, tone: 'warn', title: 'At risk, not yet late' },
-              { value: late, tone: 'bad', title: 'Past the end date' },
-            ]}
-            height={5}
-          />
-          {/* What the bar is drawn over, said plainly. The endpoint fetches
-              the six most urgent active projects, so in a large organisation
-              this is a sample and the label has to admit it. */}
-          <span className="shrink-0 text-[11.5px] tabular-nums text-muted-foreground">
-            {rows.length < projects.active
-              ? `${rows.length} of ${projects.active} shown`
-              : `${rows.length} tracked`}
-          </span>
-        </span>
-      </div>
-
-      {rows.length === 0 ? (
+      {filter && <div className="cc-filter-feedback" role="status"><span>Showing {filter.toLowerCase()} projects · {visibleRows.length}</span><button type="button" onClick={onClearFilter}>Clear filter</button></div>}
+      {visibleRows.length === 0 ? (
         <p className="mt-3 rounded-xl border border-border bg-card px-4 py-5 text-[12.5px] text-muted-foreground shadow-e1">
-          No active projects.
+          {filter ? `No ${filter.toLowerCase()} projects.` : 'No active projects.'}
         </p>
       ) : (
         <div className="mt-5">
+          {visibleRows.length > 8 && <p className="mb-3 text-xs text-muted-foreground">Showing the 8 highest-priority projects of {visibleRows.length}. Open Projects to review all records.</p>}
           <THead columns={cols} className="-ml-3">
             <span>Project</span>
-            <span className="hidden md:block">Priority</span>
-            <span className="hidden text-right md:block">Tasks</span>
-            <span className="hidden text-right md:block">Milestones</span>
+            <span className="cc-project-extra">Priority</span>
+            <span className="cc-project-extra text-right">Tasks</span>
+            <span className="cc-project-extra text-right">Milestones</span>
             <span>Progress</span>
-            <span className="hidden text-right md:block">Deadline</span>
+            <span className="cc-project-extra text-right">Deadline</span>
           </THead>
           <ul className="-ml-3">
             {/* Every active project the endpoint returns, rather than six of
                 them. The route fetches the eight most urgent; showing six of
                 eight left the strip's "8 tracked" describing rows the reader
                 could not see. */}
-            {rows.slice(0, 8).map(p => {
+            {visibleRows.slice(0, 8).map(p => {
               const late = p.daysLeft !== null && p.daysLeft < 0;
               const reason = reasonFor(p);
               return (
@@ -214,13 +158,13 @@ export function ProjectHealth({
                         {reason ?? statusLabel(p.status)}
                       </span>
                     </span>
-                    <span className="hidden text-[12.5px] capitalize text-muted-foreground md:block">
+                    <span className="cc-project-extra text-[12.5px] capitalize text-muted-foreground">
                       {statusLabel(p.priority)}
                     </span>
-                    <span className="hidden text-right text-[12.5px] tabular-nums text-muted-foreground md:block">
+                    <span className="cc-project-extra text-right text-[12.5px] tabular-nums text-muted-foreground">
                       {p.doneTasks}/{p.totalTasks}
                     </span>
-                    <span className="hidden text-right text-[12.5px] tabular-nums text-muted-foreground md:block">
+                    <span className="cc-project-extra text-right text-[12.5px] tabular-nums text-muted-foreground">
                       {p.milestones.total === 0 ? '—' : `${p.milestones.done}/${p.milestones.total}`}
                     </span>
                     <span className="flex items-center gap-2">
@@ -234,7 +178,7 @@ export function ProjectHealth({
                     </span>
                     <span
                       className={cn(
-                        'hidden text-right text-[12.5px] tabular-nums md:block',
+                        'cc-project-extra text-right text-[12.5px] tabular-nums',
                         late ? 'font-medium text-destructive' : 'text-muted-foreground',
                       )}
                     >
@@ -275,13 +219,13 @@ export function ProjectHealth({
  * honestly gain.
  */
 function WorkTip({ active, payload, label }: any) {
-  const v = useViz();
+  const v = useCommandPalette();
   if (!active || !payload?.length) return null;
   const n = payload[0].value as number;
   return (
-    <TipShell title={`Week of ${label}`}>
+    <TipShell title={`Week of ${label}`} className="cc-tooltip">
       <TipRow
-        colour={v.cash}
+        colour={v.good}
         label={n === 1 ? 'task completed' : 'tasks completed'}
         value={String(n)}
       />
@@ -301,7 +245,7 @@ export function WorkIntelligence({
   onOpenProjects: () => void;
   onOpenProject: ((id: string) => void) | null;
 }) {
-  const v = useViz();
+  const v = useCommandPalette();
   const weeks = work.completionByWeek;
   const anyCompletions = weeks.some(w => w.count > 0);
 
@@ -358,7 +302,7 @@ export function WorkIntelligence({
         ) : (
           <>
             <div className="px-1 pb-1 pt-4">
-              <div className="h-[168px] w-full">
+              <div className="cc-delivery-chart w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={weeks} margin={{ top: 4, right: 14, left: 0, bottom: 0 }}>
                     <CartesianGrid stroke={v.border} strokeDasharray={GRID_DASH} vertical={false} />
@@ -389,14 +333,14 @@ export function WorkIntelligence({
                       content={<WorkTip />}
                       cursor={{ fill: v.axis, fillOpacity: 0.06 }}
                     />
-                    <Bar dataKey="count" radius={[3, 3, 0, 0]} animationDuration={550} maxBarSize={34}>
+                    <Bar dataKey="count" radius={[3, 3, 0, 0]} isAnimationActive={false} maxBarSize={34}>
                       {weeks.map(w => (
                         /* The current week is still in progress, so it is
                            drawn lighter — otherwise a Tuesday reading always
                            looks like a collapse in output. */
                         <Cell
                           key={w.start}
-                          fill={v.cash}
+                          fill={v.good}
                           fillOpacity={w.start === weeks[weeks.length - 1].start ? 0.45 : 1}
                         />
                       ))}
@@ -417,6 +361,8 @@ export function WorkIntelligence({
             </div>
           </>
         )}
+
+        <details className="command-data"><summary>View weekly completion counts</summary><table><thead><tr><th>Week starting</th><th>Completed tasks</th></tr></thead><tbody>{weeks.map(w=><tr key={w.start}><th>{w.start}</th><td>{w.count}</td></tr>)}</tbody></table><p className="cc-footnote">The latest week is incomplete. Counts describe recorded task completions, not utilization.</p></details>
 
         {deadlines.length > 0 ? (
           <>

@@ -1,0 +1,656 @@
+[
+  {
+    "id": "home",
+    "width": 1440,
+    "documentWidth": 1440,
+    "navWidth": 1140,
+    "navScroll": 1140
+  },
+  {
+    "id": "home",
+    "width": 1280,
+    "documentWidth": 1280,
+    "navWidth": 980,
+    "navScroll": 980
+  },
+  {
+    "id": "home",
+    "width": 768,
+    "documentWidth": 768,
+    "navWidth": 768,
+    "navScroll": 768
+  },
+  {
+    "id": "home",
+    "width": 390,
+    "documentWidth": 390,
+    "navWidth": 390,
+    "navScroll": 390,
+    "accessibility": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "count": 1,
+        "samples": [
+          [
+            ".nm-location > .tracking-\\[0\\.08em\\].text-muted-foreground\\/80.uppercase"
+          ]
+        ]
+      },
+      {
+        "id": "svg-img-alt",
+        "impact": "serious",
+        "count": 2,
+        "samples": [
+          [
+            "path[name=\"Added by hand\"]"
+          ],
+          [
+            "path[name=\"Imported\"]"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "home",
+    "width": 360,
+    "documentWidth": 360,
+    "navWidth": 360,
+    "navScroll": 360
+  },
+  {
+    "id": "leads",
+    "width": 1440,
+    "documentWidth": 1440,
+    "navWidth": 1140,
+    "navScroll": 1140
+  },
+  {
+    "id": "leads",
+    "width": 1280,
+    "documentWidth": 1280,
+    "navWidth": 980,
+    "navScroll": 980
+  },
+  {
+    "id": "leads",
+    "width": 768,
+    "documentWidth": 768,
+    "navWidth": 768,
+    "navScroll": 768
+  },
+  {
+    "id": "leads",
+    "width": 390,
+    "documentWidth": 390,
+    "navWidth": 390,
+    "navScroll": 390,
+    "accessibility": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "count": 1,
+        "samples": [
+          [
+            ".tracking-\\[0\\.08em\\]"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "leads",
+    "width": 360,
+    "documentWidth": 360,
+    "navWidth": 360,
+    "navScroll": 360
+  },
+  {
+    "id": "contacts",
+    "width": 1440,
+    "documentWidth": 1440,
+    "navWidth": 1140,
+    "navScroll": 1140
+  },
+  {
+    "id": "contacts",
+    "width": 1280,
+    "documentWidth": 1280,
+    "navWidth": 980,
+    "navScroll": 980
+  },
+  {
+    "id": "contacts",
+    "width": 768,
+    "documentWidth": 768,
+    "navWidth": 768,
+    "navScroll": 768
+  },
+  {
+    "id": "contacts",
+    "width": 390,
+    "documentWidth": 390,
+    "navWidth": 390,
+    "navScroll": 390,
+    "accessibility": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "count": 1,
+        "samples": [
+          [
+            ".tracking-\\[0\\.08em\\]"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "contacts",
+    "width": 360,
+    "documentWidth": 360,
+    "navWidth": 360,
+    "navScroll": 360
+  },
+  {
+    "id": "companies",
+    "width": 1440,
+    "documentWidth": 1440,
+    "navWidth": 1140,
+    "navScroll": 1140
+  },
+  {
+    "id": "companies",
+    "width": 1280,
+    "documentWidth": 1280,
+    "navWidth": 980,
+    "navScroll": 980
+  },
+  {
+    "id": "companies",
+    "width": 768,
+    "documentWidth": 768,
+    "navWidth": 768,
+    "navScroll": 768
+  },
+  {
+    "id": "companies",
+    "width": 390,
+    "documentWidth": 390,
+    "navWidth": 390,
+    "navScroll": 390,
+    "accessibility": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "count": 1,
+        "samples": [
+          [
+            ".tracking-\\[0\\.08em\\]"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "companies",
+    "width": 360,
+    "documentWidth": 360,
+    "navWidth": 360,
+    "navScroll": 360
+  },
+  {
+    "id": "deals",
+    "width": 1440,
+    "documentWidth": 1440,
+    "navWidth": 1140,
+    "navScroll": 1140
+  },
+  {
+    "id": "deals",
+    "width": 1280,
+    "documentWidth": 1280,
+    "navWidth": 980,
+    "navScroll": 980
+  },
+  {
+    "id": "deals",
+    "width": 768,
+    "documentWidth": 768,
+    "navWidth": 768,
+    "navScroll": 768
+  },
+  {
+    "id": "deals",
+    "width": 390,
+    "documentWidth": 390,
+    "navWidth": 390,
+    "navScroll": 390,
+    "accessibility": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "count": 1,
+        "samples": [
+          [
+            ".tracking-\\[0\\.08em\\]"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "deals",
+    "width": 360,
+    "documentWidth": 360,
+    "navWidth": 360,
+    "navScroll": 360
+  },
+  {
+    "id": "pipeline",
+    "width": 1440,
+    "documentWidth": 1440,
+    "navWidth": 1140,
+    "navScroll": 1140
+  },
+  {
+    "id": "pipeline",
+    "width": 1280,
+    "documentWidth": 1280,
+    "navWidth": 980,
+    "navScroll": 980
+  },
+  {
+    "id": "pipeline",
+    "width": 768,
+    "documentWidth": 768,
+    "navWidth": 768,
+    "navScroll": 768
+  },
+  {
+    "id": "pipeline",
+    "width": 390,
+    "documentWidth": 390,
+    "navWidth": 390,
+    "navScroll": 390,
+    "accessibility": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "count": 1,
+        "samples": [
+          [
+            ".tracking-\\[0\\.08em\\]"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "pipeline",
+    "width": 360,
+    "documentWidth": 360,
+    "navWidth": 360,
+    "navScroll": 360
+  },
+  {
+    "id": "activities",
+    "width": 1440,
+    "documentWidth": 1440,
+    "navWidth": 1140,
+    "navScroll": 1140
+  },
+  {
+    "id": "activities",
+    "width": 1280,
+    "documentWidth": 1280,
+    "navWidth": 980,
+    "navScroll": 980
+  },
+  {
+    "id": "activities",
+    "width": 768,
+    "documentWidth": 768,
+    "navWidth": 768,
+    "navScroll": 768
+  },
+  {
+    "id": "activities",
+    "width": 390,
+    "documentWidth": 390,
+    "navWidth": 390,
+    "navScroll": 390,
+    "accessibility": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "count": 5,
+        "samples": [
+          [
+            ".uppercase"
+          ],
+          [
+            ".rounded-\\[5px\\].h-8[role=\"radio\"]:nth-child(1)"
+          ],
+          [
+            ".rounded-\\[5px\\].h-8[role=\"radio\"]:nth-child(3)"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "activities",
+    "width": 360,
+    "documentWidth": 360,
+    "navWidth": 360,
+    "navScroll": 360
+  },
+  {
+    "id": "engagement",
+    "width": 1440,
+    "documentWidth": 1440,
+    "navWidth": 1140,
+    "navScroll": 1140
+  },
+  {
+    "id": "engagement",
+    "width": 1280,
+    "documentWidth": 1280,
+    "navWidth": 980,
+    "navScroll": 980
+  },
+  {
+    "id": "engagement",
+    "width": 768,
+    "documentWidth": 768,
+    "navWidth": 768,
+    "navScroll": 768
+  },
+  {
+    "id": "engagement",
+    "width": 390,
+    "documentWidth": 390,
+    "navWidth": 390,
+    "navScroll": 390,
+    "accessibility": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "count": 4,
+        "samples": [
+          [
+            ".tracking-\\[0\\.08em\\]"
+          ],
+          [
+            "div:nth-child(1) > .mt-2:nth-child(3)"
+          ],
+          [
+            ".border-transparent.border-b-2.px-4:nth-child(2)"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "engagement",
+    "width": 360,
+    "documentWidth": 360,
+    "navWidth": 360,
+    "navScroll": 360
+  },
+  {
+    "id": "automations",
+    "width": 1440,
+    "documentWidth": 1440,
+    "navWidth": 1140,
+    "navScroll": 1140
+  },
+  {
+    "id": "automations",
+    "width": 1280,
+    "documentWidth": 1280,
+    "navWidth": 980,
+    "navScroll": 980
+  },
+  {
+    "id": "automations",
+    "width": 768,
+    "documentWidth": 768,
+    "navWidth": 768,
+    "navScroll": 768
+  },
+  {
+    "id": "automations",
+    "width": 390,
+    "documentWidth": 390,
+    "navWidth": 390,
+    "navScroll": 390,
+    "accessibility": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "count": 7,
+        "samples": [
+          [
+            ".tracking-\\[0\\.08em\\]"
+          ],
+          [
+            ".max-w-2xl"
+          ],
+          [
+            ".max-w-7xl > p:nth-child(2)"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "automations",
+    "width": 360,
+    "documentWidth": 360,
+    "navWidth": 360,
+    "navScroll": 360
+  },
+  {
+    "id": "commercial",
+    "width": 1440,
+    "documentWidth": 1440,
+    "navWidth": 1140,
+    "navScroll": 1140
+  },
+  {
+    "id": "commercial",
+    "width": 1280,
+    "documentWidth": 1280,
+    "navWidth": 980,
+    "navScroll": 980
+  },
+  {
+    "id": "commercial",
+    "width": 768,
+    "documentWidth": 768,
+    "navWidth": 768,
+    "navScroll": 768
+  },
+  {
+    "id": "commercial",
+    "width": 390,
+    "documentWidth": 390,
+    "navWidth": 390,
+    "navScroll": 390,
+    "accessibility": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "count": 6,
+        "samples": [
+          [
+            ".tracking-\\[0\\.08em\\]"
+          ],
+          [
+            ".mt-1.text-sm"
+          ],
+          [
+            ".border-transparent.border-b-2.pb-3:nth-child(3)"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "commercial",
+    "width": 360,
+    "documentWidth": 360,
+    "navWidth": 360,
+    "navScroll": 360
+  },
+  {
+    "id": "partners",
+    "width": 1440,
+    "documentWidth": 1440,
+    "navWidth": 1140,
+    "navScroll": 1140
+  },
+  {
+    "id": "partners",
+    "width": 1280,
+    "documentWidth": 1280,
+    "navWidth": 980,
+    "navScroll": 980
+  },
+  {
+    "id": "partners",
+    "width": 768,
+    "documentWidth": 768,
+    "navWidth": 768,
+    "navScroll": 768
+  },
+  {
+    "id": "partners",
+    "width": 390,
+    "documentWidth": 390,
+    "navWidth": 390,
+    "navScroll": 390,
+    "accessibility": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "count": 1,
+        "samples": [
+          [
+            ".uppercase"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "partners",
+    "width": 360,
+    "documentWidth": 360,
+    "navWidth": 360,
+    "navScroll": 360
+  },
+  {
+    "id": "import",
+    "width": 1440,
+    "documentWidth": 1440,
+    "navWidth": 1140,
+    "navScroll": 1140
+  },
+  {
+    "id": "import",
+    "width": 1280,
+    "documentWidth": 1280,
+    "navWidth": 980,
+    "navScroll": 980
+  },
+  {
+    "id": "import",
+    "width": 768,
+    "documentWidth": 768,
+    "navWidth": 768,
+    "navScroll": 768
+  },
+  {
+    "id": "import",
+    "width": 390,
+    "documentWidth": 390,
+    "navWidth": 390,
+    "navScroll": 390,
+    "accessibility": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "count": 5,
+        "samples": [
+          [
+            ".uppercase"
+          ],
+          [
+            ".rounded-\\[5px\\].h-8[role=\"radio\"]:nth-child(2)"
+          ],
+          [
+            ".rounded-\\[5px\\].h-8[role=\"radio\"]:nth-child(3)"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "import",
+    "width": 360,
+    "documentWidth": 360,
+    "navWidth": 360,
+    "navScroll": 360
+  },
+  {
+    "id": "settings",
+    "width": 1440,
+    "documentWidth": 1440,
+    "navWidth": 1140,
+    "navScroll": 1140
+  },
+  {
+    "id": "settings",
+    "width": 1280,
+    "documentWidth": 1280,
+    "navWidth": 980,
+    "navScroll": 980
+  },
+  {
+    "id": "settings",
+    "width": 768,
+    "documentWidth": 768,
+    "navWidth": 768,
+    "navScroll": 768
+  },
+  {
+    "id": "settings",
+    "width": 390,
+    "documentWidth": 390,
+    "navWidth": 390,
+    "navScroll": 390,
+    "accessibility": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "count": 1,
+        "samples": [
+          [
+            ".uppercase"
+          ]
+        ]
+      }
+    ]
+  },
+  {
+    "id": "settings",
+    "width": 360,
+    "documentWidth": 360,
+    "navWidth": 360,
+    "navScroll": 360
+  }
+]

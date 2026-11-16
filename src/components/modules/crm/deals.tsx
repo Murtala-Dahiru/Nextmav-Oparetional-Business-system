@@ -1,4 +1,9 @@
 'use client';
+import { ExportButton } from '@/components/shared/export-button';
+import { BulkFields } from './bulk-fields';
+import { useListPresentation } from './list-presentation';
+import { SharedViews } from './shared-views';
+import { CustomFieldFilter } from './custom-field-filter';
 
 import * as React from 'react';
 import { toast } from 'sonner';
@@ -14,6 +19,7 @@ import { AddToMyWorkItem } from '@/components/shared/add-to-my-work';
 import { DEAL_STAGES } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 
+import {ConfiguredPipelines} from './configured-pipelines';
 import { useAppStore } from '@/store/app-store';
 
 import { useCrmList } from './use-list';
@@ -74,7 +80,7 @@ function subtitle(d: Deal): string {
   return company ? 'No contact linked' : 'No customer linked';
 }
 
-export function DealsSection({
+function LegacyDealsSection({
   focusId, onFocusHandled, initialStage,
 }: {
   focusId?: string | null;
@@ -145,7 +151,7 @@ export function DealsSection({
     },
     {
       key: 'value', header: 'Value', width: '13%', align: 'right', card: 'figure',
-      cell: d => <span className="font-medium">{exact(d.value)}</span>,
+      cell: d => <span className="font-medium">{exact(d.value,d.currency)} <span className="text-[10px] text-muted-foreground">{d.currency}</span></span>,
     },
     {
       key: 'probability', header: 'Weighted', width: '13%', align: 'right', hide: 'lg',
@@ -169,7 +175,7 @@ export function DealsSection({
         : (
           <span className="block">
             <span className="block text-muted-foreground">
-              {exact(d.value * d.probability / 100)}
+              {exact(d.value * d.probability / 100,d.currency)}
             </span>
             <span className="mt-0.5 block text-[11.5px] text-muted-foreground/70">
               {d.probability}% likely
@@ -235,8 +241,14 @@ export function DealsSection({
     ...DEAL_STAGES.map(s => ({ value: s, label: STAGE_LABELS[s] ?? s })),
   ], []);
 
+  const presentation=useListPresentation('deals',columns);
   return (
-    <div className="flex flex-col gap-4">
+    <div className={`flex flex-col gap-4 ${presentation.className}`}>
+      {presentation.controls}
+      <ExportButton module="crm" datasets={[{key:"deals",label:"Deals",filters:{...list.filters,search:list.search,sort:list.sort,sortDir:list.sortDir,currentView:"true"}}]} />
+      <BulkFields object="deals" rows={list.rows} onChanged={list.reload} />
+      <SharedViews object="deals" presentation={presentation.settings} onPresentation={presentation.applyView} list={list} />
+      <CustomFieldFilter object="deals" value={list.filters.custom} onChange={value => list.setFilter('custom', value)} />
       <SectionHead title="Deals" count={list.meta.total} note="Business you are trying to win">
         <Button size="sm" className="h-9 gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
           <Plus className="size-4" /> Add deal
@@ -275,7 +287,7 @@ export function DealsSection({
         <Broken message={list.error} onRetry={list.reload} />
       ) : (
         <RecordTable
-          columns={columns}
+          columns={presentation.columns}
           rows={list.rows}
           rowKey={d => d.id}
           loading={list.loading}
@@ -413,4 +425,11 @@ export function DealsSection({
       />
     </div>
   );
+}
+
+
+export function DealsSection(props:{focusId?:string|null;onFocusHandled?:()=>void;initialStage?:string|null}){
+ const [view,setView]=React.useState<'all'|'pipeline'>('pipeline');
+ const showAll=Boolean(props.focusId||props.initialStage)||view==='all';
+ return <div className="space-y-4"><div className="flex flex-wrap gap-2"><Button size="sm" variant={showAll?'outline':'default'} onClick={()=>setView('pipeline')}>Pipeline opportunities</Button><Button size="sm" variant={showAll?'default':'outline'} onClick={()=>setView('all')}>All opportunities</Button></div>{showAll?<LegacyDealsSection {...props}/>:<ConfiguredPipelines initialView="table"/>}</div>;
 }

@@ -1,0 +1,8 @@
+PASS exact authorized summary after qualification
+PASS real activity first response and overdue follow-up
+PASS normalized duplicate candidate through authenticated API
+PASS merge preserves both notes and retries safely
+PASS conversion creates contact/company/opportunity and safely repeats
+PASS public capture consent and replay create one record
+PASS test capture forms disabled
+PASS CSV mapping preview and commit persisted exactly one fixture lead

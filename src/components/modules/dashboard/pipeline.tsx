@@ -1,11 +1,14 @@
 'use client';
 
 import * as React from 'react';
-import { formatDate } from '@/lib/format';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { useCommandPalette, CommandTooltip, ChartEmpty } from './chart-system';
+import { axisTick, tickStyle } from '@/components/shared/readout/viz';
+import { formatDate, formatCurrency } from '@/lib/format';
 import { statusLabel } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import { Head, TRow, Stat } from '@/components/shared/readout/primitives';
-import { useViz, money } from '@/components/shared/readout/viz';
+import { money } from '@/components/shared/readout/viz';
 import type { DashboardCrm } from './types';
 
 /**
@@ -70,7 +73,7 @@ export function PipelineMomentum({
   onOpenCrm: () => void;
   onOpenDeal: ((id: string) => void) | null;
 }) {
-  const v = useViz();
+  const v = useCommandPalette();
 
   const open = React.useMemo(
     () => crm.dealsByStage.filter(s => !CLOSED.has(s.stage)).sort((a, b) => orderOf(a.stage) - orderOf(b.stage)),
@@ -104,7 +107,7 @@ export function PipelineMomentum({
           <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
             <div className="min-w-0">
               <p className="text-[10.5px] font-medium uppercase tracking-[0.09em] text-muted-foreground/85">
-                Weighted forecast
+                Weighted pipeline
               </p>
               <p className="mt-1.5 text-[28px] font-semibold leading-none tabular-nums tracking-[-0.03em] text-foreground">
                 {money(crm.weightedPipeline)}
@@ -120,7 +123,7 @@ export function PipelineMomentum({
           <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
             <div
               className="h-full rounded-full transition-[width] duration-500 ease-[var(--ease-brand)]"
-              style={{ width: `${Math.min(100, weightedShare)}%`, backgroundColor: v.cash }}
+              style={{ width: `${Math.min(100, weightedShare)}%`, backgroundColor: v.claim }}
             />
           </div>
           <p className="mt-1.5 text-[11.5px] text-muted-foreground">
@@ -153,40 +156,12 @@ export function PipelineMomentum({
           />
         </div>
 
-        {/* ── The stages, in pipeline order ────────────────────────────── */}
-        {open.length === 0 ? (
-          <p className="px-4 py-6 text-[12.5px] text-muted-foreground">
-            No open deals in the pipeline.
-          </p>
-        ) : (
-          <ul className="space-y-3 px-4 py-4">
-            {open.map(stage => (
-              <li key={stage.stage}>
-                <div className="mb-1.5 flex items-baseline justify-between gap-3">
-                  <span className="truncate text-[12.5px] font-medium text-foreground">
-                    {statusLabel(stage.stage)}
-                  </span>
-                  <span className="shrink-0 text-[12px] tabular-nums text-muted-foreground">
-                    {stage.count} · {money(stage.value)}
-                  </span>
-                </div>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full transition-[width] duration-500 ease-[var(--ease-brand)]"
-                    style={{
-                      width: `${(stage.value / peak) * 100}%`,
-                      backgroundColor: v.cash,
-                      // Later stages are nearer the money, so they read
-                      // stronger. Same hue, so this is a gradient of certainty
-                      // rather than five unrelated colours.
-                      opacity: 0.45 + 0.55 * ((orderOf(stage.stage) + 1) / STAGE_ORDER.length),
-                    }}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+        <div className="cc-pipeline-stage-chart">
+          {open.length === 0 ? <ChartEmpty title="Your pipeline starts here" detail="Open deals appear in their recorded sales stage."/> : <>
+            <div className="cc-pipeline-chart" role="img" aria-label={open.map(s=>`${statusLabel(s.stage)}: ${s.count} deals, ${money(s.value)}`).join(', ')}><ResponsiveContainer width="100%" height="100%"><BarChart data={open.map(s=>({...s,label:statusLabel(s.stage)}))} layout="vertical" margin={{top:12,right:20,left:0,bottom:4}}><CartesianGrid horizontal={false} stroke={v.border} strokeDasharray="2 5"/><XAxis type="number" tickFormatter={axisTick} domain={[0,'auto']} tick={tickStyle(v)} axisLine={false} tickLine={false}/><YAxis type="category" dataKey="label" width={96} tick={tickStyle(v)} axisLine={false} tickLine={false}/><Tooltip content={<CommandTooltip currency/>} cursor={{fill:v.border,fillOpacity:.3}}/><Bar dataKey="value" name="Open value" radius={[0,5,5,0]} maxBarSize={26} isAnimationActive={false}>{open.map((s,i)=><Cell key={s.stage} fill={v.claim} fillOpacity={.5+.5*(i+1)/open.length}/>)}</Bar></BarChart></ResponsiveContainer></div>
+            <details className="command-data"><summary>View pipeline stage counts & values</summary><table><thead><tr><th>Stage</th><th>Deals</th><th>Value</th></tr></thead><tbody>{open.map(s=><tr key={s.stage}><th>{statusLabel(s.stage)}</th><td>{s.count}</td><td>{formatCurrency(s.value)}</td></tr>)}</tbody></table></details>
+          </>}
+        </div>
 
         {/* ── The biggest open deals, named ────────────────────────────── */}
         {crm.topOpen.length > 0 ? (

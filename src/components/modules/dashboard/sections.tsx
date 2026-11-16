@@ -160,7 +160,7 @@ export function AttentionSection({
   const worst: Severity | null = counts.critical ? 'critical' : counts.warning ? 'warning' : items.length ? 'info' : null;
 
   return (
-    <section className="min-w-0">
+    <section className="nm-attention-queue min-w-0">
       <Head
         title="Needs attention"
         count={items.length || undefined}
@@ -226,10 +226,10 @@ export function AttentionSection({
                   columns={ATTENTION_COLS}
                   onClick={() => onAct(item)}
                   ariaLabel={`${severityWord(item.severity)}. ${item.title}. ${item.state}. ${item.action.label}`}
-                  className="py-2.5"
+                  className="nm-attention-row py-2.5"
                 >
                   <Rail severity={item.severity} />
-                  <span className="min-w-0">
+                  <span className="nm-attention-subject min-w-0">
                     <span className="line-clamp-2 block text-[13.5px] font-medium leading-snug text-foreground md:truncate">
                       {item.title}
                     </span>
@@ -241,7 +241,7 @@ export function AttentionSection({
                   {/* The condition, as a token rather than as prose: a column
                       of them scans, and it is the answer to "why is this on my
                       list" that the title only implied. */}
-                  <span className="hidden md:block">
+                  <span className="nm-attention-state hidden md:block">
                     <span
                       className={cn(
                         'inline-flex max-w-full truncate rounded-full px-2 py-0.5 text-[11px] font-medium',
@@ -256,7 +256,7 @@ export function AttentionSection({
                     </span>
                   </span>
 
-                  <span className="flex shrink-0 items-center justify-end gap-1 text-[12px] font-medium text-muted-foreground transition-colors group-hover:text-foreground">
+                  <span className="nm-attention-action flex shrink-0 items-center justify-end gap-1 text-[12px] font-medium text-muted-foreground transition-colors group-hover:text-foreground">
                     <span className="hidden truncate sm:inline">{item.action.label}</span>
                     <ArrowRight
                       className="size-3.5 shrink-0 transition-transform group-hover:translate-x-0.5"
@@ -885,109 +885,16 @@ export function GettingStarted({
  * shape makes the load feel longer than it is.
  */
 export function DashboardSkeleton() {
-  const bar = 'animate-pulse rounded bg-muted';
-  const onPanel = 'animate-pulse rounded bg-white/10';
-
-  /** A band divider, in outline — the page's joints load with the page. */
-  const band = (
-    <div className="mt-12 flex items-center gap-3">
-      <div className={cn(bar, 'h-2.5 w-4')} />
-      <div className={cn(bar, 'h-2.5 w-20')} />
-      <div className="h-px flex-1 bg-border" />
-    </div>
-  );
-
-  return (
-    <div className="flex-1 overflow-auto" aria-busy="true" aria-live="polite">
-      <div className="mx-auto max-w-[1560px] p-4 md:p-6 lg:p-8">
-        <span className="sr-only">Loading Executive Overview</span>
-
-        {/*
-          The plate itself does not pulse — only the bars inside it do.
-          `animate-pulse` animates opacity on whatever carries it, so putting it
-          on the panel faded the panel: the skeleton's plate rendered as mid
-          grey against a near-black real one, and the surface visibly darkened
-          at the moment the data landed. The bars are the thing that is
-          pending; the surface they sit on is not.
-        */}
-        <div className="rounded-xl bg-panel px-5 py-5 shadow-e2 sm:px-7 sm:py-6">
-          {/* 1 — the context line and its two controls */}
-          <div className="flex items-center gap-3">
-            <div className={cn(onPanel, 'h-2.5 w-64')} />
-            <div className={cn(onPanel, 'ml-auto h-8 w-[5.5rem] rounded-md')} />
-            <div className={cn(onPanel, 'h-8 w-16 rounded-md')} />
-          </div>
-
-          {/* 2 — the verdict, against the series */}
-          <div className="mt-6 grid gap-x-12 gap-y-7 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1fr)] lg:items-end">
-            <div>
-              <div className={cn(onPanel, 'h-6 w-56')} />
-              <div className={cn(onPanel, 'mt-2.5 h-3 w-80 max-w-full')} />
-              <div className={cn(onPanel, 'mt-7 h-2.5 w-36')} />
-              <div className={cn(onPanel, 'mt-3 h-10 w-52')} />
-            </div>
-            <div className={cn(onPanel, 'hidden h-[74px] rounded-lg lg:block')} />
-          </div>
-
-          {/* 3 — the readout strip.
-              Flex below `xl` and a divided grid at it, matching the real one
-              exactly: a skeleton whose columns break at a different width than
-              the content is a skeleton that makes the page jump when the data
-              lands, which is the one thing it exists to prevent. */}
-          <div className="mt-7 flex flex-wrap gap-x-6 gap-y-6 border-t border-panel-line pt-5 xl:grid xl:grid-cols-5 xl:gap-x-0 xl:gap-y-0 xl:divide-x xl:divide-panel-line">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="min-w-[9rem] grow basis-[calc(33%-1.5rem)] xl:px-5 xl:first:pl-0">
-                <div className={cn(onPanel, 'h-2.5 w-20')} />
-                <div className={cn(onPanel, 'mt-2.5 h-5 w-24')} />
-                <div className={cn(onPanel, 'mt-3.5 h-[3px] w-full rounded-full')} />
-                <div className={cn(onPanel, 'mt-2.5 h-2.5 w-16')} />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/*
-          Below the plate the skeleton mirrors the real composition band for
-          band — divider, the money strip over its chart, receivables across
-          the page, divider, then the 5/7 split. A skeleton of a different
-          shape makes the load feel longer than it is, and a plain block where
-          a chart is about to appear makes the chart look like it arrived late.
-        */}
-        {band}
-        <div className="mt-5">
-          <div className={cn(bar, 'h-4 w-52')} />
-          <div className="mt-3 overflow-hidden rounded-xl border border-border">
-            <div className="grid grid-cols-2 divide-border border-b border-border sm:grid-cols-3 lg:grid-cols-5 lg:divide-x">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="px-4 py-3.5">
-                  <div className={cn(bar, 'h-2.5 w-16')} />
-                  <div className={cn(bar, 'mt-2 h-5 w-24')} />
-                  <div className={cn(bar, 'mt-2 h-2.5 w-20')} />
-                </div>
-              ))}
-            </div>
-            <div className={cn(bar, 'm-1 h-[268px] rounded-lg')} />
-          </div>
-        </div>
-
-        {/* Receivables: three regions across, not a tall column. */}
-        <div className="mt-8">
-          <div className={cn(bar, 'h-4 w-32')} />
-          <div className={cn(bar, 'mt-3 h-[164px] rounded-xl')} />
-        </div>
-
-        {band}
-        <div className="mt-5 grid gap-8 xl:grid-cols-12 xl:gap-10">
-          <div className="xl:col-span-5">
-            <div className={cn(bar, 'h-4 w-44')} />
-            <div className={cn(bar, 'mt-3 h-[420px] rounded-xl')} />
-          </div>
-          <div className="xl:col-span-7">
-            <div className={cn(bar, 'h-4 w-32')} />
-            <div className={cn(bar, 'mt-3 h-[420px] rounded-xl')} />
-          </div>
-        </div>
+  const bar = 'animate-pulse motion-reduce:animate-none rounded-lg bg-muted';
+  return <div className="nm-overview flex-1 overflow-auto" aria-busy="true" aria-live="polite">
+    <div className="nm-overview-content">
+      <span className="sr-only">Loading Executive Overview</span>
+      <div className="nm-overview-intro"><div className="space-y-2"><div className={cn(bar, 'h-7 w-64')} /><div className={cn(bar, 'h-4 w-52')} /></div></div>
+      <div className="nm-kpi-grid" style={{ '--kpi-count': 6 } as React.CSSProperties}>
+        {Array.from({length: 6}, (_, i) => <div key={i} className="nm-kpi space-y-3"><div className={cn(bar, 'h-3 w-20')} /><div className={cn(bar, 'h-8 w-24')} /><div className={cn(bar, 'h-3 w-28')} /></div>)}
       </div>
+      <div className="cc-section"><div className={cn(bar,'h-5 w-52 mb-4')}/><div className="cc-feature-grid"><div className={cn(bar,'h-96')}/><div className={cn(bar,'h-96')}/></div><div className={cn(bar,'h-72 mt-5')}/></div>
+
     </div>
-  );
+  </div>;
 }

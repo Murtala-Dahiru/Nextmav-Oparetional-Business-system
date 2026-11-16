@@ -1,0 +1,3 @@
+PASS 200 real captured events, 200 notifications, 20 bounded batches, no replay effects
+{"captureMs":384,"batchMinMs":154,"batchMaxMs":957,"batchMeanMs":362}
+Single isolated tenant, one connection, rollback fixtures. These measurements do not establish production-scale or cross-tenant latency guarantees.

@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createClient} from '@supabase/supabase-js';
+process.loadEnvFile('.env');
+if(process.env.CRM_DISPOSABLE_TEST!=='true')throw Error('Disposable test authorization required');
+const f=JSON.parse(readFileSync(join(tmpdir(),'nextmav-customer360-fixture.json')));
+const admin=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+const jar=new Map();let count=0;
+async function call(path,method='GET',body){const r=await fetch((process.env.APP_URL||'http://localhost:3010')+path,{method,headers:{'Content-Type':'application/json',cookie:[...jar].map(([k,v])=>`${k}=${v}`).join('; ')},body:body===undefined?undefined:JSON.stringify(body),signal:AbortSignal.timeout(180000)});for(const raw of r.headers.getSetCookie()){const pair=raw.split(';')[0],i=pair.indexOf('=');jar.set(pair.slice(0,i),pair.slice(i+1))}return{status:r.status,json:await r.json()}}
+async function good(path,method='GET',body){let r=await call(path,method,body);if(r.status===401&&path!=='/api/auth/login'){await good('/api/auth/login','POST',{email:f.email,password:f.password});r=await call(path,method,body)}assert.ok(r.status>=200&&r.status<300,`${path}: ${r.status} ${r.json.error?.message}`);return r.json.data}
+function check(ok,label){assert.ok(ok,label);count++;console.log('PASS '+label)}
+await good('/api/auth/login','POST',{email:f.email,password:f.password});
+const root=`/api/crm/companies/${f.companyId}`;
+const account=await good(root+'/overview'),contact=account.contacts[0];
+const peer=await good('/api/crm/companies','POST',{name:'Customer360 peer association fixture'});
+const relation=await good(root+'/relationships','POST',{companyId:peer.id,type:'Strategic partner'});
+check((await good(root+'/relationships')).some(r=>r.id===relation.id),'peer organization link persists');
+check((await good(`/api/crm/companies/${peer.id}/relationships`)).some(r=>r.id===relation.id),'peer relationship visible from both accounts');
+check((await call(root+'/relationships','POST',{companyId:f.companyId,type:'Partner'})).status===422,'self organization relationship refused');
+check((await call(root+'/relationships','POST',{companyId:peer.id,type:'Strategic partner'})).status>=400,'duplicate organization link refused');
+await good(root+`/relationships?link=${relation.id}`,'DELETE');
+check(!(await good(root+'/relationships')).some(r=>r.id===relation.id),'peer organization unlink persists');
+const activity=await good('/api/crm/activities','POST',{activityType:'call',subject:'Contact-only account commitment',contactId:contact.id,dueAt:'2026-12-01T10:00:00Z'});
+check((await good(`/api/crm/contacts/${contact.id}/activities?due=open`)).some(a=>a.id===activity.id),'contact commitments use dedicated chronological query');
+check((await good(root+'/overview')).commitments.some(a=>a.id===activity.id),'company resolves contact-only activity association');
+const draft=await good('/api/finance/invoices','POST',{companyId:f.companyId,status:'draft',currency:'EUR',dueDate:'2026-01-01',lineItems:[{description:'Draft is not collectible',quantity:1,unitPrice:900}]});
+check(!(await good(root+'/overview')).summary.invoiceBalances.some(b=>b.currency==='EUR'),'draft invoice excluded from collectible account balances');
+const invoice=account.invoices.find(i=>i.currency==='USD');
+const payment=await admin.from('payments').insert({organization_id:f.orgId,invoice_id:invoice.id,amount:100,reference:'Customer360 isolated payment fixture'}).select('id').single();assert.ifError(payment.error);
+const paid=await good(root+'/overview');
+check(paid.collectedPayments.some(p=>p.currency==='USD'&&p.collected>=100),'actual Finance payment appears in collected totals');
+check((await good(root+'/timeline?type=payment')).some(e=>e.eventKey===`payment:${payment.data.id}`),'actual payment event appears in unified timeline');
+const user=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,{auth:{persistSession:false,autoRefreshToken:false}});
+const auth=await user.auth.signInWithPassword({email:f.email,password:f.password});assert.ifError(auth.error);
+const plan=await good(root+'/plan');
+const bad=await user.rpc('crm_save_account_plan',{p_org:f.orgId,p_company:f.companyId,p_version:plan.version,p_plan:{...plan,items:[{id:crypto.randomUUID(),title:'Missing required state'}]}});
+check(Boolean(bad.error),'direct RPC rejects incomplete structured plan item');
+console.log(`${count} extended account-context checks passed.`);

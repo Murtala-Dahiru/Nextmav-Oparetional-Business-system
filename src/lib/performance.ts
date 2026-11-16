@@ -184,19 +184,24 @@ export const EMPTY_ACHIEVEMENT: Achievement = {
  * reopen is the signal that the earlier win was undone, so a `deal.reopened`
  * cancels the most recent win for that deal inside the window.
  */
-export function rollUp(events: RawEvent[]): Achievement {
+export function rollUp(events: RawEvent[], currency?: string): Achievement {
   const out: Achievement = { ...EMPTY_ACHIEVEMENT };
 
   /* Wins per deal, newest last, so a reopen can cancel the right one. */
   const winsByDeal = new Map<string, number[]>();
   const reopened = new Set<string>();
+  let currencyWins=0;
+  const nativeWins=new Map<string, boolean[]>();
 
   for (const e of events) {
     switch (e.eventType) {
       case 'deal.won': {
         out.dealsWon += 1;
-        out.revenueWon += num(e.payload?.value);
-        winsByDeal.set(e.entityId, [...(winsByDeal.get(e.entityId) ?? []), num(e.payload?.value)]);
+        const native=!currency||e.payload?.currency===currency;
+        if(native)currencyWins++;
+        nativeWins.set(e.entityId,[...(nativeWins.get(e.entityId)??[]),native]);
+        out.revenueWon += native?num(e.payload?.value):0;
+        winsByDeal.set(e.entityId, [...(winsByDeal.get(e.entityId) ?? []), native?num(e.payload?.value):0]);
         break;
       }
       case 'deal.lost':
@@ -206,7 +211,7 @@ export function rollUp(events: RawEvent[]): Achievement {
         reopened.add(e.entityId);
         break;
       case 'invoice.paid':
-        out.revenueCollected += num(e.payload?.amount_paid || e.payload?.total);
+        if(!currency||e.payload?.currency===currency)out.revenueCollected += num(e.payload?.amount_paid || e.payload?.total);
         break;
       case 'lead.qualified':
         out.leadsQualified += 1;
@@ -222,13 +227,14 @@ export function rollUp(events: RawEvent[]): Achievement {
     const wins = winsByDeal.get(key);
     if (wins?.length) {
       out.dealsWon -= 1;
+      if(nativeWins.get(key)?.at(-1))currencyWins--;
       out.revenueWon -= wins[wins.length - 1];
     }
   }
 
   const decided = out.dealsWon + out.dealsLost;
   out.winRate = decided > 0 ? out.dealsWon / decided : null;
-  out.averageDeal = out.dealsWon > 0 ? out.revenueWon / out.dealsWon : null;
+  out.averageDeal = currencyWins > 0 ? out.revenueWon / currencyWins : null;
 
   return out;
 }

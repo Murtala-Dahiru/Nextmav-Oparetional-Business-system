@@ -1,4 +1,5 @@
 'use client';
+import { ContextualNavigation } from '@/components/layout/contextual-navigation';
 
 import * as React from 'react';
 import { LayoutGrid, FolderKanban, ListTodo } from 'lucide-react';
@@ -123,7 +124,7 @@ export default function ProjectsModule() {
       {!openProjectId && (
         <div className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <div className="flex items-center gap-3 px-4 md:px-6">
-            <nav
+            <ContextualNavigation><nav
               aria-label="Projects sections"
               className="-mb-px flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
@@ -153,7 +154,7 @@ export default function ProjectsModule() {
                   </button>
                 );
               })}
-            </nav>
+            </nav></ContextualNavigation>
 
             {/* Export belongs to the data, so it sits with the navigation
                 rather than beside a section heading, where it competed with

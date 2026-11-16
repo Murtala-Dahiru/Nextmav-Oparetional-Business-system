@@ -1,0 +1,24 @@
+✔ account segment narrows the existing JSON profile with a parameterized equality (11.3171ms)
+✔ manual campaign attribution is bounded and partial updates preserve omitted attribution (25.9172ms)
+✔ unassigned inbox narrows rather than replaces sales ownership restrictions (5.9324ms)
+✔ reports read beyond the API cap using actual returned offsets (19.9713ms)
+✔ empty reports are successful; failed, oversized and incomplete reports return no partial data (1.4021ms)
+✔ a failed later page or changing row count invalidates the whole report (0.9273ms)
+✔ eight weeks include every one of 56 calendar days exactly once (515.5718ms)
+✔ organization dates include local midnight and survive DST/leap transitions (84.379ms)
+✔ target reporting uses whole target periods, event currency and final deal outcomes without double counting (14902.7644ms)
+✔ health is explicit, has no fabricated numeric score and requires engagement evidence (20.2603ms)
+✔ unavailable financial and support context creates no signals (1.592ms)
+✔ buying role is explicit and only relevant when opportunities exist (2.0787ms)
+✔ action and opportunity rules retain traceable explanations and destinations (4.3589ms)
+✔ structured plan rejects invalid progress, dates, identifiers and overlarge arrays (115.7581ms)
+✔ currency contracts reject unsupported codes and preserve sparse edits (77.9973ms)
+✔ downstream monetary rollups retain currency boundaries and outcome counts (85.0657ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18389.8896

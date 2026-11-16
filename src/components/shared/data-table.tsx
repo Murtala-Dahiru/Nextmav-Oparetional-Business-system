@@ -469,7 +469,7 @@ export function DataTable<TData, TValue>({
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border overflow-hidden">
+      <div className="rounded-lg border bg-card overflow-hidden">
         <Table aria-busy={isLoading}>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -550,7 +550,7 @@ export function DataTable<TData, TValue>({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-muted-foreground text-sm">
             {isServerSide && total !== undefined
-              ? `Showing ${currentPageIndex * currentPageSize + 1}–${Math.min((currentPageIndex + 1) * currentPageSize, total)} of ${total}`
+              ? `Showing ${total === 0 ? 0 : currentPageIndex * currentPageSize + 1}–${Math.min((currentPageIndex + 1) * currentPageSize, total)} of ${total}`
               : `Page ${currentPageIndex + 1} of ${totalPages}`}
           </p>
 

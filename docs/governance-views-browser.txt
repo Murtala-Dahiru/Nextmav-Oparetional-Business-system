@@ -1,0 +1,7 @@
+PASS Column selection and density save through UI
+PASS Personal saved view created through UI
+PASS Saved view retains its column and density configuration
+PASS Default view persists
+PASS Default view restored when record list opens
+PASS Confirmed bulk edit updates actual lead through UI
+6 additional browser checks passed.

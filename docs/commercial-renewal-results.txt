@@ -1,0 +1,4 @@
+PASS new executed contract activation supersedes prior active term
+PASS renewal completes only against the newly executed contract revision
+PASS prior executed contract evidence/version retained after renewal
+3 renewal acceptance assertions passed.

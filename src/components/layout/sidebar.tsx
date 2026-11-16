@@ -5,6 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import {
   PanelLeftClose,
+  Search,
+  Settings2,
+  LayoutGrid,
+  Users,
+  Layers3,
+  BriefcaseBusiness,
   PanelLeft,
   ChevronsUpDown,
   UserRound,
@@ -19,6 +25,7 @@ import type { ModuleId } from '@/lib/constants';
 import { ROLES } from '@/lib/constants';
 import { navigationFor, type NavItem, type NavSection } from '@/lib/navigation';
 import { useAppStore, SIDEBAR_COLLAPSED_KEY } from '@/store/app-store';
+import { WorkspaceIdentity } from './workspace-identity';
 import { PlatformMark } from './platform-mark';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -80,7 +87,7 @@ import {
  * a person may open.
  */
 
-const SIDEBAR_WIDTH = 264;
+const SIDEBAR_WIDTH = 300;
 const SIDEBAR_RAIL = 68;
 
 /* -------------------------------------------------------------------------- */
@@ -122,7 +129,7 @@ function NavRow({
           : undefined
       }
       className={cn(
-        'group relative flex items-center rounded-md transition-colors duration-150',
+        'nm-nav-row group relative flex items-center rounded-md transition-colors duration-150',
         touch ? 'text-sm' : 'text-[13px]',
         collapsed
           ? 'mx-auto size-10 justify-center'
@@ -195,8 +202,10 @@ function SidebarNav({
   collapsed,
   touch = false,
   onNavigate,
+  sectionId,
 }: {
   collapsed: boolean;
+  sectionId?: string;
   touch?: boolean;
   onNavigate?: () => void;
 }) {
@@ -238,9 +247,9 @@ function SidebarNav({
         className={cn('flex flex-col py-3', collapsed ? 'px-2.5' : 'px-3')}
         aria-label="Main navigation"
       >
-        {sections.map((section, index) => (
-          <div key={section.id} className={index === 0 ? undefined : 'mt-5'}>
-            {section.label &&
+        {sections.filter(section => !sectionId || section.id === sectionId).map((section, index) => (
+          <div key={section.id} className={index === 0 ? undefined : 'mt-4'}>
+            {section.label && !sectionId &&
               (collapsed ? (
                 /* A rail has no room for a heading, so the grouping is carried
                    by a separator instead — the information survives, the words
@@ -251,7 +260,7 @@ function SidebarNav({
                 />
               ) : (
                 <h2
-                  id={`nav-${section.id}`}
+                  id={`${touch ? 'mobile' : 'desktop'}-nav-${section.id}`}
                   className="px-2.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-muted-foreground/75"
                 >
                   {section.label}
@@ -267,8 +276,8 @@ function SidebarNav({
             */}
             <ul
               className="flex flex-col gap-0.5"
-              aria-labelledby={section.label && !collapsed ? `nav-${section.id}` : undefined}
-              aria-label={section.label && collapsed ? section.label : undefined}
+              aria-labelledby={section.label && !collapsed && !sectionId ? `${touch ? 'mobile' : 'desktop'}-nav-${section.id}` : undefined}
+              aria-label={section.label && (collapsed || sectionId) ? section.label : undefined}
             >
               {section.items.map(item => (
                 <li key={item.id}>
@@ -411,7 +420,7 @@ function AccountMenu({ collapsed, touch = false }: { collapsed: boolean; touch?:
 
         <DropdownMenuItem onSelect={() => router.push('/settings')}>
           <UserRound className="size-4" />
-          Profile
+          Profile & settings
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => router.push('/change-password')}>
           <KeyRound className="size-4" />
@@ -483,12 +492,13 @@ function SidebarBody({
       >
         {/*
           The platform's identity, always — never the tenant's. A workspace is
-          something you are *in*; it is not what the software is called. Which
-          workspace that is belongs in the header, beside the module title.
+          something you are *in*; it is not what the software is called. The current
+          workspace has a separate identity block below the product mark.
         */}
         <PlatformMark collapsed={collapsed} />
       </div>
 
+      <WorkspaceIdentity collapsed={collapsed} />
       <SidebarNav collapsed={collapsed} touch={touch} onNavigate={onNavigate} />
 
       <div
@@ -507,7 +517,23 @@ function SidebarBody({
 /* -------------------------------------------------------------------------- */
 /*  Desktop                                                                    */
 /* -------------------------------------------------------------------------- */
+function RailButton({ label, active, onClick, children, expanded }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode; expanded?: boolean }) {
+  return <Tooltip><TooltipTrigger asChild><button type="button" className="nm-rail-button" aria-label={label} aria-pressed={active} aria-expanded={expanded} onClick={onClick}>{children}</button></TooltipTrigger><TooltipContent side="right" sideOffset={12}>{label}</TooltipContent></Tooltip>;
+}
+
 function DesktopSidebar() {
+  const router = useRouter();
+  const activeModule = useAppStore(s => s.activeModule);
+  const activeRole = useAppStore(s => s.activeRole);
+  const visibleModules = useAppStore(s => s.visibleModules);
+  const setActiveModule = useAppStore(s => s.setActiveModule);
+  const setSearchOpen = useAppStore(s => s.setSearchOpen);
+  const sections = navigationFor(visibleModules(), activeRole);
+  const currentSection = sections.find(section => section.items.some(item => item.id === activeModule));
+  const lastModule = React.useRef<Record<string, ModuleId>>({});
+  React.useEffect(() => { if (currentSection) lastModule.current[currentSection.id] = activeModule; }, [currentSection, activeModule]);
+  const categoryIcons: Record<string, React.ElementType> = { customers: Users, operations: Layers3, people: BriefcaseBusiness, administration: Settings2 };
+
   const collapsed = useAppStore(s => s.sidebarCollapsed);
   const setCollapsed = useAppStore(s => s.setSidebarCollapsed);
 
@@ -555,51 +581,32 @@ function DesktopSidebar() {
   }, [toggle]);
 
   return (
-    <aside
-      data-slot="sidebar"
-      // Below `lg` the sheet takes over. This used to be `hidden lg:flex`
-      // while the header's menu button was gated on `useIsMobile()`, which is
-      // 768 — so between 768 and 1023 there was no sidebar *and* no way to
-      // open one. The breakpoint is now stated once, in CSS, on both.
-      className={cn(
-        'hidden h-full shrink-0 flex-col overflow-hidden border-r border-sidebar-border bg-sidebar lg:flex',
-        'transition-[width] duration-200 ease-out motion-reduce:transition-none',
-      )}
-      style={{ width: collapsed ? SIDEBAR_RAIL : SIDEBAR_WIDTH }}
-      aria-label="Sidebar"
-    >
-      <SidebarBody collapsed={collapsed}>
-        {collapsed ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={toggle}
-                className="mx-auto flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent/55 hover:text-foreground"
-                aria-label="Expand sidebar"
-              >
-                <PanelLeft className="size-[18px]" strokeWidth={1.75} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={10}>
-              Expand sidebar
-              <kbd className="ml-1.5 font-mono text-[10px] opacity-70">[</kbd>
-            </TooltipContent>
-          </Tooltip>
-        ) : (
-          <button
-            type="button"
-            onClick={toggle}
-            className="flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-[12.5px] text-muted-foreground transition-colors hover:bg-sidebar-accent/55 hover:text-foreground"
-          >
-            <PanelLeftClose className="size-[18px] shrink-0" strokeWidth={1.75} />
-            <span>Collapse</span>
-            <kbd className="ml-auto rounded border border-sidebar-border bg-background/60 px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
-              [
-            </kbd>
-          </button>
-        )}
-      </SidebarBody>
+    <aside data-slot="sidebar" className="nm-navigation nm-desktop-navigation hidden lg:flex" style={{ width: collapsed ? SIDEBAR_RAIL : SIDEBAR_WIDTH }} aria-label="Sidebar">
+      <div className="nm-app-rail">
+        <div className="nm-rail-brand"><PlatformMark collapsed /></div>
+        <RailButton label="Search workspace" onClick={() => setSearchOpen(true)}><Search size={19} strokeWidth={1.7} /></RailButton>
+        <nav aria-label="Workspace categories" className="nm-category-rail">
+          {sections.map(section => {
+            const Icon = categoryIcons[section.id] ?? section.items[0].icon;
+            return <RailButton key={section.id} label={section.label ?? (section.id === 'portal' ? 'Client workspace' : 'Overview & my work')} active={currentSection?.id === section.id} onClick={() => {
+              if (currentSection?.id !== section.id) setActiveModule(section.items.find(item => item.id === lastModule.current[section.id])?.id ?? section.items[0].id);
+              setCollapsed(false);
+            }}><Icon size={20} strokeWidth={1.65} /></RailButton>;
+          })}
+        </nav>
+        <div className="nm-rail-footer">
+          <RailButton label="Profile & settings" onClick={() => router.push('/settings')}><Settings2 size={19} strokeWidth={1.7} /></RailButton>
+          <RailButton label={collapsed ? 'Expand module navigation' : 'Collapse module navigation'} expanded={!collapsed} onClick={toggle}>{collapsed ? <PanelLeft size={19} /> : <PanelLeftClose size={19} />}</RailButton>
+          <AccountMenu collapsed />
+        </div>
+      </div>
+      {!collapsed && <div className="nm-context-panel" id="context-navigation">
+        <div className="nm-context-heading"><span>NextMav</span><span className="nm-context-caption">Business operating system</span></div>
+        <WorkspaceIdentity collapsed={false} />
+        <div className="nm-context-title">{currentSection?.label ?? 'Your workspace'}</div>
+        <SidebarNav collapsed={false} sectionId={currentSection?.id ?? '__none'} />
+        <div id="module-navigation-slot" className="nm-module-navigation" /><div className="nm-context-footnote">{ROLES.find(role => role.id === activeRole)?.name ?? 'Workspace member'}<span>Access assigned by your organization</span></div>
+      </div>}
     </aside>
   );
 }
@@ -611,11 +618,20 @@ function MobileSidebar() {
   const open = useAppStore(s => s.sidebarOpen);
   const setOpen = useAppStore(s => s.setSidebarOpen);
 
+  // Returning to desktop must release the sheet's focus trap and scroll lock.
+  React.useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const closeOnDesktop = () => { if (desktop.matches) setOpen(false); };
+    closeOnDesktop();
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => desktop.removeEventListener('change', closeOnDesktop);
+  }, [setOpen]);
+
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetContent
         side="left"
-        className="flex w-[286px] flex-col gap-0 bg-sidebar p-0"
+        className="nm-navigation flex w-[min(300px,calc(100vw-32px))] flex-col gap-0 bg-sidebar p-0"
       >
         <SheetHeader className="sr-only">
           <SheetTitle>Navigation</SheetTitle>

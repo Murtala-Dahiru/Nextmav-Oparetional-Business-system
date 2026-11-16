@@ -92,17 +92,6 @@ export async function POST(req: Request, { params }: Params) {
 
   const added = eligible.filter(m => m !== ctx.org.memberId);
   if (added.length) {
-    await ctx.supabase.rpc('notify_members', {
-      org: ctx.org.organizationId,
-      recipients: added,
-      ntype: 'channel',
-      ntitle: `You were added to ${channel.display_name || '#' + channel.name}`,
-      nbody: '',
-      etype: 'channel',
-      eid: id,
-      nlink: '/dashboard?module=communication',
-    });
-
     // One entry per person, not one per request: "who put Ada in the
     // leadership channel" is the question this table is asked, and a row
     // saying "three people were added" cannot answer it.

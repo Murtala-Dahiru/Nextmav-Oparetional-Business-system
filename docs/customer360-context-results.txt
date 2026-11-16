@@ -1,0 +1,12 @@
+PASS peer organization link persists
+PASS peer relationship visible from both accounts
+PASS self organization relationship refused
+PASS duplicate organization link refused
+PASS peer organization unlink persists
+PASS contact commitments use dedicated chronological query
+PASS company resolves contact-only activity association
+PASS draft invoice excluded from collectible account balances
+PASS actual Finance payment appears in collected totals
+PASS actual payment event appears in unified timeline
+PASS direct RPC rejects incomplete structured plan item
+11 extended account-context checks passed.

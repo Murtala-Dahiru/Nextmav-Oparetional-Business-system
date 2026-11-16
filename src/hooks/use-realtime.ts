@@ -103,6 +103,8 @@ export interface UseRealtimeOptions {
    * comfortably above the width of these bursts.
    */
   debounceMs?: number;
+  /** Re-read after joining/rejoining because changes can happen while offline. */
+  invalidateOnSubscribe?: boolean;
 }
 
 /**
@@ -118,7 +120,7 @@ export interface UseRealtimeOptions {
 export type RealtimeStatus = 'connecting' | 'subscribed' | 'unavailable';
 
 export function useRealtime({
-  name, tables, onChange, enabled = true, debounceMs = 400,
+  name, tables, onChange, enabled = true, debounceMs = 400, invalidateOnSubscribe = false,
 }: UseRealtimeOptions): RealtimeStatus {
   /**
    * The callback is held in a ref so an inline arrow function does not
@@ -236,6 +238,7 @@ export function useRealtime({
          */
         if (state === 'SUBSCRIBED') {
           setReported({ id, status: 'subscribed' });
+          if (invalidateOnSubscribe) fire();
         } else if (state === 'CHANNEL_ERROR' || state === 'TIMED_OUT' || state === 'CLOSED') {
           setReported({ id, status: 'unavailable' });
         }
@@ -250,7 +253,7 @@ export function useRealtime({
       // subscription is silently dropped.
       void supabase.removeChannel(channel);
     };
-  }, [id, name, key, enabled, debounceMs, tables.length]);
+  }, [id, name, key, enabled, debounceMs, tables.length, invalidateOnSubscribe]);
 
   return status;
 }
@@ -454,6 +457,7 @@ export function useModuleRealtime(
 ) {
   return useRealtime({
     name: `module:${name}`,
+    invalidateOnSubscribe: name.startsWith('crm-'),
     enabled,
     onChange,
     tables: tables.map(table => ({ table })),

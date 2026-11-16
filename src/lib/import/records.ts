@@ -209,6 +209,8 @@ export interface CandidatePerson {
 export type Problem = { field: string; message: string; severity: 'error' | 'warning' };
 
 export interface Candidate {
+  deal?: {name:string;currency:string;value:number;expectedClose:string|null};
+  customValues?: import('@/lib/crm/customization').CustomValues;
   /** Zero-based position in the file's data rows, for naming it on screen. */
   row: number;
   company: CandidateCompany | null;

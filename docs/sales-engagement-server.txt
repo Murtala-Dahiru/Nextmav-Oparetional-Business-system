@@ -1,0 +1,424 @@
+▲ Next.js 16.4.3 (Turbopack)
+- Local:         http://localhost:3022
+- Network:       http://192.168.0.6:3022
+- Environments: .env
+✓ Ready in 1311ms
+✓ Running next.config.ts took 218ms
+{"level":"info","time":"2026-11-04T17:21:08.658Z","message":"application starting","environment":"development","runtime":"nodejs","logging":{"environment":"development","level":"debug","format":"json"}}
+
+○ Compiling /api/auth/login ...
+ POST /api/auth/login 200 in 9.8s (next.js: 5.7s, proxy.ts: 102ms, application-code: 4.0s)
+ POST /api/organizations 201 in 1414ms (next.js: 478ms, proxy.ts: 30ms, application-code: 905ms)
+ POST /api/crm/companies 201 in 3.4s (next.js: 118ms, proxy.ts: 18ms, application-code: 3.2s)
+ POST /api/crm/contacts 201 in 3.1s (next.js: 190ms, proxy.ts: 10ms, application-code: 2.9s)
+ POST /api/crm/leads 201 in 1591ms (next.js: 350ms, proxy.ts: 9ms, application-code: 1233ms)
+ POST /api/crm/activities 201 in 2.1s (next.js: 633ms, proxy.ts: 19ms, application-code: 1439ms)
+ GET /api/crm/engagement 200 in 3.8s (next.js: 311ms, proxy.ts: 16ms, application-code: 3.5s)
+ GET /api/crm/leads/49dafe96-11e3-4697-a32f-6acff5d3ea3f 200 in 3.8s (next.js: 2.3s, proxy.ts: 15ms, application-code: 1553ms)
+ POST /api/crm/engagement/actions 200 in 1814ms (next.js: 333ms, proxy.ts: 19ms, application-code: 1461ms)
+ POST /api/crm/engagement/actions 409 in 2.1s (next.js: 43ms, proxy.ts: 19ms, application-code: 2.0s)
+ GET /api/crm/engagement 200 in 1593ms (next.js: 29ms, proxy.ts: 16ms, application-code: 1548ms)
+ POST /api/crm/engagement/actions 200 in 1123ms (next.js: 11ms, proxy.ts: 19ms, application-code: 1093ms)
+ POST /api/crm/engagement/actions 409 in 1633ms (next.js: 20ms, proxy.ts: 14ms, application-code: 1600ms)
+ GET /api/crm/engagement 200 in 976ms (next.js: 5ms, proxy.ts: 8ms, application-code: 964ms)
+ GET /api/crm/engagement?filter=completed 200 in 1016ms (next.js: 5ms, proxy.ts: 7ms, application-code: 1005ms)
+ POST /api/crm/activities 201 in 1665ms (next.js: 12ms, proxy.ts: 9ms, application-code: 1644ms)
+ GET /api/crm/engagement?filter=first-contact 200 in 1034ms (next.js: 5ms, proxy.ts: 10ms, application-code: 1019ms)
+ POST /api/crm/activities 201 in 1851ms (next.js: 4ms, proxy.ts: 9ms, application-code: 1837ms)
+ PATCH /api/crm/activities/cbc52b33-4966-48a0-bf57-8966ee7b0154 200 in 2.8s (next.js: 1842ms, proxy.ts: 8ms, application-code: 993ms)
+ GET /api/crm/engagement/history?kind=contact&id=c4e3d923-a5f2-4a60-800c-f8fa68b5e892 200 in 1574ms (next.js: 233ms, proxy.ts: 8ms, application-code: 1333ms)
+ POST /api/crm/engagement/templates 200 in 1621ms (next.js: 589ms, proxy.ts: 15ms, application-code: 1017ms)
+ POST /api/crm/engagement/templates/preview 200 in 1639ms (next.js: 422ms, proxy.ts: 15ms, application-code: 1202ms)
+ POST /api/crm/engagement/templates 200 in 1034ms (next.js: 25ms, proxy.ts: 15ms, application-code: 994ms)
+ POST /api/crm/engagement/templates 409 in 1271ms (next.js: 8ms, proxy.ts: 11ms, application-code: 1251ms)
+ GET /api/crm/engagement/mailboxes 200 in 903ms (next.js: 164ms, proxy.ts: 9ms, application-code: 730ms)
+ POST /api/crm/engagement/mailboxes 409 in 754ms (next.js: 18ms, proxy.ts: 15ms, application-code: 721ms)
+ POST /api/auth/login 200 in 3.4s (next.js: 951ms, proxy.ts: 19ms, application-code: 2.5s)
+ POST /api/organizations 201 in 1471ms (next.js: 34ms, proxy.ts: 8ms, application-code: 1429ms)
+ POST /api/crm/companies 201 in 1230ms (next.js: 33ms, proxy.ts: 7ms, application-code: 1190ms)
+ POST /api/crm/contacts 201 in 1893ms (next.js: 46ms, proxy.ts: 8ms, application-code: 1839ms)
+ POST /api/crm/leads 201 in 2.0s (next.js: 888ms, proxy.ts: 7ms, application-code: 1123ms)
+ POST /api/crm/automations 200 in 2.1s (next.js: 315ms, proxy.ts: 6ms, application-code: 1787ms)
+ POST /api/crm/automations 200 in 1350ms (next.js: 13ms, proxy.ts: 9ms, application-code: 1328ms)
+ POST /api/crm/activities 201 in 1077ms (next.js: 22ms, proxy.ts: 6ms, application-code: 1049ms)
+ GET /api/crm/engagement 200 in 1118ms (next.js: 15ms, proxy.ts: 6ms, application-code: 1098ms)
+ GET /api/crm/leads/c5eb0137-aa16-4a2c-adb6-bcaf46dad49f 200 in 1150ms (next.js: 39ms, proxy.ts: 7ms, application-code: 1104ms)
+ POST /api/crm/engagement/actions 200 in 1024ms (next.js: 23ms, proxy.ts: 8ms, application-code: 993ms)
+ POST /api/crm/engagement/actions 409 in 1107ms (next.js: 5ms, proxy.ts: 7ms, application-code: 1096ms)
+ GET /api/crm/engagement 200 in 1040ms (next.js: 6ms, proxy.ts: 9ms, application-code: 1025ms)
+ POST /api/crm/engagement/actions 200 in 2.1s (next.js: 693ms, proxy.ts: 9ms, application-code: 1411ms)
+ POST /api/crm/engagement/actions 409 in 2.6s (next.js: 695ms, proxy.ts: 10ms, application-code: 1889ms)
+ GET /api/crm/engagement 200 in 1077ms (next.js: 5ms, proxy.ts: 6ms, application-code: 1066ms)
+ GET /api/crm/engagement?filter=completed 200 in 1232ms (next.js: 7ms, proxy.ts: 7ms, application-code: 1218ms)
+ POST /api/crm/activities 201 in 1614ms (next.js: 6ms, proxy.ts: 9ms, application-code: 1599ms)
+ GET /api/crm/engagement?filter=first-contact 200 in 1349ms (next.js: 5ms, proxy.ts: 11ms, application-code: 1333ms)
+ POST /api/crm/activities 201 in 1751ms (next.js: 5ms, proxy.ts: 7ms, application-code: 1738ms)
+ PATCH /api/crm/activities/bcd6395c-57d4-4812-a1f0-aed5b47e4dfa 200 in 1112ms (next.js: 49ms, proxy.ts: 8ms, application-code: 1055ms)
+ GET /api/crm/engagement/history?kind=contact&id=625c3f61-2de1-4827-9d69-7469c298dec1 200 in 1188ms (next.js: 37ms, proxy.ts: 7ms, application-code: 1144ms)
+ POST /api/crm/engagement/templates 200 in 1322ms (next.js: 43ms, proxy.ts: 15ms, application-code: 1264ms)
+ POST /api/crm/engagement/templates/preview 200 in 1352ms (next.js: 23ms, proxy.ts: 6ms, application-code: 1323ms)
+ POST /api/crm/engagement/templates 200 in 1052ms (next.js: 8ms, proxy.ts: 7ms, application-code: 1037ms)
+ POST /api/crm/engagement/templates 409 in 1060ms (next.js: 5ms, proxy.ts: 8ms, application-code: 1047ms)
+ GET /api/crm/engagement/mailboxes 200 in 814ms (next.js: 15ms, proxy.ts: 7ms, application-code: 792ms)
+ POST /api/crm/engagement/mailboxes 409 in 840ms (next.js: 6ms, proxy.ts: 10ms, application-code: 825ms)
+ POST /api/auth/login 200 in 1464ms (next.js: 66ms, proxy.ts: 7ms, application-code: 1392ms)
+ GET /api/crm/engagement/templates 200 in 1358ms (next.js: 36ms, proxy.ts: 7ms, application-code: 1315ms)
+{"level":"warn","time":"2026-11-04T17:25:16.526Z","message":"database request failed","environment":"development","requestId":"d55accd4-62ac-450e-bbdf-ff60d43bf617","status":403,"code":"RLS_DENIED","err":{"code":"42501","details":null,"hint":null,"message":"Template unavailable"}}
+ POST /api/crm/engagement/templates 403 in 1076ms (next.js: 7ms, proxy.ts: 9ms, application-code: 1060ms)
+ GET /api/crm/engagement/history?kind=lead&id=c5eb0137-aa16-4a2c-adb6-bcaf46dad49f 200 in 1103ms (next.js: 13ms, proxy.ts: 7ms, application-code: 1082ms)
+ POST /api/crm/engagement/templates/preview 404 in 1061ms (next.js: 14ms, proxy.ts: 8ms, application-code: 1040ms)
+ GET /api/crm/engagement 200 in 1161ms (next.js: 14ms, proxy.ts: 9ms, application-code: 1139ms)
+ POST /api/auth/login 200 in 1190ms (next.js: 6ms, proxy.ts: 7ms, application-code: 1177ms)
+ POST /api/auth/login 200 in 4.1s (next.js: 1631ms, proxy.ts: 7ms, application-code: 2.5s)
+ POST /api/crm/engagement/sequences 200 in 2.2s (next.js: 433ms, proxy.ts: 7ms, application-code: 1741ms)
+ POST /api/crm/engagement/sequences 200 in 1101ms (next.js: 15ms, proxy.ts: 9ms, application-code: 1077ms)
+{"level":"debug","time":"2026-11-04T17:26:49.839Z","message":"database request failed","environment":"development","requestId":"fed482e0-5254-4bf4-a6f3-42a286bbcbe0","status":409,"code":"DUPLICATE","err":{"code":"23505","details":"Key (organization_id, record_type, record_id)=(3c44fef2-12c3-400d-9421-64c649c4509e, contact, 625c3f61-2de1-4827-9d69-7469c298dec1) already exists.","hint":null,"message":"duplicate key value violates unique constraint \"crm_sales_one_active_enrollment\""}}
+ POST /api/crm/engagement/sequences 409 in 1028ms (next.js: 4ms, proxy.ts: 8ms, application-code: 1015ms)
+ POST /api/crm/engagement/sequences 200 in 1115ms (next.js: 104ms, proxy.ts: 10ms, application-code: 1001ms)
+ POST /api/crm/engagement/sequences 200 in 958ms (next.js: 8ms, proxy.ts: 13ms, application-code: 937ms)
+ POST /api/crm/engagement/sequences 200 in 1124ms (next.js: 5ms, proxy.ts: 6ms, application-code: 1113ms)
+{"level":"warn","time":"2026-11-04T17:26:57.064Z","message":"database request failed","environment":"development","requestId":"83039897-b894-4d40-9dd5-84cd67ac069b","status":403,"code":"RLS_DENIED","err":{"code":"42501","details":null,"hint":null,"message":"Recipient is unavailable or has opted out"}}
+ POST /api/crm/engagement/sequences 403 in 1007ms (next.js: 5ms, proxy.ts: 8ms, application-code: 995ms)
+ POST /api/auth/login 200 in 5.8s (next.js: 3.4s, proxy.ts: 33ms, application-code: 2.4s)
+○ Compiling /dashboard ...
+ GET /dashboard 200 in 10.0s (next.js: 7.6s, proxy.ts: 34ms, application-code: 2.4s)
+ GET /dashboard 200 in 1367ms (next.js: 945ms, proxy.ts: 38ms, application-code: 384ms)
+ GET /api/auth/session 200 in 1262ms (next.js: 1115ms, proxy.ts: 23ms, application-code: 125ms)
+✓ Compiled in 15ms
+ GET /dashboard 200 in 581ms (next.js: 111ms, proxy.ts: 35ms, application-code: 436ms)
+✓ Compiled in 18ms
+ GET /api/auth/session 200 in 484ms (next.js: 35ms, proxy.ts: 30ms, application-code: 419ms)
+ GET /dashboard 200 in 508ms (next.js: 69ms, proxy.ts: 68ms, application-code: 371ms)
+✓ Compiled in 27ms
+ GET /api/auth/session 200 in 384ms (next.js: 52ms, proxy.ts: 43ms, application-code: 289ms)
+ GET /dashboard 200 in 339ms (next.js: 83ms, proxy.ts: 38ms, application-code: 218ms)
+✓ Compiled in 8ms
+ GET /api/auth/session 200 in 447ms (next.js: 54ms, proxy.ts: 90ms, application-code: 303ms)
+ GET /dashboard 200 in 462ms (next.js: 111ms, proxy.ts: 71ms, application-code: 281ms)
+✓ Compiled in 11ms
+ GET /api/auth/session 200 in 508ms (next.js: 65ms, proxy.ts: 106ms, application-code: 337ms)
+ GET /dashboard 200 in 482ms (next.js: 98ms, proxy.ts: 36ms, application-code: 348ms)
+✓ Compiled in 8ms
+ GET /api/auth/session 200 in 353ms (next.js: 225ms, proxy.ts: 61ms, application-code: 67ms)
+ GET /dashboard 200 in 367ms (next.js: 67ms, proxy.ts: 48ms, application-code: 252ms)
+✓ Compiled in 9ms
+ GET /api/auth/session 200 in 2.2s (next.js: 27ms, proxy.ts: 34ms, application-code: 2.1s)
+ GET /api/dashboard 200 in 2.3s (next.js: 2.2s, proxy.ts: 20ms, application-code: 108ms)
+ GET /api/notifications?pageSize=20 200 in 2.6s (next.js: 2.1s, proxy.ts: 66ms, application-code: 431ms)
+ GET /dashboard 200 in 5.0s (next.js: 3.8s, proxy.ts: 23ms, application-code: 1201ms)
+✓ Compiled in 24ms
+ GET /api/auth/session 200 in 383ms (next.js: 68ms, proxy.ts: 33ms, application-code: 282ms)
+ GET /dashboard 200 in 381ms (next.js: 74ms, proxy.ts: 32ms, application-code: 276ms)
+ POST /api/presence 200 in 3.9s (next.js: 1838ms, proxy.ts: 54ms, application-code: 1965ms)
+✓ Compiled in 36ms
+ GET /api/auth/session 200 in 478ms (next.js: 71ms, proxy.ts: 48ms, application-code: 359ms)
+ GET /dashboard 200 in 462ms (next.js: 86ms, proxy.ts: 35ms, application-code: 340ms)
+✓ Compiled in 24ms
+ POST /api/presence 200 in 2.5s (next.js: 129ms, proxy.ts: 43ms, application-code: 2.3s)
+ GET /api/auth/session 200 in 380ms (next.js: 232ms, proxy.ts: 36ms, application-code: 112ms)
+ GET /dashboard 200 in 434ms (next.js: 75ms, proxy.ts: 40ms, application-code: 320ms)
+✓ Compiled in 10ms
+ POST /api/presence 200 in 2.9s (next.js: 105ms, proxy.ts: 43ms, application-code: 2.8s)
+ GET /api/auth/session 200 in 871ms (next.js: 48ms, proxy.ts: 33ms, application-code: 791ms)
+ GET /dashboard 200 in 874ms (next.js: 38ms, proxy.ts: 56ms, application-code: 780ms)
+✓ Compiled in 6ms
+ GET /api/auth/session 200 in 436ms (next.js: 52ms, proxy.ts: 28ms, application-code: 356ms)
+ GET /dashboard 200 in 404ms (next.js: 48ms, proxy.ts: 41ms, application-code: 315ms)
+✓ Compiled in 9ms
+ GET /dashboard 200 in 279ms (next.js: 38ms, proxy.ts: 37ms, application-code: 203ms)
+ GET /api/auth/session 200 in 314ms (next.js: 30ms, proxy.ts: 53ms, application-code: 231ms)
+✓ Compiled in 13ms
+ GET /api/auth/session 200 in 349ms (next.js: 33ms, proxy.ts: 55ms, application-code: 261ms)
+ GET /dashboard 200 in 346ms (next.js: 42ms, proxy.ts: 61ms, application-code: 243ms)
+✓ Compiled in 25ms
+ GET /api/auth/session 200 in 380ms (next.js: 48ms, proxy.ts: 40ms, application-code: 293ms)
+ GET /dashboard 200 in 381ms (next.js: 94ms, proxy.ts: 54ms, application-code: 233ms)
+✓ Compiled in 9ms
+ GET /dashboard 200 in 466ms (next.js: 99ms, proxy.ts: 39ms, application-code: 328ms)
+ GET /api/auth/session 200 in 490ms (next.js: 60ms, proxy.ts: 37ms, application-code: 393ms)
+✓ Compiled in 15ms
+ GET /dashboard 200 in 207ms (next.js: 41ms, proxy.ts: 24ms, application-code: 142ms)
+ GET /api/auth/session 200 in 315ms (next.js: 56ms, proxy.ts: 74ms, application-code: 185ms)
+✓ Compiled in 23ms
+ GET /dashboard 200 in 280ms (next.js: 60ms, proxy.ts: 43ms, application-code: 177ms)
+ GET /api/auth/session 200 in 273ms (next.js: 178ms, proxy.ts: 43ms, application-code: 52ms)
+✓ Compiled in 9ms
+ GET /dashboard 200 in 180ms (next.js: 32ms, proxy.ts: 37ms, application-code: 111ms)
+ GET /api/auth/session 200 in 177ms (next.js: 15ms, proxy.ts: 33ms, application-code: 130ms)
+✓ Compiled in 6ms
+ GET /dashboard 200 in 393ms (next.js: 55ms, proxy.ts: 26ms, application-code: 312ms)
+✓ Compiled in 9ms
+ GET /api/auth/session 200 in 216ms (next.js: 16ms, proxy.ts: 28ms, application-code: 172ms)
+ GET /dashboard 200 in 235ms (next.js: 41ms, proxy.ts: 32ms, application-code: 162ms)
+✓ Compiled in 7ms
+ GET /dashboard 200 in 236ms (next.js: 33ms, proxy.ts: 34ms, application-code: 169ms)
+ GET /api/auth/session 200 in 235ms (next.js: 15ms, proxy.ts: 33ms, application-code: 188ms)
+✓ Compiled in 13ms
+ GET /dashboard 200 in 300ms (next.js: 72ms, proxy.ts: 33ms, application-code: 195ms)
+ GET /api/auth/session 200 in 287ms (next.js: 205ms, proxy.ts: 27ms, application-code: 54ms)
+✓ Compiled in 11ms
+ GET /api/auth/session 200 in 421ms (next.js: 202ms, proxy.ts: 61ms, application-code: 158ms)
+ GET /dashboard 200 in 509ms (next.js: 98ms, proxy.ts: 32ms, application-code: 379ms)
+✓ Compiled in 13ms
+ GET /dashboard 200 in 319ms (next.js: 74ms, proxy.ts: 50ms, application-code: 196ms)
+ GET /api/auth/session 200 in 352ms (next.js: 31ms, proxy.ts: 52ms, application-code: 268ms)
+✓ Compiled in 18ms
+ GET /api/auth/session 200 in 369ms (next.js: 51ms, proxy.ts: 33ms, application-code: 285ms)
+ GET /dashboard 200 in 551ms (next.js: 32ms, proxy.ts: 50ms, application-code: 468ms)
+✓ Compiled in 17ms
+ GET /dashboard 200 in 302ms (next.js: 46ms, proxy.ts: 27ms, application-code: 230ms)
+ GET /api/auth/session 200 in 281ms (next.js: 180ms, proxy.ts: 20ms, application-code: 81ms)
+✓ Compiled in 17ms
+ GET /dashboard 200 in 377ms (next.js: 48ms, proxy.ts: 33ms, application-code: 296ms)
+ GET /api/auth/session 200 in 362ms (next.js: 216ms, proxy.ts: 29ms, application-code: 117ms)
+✓ Compiled in 18ms
+ GET /dashboard 200 in 292ms (next.js: 41ms, proxy.ts: 62ms, application-code: 189ms)
+ GET /api/auth/session 200 in 320ms (next.js: 28ms, proxy.ts: 69ms, application-code: 223ms)
+✓ Compiled in 14ms
+ GET /dashboard 200 in 229ms (next.js: 49ms, proxy.ts: 32ms, application-code: 149ms)
+ GET /api/auth/session 200 in 222ms (next.js: 19ms, proxy.ts: 22ms, application-code: 180ms)
+✓ Compiled in 8ms
+ GET /dashboard 200 in 212ms (next.js: 35ms, proxy.ts: 30ms, application-code: 148ms)
+ GET /api/auth/session 200 in 214ms (next.js: 19ms, proxy.ts: 29ms, application-code: 165ms)
+✓ Compiled in 7ms
+ GET /api/auth/session 200 in 192ms (next.js: 126ms, proxy.ts: 40ms, application-code: 26ms)
+ GET /dashboard 200 in 261ms (next.js: 54ms, proxy.ts: 24ms, application-code: 183ms)
+✓ Compiled in 9ms
+ GET /dashboard 200 in 268ms (next.js: 69ms, proxy.ts: 36ms, application-code: 162ms)
+ GET /api/auth/session 200 in 266ms (next.js: 34ms, proxy.ts: 34ms, application-code: 198ms)
+✓ Compiled in 5ms
+ GET /dashboard 200 in 201ms (next.js: 35ms, proxy.ts: 29ms, application-code: 137ms)
+ GET /api/auth/session 200 in 190ms (next.js: 126ms, proxy.ts: 22ms, application-code: 41ms)
+✓ Compiled in 9ms
+ GET /dashboard 200 in 261ms (next.js: 58ms, proxy.ts: 24ms, application-code: 179ms)
+✓ Compiled in 6ms
+ GET /dashboard 200 in 255ms (next.js: 49ms, proxy.ts: 20ms, application-code: 185ms)
+ GET /api/auth/session 200 in 224ms (next.js: 36ms, proxy.ts: 171ms, application-code: 17ms)
+✓ Compiled in 8ms
+ GET /dashboard 200 in 201ms (next.js: 60ms, proxy.ts: 26ms, application-code: 115ms)
+ GET /api/auth/session 200 in 225ms (next.js: 28ms, proxy.ts: 28ms, application-code: 169ms)
+✓ Compiled in 9ms
+ GET /api/auth/session 200 in 299ms (next.js: 206ms, proxy.ts: 41ms, application-code: 53ms)
+ GET /dashboard 200 in 331ms (next.js: 48ms, proxy.ts: 51ms, application-code: 232ms)
+✓ Compiled in 10ms
+ GET /api/auth/session 200 in 182ms (next.js: 116ms, proxy.ts: 31ms, application-code: 35ms)
+ GET /dashboard 200 in 208ms (next.js: 41ms, proxy.ts: 39ms, application-code: 128ms)
+✓ Compiled in 10ms
+ GET /dashboard 200 in 306ms (next.js: 38ms, proxy.ts: 33ms, application-code: 235ms)
+ GET /api/auth/session 200 in 293ms (next.js: 181ms, proxy.ts: 27ms, application-code: 85ms)
+✓ Compiled in 7ms
+ GET /dashboard 200 in 198ms (next.js: 40ms, proxy.ts: 22ms, application-code: 137ms)
+ GET /api/auth/session 200 in 175ms (next.js: 123ms, proxy.ts: 22ms, application-code: 30ms)
+✓ Compiled in 8ms
+ GET /dashboard 200 in 197ms (next.js: 38ms, proxy.ts: 43ms, application-code: 115ms)
+ GET /api/auth/session 200 in 216ms (next.js: 27ms, proxy.ts: 37ms, application-code: 152ms)
+✓ Compiled in 10ms
+ GET /api/auth/session 200 in 435ms (next.js: 85ms, proxy.ts: 54ms, application-code: 296ms)
+ GET /dashboard 200 in 415ms (next.js: 90ms, proxy.ts: 60ms, application-code: 265ms)
+✓ Compiled in 8ms
+ GET /dashboard 200 in 176ms (next.js: 28ms, proxy.ts: 23ms, application-code: 125ms)
+ GET /api/auth/session 200 in 200ms (next.js: 24ms, proxy.ts: 30ms, application-code: 146ms)
+✓ Compiled in 13ms
+ GET /dashboard 200 in 246ms (next.js: 58ms, proxy.ts: 47ms, application-code: 141ms)
+ GET /api/auth/session 200 in 232ms (next.js: 33ms, proxy.ts: 35ms, application-code: 164ms)
+✓ Compiled in 5ms
+ GET /dashboard 200 in 202ms (next.js: 36ms, proxy.ts: 32ms, application-code: 134ms)
+ GET /api/auth/session 200 in 228ms (next.js: 33ms, proxy.ts: 32ms, application-code: 163ms)
+✓ Compiled in 8ms
+ GET /dashboard 200 in 504ms (next.js: 193ms, proxy.ts: 57ms, application-code: 254ms)
+ GET /api/auth/session 200 in 514ms (next.js: 128ms, proxy.ts: 56ms, application-code: 329ms)
+✓ Compiled in 6ms
+ GET /api/auth/session 200 in 336ms (next.js: 15ms, proxy.ts: 20ms, application-code: 301ms)
+ GET /dashboard 200 in 293ms (next.js: 35ms, proxy.ts: 25ms, application-code: 232ms)
+✓ Compiled in 10ms
+ GET /dashboard 200 in 252ms (next.js: 46ms, proxy.ts: 39ms, application-code: 167ms)
+ GET /api/auth/session 200 in 265ms (next.js: 34ms, proxy.ts: 37ms, application-code: 193ms)
+✓ Compiled in 6ms
+ GET /dashboard 200 in 207ms (next.js: 32ms, proxy.ts: 34ms, application-code: 141ms)
+ GET /api/auth/session 200 in 211ms (next.js: 16ms, proxy.ts: 32ms, application-code: 163ms)
+✓ Compiled in 7ms
+ GET /dashboard 200 in 256ms (next.js: 44ms, proxy.ts: 27ms, application-code: 184ms)
+ GET /api/auth/session 200 in 250ms (next.js: 143ms, proxy.ts: 24ms, application-code: 84ms)
+✓ Compiled in 7ms
+ GET /dashboard 200 in 214ms (next.js: 44ms, proxy.ts: 45ms, application-code: 125ms)
+ GET /api/auth/session 200 in 245ms (next.js: 39ms, proxy.ts: 43ms, application-code: 163ms)
+✓ Compiled in 9ms
+ GET /dashboard 200 in 222ms (next.js: 22ms, proxy.ts: 24ms, application-code: 176ms)
+✓ Compiled in 15ms
+ GET /dashboard 200 in 249ms (next.js: 38ms, proxy.ts: 43ms, application-code: 167ms)
+ GET /api/auth/session 200 in 262ms (next.js: 25ms, proxy.ts: 43ms, application-code: 193ms)
+✓ Compiled in 5ms
+ GET /dashboard 200 in 223ms (next.js: 38ms, proxy.ts: 43ms, application-code: 142ms)
+ GET /api/auth/session 200 in 237ms (next.js: 26ms, proxy.ts: 44ms, application-code: 167ms)
+✓ Compiled in 11ms
+ GET /dashboard 200 in 376ms (next.js: 57ms, proxy.ts: 61ms, application-code: 258ms)
+ GET /api/auth/session 200 in 431ms (next.js: 59ms, proxy.ts: 39ms, application-code: 333ms)
+✓ Compiled in 26ms
+ GET /api/auth/session 200 in 360ms (next.js: 26ms, proxy.ts: 34ms, application-code: 300ms)
+ GET /dashboard 200 in 417ms (next.js: 53ms, proxy.ts: 35ms, application-code: 328ms)
+✓ Compiled in 116ms
+ GET /dashboard 200 in 319ms (next.js: 53ms, proxy.ts: 34ms, application-code: 232ms)
+ GET /api/auth/session 200 in 1088ms (next.js: 36ms, proxy.ts: 23ms, application-code: 1029ms)
+✓ Compiled in 10ms
+ GET /dashboard 200 in 282ms (next.js: 49ms, proxy.ts: 32ms, application-code: 202ms)
+ GET /api/auth/session 200 in 272ms (next.js: 162ms, proxy.ts: 36ms, application-code: 74ms)
+✓ Compiled in 8ms
+ GET /dashboard 200 in 243ms (next.js: 39ms, proxy.ts: 32ms, application-code: 172ms)
+ GET /api/auth/session 200 in 269ms (next.js: 38ms, proxy.ts: 37ms, application-code: 194ms)
+✓ Compiled in 15ms
+ GET /api/auth/session 200 in 444ms (next.js: 52ms, proxy.ts: 76ms, application-code: 315ms)
+ GET /dashboard 200 in 580ms (next.js: 99ms, proxy.ts: 59ms, application-code: 422ms)
+✓ Compiled in 72ms
+ GET /api/auth/session 200 in 490ms (next.js: 26ms, proxy.ts: 23ms, application-code: 441ms)
+ GET /dashboard 200 in 413ms (next.js: 44ms, proxy.ts: 22ms, application-code: 347ms)
+✓ Compiled in 31ms
+ GET /dashboard 200 in 281ms (next.js: 84ms, proxy.ts: 33ms, application-code: 164ms)
+ GET /api/auth/session 200 in 284ms (next.js: 54ms, proxy.ts: 33ms, application-code: 197ms)
+✓ Compiled in 33ms
+ GET /api/auth/session 200 in 510ms (next.js: 24ms, proxy.ts: 20ms, application-code: 466ms)
+ GET /dashboard 200 in 768ms (next.js: 55ms, proxy.ts: 97ms, application-code: 616ms)
+✓ Compiled in 8ms
+ GET /api/auth/session 200 in 754ms (next.js: 223ms, proxy.ts: 170ms, application-code: 360ms)
+ GET /dashboard 200 in 538ms (next.js: 67ms, proxy.ts: 105ms, application-code: 365ms)
+✓ Compiled in 122ms
+ GET /dashboard 200 in 453ms (next.js: 39ms, proxy.ts: 21ms, application-code: 394ms)
+✓ Compiled in 167ms
+ GET /dashboard 200 in 319ms (next.js: 45ms, proxy.ts: 25ms, application-code: 249ms)
+ GET /api/auth/session 200 in 501ms (next.js: 132ms, proxy.ts: 29ms, application-code: 340ms)
+✓ Compiled in 11ms
+ GET /dashboard 200 in 226ms (next.js: 40ms, proxy.ts: 40ms, application-code: 146ms)
+ GET /api/auth/session 200 in 224ms (next.js: 20ms, proxy.ts: 34ms, application-code: 169ms)
+✓ Compiled in 9ms
+ GET /dashboard 200 in 332ms (next.js: 109ms, proxy.ts: 44ms, application-code: 179ms)
+ GET /api/auth/session 200 in 314ms (next.js: 199ms, proxy.ts: 74ms, application-code: 41ms)
+✓ Compiled in 13ms
+ GET /dashboard 200 in 291ms (next.js: 56ms, proxy.ts: 36ms, application-code: 199ms)
+ GET /api/auth/session 200 in 313ms (next.js: 25ms, proxy.ts: 40ms, application-code: 248ms)
+✓ Compiled in 10ms
+ GET /dashboard 200 in 674ms (next.js: 99ms, proxy.ts: 32ms, application-code: 543ms)
+✓ Compiled in 11ms
+ GET /dashboard 200 in 464ms (next.js: 127ms, proxy.ts: 73ms, application-code: 265ms)
+ GET /api/auth/session 200 in 491ms (next.js: 132ms, proxy.ts: 61ms, application-code: 297ms)
+✓ Compiled in 8ms
+ GET /dashboard 200 in 201ms (next.js: 25ms, proxy.ts: 51ms, application-code: 126ms)
+ GET /api/auth/session 200 in 175ms (next.js: 116ms, proxy.ts: 23ms, application-code: 36ms)
+✓ Compiled in 10ms
+ GET /dashboard 200 in 213ms (next.js: 32ms, proxy.ts: 39ms, application-code: 142ms)
+ GET /api/auth/session 200 in 196ms (next.js: 127ms, proxy.ts: 27ms, application-code: 43ms)
+✓ Compiled in 7ms
+ GET /api/auth/session 200 in 220ms (next.js: 163ms, proxy.ts: 29ms, application-code: 29ms)
+ GET /dashboard 200 in 277ms (next.js: 50ms, proxy.ts: 31ms, application-code: 196ms)
+✓ Compiled in 8ms
+ GET /dashboard 200 in 305ms (next.js: 49ms, proxy.ts: 99ms, application-code: 157ms)
+ GET /api/auth/session 200 in 252ms (next.js: 136ms, proxy.ts: 56ms, application-code: 60ms)
+✓ Compiled in 9ms
+ GET /dashboard 200 in 335ms (next.js: 75ms, proxy.ts: 46ms, application-code: 214ms)
+ GET /api/auth/session 200 in 288ms (next.js: 208ms, proxy.ts: 35ms, application-code: 45ms)
+✓ Compiled in 8ms
+ GET /dashboard 200 in 269ms (next.js: 55ms, proxy.ts: 44ms, application-code: 170ms)
+ GET /api/auth/session 200 in 252ms (next.js: 160ms, proxy.ts: 37ms, application-code: 55ms)
+✓ Compiled in 11ms
+ GET /api/auth/session 200 in 343ms (next.js: 27ms, proxy.ts: 19ms, application-code: 297ms)
+ GET /dashboard 200 in 315ms (next.js: 34ms, proxy.ts: 45ms, application-code: 236ms)
+✓ Compiled in 13ms
+ GET /dashboard 200 in 291ms (next.js: 57ms, proxy.ts: 31ms, application-code: 202ms)
+ GET /api/auth/session 200 in 343ms (next.js: 37ms, proxy.ts: 41ms, application-code: 265ms)
+✓ Compiled in 18ms
+ GET /api/auth/session 200 in 375ms (next.js: 220ms, proxy.ts: 50ms, application-code: 106ms)
+ GET /dashboard 200 in 462ms (next.js: 60ms, proxy.ts: 75ms, application-code: 327ms)
+✓ Compiled in 13ms
+ GET /dashboard 200 in 286ms (next.js: 39ms, proxy.ts: 44ms, application-code: 203ms)
+ GET /api/auth/session 200 in 325ms (next.js: 34ms, proxy.ts: 26ms, application-code: 265ms)
+✓ Compiled in 18ms
+ GET /api/auth/session 200 in 384ms (next.js: 30ms, proxy.ts: 40ms, application-code: 313ms)
+ GET /dashboard 200 in 401ms (next.js: 44ms, proxy.ts: 39ms, application-code: 319ms)
+✓ Compiled in 14ms
+ GET /dashboard 200 in 220ms (next.js: 29ms, proxy.ts: 28ms, application-code: 163ms)
+ GET /api/auth/session 200 in 285ms (next.js: 16ms, proxy.ts: 19ms, application-code: 250ms)
+✓ Compiled in 7ms
+ GET /api/auth/session 200 in 441ms (next.js: 38ms, proxy.ts: 46ms, application-code: 357ms)
+ GET /dashboard 200 in 418ms (next.js: 47ms, proxy.ts: 34ms, application-code: 337ms)
+✓ Compiled in 9ms
+ GET /dashboard 200 in 298ms (next.js: 49ms, proxy.ts: 35ms, application-code: 214ms)
+ GET /api/auth/session 200 in 271ms (next.js: 182ms, proxy.ts: 29ms, application-code: 59ms)
+✓ Compiled in 9ms
+ GET /api/auth/session 200 in 404ms (next.js: 41ms, proxy.ts: 44ms, application-code: 319ms)
+ GET /dashboard 200 in 514ms (next.js: 50ms, proxy.ts: 50ms, application-code: 415ms)
+✓ Compiled in 30ms
+ GET /dashboard 200 in 266ms (next.js: 76ms, proxy.ts: 39ms, application-code: 151ms)
+ GET /api/auth/session 200 in 251ms (next.js: 32ms, proxy.ts: 37ms, application-code: 182ms)
+✓ Compiled in 15ms
+ GET /dashboard 200 in 306ms (next.js: 54ms, proxy.ts: 48ms, application-code: 204ms)
+ GET /api/auth/session 200 in 300ms (next.js: 214ms, proxy.ts: 38ms, application-code: 48ms)
+✓ Compiled in 18ms
+ GET /dashboard 200 in 327ms (next.js: 63ms, proxy.ts: 63ms, application-code: 201ms)
+ GET /api/auth/session 200 in 312ms (next.js: 201ms, proxy.ts: 63ms, application-code: 48ms)
+✓ Compiled in 26ms
+ GET /dashboard 200 in 250ms (next.js: 50ms, proxy.ts: 35ms, application-code: 165ms)
+ GET /api/auth/session 200 in 290ms (next.js: 42ms, proxy.ts: 45ms, application-code: 204ms)
+✓ Compiled in 14ms
+ GET /api/auth/session 200 in 257ms (next.js: 200ms, proxy.ts: 30ms, application-code: 27ms)
+ GET /dashboard 200 in 325ms (next.js: 44ms, proxy.ts: 26ms, application-code: 256ms)
+✓ Compiled in 15ms
+ GET /dashboard 200 in 261ms (next.js: 46ms, proxy.ts: 56ms, application-code: 159ms)
+ GET /api/auth/session 200 in 294ms (next.js: 31ms, proxy.ts: 76ms, application-code: 187ms)
+✓ Compiled in 8ms
+ GET /dashboard 200 in 302ms (next.js: 50ms, proxy.ts: 52ms, application-code: 201ms)
+ GET /api/auth/session 200 in 282ms (next.js: 190ms, proxy.ts: 35ms, application-code: 56ms)
+✓ Compiled in 26ms
+ GET /dashboard 200 in 309ms (next.js: 72ms, proxy.ts: 25ms, application-code: 212ms)
+ GET /api/auth/session 200 in 284ms (next.js: 212ms, proxy.ts: 21ms, application-code: 51ms)
+✓ Compiled in 67ms
+ GET /api/auth/session 200 in 400ms (next.js: 29ms, proxy.ts: 26ms, application-code: 345ms)
+ GET /dashboard 200 in 376ms (next.js: 49ms, proxy.ts: 29ms, application-code: 299ms)
+✓ Compiled in 94ms
+ GET /dashboard 200 in 326ms (next.js: 39ms, proxy.ts: 27ms, application-code: 260ms)
+ GET /api/auth/session 200 in 438ms (next.js: 47ms, proxy.ts: 25ms, application-code: 367ms)
+✓ Compiled in 10ms
+ GET /dashboard 200 in 297ms (next.js: 58ms, proxy.ts: 29ms, application-code: 211ms)
+ GET /api/auth/session 200 in 277ms (next.js: 185ms, proxy.ts: 32ms, application-code: 59ms)
+✓ Compiled in 9ms
+ GET /dashboard 200 in 254ms (next.js: 46ms, proxy.ts: 49ms, application-code: 159ms)
+ GET /api/auth/session 200 in 317ms (next.js: 45ms, proxy.ts: 43ms, application-code: 230ms)
+✓ Compiled in 8ms
+ GET /api/auth/session 200 in 258ms (next.js: 190ms, proxy.ts: 34ms, application-code: 33ms)
+ GET /dashboard 200 in 309ms (next.js: 56ms, proxy.ts: 31ms, application-code: 222ms)
+✓ Compiled in 10ms
+ GET /dashboard 200 in 286ms (next.js: 50ms, proxy.ts: 50ms, application-code: 185ms)
+ GET /api/auth/session 200 in 267ms (next.js: 19ms, proxy.ts: 40ms, application-code: 207ms)
+✓ Compiled in 7ms
+ GET /dashboard 200 in 271ms (next.js: 51ms, proxy.ts: 40ms, application-code: 180ms)
+ GET /api/auth/session 200 in 267ms (next.js: 18ms, proxy.ts: 35ms, application-code: 214ms)
+✓ Compiled in 12ms
+ GET /api/auth/session 200 in 299ms (next.js: 30ms, proxy.ts: 40ms, application-code: 229ms)
+ GET /dashboard 200 in 310ms (next.js: 63ms, proxy.ts: 36ms, application-code: 212ms)
+✓ Compiled in 15ms
+ GET /dashboard 200 in 315ms (next.js: 51ms, proxy.ts: 57ms, application-code: 207ms)
+ GET /api/auth/session 200 in 326ms (next.js: 36ms, proxy.ts: 59ms, application-code: 231ms)
+✓ Compiled in 10ms
+ GET /api/auth/session 200 in 313ms (next.js: 20ms, proxy.ts: 43ms, application-code: 250ms)
+ GET /dashboard 200 in 319ms (next.js: 47ms, proxy.ts: 41ms, application-code: 232ms)
+✓ Compiled in 12ms
+ GET /dashboard 200 in 235ms (next.js: 50ms, proxy.ts: 37ms, application-code: 148ms)
+ GET /api/auth/session 200 in 240ms (next.js: 23ms, proxy.ts: 35ms, application-code: 181ms)
+✓ Compiled in 7ms
+ GET /dashboard 200 in 340ms (next.js: 81ms, proxy.ts: 23ms, application-code: 235ms)
+ GET /api/auth/session 200 in 318ms (next.js: 227ms, proxy.ts: 40ms, application-code: 51ms)
+✓ Compiled in 9ms
+ GET /api/auth/session 200 in 255ms (next.js: 169ms, proxy.ts: 31ms, application-code: 55ms)
+ GET /dashboard 200 in 282ms (next.js: 41ms, proxy.ts: 31ms, application-code: 210ms)
+✓ Compiled in 8ms
+ GET /api/auth/session 200 in 339ms (next.js: 228ms, proxy.ts: 36ms, application-code: 75ms)
+ GET /dashboard 200 in 414ms (next.js: 58ms, proxy.ts: 32ms, application-code: 324ms)
+✓ Compiled in 14ms
+ GET /dashboard 200 in 384ms (next.js: 65ms, proxy.ts: 23ms, application-code: 295ms)
+ GET /api/auth/session 200 in 426ms (next.js: 33ms, proxy.ts: 28ms, application-code: 364ms)
+✓ Compiled in 32ms
+ GET /dashboard 200 in 309ms (next.js: 50ms, proxy.ts: 61ms, application-code: 197ms)
+ GET /api/auth/session 200 in 441ms (next.js: 81ms, proxy.ts: 58ms, application-code: 301ms)
+✓ Compiled in 14ms
+ GET /dashboard 200 in 281ms (next.js: 43ms, proxy.ts: 39ms, application-code: 198ms)
+ GET /api/auth/session 200 in 273ms (next.js: 188ms, proxy.ts: 39ms, application-code: 46ms)
+✓ Compiled in 11ms
+ GET /dashboard 200 in 304ms (next.js: 68ms, proxy.ts: 38ms, application-code: 197ms)
+ GET /api/auth/session 200 in 273ms (next.js: 185ms, proxy.ts: 29ms, application-code: 59ms)

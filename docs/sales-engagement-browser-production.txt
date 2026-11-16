@@ -1,0 +1,10 @@
+PASS daily queue opens customer communication context
+PASS workspace has no horizontal page overflow at 1440px
+PASS workspace has no horizontal page overflow at 1280px
+PASS workspace has no horizontal page overflow at 768px
+PASS workspace has no horizontal page overflow at 390px
+PASS template editor shows persisted subject
+PASS sequence workspace renders on mobile
+PASS mailbox connections display honest disconnected states
+PASS no browser runtime errors: 
+9 browser checks passed.

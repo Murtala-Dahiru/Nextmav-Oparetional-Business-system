@@ -1,0 +1,2 @@
+{"journey":"sender insert request start to authenticated Supabase Realtime recipient callback","samples":20,"p50Ms":541,"p95Ms":1367,"maxMs":9519}
+PASS durable inbox reconciles after recipient disconnect

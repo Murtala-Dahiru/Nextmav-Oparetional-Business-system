@@ -1,0 +1,5 @@
+PASS Exact fixture organization and account verified before changes.
+PASS Fixture account banned, password randomized, sessions and refresh tokens revoked.
+PASS Fixture organization retired and profile disabled; last-owner membership retained to respect database integrity.
+PASS Audit-linked fixture records retained under the retired organization to preserve referential integrity.
+PASS Local fixture credentials removed. Existing customer data untouched.

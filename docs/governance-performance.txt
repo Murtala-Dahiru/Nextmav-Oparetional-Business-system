@@ -1,0 +1,1 @@
+PASS 50,000 synthetic rows, 50 matching records, GIN index selected, 0.145 ms PostgreSQL execution. Temporary-table query excludes network, RLS, application and concurrent writes.

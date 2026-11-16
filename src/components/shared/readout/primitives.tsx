@@ -85,28 +85,13 @@ export function Plate({
   return (
     <section
       className={cn(
-        'relative overflow-hidden rounded-xl bg-panel text-panel-fg shadow-e2',
+        'relative overflow-hidden rounded-xl bg-panel text-panel-fg',
         // A single hairline of light along the top edge. It is what stops a
         // large dark rectangle reading as a hole in the page.
         'before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-panel-line',
         className,
       )}
     >
-      {/*
-        One light source, top-left, at four per cent.
-
-        A flat fill this large reads as a printed block rather than a surface —
-        which is most of what "it looks like a wireframe" means when the type
-        and spacing are already right. The gradient is far too weak to be seen
-        as a gradient; what it does is stop the panel being the same colour in
-        the corner as it is in the middle. It is inert to the pointer and it is
-        the only decorative element on the page.
-      */}
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute -left-[10%] -top-[60%] h-[160%] w-[70%] rounded-full opacity-[0.055] blur-3xl"
-        style={{ background: 'radial-gradient(closest-side, #ffffff, transparent)' }}
-      />
       <div className="relative">{children}</div>
     </section>
   );
@@ -824,9 +809,9 @@ export function Band({
       <span className="text-[10.5px] font-semibold tabular-nums tracking-[0.1em] text-muted-foreground/50">
         {index}
       </span>
-      <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-foreground/70">
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-foreground">
         {title}
-      </span>
+      </h2>
       <span className="hidden truncate text-[11.5px] text-muted-foreground/75 sm:inline">
         {note}
       </span>

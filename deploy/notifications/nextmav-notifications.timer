@@ -1,0 +1,11 @@
+[Unit]
+Description=Check the NextMav delivery queue
+
+[Timer]
+OnBootSec=15s
+OnUnitInactiveSec=2s
+AccuracySec=500ms
+Unit=nextmav-notifications.service
+
+[Install]
+WantedBy=timers.target

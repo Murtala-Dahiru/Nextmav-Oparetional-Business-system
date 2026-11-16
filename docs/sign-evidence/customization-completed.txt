@@ -1,0 +1,16 @@
+TEST ONLY - CUSTOMER AND WITNESS
+Document customization acceptance. No commercial transaction.
+Customer signature
+Customer full name
+Customer date signed
+Witness full name
+Witness signature
+Witness date signed
+Contract effective date (entered)
+Customer intentional mark
+Zoë Customer Legal Name
+2026-11-07
+Jordan Witness Legal Name
+Witness intentional mark
+2026-11-07
+2026-12-01

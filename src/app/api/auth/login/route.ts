@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
 
     const { data: memberships } = await supabase
       .from('organization_members')
-      .select('id, organization_id, role, department_id, organizations(id, name, slug, currency, timezone, settings)')
+      .select('id, organization_id, role, department_id, organizations!organization_members_organization_id_fkey(id, name, slug, currency, timezone, settings)')
       .eq('user_id', data.user.id)
       .eq('is_active', true);
 

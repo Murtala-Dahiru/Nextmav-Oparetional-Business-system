@@ -26,11 +26,11 @@ import { useSessionPeek } from '@/components/marketing/use-session-peek';
  */
 
 const NAV = [
-  { label: 'Platform', href: '/features' },
+  { label: 'Product', href: '/features' },
   { label: 'Solutions', href: '/solutions' },
   { label: 'Pricing', href: '/pricing' },
   { label: 'Company', href: '/about' },
-  { label: 'Contact', href: '/contact' },
+  { label: 'Resources', href: '/docs' },
 ];
 
 export function PublicHeader() {
@@ -169,6 +169,7 @@ export function PublicHeader() {
         hidden={!open}
         className="nm-header-mobile"
       >
+        <button type="button" className="nm-header-dialog-close" onClick={() => { setOpen(false); triggerRef.current?.focus(); }}>Close menu</button>
         <nav aria-label="Mobile" className="nm-header-mobile-nav">
           {NAV.map((item) => (
             <Link key={item.href} href={item.href} className="nm-header-mobile-link">

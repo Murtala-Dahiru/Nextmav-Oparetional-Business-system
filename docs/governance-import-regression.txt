@@ -1,0 +1,94 @@
+
+> nextjs_tailwind_shadcn_ts@0.2.0 test:import
+> tsx scripts/import-sheet.test.mts
+
+
+  Import: spreadsheet reading and field mapping
+  ═════════════════════════════════════════════
+
+  1. CSV
+  ──────
+    PASS  columns are the header row
+    PASS  two data rows
+    PASS  values land in order
+    PASS  a semicolon file is not one column
+    PASS  tab-delimited is read
+    PASS  quoted commas stay inside the field
+    PASS  doubled quotes unescape
+    PASS  a byte-order mark does not become part of the first heading
+    PASS  blank lines are not records
+    PASS  an empty file is refused with a sentence
+    PASS  and it is a SheetError
+
+  2. XLSX
+  ───────
+    PASS  shared strings resolve
+    PASS  the data row reads
+    PASS  the format is reported
+    PASS  the workbook decides which sheet is first, not the file name
+    PASS  the sheet name comes back
+    PASS  an omitted cell keeps its column
+    PASS  a plain number stays a number
+    PASS  a date-formatted number becomes a date
+    PASS  inline strings are read and unescaped
+    PASS  an .xls is refused with the fix, not a stack trace
+
+  3. Column mapping
+  ─────────────────
+    PASS  Business Name is the company
+    PASS  Contact Person is the person
+    PASS  Email Address is the email
+    PASS  Mobile is the phone
+    PASS  Web Address is the website
+    PASS  Sector is the industry
+    PASS  a heading the values agree with is certain
+    PASS  a column of addresses is recognised without a heading
+    PASS  and it is not claimed as certain
+    PASS  a column of names with no heading is left alone
+    PASS  the exact heading wins the field
+    PASS  and the runner-up is not mapped to the same field
+    PASS  split name columns beat a combined one
+    PASS  first name is mapped
+    PASS  last name is mapped
+
+  4. Reading values
+  ─────────────────
+    PASS  plain integer
+    PASS  thousand separators
+    PASS  a currency symbol is ignored
+    PASS  European decimal comma
+    PASS  a bare comma with three digits is grouping
+    PASS  a bare comma with two digits is a decimal
+    PASS  a magnitude suffix
+    PASS  parentheses are negative
+    PASS  unreadable is null, not zero
+    PASS  empty is null
+    PASS  a two-part name splits
+    PASS  a surname-first name splits
+    PASS  a single word is a first name
+    PASS  a three-part name keeps the tail together
+    PASS  Ltd and Limited normalise together
+    PASS  punctuation does not matter
+    PASS  an ampersand spells out
+    PASS  a suffix alone survives
+    PASS  a bare host is a domain
+    PASS  www is dropped
+    PASS  nonsense is no domain
+
+  5. Shaping a row
+  ────────────────
+    PASS  the company is shaped
+    PASS  the name is split
+    PASS  the value is read
+    PASS  nothing is wrong with it
+    PASS  a bad address is not saved
+    PASS  and it is reported as a warning
+    PASS  an empty row is an error, not a silent skip
+    PASS  a company known only by its site is named from the domain
+    PASS  and no person is invented
+    PASS  a status is matched case-insensitively
+    PASS  an unknown status falls back to new
+    PASS  and says so
+
+  69 passed, 0 failed
+

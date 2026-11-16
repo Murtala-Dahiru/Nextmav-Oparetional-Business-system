@@ -1,0 +1,1 @@
+PASS mailbox credential binding, OAuth entropy, provider URL restrictions, ambiguous matching, rate limits and unknown-send outcome contracts. No provider connection or delivery was tested.

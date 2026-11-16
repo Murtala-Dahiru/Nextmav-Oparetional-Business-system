@@ -1,0 +1,12 @@
+▲ Next.js 16.4.3 (webpack)
+- Environments: .env
+✓ Running next.config.ts took 278ms
+
+> Build error occurred
+Error: EBUSY: resource busy or locked, rmdir 'C:\Users\murta\Downloads\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\.next-engagement-mail\standalone'
+    at ignore-listed frames {
+  errno: -4082,
+  code: 'EBUSY',
+  syscall: 'rmdir',
+  path: 'C:\\Users\\murta\\Downloads\\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\\.next-engagement-mail\\standalone'
+}

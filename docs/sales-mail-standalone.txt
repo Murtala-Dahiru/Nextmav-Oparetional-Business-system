@@ -1,0 +1,4 @@
+[standalone] copied .\node_modules\@img\sharp-win32-x64 -> .\.next-engagement-mail\standalone\node_modules\@img\sharp-win32-x64
+[standalone] copied .\.next-engagement-mail\static -> .\.next-engagement-mail\standalone\.next-engagement-mail\static
+[standalone] copied .\public -> .\.next-engagement-mail\standalone\public
+[standalone] ready — run: node .next-engagement-mail/standalone/server.js

@@ -1,0 +1,15 @@
+PASS commercial approval executes through existing durable worker
+PASS commercial workflow creates task and notification
+PASS automation task links actual customer
+PASS repeat worker does not duplicate completed commercial effects
+PASS renewal reminder configuration is durable and idempotent
+PASS reminder dates match explicit expiration offsets
+PASS non-member RLS denies crm_commercial_records
+PASS non-member RLS denies crm_commercial_versions
+PASS non-member RLS denies crm_commercial_files
+PASS non-member RLS denies crm_commercial_obligations
+PASS non-member RLS denies crm_commercial_history
+PASS private storage denies non-member reads
+PASS even owner cannot delete immutable commercial evidence
+PASS inclusive pricing extracts tax without inflating total
+14 automation and security assertions passed.

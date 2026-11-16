@@ -47,7 +47,10 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
   // `.tmp-api`, `.zscripts`, `mini-services` and `tool-results` hold throwaway
   // scratch scripts from earlier sessions, not application code.
   ignores: [
-    "node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts",
+    "public/sign/pdf.worker.min.mjs", // Unmodified, vendored PDF.js distribution; lint source integration instead.
+    "node_modules/**", ".next/**", ".next-*/**", "out/**", "build/**", "next-env.d.ts",
+    // Generated visual reviews and vendored agent tools are not application source.
+    ".design-review/**", ".claude/**",
     "examples/**", "skills",
     ".tmp-api/**", ".zscripts/**", "mini-services/**", "tool-results/**",
     "download/**", "db/**", "*.mjs", "py-server.py",

@@ -1,7 +1,10 @@
+import { accountSignals } from '@/lib/crm/account-signals';
 import { authorize, pgError } from '@/lib/auth-context';
-import { success, error } from '@/lib/api-response';
+import { success, error, serverError } from '@/lib/api-response';
 import { can } from '@/lib/permissions';
+import { ownedScope } from '@/lib/supabase/crm-scope';
 import type { ModuleId } from '@/lib/constants';
+import { dateIn } from '@/lib/org-time';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -43,10 +46,10 @@ import type { ModuleId } from '@/lib/constants';
 
 type Params = { params: Promise<{ id: string }> };
 
-const CONTACT_SELECT = 'id, first_name, last_name, email, phone, job_title, is_active';
+const CONTACT_SELECT = 'id, first_name, last_name, email, phone, job_title, is_active, crm_profile';
 
 const DEAL_SELECT =
-  'id, name, stage, value, probability, expected_close, closed_at, ' +
+  'id, name, stage, value, currency, probability, expected_close, closed_at, ' +
   'owner:organization_members!deals_owner_id_fkey(' +
   'id, profiles!organization_members_user_id_fkey(full_name, avatar_url))';
 
@@ -74,7 +77,7 @@ function actor(row: any) {
   };
 }
 
-export async function GET(_req: Request, { params }: Params) {
+async function loadCompany(_req: Request, { params }: Params) {
   const ctx = await authorize('crm', 'view');
   if (ctx instanceof Response) return ctx;
 
@@ -85,7 +88,7 @@ export async function GET(_req: Request, { params }: Params) {
 
   const { data: company, error: companyError } = await ctx.supabase
     .from('companies')
-    .select('*, owner:organization_members!companies_owner_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url))')
+    .select('*, custom_values:crm_company_values, owner:organization_members!companies_owner_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url))')
     .eq('organization_id', orgId).eq('id', id).is('deleted_at', null)
     .maybeSingle();
 
@@ -99,27 +102,27 @@ export async function GET(_req: Request, { params }: Params) {
    * to a company. So the ticket query needs the contact ids, which makes this
    * two waves rather than one - the only sequential step in the endpoint.
    */
-  const { data: contacts } = await ctx.supabase
+  const { data: contacts, error: contactsError } = await ctx.supabase
     .from('contacts').select(CONTACT_SELECT)
     .eq('organization_id', orgId).eq('company_id', id).is('deleted_at', null)
     .order('first_name', { ascending: true }).limit(50);
+  if (contactsError) return pgError(contactsError);
 
-  const contactIds = (contacts ?? []).map((c: any) => c.id);
-
-  const { data: projectRows } = sees('projects')
+  const { data: projectRows, error: projectsError } = sees('projects')
     ? await ctx.supabase
-        .from('projects')
+        .from('crm_visible_projects')
         .select('id, name, status, priority, start_date, end_date, budget')
         .eq('organization_id', orgId).eq('client_company_id', id).is('deleted_at', null)
         .order('created_at', { ascending: false }).limit(25)
-    : { data: [] as any[] };
+    : { data: [] as any[], error: null };
+  if (projectsError) return pgError(projectsError);
 
   const projectIds = (projectRows ?? []).map((p: any) => p.id);
 
-  const [deals, invoices, tickets, health, meetings, activities, timeline] = await Promise.all([
-    ctx.supabase.from('deals').select(DEAL_SELECT)
+  const [deals, invoices, tickets, health, meetings, activities, timeline, totals, commitments, accountTeam] = await Promise.all([
+    ownedScope(ctx.supabase.from('deals').select(DEAL_SELECT)
       .eq('organization_id', orgId).eq('company_id', id).is('deleted_at', null)
-      .order('created_at', { ascending: false }).limit(25),
+      .order('created_at', { ascending: false }).limit(25), ctx),
 
     sees('finance')
       ? ctx.supabase.from('invoices').select(INVOICE_SELECT)
@@ -127,9 +130,9 @@ export async function GET(_req: Request, { params }: Params) {
           .order('issue_date', { ascending: false }).limit(25)
       : none,
 
-    sees('support') && contactIds.length
-      ? ctx.supabase.from('support_tickets').select(TICKET_SELECT)
-          .eq('organization_id', orgId).in('contact_id', contactIds).is('deleted_at', null)
+    sees('support')
+      ? ctx.supabase.from('support_tickets').select(`${TICKET_SELECT}, contact:contacts!inner(company_id, organization_id, deleted_at)`)
+          .eq('organization_id', orgId).eq('contact.organization_id', orgId).eq('contact.company_id', id).is('contact.deleted_at', null).is('deleted_at', null)
           .order('created_at', { ascending: false }).limit(25)
       : none,
 
@@ -164,16 +167,26 @@ export async function GET(_req: Request, { params }: Params) {
      * history could contain no open follow-up at all, so "next action" would
      * read as empty on precisely the accounts that have one.
      */
-    ctx.supabase.from('crm_activities').select(ACTIVITY_SELECT)
-      .eq('organization_id', orgId).eq('company_id', id)
+    ctx.supabase.from('crm_visible_activities').select(ACTIVITY_SELECT)
+      .eq('organization_id', orgId).eq('account_company_id', id)
       .order('created_at', { ascending: false }).limit(50),
 
     // And the platform's record of what was changed, from the activity feed.
     ctx.supabase.from('activity_log')
       .select('id, module, action, title, created_at, member:organization_members!activity_log_member_id_fkey(profiles!organization_members_user_id_fkey(full_name, avatar_url))')
-      .eq('organization_id', orgId).eq('entity_id', id)
+      .eq('organization_id', orgId).eq('module','crm').eq('entity_id', id)
       .order('created_at', { ascending: false }).limit(20),
+    ctx.supabase.rpc('crm_customer_brief', { p_org: orgId, p_company: id, p_today: dateIn(new Date(), ctx.org.timezone) }),
+    ctx.supabase.from('crm_visible_activities').select(ACTIVITY_SELECT).eq('organization_id',orgId).eq('account_company_id',id).is('completed_at',null).not('due_at','is',null).order('due_at',{ascending:true}).limit(20),
+    company.account_team_ids?.length ? ctx.supabase.from('organization_members').select('id, profiles!organization_members_user_id_fkey(full_name)').eq('organization_id',orgId).in('id',company.account_team_ids) : none,
   ]);
+
+  for (const result of [deals, invoices, tickets, health, meetings, activities, timeline, totals, commitments, accountTeam]) {
+    if (result.error) {
+      if (result.error.code === 'PGRST202') return error('Customer reporting is awaiting the CRM database update.', 503, 'MIGRATION_REQUIRED');
+      return pgError(result.error);
+    }
+  }
 
   const healthById = new Map(
     ((health.data ?? []) as any[]).map(h => [h.project_id, h]),
@@ -196,43 +209,47 @@ export async function GET(_req: Request, { params }: Params) {
   const invoiceRows = (invoices.data ?? []) as any[];
   const ticketRows = (tickets.data ?? []) as any[];
 
-  const openDeals = dealRows.filter(d => !['closed_won', 'closed_lost'].includes(d.stage));
-  const outstanding = invoiceRows
-    .filter(i => i.status !== 'paid' && i.status !== 'cancelled')
-    .reduce((sum, i) => sum + (Number(i.total ?? 0) - Number(i.amount_paid ?? 0)), 0);
-  const today = new Date().toISOString().slice(0, 10);
+  const complete = totals.data;
+  const balances = sees('finance') ? complete.invoice_balances : [];
+  const localBalance = balances.find((balance: any) => balance.currency === ctx.org.currency);
 
   /**
    * The figures the header shows.
    *
-   * Computed here, from the same rows the panels below render, so the summary
-   * and the detail can never disagree - the failure mode that makes a customer
-   * screen untrustworthy the first time someone checks the arithmetic.
+   * Complete database aggregates; the related-record arrays remain previews.
    */
   const summary = {
-    contacts: (contacts ?? []).length,
-    openDeals: openDeals.length,
-    openDealValue: openDeals.reduce((s, d) => s + Number(d.value ?? 0), 0),
-    wonDealValue: dealRows
-      .filter(d => d.stage === 'closed_won')
-      .reduce((s, d) => s + Number(d.value ?? 0), 0),
-    activeProjects: projects.filter((p: any) => ['active', 'planning'].includes(p.status)).length,
-    projectsAtRisk: projects.filter((p: any) => p.is_at_risk).length,
-    outstandingInvoiced: outstanding,
-    overdueInvoices: invoiceRows.filter(
-      i => i.status !== 'paid' && i.status !== 'cancelled' && i.due_date && i.due_date < today,
-    ).length,
-    openTickets: ticketRows.filter(t => !['resolved', 'closed'].includes(t.status)).length,
+    contacts: complete.contacts,
+    lastContact: complete.last_contact,
+    nextFollowUp: complete.next_follow_up,
+    openDeals: complete.open_deals,
+    openDealValue: complete.open_deal_value,
+    wonDealValue: complete.won_deal_value,
+    activeProjects: complete.active_projects,
+    projectsAtRisk: complete.projects_at_risk,
+    outstandingInvoiced: localBalance?.outstanding ?? 0,
+    overdueInvoices: balances.reduce((sum: number, balance: any) => sum + Number(balance.overdue), 0),
+    invoiceBalances: balances,
+    openTickets: complete.open_tickets,
     currency: ctx.org.currency,
+    dealCurrencies: complete.deal_currencies??[],
   };
 
   const payload: Record<string, unknown> = {
     company: { ...company, owner: actor(company) },
+    accountTeam: (accountTeam.data??[]).map((m:any)=>({id:m.id,name:m.profiles?.full_name??'Workspace member'})),
     contacts: contacts ?? [],
     deals: dealRows.map(d => ({ ...d, owner: actor(d) })),
+    commitments: ((commitments.data ?? []) as any[]).map(a => ({ ...a, user: actor(a) })),
     activities: ((activities.data ?? []) as any[]).map(a => ({ ...a, user: actor(a) })),
     timeline: ((timeline.data ?? []) as any[]).map(t => ({ ...t, user: actor(t) })),
     summary,
+    intelligence: accountSignals({ownerAssigned:Boolean(company.owner_id),segment:company.crm_profile?.segment,lastContact:summary.lastContact,
+      openDeals:summary.openDeals,decisionMakers:Number(complete.decision_makers),overdueActions:Number(complete.overdue_actions),
+      stalledDeals:Number(complete.stalled_deals),nextFollowUp:summary.nextFollowUp,
+      ...(sees('support')?{openTickets:summary.openTickets}:{}),...(sees('finance')?{overdueInvoices:summary.overdueInvoices}:{})}),
+    collectedPayments: sees('finance') ? complete.collected_payments : undefined,
+
   };
 
   // Absent rather than empty: a role without Finance gets no `invoices` key at
@@ -243,4 +260,9 @@ export async function GET(_req: Request, { params }: Params) {
   if (sees('calendar')) payload.meetings = meetings.data ?? [];
 
   return success(payload);
+}
+
+export async function GET(req: Request, params: Params) {
+  try { return await loadCompany(req, params); }
+  catch (cause) { return serverError(cause, 'This customer could not be loaded.'); }
 }

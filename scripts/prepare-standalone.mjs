@@ -15,7 +15,8 @@ import { cp, access } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const root = process.cwd();
-const standalone = join(root, '.next', 'standalone');
+const distDir = process.env.NEXT_DIST_DIR || '.next';
+const standalone = join(root, distDir, 'standalone');
 
 const exists = async (p) => {
   try { await access(p); return true; } catch { return false; }
@@ -27,7 +28,10 @@ if (!(await exists(standalone))) {
 }
 
 for (const [from, to] of [
-  [join(root, '.next', 'static'), join(standalone, '.next', 'static')],
+  // Next's native dependency trace may omit libvips DLLs beside Sharp's addon.
+  // Preserve the installed platform package; never copy a different-platform binary.
+  [join(root, 'node_modules', '@img', `sharp-${process.platform}-${process.arch}`), join(standalone, 'node_modules', '@img', `sharp-${process.platform}-${process.arch}`)],
+  [join(root, distDir, 'static'), join(standalone, distDir, 'static')],
   [join(root, 'public'), join(standalone, 'public')],
 ]) {
   if (await exists(from)) {
@@ -36,4 +40,4 @@ for (const [from, to] of [
   }
 }
 
-console.log('[standalone] ready — run: node .next/standalone/server.js');
+console.log(`[standalone] ready — run: node ${distDir}/standalone/server.js`);

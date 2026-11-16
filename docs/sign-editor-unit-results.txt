@@ -1,0 +1,87 @@
+PASS six independent customer and witness fields
+PASS signature does not require name or date fields
+PASS name does not force a signature field
+PASS required entered name enforced
+PASS entered name retained separately from signature
+PASS witness cannot submit customer fields
+PASS customer cannot submit witness fields
+PASS client cannot supply actual signing date
+PASS witness waits in sequential workflow
+PASS parallel witness active
+PASS manual calendar date retained
+PASS invalid calendar date rejected
+PASS tampered readonly value replaced
+PASS unsafe signature defaults rejected
+PASS cross recipient date linkage rejected
+PASS viewer cannot own fields
+PASS Unicode name validation
+PASS invalid text validation rejected
+PASS multiline text fits without truncation
+PASS unreadable overflow rejected instead of silently clipping
+PASS invalid locked calendar default rejected before issue
+PASS optional blank date omitted from PDF values
+22 customization assertions passed.
+✔ scripts\sign-customization.test.mts (2879.2857ms)
+✔ signature stays on the chosen page with a valid assignment at its bottom edge (15.7923ms)
+✔ name stays on the chosen page with a valid assignment at its bottom edge (1.0098ms)
+✔ date stays on the chosen page with a valid assignment at its bottom edge (0.9069ms)
+✔ date_input stays on the chosen page with a valid assignment at its bottom edge (0.7678ms)
+✔ initials stays on the chosen page with a valid assignment at its bottom edge (0.6618ms)
+✔ text stays on the chosen page with a valid assignment at its bottom edge (0.7712ms)
+✔ checkbox stays on the chosen page with a valid assignment at its bottom edge (0.773ms)
+✔ email stays on the chosen page with a valid assignment at its bottom edge (0.6859ms)
+✔ company stays on the chosen page with a valid assignment at its bottom edge (0.6838ms)
+✔ signature_date stays on the chosen page with a valid assignment at its bottom edge (1.1046ms)
+✔ signature_name stays on the chosen page with a valid assignment at its bottom edge (0.9336ms)
+✔ signature_name_date stays on the chosen page with a valid assignment at its bottom edge (0.7583ms)
+✔ witness_group stays on the chosen page with a valid assignment at its bottom edge (0.6762ms)
+✔ two_party stays on the chosen page with a valid assignment at its bottom edge (0.917ms)
+✔ witness_name stays on the chosen page with a valid assignment at its bottom edge (0.8101ms)
+✔ witness_signature stays on the chosen page with a valid assignment at its bottom edge (1.4438ms)
+✔ witness_date stays on the chosen page with a valid assignment at its bottom edge (0.4695ms)
+✔ witness tools require an actual witness (2.2104ms)
+✔ move and corner resize stay inside the page at any scale (1.5115ms)
+✔ undo and redo keep document snapshots and a new edit drops the redo branch (1.1329ms)
+✔ proportional resize keeps aspect ratio at all four page boundaries (0.9111ms)
+PASS excessive white margins trimmed
+PASS edge-connected white background transparent
+PASS light coloured content preserved
+PASS proportional size and position remain within field
+PASS server timestamp formatted in configured timezone
+PASS oversized signature appearance rejected
+PASS grayscale signatures normalize safely to RGBA
+7 finishing assertions passed.
+✔ scripts\sign-finishing.test.mts (1816.0336ms)
+PASS required verification cannot be silently downgraded
+PASS valid draft passes policy and field checks
+PASS out-of-page placement is rejected
+PASS unknown document page is rejected
+PASS duplicate email recipients rejected
+PASS recipient cannot submit another field
+PASS empty required signature rejected
+PASS future recipient is inactive
+PASS JSON canonicalization survives database key reordering
+PASS authenticated evidence verifies
+PASS signature substitution invalidates evidence
+PASS event alteration invalidates evidence
+PASS truncated action event invalidates evidence
+PASS completion binds certificate and final PDF together
+PASS certificate substitution invalidates completion evidence
+PASS completion event truncation cannot hide substitution
+PASS valid PDF parser
+PASS malformed PDF parser rejection
+PASS active PDF content rejection
+PASS rotated PDF reports displayed page dimensions
+PASS unsafe signature image rejected
+PASS manual-link recipient may omit email
+PASS OTP recipient must supply an email
+23 focused assertions passed.
+✔ scripts\sign.test.mts (3777.8965ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3844.5904

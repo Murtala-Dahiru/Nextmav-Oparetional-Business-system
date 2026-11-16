@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { Mail, MessageSquare, Radio, ArrowUpRight } from 'lucide-react';
 import { Container, Eyebrow, Section } from '@/components/public/ui';
 import { ScrollReveal } from '@/components/public/client';
-import { SUPPORT_EMAIL } from '@/lib/public-contact';
+
 
 export const metadata: Metadata = {
   title: 'System status — NextMav',
@@ -68,9 +68,9 @@ const reaching = [
   {
     icon: Mail,
     label: 'Report a problem',
-    value: SUPPORT_EMAIL,
-    href: `mailto:${SUPPORT_EMAIL}`,
-    desc: 'The fastest route if something is broken for you. Include your organisation name and the request id shown on the error — every response carries one, and it identifies the exact request in our logs.',
+    value: 'Contact channel configuration',
+    href: '/contact',
+    desc: 'The contact page shows whether a verified public channel is available. Include your organisation name and the request id shown on the error — every response carries one, and it identifies the exact request in our logs.',
   },
   {
     icon: MessageSquare,
@@ -108,12 +108,11 @@ export default function StatusPage() {
         <Container className="nm-page-hero-content">
           <Eyebrow>System status</Eyebrow>
           <h1 className="nm-page-hero-title nm-page-hero-title-dark">
-            No live feed <span className="nm-serif">yet.</span>
+            Service availability.<br /><span className="nm-serif">A clear view of what we measure.</span>
           </h1>
           <p className="nm-page-hero-sub nm-page-hero-sub-dark">
-            We are not publishing automated availability data, so this page does
-            not pretend to. Here is how you will hear about an incident, and how
-            to tell us about one.
+            A live status feed is not connected yet. This page explains the
+            current reporting boundary and where to check contact availability.
           </p>
         </Container>
       </section>

@@ -1,3 +1,6 @@
+import { customValuesSchema } from '@/lib/crm/customization';
+import { activityDetailsSchema } from '@/lib/crm/activity-details';
+import {dealCurrencySchema,dealAmountSchema} from '@/lib/crm/currency';
 import { z } from 'zod';
 
 /**
@@ -75,6 +78,7 @@ export const optionalFk = () =>
 // ═══════════════════════════════════════════════════════════════
 
 export const createLeadSchema = z.object({
+  customValues: customValuesSchema.optional(),
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email('Invalid email').optional().default(''),
@@ -86,6 +90,7 @@ export const createLeadSchema = z.object({
   companyName: z.string().optional().default(''),
   jobTitle: z.string().optional().default(''),
   source: z.string().optional().default('manual'),
+  campaign: z.string().trim().max(250).optional().default(''),
   status: z.string().optional().default('new'),
   score: z.number().int().min(0).optional().default(0),
   estimatedValue: z.number().min(0).optional().default(0),
@@ -96,6 +101,7 @@ export const createLeadSchema = z.object({
 export const updateLeadSchema = toUpdateSchema(createLeadSchema);
 
 export const createContactSchema = z.object({
+  customValues: customValuesSchema.optional(),
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email('Invalid email').optional().default(''),
@@ -111,6 +117,7 @@ export const createContactSchema = z.object({
 export const updateContactSchema = toUpdateSchema(createContactSchema);
 
 export const createCompanySchema = z.object({
+  customValues: customValuesSchema.optional(),
   name: z.string().min(1, 'Company name is required'),
   industry: z.string().optional().default(''),
   website: z.string().optional().default(''),
@@ -126,14 +133,22 @@ export const createCompanySchema = z.object({
 export const updateCompanySchema = toUpdateSchema(createCompanySchema);
 
 export const createDealSchema = z.object({
+  customValues: customValuesSchema.optional(),
+  currency: dealCurrencySchema.optional(),
+  pipelineId: z.uuid().nullable().optional(),
+  pipelineStageId: z.uuid().nullable().optional(),
+  nextStep: z.string().max(4000).optional(),
+  forecastCategory: z.enum(['pipeline','best_case','commit','omitted']).optional(),
+  competitor: z.string().max(250).optional(),
+  outcomeNotes: z.string().max(12000).optional(),
   name: z.string().min(1, 'Deal name is required'),
-  value: z.number().min(0).optional().default(0),
+  value: dealAmountSchema.optional().default(0),
   stage: z.string().optional().default('prospecting'),
   probability: z.number().int().min(0).max(100).optional().default(20),
   // The column is `expected_close`; `closeDate` matched nothing, so every
   // deal was saved with no close date and the pipeline forecast had no dates
   // to work from.
-  expectedClose: z.string().optional().default(''),
+  expectedClose: z.union([z.iso.date(),z.literal('')]).nullable().optional(),
   // Deals link to a company and contact by id, like invoices do.
   companyId: optionalFk(),
   contactId: optionalFk(),
@@ -341,6 +356,7 @@ export const updateTicketSchema = toUpdateSchema(createTicketSchema);
  */
 export const createCrmActivitySchema = z
   .object({
+    engagementDetails: activityDetailsSchema.optional(),
     activityType: z.string().min(1, 'An activity type is required').default('note'),
     subject: z.string().min(1, 'A subject is required'),
     body: z.string().optional().default(''),
@@ -370,6 +386,7 @@ export const createCrmActivitySchema = z
  */
 export const updateCrmActivitySchema = toUpdateSchema(
   z.object({
+    engagementDetails: activityDetailsSchema.optional(),
     activityType: z.string().min(1).default('note'),
     subject: z.string().min(1, 'A subject is required'),
     body: z.string().optional().default(''),

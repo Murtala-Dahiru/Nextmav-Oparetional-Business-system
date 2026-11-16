@@ -1,0 +1,6 @@
+import {authorize} from '@/lib/auth-context';
+import {crmDatabaseError as pgError} from '@/lib/crm/database-error';
+import {success,error} from '@/lib/api-response';
+import {assignmentSettingsSchema} from '@/lib/crm/assignment-settings';
+export async function GET(){const ctx=await authorize('crm','view');if(ctx instanceof Response)return ctx;const r=await ctx.supabase.from('crm_assignment_settings').select('*').eq('organization_id',ctx.org.organizationId).maybeSingle();if(r.error)return pgError(r.error);return success(r.data);}
+export async function PUT(req:Request){const ctx=await authorize('crm','manage');if(ctx instanceof Response)return ctx;let raw:unknown;try{raw=await req.json();}catch{return error('Invalid JSON',422);}const parsed=assignmentSettingsSchema.safeParse(raw);if(!parsed.success)return error(parsed.error.issues[0]?.message??'Invalid assignment rules',422);const v=parsed.data;const r=await ctx.supabase.rpc('crm_save_assignment_settings',{p_org:ctx.org.organizationId,p_version:v.version,p_rules:v.rules,p_fallback:v.fallbackId});if(r.error?.code==='40001')return error('Assignment settings changed. Reload before saving.',409);if(r.error)return pgError(r.error);return success({saved:true});}

@@ -1,0 +1,25 @@
+PASS Commercial Hub contextual navigation opens Sign
+PASS browser adds recipient and places required field on PDF page
+PASS field remains attached after zoom
+PASS sender independently places six customer and witness fields
+PASS selected field duplicates
+PASS deletion removes only chosen field
+PASS preparation fits 1440
+PASS preparation fits 768
+PASS preparation fits 390
+PASS recipient token is removed from browser URL
+PASS portal blocks referrer leakage
+PASS failed PDF download offers an explicit retry
+PASS real PDF pages render in browser
+PASS portal has no horizontal page overflow at 1440px
+PASS portal has no horizontal page overflow at 1280px
+PASS portal has no horizontal page overflow at 768px
+PASS portal has no horizontal page overflow at 390px
+PASS portal has no horizontal page overflow at 360px
+locator.fill: Error: strict mode violation: getByLabel(/Legal full name/) resolved to 2 elements:
+    1) <button type="button" aria-label="Legal full name (required), page 1" class="absolute flex items-center justify-center overflow-hidden rounded-sm border text-[10px] sm:text-xs border-blue-400 bg-blue-50/90 focus:outline-2 focus:outline-blue-600">…</button> aka getByRole('button', { name: 'Legal full name (required), page' })
+    2) <input value="" type="text" placeholder="" maxlength="1000" id="dee1a66b-7ebb-4884-b252-09905829f41b" class="mt-1 w-full rounded-lg border p-2 text-sm read-only:bg-slate-50"/> aka getByRole('textbox', { name: 'Legal full name * · Page' })
+
+Call log:
+  - waiting for getByLabel(/Legal full name/)
+

@@ -6,6 +6,7 @@ import type { ModuleId, RoleId } from '@/lib/constants';
 import { normalizeRole, can, canAccessModule, type Action } from '@/lib/permissions';
 import { currencyOf } from '@/lib/locale';
 import { accessStateFor, describeState } from '@/lib/account-state';
+import { cookies } from 'next/headers';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -75,6 +76,7 @@ export interface RequestContext {
 export async function getContext(
   preferredOrgId?: string,
 ): Promise<RequestContext | null> {
+  preferredOrgId ??= (await cookies()).get('nm-organization')?.value;
   const supabase = await supabaseServer();
 
   const { data: { user } } = await supabase.auth.getUser();
@@ -101,7 +103,7 @@ export async function getContext(
   // Memberships this user can see. RLS already restricts this to their own.
   const { data: memberships } = await supabase
     .from('organization_members')
-    .select('id, organization_id, role, department_id, organizations(id, name, slug, currency, timezone, settings)')
+    .select('id, organization_id, role, department_id, organizations!organization_members_organization_id_fkey(id, name, slug, currency, timezone, settings)')
     .eq('user_id', user.id)
     .eq('is_active', true)
     // A permanently deleted membership is retained only so that history
@@ -331,6 +333,12 @@ export function translatePgError(
       const raised = e.message && !/duplicate key value|violates unique constraint/i.test(e.message);
       return error(raised ? e.message! : 'That record already exists.', 409, 'DUPLICATE');
     }
+    case '22023':
+      return error(e.message ?? 'Invalid field value.', 422, 'VALIDATION_ERROR');
+    case '22007': case '22008':
+      return error('Enter a valid date and time.', 422, 'VALIDATION_ERROR');
+    case 'PT409':
+      return error(e.message ?? 'This record changed. Reload before saving.', 409, 'CONFLICT');
     case '23503':
       return error('A referenced record does not exist.', 400, 'FK_VIOLATION');
     case '23514':

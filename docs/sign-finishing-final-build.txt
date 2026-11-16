@@ -1,0 +1,44 @@
+
+> nextjs_tailwind_shadcn_ts@0.2.0 build
+> node scripts/check-env.mjs && next build && node scripts/prepare-standalone.mjs
+
+[check-env] Supabase configuration present.
+▲ Next.js 16.4.3 (Turbopack)
+- Environments: .env
+✓ Running next.config.ts took 335ms
+
+  Creating an optimized production build ...
+
+-----
+FATAL: An unexpected Turbopack error occurred. A panic log has been written to C:\Users\murta\AppData\Local\Temp\next-panic-9b62f9c55aab6a62a64d9c4602c6f2b9.log.
+
+To help make Turbopack better, report this error by clicking here: https://bugs.nextjs.org/search?category=turbopack-error-report&title=Turbopack%20Error%3A%20failed%20to%20write%20to%20%22%5C%5C%5C%5C%3F%5C%5CC%3A%5C%5CUsers%5C%5Cmurta%5C%5CDownloads%5C%5Cworkspace-1edd18e2-74f6-4329-aee4-9600baa55107%5C%5C.next-sign-finishing-final%5C%5Cserver%5C%5Cchunks%5C%5C_1c86x81fr4qk0._.js.map%22&body=Turbopack%20version%3A%20%6029bbeab0%60%0ANext.js%20version%3A%20%600.0.0%60%0A%0AError%20message%3A%0A%60%60%60%0Afailed%20to%20write%20to%20%22%5C%5C%5C%5C%3F%5C%5CC%3A%5C%5CUsers%5C%5Cmurta%5C%5CDownloads%5C%5Cworkspace-1edd18e2-74f6-4329-aee4-9600baa55107%5C%5C.next-sign-finishing-final%5C%5Cserver%5C%5Cchunks%5C%5C_1c86x81fr4qk0._.js.map%22%0A%0ACaused%20by%3A%0A-%20There%20is%20not%20enough%20space%20on%20the%20disk.%20%28os%20error%20112%29%0A%60%60%60&labels=Turbopack,Turbopack%20Panic%20Backtrace
+-----
+
+Persisting failed during shutdown: Unable to write SST file 00000001.sst
+
+Caused by:
+    0: Failed to write key block
+    1: Failed to write block data
+    2: failed to write to file `\\?\C:\Users\murta\Downloads\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\.next-sign-finishing-final\cache\turbopack\v16.4.3-29bbeab0\00000001.sst`: There is not enough space on the disk. (os error 112)
+Error: ENOSPC: no space left on device, write
+    at ignore-listed frames {
+  errno: -4055,
+  syscall: 'write',
+  code: 'ENOSPC'
+}
+Error: ENOSPC: no space left on device, write
+    at ignore-listed frames {
+  errno: -4055,
+  syscall: 'write',
+  code: 'ENOSPC'
+}
+
+> Build error occurred
+Error [TurbopackInternalError]: failed to write to "\\\\?\\C:\\Users\\murta\\Downloads\\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\\.next-sign-finishing-final\\server\\chunks\\_1c86x81fr4qk0._.js.map"
+
+Caused by:
+- There is not enough space on the disk. (os error 112)
+    at <unknown> (TurbopackInternalError: failed to write to "\\\\?\\C:\\Users\\murta\\Downloads\\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\\.next-sign-finishing-final\\server\\chunks\\_1c86x81fr4qk0._.js.map") {
+  location: undefined
+}

@@ -1,0 +1,4 @@
+PASS Owner changes synthetic member role through BOS user-management UI
+PASS Read-only role restored through UI
+PASS Membership change appears in BOS audit history
+3 role browser checks passed.

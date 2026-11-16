@@ -31,14 +31,14 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        'flex flex-col gap-1 py-1 sm:flex-row sm:items-center sm:justify-between',
+        'nm-page-header flex flex-col gap-1 py-1 sm:flex-row sm:items-center sm:justify-between',
         className,
       )}
     >
       {/* Left side: icon + title + description */}
       <div className="flex items-center gap-3 min-w-0">
         {Icon && (
-          <div className="bg-emerald-500/10 text-emerald-600 flex size-9 shrink-0 items-center justify-center rounded-lg">
+          <div className="bg-accent text-accent-foreground flex size-9 shrink-0 items-center justify-center rounded-lg">
             <Icon className="size-5" />
           </div>
         )}
@@ -53,7 +53,7 @@ export function PageHeader({
       </div>
 
       {/* Right side: actions */}
-      {children && <div className="flex items-center gap-2 shrink-0 mt-2 sm:mt-0">{children}</div>}
+      {children && <div className="flex flex-wrap items-center gap-2 shrink-0 mt-2 sm:mt-0">{children}</div>}
     </div>
   );
 }

@@ -1,0 +1,23 @@
+PASS create draft automation
+PASS save and reopen draft with trigger and actions
+PASS invalid action rejected
+PASS publish valid immutable workflow
+PASS real lead event automatically assigns using existing rules
+PASS execution and step history show completed workflow
+PASS follow-up activity actually created
+PASS duplicate event delivery does not duplicate effects
+PASS condition mismatch is recorded as skipped
+PASS paused workflow stops event intake
+PASS resume published workflow
+PASS delay persisted with durable cursor
+PASS delayed run survives worker connection restart and retains original version
+PASS automation-generated activity does not recurse
+PASS restricted role denied Automation Studio API
+PASS execution rechecks revoked publishing permission
+PASS permanent failure visible in execution history
+PASS safe manual retry succeeds after permissions restored
+PASS foreign workflow mutation refused
+PASS dashboard uses actual run counts
+PASS RLS excludes other tenant runs
+PASS worker is inaccessible to authenticated clients
+22 Automation Studio live assertions passed.

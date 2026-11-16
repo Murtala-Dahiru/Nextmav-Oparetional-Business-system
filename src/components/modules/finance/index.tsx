@@ -1,4 +1,5 @@
 'use client';
+import { ContextualNavigation } from '@/components/layout/contextual-navigation';
 
 import { useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import type { ColumnDef, ColumnFiltersState, SortingState } from '@tanstack/react-table';
@@ -794,7 +795,7 @@ function InvoicesTab({
     <div className="flex flex-col gap-6">
       <PageHeader title="Invoices" icon={FileText}>
         <ExportButton module="finance" datasets={[{ key: 'invoices', label: 'Invoices' }]} />
-        <Button onClick={() => { setForm(INVOICE_FORM_DEFAULTS); setCreateOpen(true); }} className="bg-emerald-600 text-white hover:bg-emerald-700">
+        <Button onClick={() => { setForm(INVOICE_FORM_DEFAULTS); setCreateOpen(true); }} className="bg-primary text-primary-foreground hover:bg-primary/90">
           <Plus className="size-4 mr-2" />New Invoice
         </Button>
       </PageHeader>
@@ -968,7 +969,7 @@ function InvoicesTab({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={formLoading} className="bg-emerald-600 text-white hover:bg-emerald-700">
+            <Button onClick={handleCreate} disabled={formLoading} className="bg-primary text-primary-foreground hover:bg-primary/90">
               {formLoading && <Loader2 className="size-4 mr-2 animate-spin" />}Create Invoice
             </Button>
           </DialogFooter>
@@ -1009,7 +1010,7 @@ function InvoicesTab({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setEditOpen(false); setSelected(null); }}>Cancel</Button>
-            <Button onClick={handleEdit} disabled={formLoading} className="bg-emerald-600 text-white hover:bg-emerald-700">
+            <Button onClick={handleEdit} disabled={formLoading} className="bg-primary text-primary-foreground hover:bg-primary/90">
               {formLoading && <Loader2 className="size-4 mr-2 animate-spin" />}Save Changes
             </Button>
           </DialogFooter>
@@ -1264,7 +1265,7 @@ function ExpensesTab() {
     <div className="flex flex-col gap-6">
       <PageHeader title="Expenses" icon={Receipt}>
         <ExportButton module="finance" datasets={[{ key: 'expenses', label: 'Expenses' }]} />
-        <Button onClick={() => { setForm(EXPENSE_DEFAULTS); setCreateOpen(true); }} className="bg-emerald-600 text-white hover:bg-emerald-700">
+        <Button onClick={() => { setForm(EXPENSE_DEFAULTS); setCreateOpen(true); }} className="bg-primary text-primary-foreground hover:bg-primary/90">
           <Plus className="size-4 mr-2" />New Expense
         </Button>
       </PageHeader>
@@ -1295,7 +1296,7 @@ function ExpensesTab() {
           <ExpenseFormFields formData={form} onChange={setForm} />
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={formLoading} className="bg-emerald-600 text-white hover:bg-emerald-700">
+            <Button onClick={handleCreate} disabled={formLoading} className="bg-primary text-primary-foreground hover:bg-primary/90">
               {formLoading && <Loader2 className="size-4 mr-2 animate-spin" />}Create Expense
             </Button>
           </DialogFooter>
@@ -1312,7 +1313,7 @@ function ExpensesTab() {
           <ExpenseFormFields formData={form} onChange={setForm} />
           <DialogFooter>
             <Button variant="outline" onClick={() => { setEditOpen(false); setSelected(null); }}>Cancel</Button>
-            <Button onClick={handleEdit} disabled={formLoading} className="bg-emerald-600 text-white hover:bg-emerald-700">
+            <Button onClick={handleEdit} disabled={formLoading} className="bg-primary text-primary-foreground hover:bg-primary/90">
               {formLoading && <Loader2 className="size-4 mr-2 animate-spin" />}Save Changes
             </Button>
           </DialogFooter>
@@ -1358,7 +1359,7 @@ function PurchaseRequestsTab() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader title="Purchase Requests & Approval Workflows" description="Submit and review company expenditure requests requiring manager approval">
-        <Button className="bg-emerald-600 hover:bg-emerald-700">
+        <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
           <Plus className="size-4 mr-2" /> New Purchase Request
         </Button>
       </PageHeader>
@@ -1441,7 +1442,7 @@ export default function FinanceModule() {
   return (
     <div className="flex-1 flex flex-col gap-4 p-4 md:p-6 overflow-auto">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="overflow-x-auto w-full sm:w-auto">
+        <ContextualNavigation><TabsList className="overflow-x-auto w-full sm:w-auto">
           <TabsTrigger value="overview">
             <CircleDollarSign className="size-4 mr-1.5 hidden sm:inline" />Overview
           </TabsTrigger>
@@ -1454,7 +1455,7 @@ export default function FinanceModule() {
           <TabsTrigger value="approvals">
             <TrendingUp className="size-4 mr-1.5 hidden sm:inline" />Purchase Approvals
           </TabsTrigger>
-        </TabsList>
+        </TabsList></ContextualNavigation>
       </Tabs>
 
       <AnimatePresence mode="wait">

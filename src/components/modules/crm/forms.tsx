@@ -1,7 +1,11 @@
 'use client';
+import { CustomFields, useCustomValues } from './custom-fields';
+import {useAppStore} from '@/store/app-store';
+import {DEAL_CURRENCIES} from '@/lib/crm/currency';
 
 import * as React from 'react';
 import { toast } from 'sonner';
+import type { PipelineInput } from '@/lib/crm/pipelines';
 import { Loader2, Trophy, XCircle } from 'lucide-react';
 
 import {
@@ -20,7 +24,7 @@ import { cn } from '@/lib/utils';
 import { activeCurrencyCode } from '@/lib/format';
 import { LEAD_STATUSES, DEAL_STAGES } from '@/lib/constants';
 
-import { post, patch, getList, exact } from './data';
+import { post, patch, getList, getOne, exact } from './data';
 import { LinkPicker, type LinkValue } from './link-picker';
 import {
   STAGE_LABELS, LEAD_STATUS_LABELS, SOURCE_OPTIONS, LOST_REASONS,
@@ -189,10 +193,11 @@ export function LeadDialog({
   onSaved: () => void;
 }) {
   const owners = useOwners(open);
+  const [customValues, setCustomValues] = useCustomValues(open, editing);
   const [saving, setSaving] = React.useState(false);
   const [f, setF] = React.useState({
     firstName: '', lastName: '', email: '', phone: '', companyName: '', jobTitle: '',
-    source: 'manual', status: 'new', score: 0, estimatedValue: '', notes: '',
+    source: 'manual', campaign: '', status: 'new', score: 0, estimatedValue: '', notes: '',
     ownerId: undefined as string | undefined,
   });
 
@@ -203,14 +208,14 @@ export function LeadDialog({
         firstName: editing.firstName ?? '', lastName: editing.lastName ?? '',
         email: editing.email ?? '', phone: editing.phone ?? '',
         companyName: editing.companyName ?? '', jobTitle: editing.jobTitle ?? '',
-        source: editing.source || 'manual', status: editing.status || 'new',
+        source: editing.source || 'manual', campaign: editing.campaign ?? '', status: editing.status || 'new',
         score: editing.score ?? 0,
         estimatedValue: editing.estimatedValue ? String(editing.estimatedValue) : '',
         notes: editing.notes ?? '', ownerId: editing.ownerId ?? undefined,
       }
       : {
         firstName: '', lastName: '', email: '', phone: '', companyName: '', jobTitle: '',
-        source: 'manual', status: 'new', score: 0, estimatedValue: '', notes: '',
+        source: 'manual', campaign: '', status: 'new', score: 0, estimatedValue: '', notes: '',
         ownerId: undefined,
       });
   }, [open, editing]);
@@ -223,7 +228,7 @@ export function LeadDialog({
     }
     setSaving(true);
     try {
-      const body = { ...f, estimatedValue: num(f.estimatedValue), score: Number(f.score) };
+      const body = { customValues, ...f, estimatedValue: num(f.estimatedValue), score: Number(f.score) };
       if (editing) {
         await patch(`/api/crm/leads/${editing.id}`, body);
         toast.success('Lead updated');
@@ -298,6 +303,9 @@ export function LeadDialog({
             </SelectContent>
           </Select>
         </Field>
+        <Field label="Campaign" hint="Preserve the campaign that brought this lead to you.">
+          <Input value={f.campaign} maxLength={250} onChange={e => setF({ ...f, campaign: e.target.value })} className={input} />
+        </Field>
         <Field label={`Value (${activeCurrencyCode()})`}>
           <Input
             type="number" min={0} inputMode="decimal"
@@ -331,6 +339,7 @@ export function LeadDialog({
           rows={3} className="resize-none text-[13px]"
         />
       </Field>
+    <CustomFields object="leads" values={customValues} onChange={setCustomValues} />
     </Shell>
   );
 }
@@ -348,6 +357,7 @@ export function ContactDialog({
   onSaved: () => void;
   defaultCompany?: { id: string; name: string } | null;
 }) {
+  const [customValues, setCustomValues] = useCustomValues(open, editing);
   const [saving, setSaving] = React.useState(false);
   const [company, setCompany] = React.useState<LinkValue | null>(null);
   const [f, setF] = React.useState({
@@ -382,9 +392,9 @@ export function ContactDialog({
     }
     setSaving(true);
     try {
-      const body = { ...f, companyId: company?.id ?? null };
+      const body = { customValues, ...f, companyId: company?.id ?? null };
       if (editing) {
-        await patch(`/api/crm/contacts/${editing.id}`, body);
+        await patch(`/api/crm/contacts/${editing.id}`, { ...body, expectedUpdatedAt: editing.updatedAt });
         toast.success('Contact updated');
       } else {
         await post('/api/crm/contacts', body);
@@ -461,6 +471,7 @@ export function ContactDialog({
           rows={3} className="resize-none text-[13px]"
         />
       </Field>
+    <CustomFields object="contacts" values={customValues} onChange={setCustomValues} />
     </Shell>
   );
 }
@@ -477,6 +488,7 @@ export function CompanyDialog({
   editing: Company | null;
   onSaved: () => void;
 }) {
+  const [customValues, setCustomValues] = useCustomValues(open, editing);
   const [saving, setSaving] = React.useState(false);
   const [f, setF] = React.useState({
     name: '', industry: '', website: '', phone: '', email: '',
@@ -505,13 +517,13 @@ export function CompanyDialog({
     if (!f.name.trim()) { toast.error('A company needs a name'); return; }
     setSaving(true);
     try {
-      const body = {
+      const body = { customValues,
         ...f,
         employeeCount: num(f.employeeCount),
         annualRevenue: num(f.annualRevenue),
       };
       if (editing) {
-        await patch(`/api/crm/companies/${editing.id}`, body);
+        await patch(`/api/crm/companies/${editing.id}`, { ...body, expectedUpdatedAt: editing.updatedAt });
         toast.success('Company updated');
       } else {
         await post('/api/crm/companies', body);
@@ -590,6 +602,7 @@ export function CompanyDialog({
           rows={3} className="resize-none text-[13px]"
         />
       </Field>
+    <CustomFields object="companies" values={customValues} onChange={setCustomValues} />
     </Shell>
   );
 }
@@ -599,20 +612,36 @@ export function CompanyDialog({
 /* -------------------------------------------------------------------------- */
 
 export function DealDialog({
-  open, onOpenChange, editing, onSaved, defaultCompany,
+  open, onOpenChange, editing, onSaved, defaultCompany, defaultPipeline, defaultCurrency,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
   editing: Deal | null;
   onSaved: () => void;
   defaultCompany?: { id: string; name: string } | null;
+  defaultPipeline?: string;
+  defaultCurrency?: string;
 }) {
+  const [pipelines,setPipelines]=React.useState<(PipelineInput&{active?:boolean;isDefault?:boolean})[]>([]);
+  const [pipelineError,setPipelineError]=React.useState('');
+  const [pipelineId,setPipelineId]=React.useState('');
+  const [stageId,setStageId]=React.useState('');
+  const [nextStep,setNextStep]=React.useState('');
+  const pipeline=pipelines.find(p=>p.id===pipelineId);
+  React.useEffect(()=>{
+    if(!open)return;
+    const c=new AbortController();
+    getOne<(PipelineInput&{active?:boolean;isDefault?:boolean})[]>('/api/crm/pipelines',c.signal).then(rows=>{if(!c.signal.aborted){setPipelines(rows);setPipelineError('');if(!editing){const selected=rows.find(p=>p.id===defaultPipeline)??rows.find(p=>p.isDefault&&p.active!==false);if(selected){setPipelineId(selected.id??'');setStageId(selected.stages.find(s=>!['closed_won','closed_lost'].includes(s.canonicalStage))?.id??'');}}}}).catch(e=>{if(!c.signal.aborted)setPipelineError(e.message);});
+    setPipelineId(editing?.pipelineId??defaultPipeline??'');setStageId(editing?.pipelineStageId??'');setNextStep(editing?.nextStep??'');
+    return ()=>c.abort();
+  },[open,editing,defaultPipeline]);
   const owners = useOwners(open);
+  const [customValues, setCustomValues] = useCustomValues(open, editing);
   const [saving, setSaving] = React.useState(false);
   const [company, setCompany] = React.useState<LinkValue | null>(null);
   const [contact, setContact] = React.useState<LinkValue | null>(null);
   const [f, setF] = React.useState({
-    name: '', value: '', stage: 'prospecting', probability: 20,
+    name: '', value: '', currency: defaultCurrency??useAppStore.getState().organization?.currency??'USD', stage: 'prospecting', probability: 20,
     expectedClose: '', notes: '', ownerId: undefined as string | undefined,
     lostReason: '',
   });
@@ -623,6 +652,7 @@ export function DealDialog({
       setF({
         name: editing.name ?? '',
         value: editing.value ? String(editing.value) : '',
+        currency: editing.currency??useAppStore.getState().organization?.currency??'USD',
         stage: editing.stage || 'prospecting',
         probability: editing.probability ?? 20,
         expectedClose: editing.expectedClose?.slice(0, 10) ?? '',
@@ -636,22 +666,24 @@ export function DealDialog({
         : null);
     } else {
       setF({
-        name: '', value: '', stage: 'prospecting', probability: 20,
+        name: '', value: '', currency: defaultCurrency??useAppStore.getState().organization?.currency??'USD', stage: 'prospecting', probability: 20,
         expectedClose: '', notes: '', ownerId: undefined, lostReason: '',
       });
       setCompany(defaultCompany ? { kind: 'company', id: defaultCompany.id, label: defaultCompany.name } : null);
       setContact(null);
     }
-  }, [open, editing, defaultCompany]);
+  }, [open, editing, defaultCompany, defaultCurrency]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!f.name.trim()) { toast.error('A deal needs a name'); return; }
+    if(pipelineId&&!stageId){toast.error('Choose a configured stage');return;}
     setSaving(true);
     try {
-      const body: Record<string, unknown> = {
+      const body: Record<string, unknown> = { customValues,
         name: f.name,
         value: num(f.value),
+        currency:f.currency,
         stage: f.stage,
         probability: Number(f.probability),
         expectedClose: f.expectedClose || null,
@@ -661,11 +693,13 @@ export function DealDialog({
         contactId: contact?.id ?? null,
       };
       // Only sent where it means something. The trigger clears it on anything
+      if(pipelineId){body.pipelineId=pipelineId;body.pipelineStageId=stageId;}
+      if(pipelines.length||editing?.nextStep!==undefined)body.nextStep=nextStep;
       // that is not a loss, so sending it always would be noise on the wire.
       if (f.stage === 'closed_lost') body.lostReason = f.lostReason || null;
 
       if (editing) {
-        await patch(`/api/crm/deals/${editing.id}`, body);
+        await patch(`/api/crm/deals/${editing.id}`, {...body,pipelineVersion:editing.pipelineVersion});
         toast.success('Deal updated');
       } else {
         await post('/api/crm/deals', body);
@@ -687,6 +721,14 @@ export function DealDialog({
       description="A piece of business you are trying to win."
       onSubmit={submit} saving={saving} submitLabel={editing ? 'Save' : 'Add deal'}
     >
+      <Field label="Pipeline">
+        <select aria-label="Pipeline" className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm" value={pipelineId} disabled={Boolean(editing?.pipelineId)} onChange={e=>{setPipelineId(e.target.value);setStageId('');}}>
+          <option value="">Existing sales pipeline</option>
+          {pipelineId&&!pipeline&&<option value={pipelineId}>Current configured pipeline</option>}
+          {pipelines.filter(p=>p.active!==false||p.id===editing?.pipelineId).map(p=><option key={p.id} value={p.id!}>{p.name}</option>)}
+        </select>
+        {pipelineError&&<p role="status" className="text-xs text-muted-foreground">{pipelineError}</p>}
+      </Field>
       <Field label="Name">
         <Input
           value={f.name} onChange={e => setF({ ...f, name: e.target.value })}
@@ -703,8 +745,10 @@ export function DealDialog({
         </Field>
       </div>
 
+      <Field label="Deal currency" hint="Amounts stay in this currency. Changing currency does not convert the amount; confirm the negotiated value before saving."><select aria-label="Deal currency" className="h-9 w-full rounded-md border bg-background px-2 text-sm" value={f.currency} onChange={e=>setF({...f,currency:e.target.value})}>{DEAL_CURRENCIES.map(c=><option key={c} value={c}>{c}</option>)}</select></Field>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label={`Value (${activeCurrencyCode()})`}>
+        <Field label={`Value (${f.currency})`}>
           <Input
             type="number" min={0} inputMode="decimal"
             value={f.value} onChange={e => setF({ ...f, value: e.target.value })}
@@ -722,10 +766,10 @@ export function DealDialog({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Stage">
-          <Select value={f.stage} onValueChange={v => setF({ ...f, stage: v })}>
+          <Select value={pipelineId?stageId:f.stage} onValueChange={v=>{if(pipelineId){setStageId(v);const stage=pipeline?.stages.find(s=>s.id===v);if(stage)setF({...f,stage:stage.canonicalStage,probability:stage.probability});}else setF({...f,stage:v});}}>
             <SelectTrigger className={input}><SelectValue /></SelectTrigger>
             <SelectContent>
-              {DEAL_STAGES.map(s => (
+              {pipelineId?pipeline?.stages.map(s=><SelectItem key={s.id} value={s.id}>{s.name}{s.requiresApproval?' · approval required':''}</SelectItem>):DEAL_STAGES.map(s => (
                 <SelectItem key={s} value={s} className="text-[13px]">{STAGE_LABELS[s] ?? s}</SelectItem>
               ))}
             </SelectContent>
@@ -733,7 +777,7 @@ export function DealDialog({
         </Field>
         <Field
           label="Probability"
-          hint={`Weighted forecast: ${exact(num(f.value) * (Number(f.probability) / 100))}`}
+          hint={`Weighted forecast: ${exact(num(f.value) * (Number(f.probability) / 100),f.currency)}`}
         >
           <div className="flex h-9 items-center gap-3">
             <Slider
@@ -761,6 +805,8 @@ export function DealDialog({
         </Field>
       )}
 
+      {(pipelines.length>0||editing?.nextStep!==undefined)&&<Field label="Next step"><Textarea rows={2} maxLength={4000} value={nextStep} onChange={e=>setNextStep(e.target.value)}/></Field>}
+
       <OwnerField owners={owners} value={f.ownerId} onChange={v => setF({ ...f, ownerId: v })} />
 
       <Field label="Notes">
@@ -769,6 +815,7 @@ export function DealDialog({
           rows={3} className="resize-none text-[13px]"
         />
       </Field>
+    <CustomFields object="deals" values={customValues} onChange={setCustomValues} />
     </Shell>
   );
 }
@@ -819,6 +866,7 @@ export function CloseDealDialog({
     setSaving(true);
     try {
       await patch(`/api/crm/deals/${deal.id}`, {
+        pipelineVersion:deal.pipelineVersion,
         stage: outcome,
         probability: won ? 100 : 0,
         closedAt: closedOn ? new Date(`${closedOn}T12:00:00`).toISOString() : undefined,
@@ -870,7 +918,7 @@ export function CloseDealDialog({
           </DialogTitle>
           <DialogDescription className="text-[12.5px]">
             {deal?.name}
-            {deal ? ` · ${exact(deal.value)}` : ''}
+            {deal ? ` · ${exact(deal.value,deal.currency)}` : ''}
           </DialogDescription>
         </DialogHeader>
 

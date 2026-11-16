@@ -1,0 +1,2 @@
+PASS suspended enrollment owner cannot receive a generated task after record reassignment
+PASS unauthorized sequence execution is recorded as failed, not successful

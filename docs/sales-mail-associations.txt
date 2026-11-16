@@ -1,0 +1,8 @@
+PASS unassociated sender match does not stop enrollment
+PASS unavailable CRM record association denied
+PASS associated inbound without earlier outbound evidence does not stop sequence
+PASS other membership cannot read or mutate private thread association
+PASS out-of-order outbound evidence reconciles reply and cancels durable run
+PASS replayed provider evidence does not duplicate reply notification
+PASS disconnect deletes private CRM thread associations
+7 real database association/reply checks passed; synthetic transaction rolled back. No live provider verification.

@@ -32,7 +32,7 @@ import { formatRelativeTime } from '@/lib/format';
  */
 const RECORD_PARAMS = [
   'deal', 'lead', 'contact', 'company',
-  'task', 'project', 'ticket', 'invoice', 'expense', 'event', 'page',
+  'task', 'project', 'ticket', 'invoice', 'expense', 'event', 'page', 'channel', 'commercial', 'agreement',
 ] as const;
 
 
@@ -107,7 +107,7 @@ export function Header() {
   const notificationsLive = useRealtime({
     name: 'notifications',
     enabled: isAuthenticated,
-    tables: [{ table: 'notifications', event: 'INSERT' }],
+    tables: [{ table: 'notifications', event: '*' }],
     onChange: fetchNotifications,
     // Short: the badge appearing is the whole point, and an INSERT on this table
     // is one row, not a burst.
@@ -147,6 +147,7 @@ export function Header() {
 
     try {
       const url = new URL(n.link, window.location.origin);
+      if (url.origin !== window.location.origin || url.pathname !== '/dashboard') return;
       const target = url.searchParams.get('module');
       if (!target || !MODULES.some(m => m.id === target)) return;
 
@@ -208,7 +209,7 @@ export function Header() {
        (`p-4 md:p-6`), so the page title sits on the same left edge as the
        first thing below it. Eight pixels out is not noticed as eight pixels —
        it is noticed as the header belonging to a different screen. */
-    <header className="flex h-16 shrink-0 items-center gap-3 border-b border-border bg-background px-4 md:px-6">
+    <header className="nm-topbar flex h-16 shrink-0 items-center gap-3 border-b border-border bg-background px-4 md:px-6">
       {/* Below `lg` the sidebar is a sheet, and this is what opens it. Gated
           in CSS on the same breakpoint the sidebar uses — when this was gated
           on a 768px JavaScript media query and the sidebar on a 1024px CSS
@@ -219,6 +220,7 @@ export function Header() {
         className="lg:hidden"
         onClick={() => setSidebarOpen(!sidebarOpen)}
         aria-label="Open navigation"
+        aria-expanded={sidebarOpen}
       >
         <Menu className="size-5" />
       </Button>
@@ -226,15 +228,15 @@ export function Header() {
       {/* Where am I: the workspace, then the screen. Two lines rather than a
           badge beside a 14px title — this is the product's only permanent
           statement of place, and it should read as one. */}
-      <div className="min-w-0 flex-1">
+      <div className="nm-location min-w-0 flex-1">
         {workspaceName && (
           <p className="truncate text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground/80">
             {workspaceName}
           </p>
         )}
-        <h1 className="truncate text-[17px] font-semibold leading-tight tracking-[-0.018em] text-foreground">
+        <p className="truncate text-[14px] font-semibold leading-tight tracking-[-0.018em] text-foreground">
           {currentModule?.label ?? 'Executive Overview'}
-        </h1>
+        </p>
       </div>
 
       {/*
@@ -252,10 +254,10 @@ export function Header() {
         // The shortcut is drawn in the field; this is the same fact for
         // somebody who cannot see it.
         aria-keyshortcuts="Control+K Meta+K"
-        className="hidden h-9 w-56 items-center gap-2 rounded-md border border-input bg-card px-2.5 text-left text-[13px] text-muted-foreground transition-colors hover:border-ring/40 hover:text-foreground md:flex lg:w-64"
+        className="nm-search-trigger hidden h-9 w-56 items-center gap-2 rounded-md border border-input bg-card px-2.5 text-left text-[13px] text-muted-foreground transition-colors hover:border-ring/40 hover:text-foreground md:flex lg:w-64"
       >
         <Search className="size-4 shrink-0" strokeWidth={1.75} />
-        <span className="flex-1 truncate">Search…</span>
+        <span className="flex-1 truncate">Search your workspace</span>
         {shortcut && (
           <kbd className="shrink-0 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
             {shortcut}
@@ -307,7 +309,7 @@ export function Header() {
           </TooltipTrigger>
           <TooltipContent>Notifications</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="end" sideOffset={8} className="w-[22rem] p-0 sm:w-96">
+        <DropdownMenuContent align="end" sideOffset={8} className="w-[min(24rem,calc(100vw-24px))] p-0">
           <DropdownMenuLabel className="flex items-center justify-between px-3 py-2.5">
             <span className="flex items-center gap-2 text-[13px]">
               Notifications
@@ -333,6 +335,7 @@ export function Header() {
               </Button>
             )}
           </DropdownMenuLabel>
+          <DropdownMenuItem asChild><a href="/settings/notifications" className="text-xs">History, preferences & devices</a></DropdownMenuItem>
           <DropdownMenuSeparator className="my-0" />
 
           {notifications.length === 0 ? (

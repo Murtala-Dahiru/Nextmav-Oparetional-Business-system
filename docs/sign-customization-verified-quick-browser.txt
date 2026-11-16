@@ -1,0 +1,23 @@
+PASS Commercial Hub contextual navigation opens Sign
+PASS preparation signature boundary is visible
+PASS keyboard placement preserves normalized coordinates
+PASS signature field can be dragged
+PASS signature field can be resized
+PASS undo restores prior field dimensions
+PASS signature adds no forced name or date
+PASS sender adjusts name font size
+PASS name and date added independently
+PASS Quick Send zoom preserves placement
+PASS Quick Send generates a real link without email or Settings
+Quick Send elapsed seconds: 30
+PASS success screen does not claim email delivery
+PASS Quick Send success fits 1440
+PASS Quick Send success fits 1280
+PASS Quick Send success fits 768
+PASS Quick Send success fits 390
+PASS Quick Send success fits 360
+PASS email-free recipient completes real portal signing without an account
+PASS completed PDF certificate and evidence verify
+PASS independent date records server event without forced signature linkage
+PASS no uncaught browser errors
+21 Quick Send browser assertions passed.

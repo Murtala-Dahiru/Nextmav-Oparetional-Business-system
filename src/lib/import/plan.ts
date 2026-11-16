@@ -1,3 +1,5 @@
+import type { FieldDefinition } from '@/lib/crm/customization';
+import { mapImportFields } from '@/lib/crm/import-fields';
 import type { RequestContext } from '@/lib/auth-context';
 import {
   ExistingIndex, buildCandidate, normaliseCompany, type Candidate, type Mapping, type Match,
@@ -63,16 +65,19 @@ export async function loadIndex(ctx: RequestContext) {
   const orgId = ctx.org.organizationId;
 
   const [companiesRes, contactsRes, leadsRes] = await Promise.all([
-    ctx.supabase.from('companies').select('id, name, website, email')
+    ctx.supabase.from('companies').select('id, name, website, email', {count:'exact'})
       .eq('organization_id', orgId).is('deleted_at', null).limit(INDEX_LIMIT),
     ctx.supabase.from('contacts')
-      .select('id, first_name, last_name, email, phone, company:companies(name)')
+      .select('id, first_name, last_name, email, phone, company:companies(name)', {count:'exact'})
       .eq('organization_id', orgId).is('deleted_at', null).limit(INDEX_LIMIT),
     ctx.supabase.from('leads')
-      .select('id, first_name, last_name, email, phone, company_name')
+      .select('id, first_name, last_name, email, phone, company_name', {count:'exact'})
       .eq('organization_id', orgId).is('deleted_at', null).limit(INDEX_LIMIT),
   ]);
 
+  for (const result of [companiesRes, contactsRes, leadsRes]) {
+    if (result.error) throw new Error('The duplicate check could not read existing records.');
+  }
   const companies: ExistingCompany[] = ((companiesRes.data ?? []) as any[]).map(c => ({
     id: c.id, name: c.name, website: c.website, email: c.email,
   }));
@@ -92,9 +97,7 @@ export async function loadIndex(ctx: RequestContext) {
   ];
 
   const exhaustive =
-    companies.length < INDEX_LIMIT
-    && (contactsRes.data ?? []).length < INDEX_LIMIT
-    && (leadsRes.data ?? []).length < INDEX_LIMIT;
+    [companiesRes, contactsRes, leadsRes].every(result => result.count === result.data?.length);
 
   return { index: new ExistingIndex(companies, people), exhaustive };
 }
@@ -121,7 +124,8 @@ export function planRows(
   mapping: Mapping,
   index: ExistingIndex,
   exhaustive: boolean,
-  target: 'leads' | 'contacts',
+  target: 'leads' | 'contacts' | 'companies',
+  customFields: FieldDefinition[] = [],
 ): Plan {
   const planned: PlannedRow[] = [];
 
@@ -145,7 +149,7 @@ export function planRows(
     const candidate = buildCandidate(row, mapping, i);
 
     const companyMatch = candidate.company ? index.matchCompany(candidate.company) : null;
-    const personMatch = candidate.person
+    const personMatch = target !== 'companies' && candidate.person
       ? index.matchPerson(candidate.person, candidate.company?.name ?? '')
       : null;
 
@@ -164,6 +168,15 @@ export function planRows(
       ? willCreate.get(companyKey)!
       : null;
 
+    if (target === 'companies') {
+      candidate.person = null;
+      if (!candidate.company) candidate.problems.push({field:'companyName', severity:'error', message:'A company name or website is required'});
+      try { candidate.customValues = mapImportFields(row, mapping, customFields, !companyMatch && companyFromRow === null); }
+      catch (cause) { candidate.problems.push({field:'customValues',severity:'error',message:(cause as Error).message}); }
+    } else if (candidate.person) {
+      try { candidate.customValues = mapImportFields(row, mapping, customFields, !personMatch); }
+      catch (e) { candidate.problems.push({field: 'customValues', severity:'error', message:(e as Error).message}); }
+    }
     const blocked = candidate.problems.some(p => p.severity === 'error');
 
     let action: RowAction;

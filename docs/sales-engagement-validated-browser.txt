@@ -1,0 +1,13 @@
+PASS daily queue opens customer communication context
+PASS workspace has no horizontal page overflow at 1440px
+PASS workspace has no horizontal page overflow at 1280px
+PASS workspace has no horizontal page overflow at 768px
+PASS workspace has no horizontal page overflow at 390px
+PASS mobile call logging persists and refreshes customer history
+PASS mobile follow-up creation and completion persist
+PASS template editor shows persisted subject
+PASS sequence workspace renders on mobile
+PASS mobile sequence counts match authorized API totals
+PASS mailbox connections display honest disconnected states
+PASS no browser runtime errors: 
+12 browser checks passed.

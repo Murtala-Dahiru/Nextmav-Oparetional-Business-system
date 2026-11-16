@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
+const {chromium}=await import(pathToFileURL(join(tmpdir(),'nextmav-browser/node_modules/playwright/index.mjs')).href);
+const fixture=JSON.parse(readFileSync(join(tmpdir(),'nextmav-governance-fixture.json'),'utf8'));
+const base=process.env.APP_URL||'http://localhost:3037';
+const browser=await chromium.launch({channel:'msedge',headless:true});
+const context=await browser.newContext({viewport:{width:1440,height:1000}});context.setDefaultTimeout(90000);
+let passed=0;
+const check=(ok,label)=>{assert.ok(ok,label);console.log('PASS '+label);passed++};
+async function api(path){const r=await context.request.get(base+path);assert.ok(r.ok());return (await r.json()).data;}
+try {
+ const login=await context.request.post(base+'/api/auth/login',{data:{email:fixture.email,password:fixture.password}});assert.ok(login.ok());
+ const page=await context.newPage();await page.goto(base+'/dashboard',{waitUntil:'domcontentloaded',timeout:180000});
+ await page.getByRole('button',{name:'Customers & revenue',exact:true}).click();
+ await page.getByRole('button',{name:'Leads',exact:true}).click();
+ const columns=page.locator('details').filter({has:page.locator('summary').filter({hasText:'Columns and density'})});
+ await columns.locator('summary').click();
+ await columns.getByLabel('Property Type · property_type',{exact:true}).check();
+ await columns.getByLabel('Density',{exact:false}).selectOption('compact');
+ await columns.getByRole('button',{name:'Save default presentation'}).click();
+ await columns.getByText('Default list presentation saved').waitFor();
+ const prefs=await api('/api/crm/settings/list-preferences?object=leads');check(prefs.settings.density==='compact','Column selection and density save through UI');
+ const views=page.locator('details').filter({has:page.locator('summary').filter({hasText:'Saved views'})});await views.locator('summary').click();
+ const viewName='Personal acceptance '+Date.now();await views.getByLabel('Shared view name').fill(viewName);await views.getByLabel('View audience').selectOption('personal');
+ await views.getByRole('button',{name:'Save current filters'}).click();await views.getByText('View saved',{exact:true}).waitFor();
+ const catalog=await api('/api/crm/settings/shared-views?object=leads');const view=catalog.rows.find(v=>v.name===viewName);check(view?.isPersonal,'Personal saved view created through UI');check(view.settings.presentation?.density==='compact','Saved view retains its column and density configuration');
+ await views.getByLabel('Apply shared view').selectOption(view.id);await views.getByRole('button',{name:'Make default'}).click();await views.getByText('Default view saved',{exact:true}).waitFor();
+ check((await api('/api/crm/settings/list-preferences?object=leads')).defaultViewId===view.id,'Default view persists');
+ await page.getByRole('button',{name:'Contacts',exact:true}).click();await page.getByRole('button',{name:'Leads',exact:true}).click();
+ const restored=page.locator('details').filter({has:page.locator('summary').filter({hasText:'Saved views'})});await restored.locator('summary').click();
+ await restored.getByRole('button',{name:'Default view',exact:true}).waitFor();check(await restored.getByLabel('Apply shared view').inputValue()===view.id,'Default view restored when record list opens');
+ const bulk=page.locator('details').filter({has:page.locator('summary').filter({hasText:'Bulk field update'})});await bulk.locator('summary').click();
+ const field=(await api('/api/crm/settings/fields?object=leads')).find(f=>f.key==='property_type');
+ await bulk.getByRole('combobox').first().selectOption(field.id);await bulk.getByLabel('Property Type *',{exact:true}).selectOption('Commercial');
+ await bulk.getByLabel('Governance prospect',{exact:true}).check();page.once('dialog',d=>d.accept());await bulk.getByRole('button',{name:'Update 1 records',exact:true}).click();
+ await bulk.getByText('1 updated. 0 rejected.',{exact:true}).waitFor();
+ check((await api('/api/crm/leads/'+fixture.leadId)).customValues[field.id]==='Commercial','Confirmed bulk edit updates actual lead through UI');
+ await page.screenshot({path:'docs/governance-evidence/views-and-bulk.png'});
+ console.log(`${passed} additional browser checks passed.`);
+}finally{await browser.close();}

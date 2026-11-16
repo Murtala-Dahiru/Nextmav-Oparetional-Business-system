@@ -1,0 +1,294 @@
+
+> nextjs_tailwind_shadcn_ts@0.2.0 build
+> node scripts/check-env.mjs && next build && node scripts/prepare-standalone.mjs
+
+[check-env] Supabase configuration present.
+▲ Next.js 16.1.3 (Turbopack)
+- Environments: .env
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 4.8min
+  Running TypeScript ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/162) ...
+  Generating static pages using 7 workers (40/162) 
+  Generating static pages using 7 workers (80/162) 
+  Generating static pages using 7 workers (121/162) 
+✓ Generating static pages using 7 workers (162/162) in 4.9s
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /about
+├ ○ /accept-invite
+├ ƒ /api
+├ ƒ /api/activity-log
+├ ƒ /api/admin/announcements
+├ ƒ /api/admin/announcements/[id]
+├ ƒ /api/admin/audit-log
+├ ƒ /api/admin/departments
+├ ƒ /api/admin/holidays
+├ ƒ /api/admin/holidays/[id]
+├ ƒ /api/admin/notifications
+├ ƒ /api/admin/notifications/[id]
+├ ƒ /api/admin/roles
+├ ƒ /api/admin/roles/[id]
+├ ƒ /api/admin/settings
+├ ƒ /api/admin/users
+├ ƒ /api/admin/users/[id]
+├ ƒ /api/admin/users/[id]/account
+├ ƒ /api/admin/users/[id]/reset-password
+├ ƒ /api/auth/accept-invite
+├ ƒ /api/auth/change-password
+├ ƒ /api/auth/forgot-password
+├ ƒ /api/auth/invite
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/profile
+├ ƒ /api/auth/resend-confirmation
+├ ƒ /api/auth/reset-password
+├ ƒ /api/auth/session
+├ ƒ /api/auth/session/touch
+├ ƒ /api/auth/signup
+├ ƒ /api/calendar/events
+├ ƒ /api/calendar/events/[id]
+├ ƒ /api/communication/audit
+├ ƒ /api/communication/availability
+├ ƒ /api/communication/channels
+├ ƒ /api/communication/channels/[id]
+├ ƒ /api/communication/channels/[id]/members
+├ ƒ /api/communication/direct
+├ ƒ /api/communication/files
+├ ƒ /api/communication/files/[id]
+├ ƒ /api/communication/inbox
+├ ƒ /api/communication/meetings
+├ ƒ /api/communication/meetings/[id]
+├ ƒ /api/communication/meetings/[id]/participants
+├ ƒ /api/communication/messages
+├ ƒ /api/communication/messages/[id]
+├ ƒ /api/communication/messages/[id]/reactions
+├ ƒ /api/communication/messages/[id]/receipts
+├ ƒ /api/communication/retention
+├ ƒ /api/communication/saved
+├ ƒ /api/communication/search
+├ ƒ /api/communication/threads
+├ ƒ /api/crm-capture
+├ ƒ /api/crm/activities
+├ ƒ /api/crm/activities/[id]
+├ ƒ /api/crm/approvals/[id]
+├ ƒ /api/crm/assignment
+├ ƒ /api/crm/capture
+├ ƒ /api/crm/companies
+├ ƒ /api/crm/companies/[id]
+├ ƒ /api/crm/companies/[id]/overview
+├ ƒ /api/crm/companies/[id]/plan
+├ ƒ /api/crm/companies/[id]/timeline
+├ ƒ /api/crm/contacts
+├ ƒ /api/crm/contacts/[id]
+├ ƒ /api/crm/deals
+├ ƒ /api/crm/deals/[id]
+├ ƒ /api/crm/deals/[id]/approvals
+├ ƒ /api/crm/deals/[id]/execution
+├ ƒ /api/crm/deals/[id]/history
+├ ƒ /api/crm/deals/[id]/transition
+├ ƒ /api/crm/files
+├ ƒ /api/crm/files/[id]
+├ ƒ /api/crm/followups/sweep
+├ ƒ /api/crm/import/analyze
+├ ƒ /api/crm/import/commit
+├ ƒ /api/crm/import/preview
+├ ƒ /api/crm/insights
+├ ƒ /api/crm/leads
+├ ƒ /api/crm/leads/[id]
+├ ƒ /api/crm/leads/[id]/assign
+├ ƒ /api/crm/leads/[id]/convert
+├ ƒ /api/crm/leads/[id]/duplicates
+├ ƒ /api/crm/leads/[id]/merge
+├ ƒ /api/crm/leads/[id]/preferences
+├ ƒ /api/crm/leads/[id]/qualification
+├ ƒ /api/crm/leads/bulk-status
+├ ƒ /api/crm/leads/engagement
+├ ƒ /api/crm/leads/summary
+├ ƒ /api/crm/leads/views
+├ ƒ /api/crm/overview
+├ ƒ /api/crm/partner-leads
+├ ƒ /api/crm/pipelines
+├ ƒ /api/crm/pipelines/[id]/summary
+├ ƒ /api/crm/profiles/[kind]/[id]
+├ ƒ /api/crm/qualification
+├ ƒ /api/crm/targets
+├ ƒ /api/dashboard
+├ ƒ /api/directory
+├ ƒ /api/export
+├ ƒ /api/finance/expenses
+├ ƒ /api/finance/expenses/[id]
+├ ƒ /api/finance/invoices
+├ ƒ /api/finance/invoices/[id]
+├ ƒ /api/health
+├ ƒ /api/hr/achievements
+├ ƒ /api/hr/attendance
+├ ƒ /api/hr/attendance/adjustments
+├ ƒ /api/hr/attendance/clock
+├ ƒ /api/hr/calibration
+├ ƒ /api/hr/cases
+├ ƒ /api/hr/cases/[id]
+├ ƒ /api/hr/cases/[id]/notes
+├ ƒ /api/hr/checklists
+├ ƒ /api/hr/checklists/[id]
+├ ƒ /api/hr/checklists/items/[id]
+├ ƒ /api/hr/compensation
+├ ƒ /api/hr/compensation/[id]
+├ ƒ /api/hr/compensation/components
+├ ƒ /api/hr/compensation/components/[id]
+├ ƒ /api/hr/competencies
+├ ƒ /api/hr/competencies/[id]
+├ ƒ /api/hr/cycles
+├ ƒ /api/hr/cycles/[id]
+├ ƒ /api/hr/documents
+├ ƒ /api/hr/documents/[id]
+├ ƒ /api/hr/employees
+├ ƒ /api/hr/employees/[id]
+├ ƒ /api/hr/exits
+├ ƒ /api/hr/exits/[id]
+├ ƒ /api/hr/goals
+├ ƒ /api/hr/goals/[id]
+├ ƒ /api/hr/leave
+├ ƒ /api/hr/leave/[id]
+├ ƒ /api/hr/leave/balances
+├ ƒ /api/hr/org
+├ ƒ /api/hr/overview
+├ ƒ /api/hr/payroll/payslips
+├ ƒ /api/hr/payroll/periods
+├ ƒ /api/hr/payroll/periods/[id]
+├ ƒ /api/hr/payroll/periods/[id]/calculate
+├ ƒ /api/hr/payroll/periods/[id]/posting
+├ ƒ /api/hr/payroll/rulesets
+├ ƒ /api/hr/payroll/rulesets/[id]
+├ ƒ /api/hr/people
+├ ƒ /api/hr/people/[id]
+├ ƒ /api/hr/people/[id]/handover
+├ ƒ /api/hr/recruitment/applications
+├ ƒ /api/hr/recruitment/applications/[id]
+├ ƒ /api/hr/recruitment/applications/[id]/hire
+├ ƒ /api/hr/recruitment/candidates
+├ ƒ /api/hr/recruitment/candidates/[id]
+├ ƒ /api/hr/recruitment/interviews
+├ ƒ /api/hr/recruitment/interviews/[id]
+├ ƒ /api/hr/recruitment/interviews/[id]/feedback
+├ ƒ /api/hr/recruitment/offers
+├ ƒ /api/hr/recruitment/offers/[id]
+├ ƒ /api/hr/recruitment/openings
+├ ƒ /api/hr/recruitment/openings/[id]
+├ ƒ /api/hr/review-competencies
+├ ƒ /api/hr/review-competencies/[id]
+├ ƒ /api/hr/review-feedback
+├ ƒ /api/hr/review-feedback/[id]
+├ ƒ /api/hr/reviews
+├ ƒ /api/hr/reviews/[id]
+├ ƒ /api/hr/reviews/[id]/competencies
+├ ƒ /api/hr/templates
+├ ƒ /api/hr/templates/[id]
+├ ƒ /api/inventory/alerts
+├ ƒ /api/inventory/movements
+├ ƒ /api/inventory/products
+├ ƒ /api/inventory/products/[id]
+├ ƒ /api/inventory/purchase-orders
+├ ƒ /api/inventory/purchase-orders/[id]
+├ ƒ /api/inventory/suppliers
+├ ƒ /api/inventory/suppliers/[id]
+├ ƒ /api/inventory/warehouses
+├ ƒ /api/inventory/warehouses/[id]
+├ ƒ /api/notifications
+├ ƒ /api/organizations
+├ ƒ /api/performance/evidence
+├ ƒ /api/performance/incentives
+├ ƒ /api/performance/incentives/[id]
+├ ƒ /api/performance/overview
+├ ƒ /api/performance/rules
+├ ƒ /api/performance/rules/[id]
+├ ƒ /api/performance/targets
+├ ƒ /api/performance/targets/[id]
+├ ƒ /api/performance/team
+├ ƒ /api/portal
+├ ƒ /api/portal/deliverables/[id]
+├ ƒ /api/portal/partner-leads
+├ ƒ /api/portal/partner-leads/[id]
+├ ƒ /api/portal/projects/[id]
+├ ƒ /api/presence
+├ ƒ /api/projects/comments
+├ ƒ /api/projects/comments/[id]
+├ ƒ /api/projects/files
+├ ƒ /api/projects/files/[id]
+├ ƒ /api/projects/members
+├ ƒ /api/projects/members/[id]
+├ ƒ /api/projects/milestones
+├ ƒ /api/projects/milestones/[id]
+├ ƒ /api/projects/overview
+├ ƒ /api/projects/projects
+├ ƒ /api/projects/projects/[id]
+├ ƒ /api/projects/projects/[id]/overview
+├ ƒ /api/projects/tasks
+├ ƒ /api/projects/tasks/[id]
+├ ƒ /api/projects/tasks/[id]/dependencies
+├ ƒ /api/search
+├ ƒ /api/support/tickets
+├ ƒ /api/support/tickets/[id]
+├ ƒ /api/todos
+├ ƒ /api/todos/[id]
+├ ƒ /api/todos/[id]/convert
+├ ƒ /api/todos/lists
+├ ƒ /api/todos/lists/[id]
+├ ƒ /api/todos/reminders/sweep
+├ ƒ /api/workspace/comments
+├ ƒ /api/workspace/comments/[id]
+├ ƒ /api/workspace/files
+├ ƒ /api/workspace/files/[id]
+├ ƒ /api/workspace/links
+├ ƒ /api/workspace/overview
+├ ƒ /api/workspace/pages
+├ ƒ /api/workspace/pages/[id]
+├ ƒ /api/workspace/pages/[id]/links
+├ ƒ /api/workspace/pages/[id]/shares
+├ ƒ /api/workspace/pages/[id]/sheet
+├ ƒ /api/workspace/pages/[id]/versions
+├ ƒ /api/workspace/templates
+├ ƒ /api/workspace/trash
+├ ƒ /auth/callback
+├ ○ /blog
+├ ƒ /capture/[id]
+├ ○ /change-password
+├ ○ /contact
+├ ○ /cookies
+├ ○ /dashboard
+├ ○ /docs
+├ ○ /features
+├ ○ /forgot-password
+├ ○ /help
+├ ○ /login
+├ ○ /onboarding
+├ ○ /pricing
+├ ○ /privacy
+├ ○ /reset-password
+├ ○ /settings
+├ ○ /signup
+├ ○ /solutions
+├ ● /solutions/[industry]
+│ ├ /solutions/agencies
+│ ├ /solutions/consulting
+│ ├ /solutions/technology
+│ └ [+2 more paths]
+├ ○ /status
+├ ○ /terms
+└ ○ /verify
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+●  (SSG)      prerendered as static HTML (uses generateStaticParams)
+ƒ  (Dynamic)  server-rendered on demand
+
+[standalone] copied .\.next-leads-build\static -> .\.next-leads-build\standalone\.next-leads-build\static
+[standalone] copied .\public -> .\.next-leads-build\standalone\public
+[standalone] ready — run: node .next-leads-build/standalone/server.js

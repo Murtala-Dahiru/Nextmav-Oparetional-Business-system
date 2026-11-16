@@ -1,7 +1,17 @@
+import { z } from 'zod';
+import { parseCustomFilter } from '@/lib/crm/custom-filter';
 import { authorize, pgError } from '@/lib/auth-context';
 import { error } from '@/lib/api-response';
 import { can } from '@/lib/permissions';
 import type { ModuleId } from '@/lib/constants';
+
+import { GET as listLeads } from '@/app/api/crm/leads/route';
+import { GET as listContacts } from '@/app/api/crm/contacts/route';
+import { GET as listCompanies } from '@/app/api/crm/companies/route';
+import { GET as listDeals } from '@/app/api/crm/deals/route';
+import { toSnake } from '@/lib/case';
+
+const crmLists = { leads: listLeads, contacts: listContacts, companies: listCompanies, deals: listDeals };
 
 /**
  * CSV export.
@@ -88,6 +98,8 @@ const DATASETS: Record<string, Dataset> = {
       { key: 'expected_close', label: 'Expected close' }, { key: 'created_at', label: 'Created' },
     ],
   },
+  contacts: {table:'contacts',module:'crm',select:'first_name,last_name,email,phone,job_title',columns:[{key:'first_name',label:'First name'},{key:'last_name',label:'Last name'},{key:'email',label:'Email'},{key:'phone',label:'Phone'},{key:'job_title',label:'Job title'}]},
+  companies: {table:'companies',module:'crm',select:'name,industry,email,phone,website',columns:[{key:'name',label:'Company'},{key:'industry',label:'Industry'},{key:'email',label:'Email'},{key:'phone',label:'Phone'},{key:'website',label:'Website'}]},
   invoices: {
     table: 'invoices', module: 'finance',
     select: 'invoice_number, status, issue_date, due_date, subtotal, tax_amount, total, amount_paid, currency',
@@ -147,14 +159,15 @@ const DATASETS: Record<string, Dataset> = {
 /** RFC 4180 escaping: quotes doubled, and any field containing a delimiter quoted. */
 function csvCell(value: unknown): string {
   if (value === null || value === undefined) return '';
-  const s = String(value);
+  const raw = Array.isArray(value) ? JSON.stringify(value) : String(value);
+  const s = typeof value === 'string' && /^[\s]*[=+@-]/.test(raw) ? "'" + raw : raw;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const name = searchParams.get('dataset') ?? searchParams.get('type') ?? '';
-  const spec = DATASETS[name];
+  const spec = Object.hasOwn(DATASETS, name) ? DATASETS[name] : undefined;
 
   if (!spec) {
     return error(
@@ -175,18 +188,62 @@ export async function GET(req: Request) {
 
   // Capped: an unbounded export is a memory and timeout hazard, and in
   // practice a request for 100k rows is a report, not a download.
-  const limit = Math.min(10_000, Math.max(1, Number(searchParams.get('limit')) || 5_000));
+  const limit = Math.floor(Math.min(10_000, Math.max(1, Number(searchParams.get('limit')) || 5_000)));
 
+  const crm = spec.module === 'crm';
+  const custom = crm ? searchParams.get('custom') : null;
+  const join = custom && name === 'companies' ? ',filter_values:crm_company_field_values!inner(company_id)' : '';
+  const columns = [...spec.columns];
+  if (crm) {
+    const metadata = await ctx.supabase.from('crm_field_definitions').select('id,key').eq('organization_id',ctx.org.organizationId).eq('object',name).eq('archived',false).order('position').order('id');
+    if (metadata.error) return pgError(metadata.error);
+    for (const f of metadata.data) columns.push({key:f.id,label:'custom:'+f.key});
+  }
   let query = ctx.supabase
     .from(spec.table)
-    .select(spec.select)
+    .select(spec.select + (crm ? (name === 'companies' ? ',custom_values:crm_company_values' : ',custom_values') : '') + join)
     .eq('organization_id', ctx.org.organizationId);
 
-  if (spec.softDelete) query = query.is('deleted_at', null);
+  if(crm && searchParams.has('ids')) {
+    const ids=z.array(z.uuid()).min(1).max(500).safeParse(searchParams.get('ids')?.split(','));
+    if(!ids.success)return error('Select between one and 500 records',422);
+    query=query.in('id',ids.data);
+  }
+  if(custom){try{query=query.contains(name==='companies'?'filter_values.field_values':'custom_values',parseCustomFilter(custom));}catch{return error('Invalid custom field filter',422);}}
+  if (crm || spec.softDelete) query = query.is('deleted_at', null);
 
-  const { data, error: e } = await query
-    .order(spec.order ?? 'created_at', { ascending: false })
-    .limit(limit);
+  query = query.order(spec.order ?? 'created_at', { ascending: false }).order('id');
+  // PostgREST imposes a per-request row cap. Fetch bounded pages rather than
+  // silently returning only the first server page of a larger export.
+  const rows: Record<string, unknown>[] = [];
+  if (crm && searchParams.get('currentView') === 'true') {
+    // Run the same authenticated list handler as the screen. This preserves
+    // relationship, activity, date, search and custom filter semantics.
+    const list = crmLists[name as keyof typeof crmLists];
+    const listUrl = new URL(req.url);
+    listUrl.pathname = `/api/crm/${name}`;
+    for (const reserved of ['dataset','type','limit','currentView','ids','facts']) listUrl.searchParams.delete(reserved);
+    listUrl.searchParams.set('pageSize', '100');
+    const seen = new Set<string>();
+    for (let page = 1; page <= Math.ceil(limit / 100); page++) {
+      listUrl.searchParams.set('page', String(page));
+      const response = await list(new Request(listUrl, { headers: req.headers }));
+      if (!response.ok) return response;
+      const result = await response.json();
+      for (const record of result.data) {
+        if (!seen.has(record.id) && rows.length < limit) rows.push(toSnake(record) as Record<string,unknown>);
+        seen.add(record.id);
+      }
+      if (page >= result.meta.totalPages || rows.length >= limit) break;
+    }
+  } else for (let offset = 0; offset < limit; offset += 500) {
+    const pageSize = Math.min(500, limit - offset);
+    const { data, error: pageError } = await query.range(offset, offset + pageSize - 1);
+    if (pageError) return pgError(pageError);
+    const page = (data ?? []) as unknown as Record<string, unknown>[];
+    rows.push(...page);
+    if (page.length < pageSize) break;
+  }
 
   /**
    * Through `pgError` like every other database failure in the application.
@@ -199,13 +256,13 @@ export async function GET(req: Request) {
    * permission denial on an export was reported as a server fault rather than
    * as a refusal.
    */
-  if (e) return pgError(e);
-
-  // The select string is dynamic, so supabase-js cannot infer a row shape.
-  const rows = (data ?? []) as unknown as Record<string, unknown>[];
+  if(crm){
+    const audit=await ctx.supabase.from('activity_log').insert({organization_id:ctx.org.organizationId,member_id:ctx.org.memberId,module:'crm',action:'export',title:'Exported '+name,entity_type:'export',metadata:{dataset:name,records:rows.length,columns:columns.length}});
+    if(audit.error)return pgError(audit.error);
+  }
   const csv = [
-    spec.columns.map(c => csvCell(c.label)).join(','),
-    ...rows.map(r => spec.columns.map(c => csvCell(r[c.key])).join(',')),
+    columns.map(c => csvCell(c.label)).join(','),
+    ...rows.map(r => columns.map(c => csvCell(Object.hasOwn(r,c.key) ? r[c.key] : (r.custom_values as Record<string,unknown> | null)?.[c.key])).join(',')),
   ].join('\r\n');
 
   const stamp = new Date().toISOString().slice(0, 10);

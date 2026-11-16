@@ -1,25 +1,27 @@
-import type { ReactNode } from 'react';
-import Link from 'next/link';
-import { ArrowLeft, Check, Loader2 } from 'lucide-react';
-import { Logo } from '@/components/public/ui';
-import { publicFontVars } from '@/components/public/fonts';
+import type { ReactNode } from "react";
+import Link from "next/link";
+import { ArrowLeft, Check, Loader2 } from "lucide-react";
+import { Logo } from "@/components/public/ui";
+import { publicFontVars } from "@/components/public/fonts";
 
 // The uploaded public design system. Scoped to `.nm-public` by
 // `scripts/import-public-css.mjs`; imported here because the auth routes sit
 // outside the `(marketing)` group and so do not inherit that layout's imports.
 // Next deduplicates these against the marketing layout's copies.
-import '@/styles/public/base.css';
-import '@/styles/public/layout.css';
-import '@/styles/public/components.css';
-import '@/styles/public/pages.css';
-import '@/styles/public/auth.css';
+import "@/styles/public/base.css";
+import "@/styles/public/layout.css";
+import "@/styles/public/components.css";
+import "@/styles/public/pages.css";
+import "@/styles/public/auth.css";
 // Hand-maintained, after the generated sheets they extend. See their headers.
-import '@/styles/public/auth-forms.css';
+import "@/styles/public/auth-forms.css";
 // `refinements.css` too, not only on the marketing layout: it carries the
 // touch-target rules, and without it here the auth screens were the only
 // public pages still shipping 21px standalone links on a phone.
-import '@/styles/public/refinements.css';
-import '@/styles/public-fonts.css';
+import "@/styles/public/refinements.css";
+import "@/styles/public-fonts.css";
+import "@/styles/public/premium.css";
+import "@/styles/public/editorial.css";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -46,21 +48,21 @@ import '@/styles/public-fonts.css';
  */
 
 const DEFAULT_ASIDE = {
-  eyebrow: 'Why teams move',
-  title: 'One system of record for the whole company.',
-  body: 'CRM, projects, people, finance, inventory and communication in a single application — on one permission model and one audit trail.',
+  eyebrow: "Why teams move",
+  title: "One system of record for the whole company.",
+  body: "CRM, projects, people, finance, inventory and communication in a single application — on one permission model and one audit trail.",
   points: [
     {
-      title: 'Every module in the trial',
-      desc: 'Fourteen days, nothing held back, no card.',
+      title: "Start with a shared workspace",
+      desc: "Bring customer records, projects and your team together.",
     },
     {
-      title: 'Isolated at the database',
-      desc: 'Row-level security, not a filter in application code.',
+      title: "Access with clear boundaries",
+      desc: "Workspace records are protected by organization and role.",
     },
     {
-      title: 'Your data, on request',
-      desc: 'Structured export from every module, whenever you want it.',
+      title: "Your data, on request",
+      desc: "Export supported records from the tools where you work.",
     },
   ],
 };
@@ -92,21 +94,21 @@ export type AuthAside = typeof DEFAULT_ASIDE;
 export const ASIDES = {
   /** Sign-in. A returning user is not a prospect; do not sell to them. */
   signIn: {
-    eyebrow: 'Where you left off',
-    title: 'Your work is where you left it.',
-    body: 'CRM, projects, people, finance, inventory and communication in one application — on one permission model and one audit trail.',
+    eyebrow: "Where you left off",
+    title: "Your work is where you left it.",
+    body: "CRM, projects, people, finance, inventory and communication in one application — on one permission model and one audit trail.",
     points: [
       {
-        title: 'One record, every module',
-        desc: 'A customer is the same customer in projects, finance and support.',
+        title: "One record, every module",
+        desc: "A customer is the same customer in projects, finance and support.",
       },
       {
-        title: 'Sessions end deliberately',
-        desc: 'Inactivity and maximum length are policy, and we tell you which applied.',
+        title: "A secure return to work",
+        desc: "If a session expires, sign in again to return to your workspace.",
       },
       {
-        title: 'Isolated at the database',
-        desc: 'Row-level security, not a filter in application code.',
+        title: "Access with clear boundaries",
+        desc: "Workspace records are protected by organization and role.",
       },
     ],
   },
@@ -116,63 +118,63 @@ export const ASIDES = {
 
   /** Password reset — request and completion. */
   recovery: {
-    eyebrow: 'How this works',
-    title: 'Recovery that gives nothing away.',
-    body: 'The reset flow is built so that using it reveals nothing about who does or does not have an account here.',
+    eyebrow: "How this works",
+    title: "A clear path back to work.",
+    body: "The reset flow is built so that using it reveals nothing about who does or does not have an account here.",
     points: [
       {
-        title: 'The same answer either way',
-        desc: 'This form responds identically whether or not the address is registered.',
+        title: "The same answer either way",
+        desc: "This form responds identically whether or not the address is registered.",
       },
       {
-        title: 'One link, one use',
-        desc: 'The link stops working the moment it is redeemed.',
+        title: "One link, one use",
+        desc: "The link stops working the moment it is redeemed.",
       },
       {
-        title: 'Nothing changes until you finish',
-        desc: 'Requesting a reset does not lock, alter or suspend the account.',
+        title: "Nothing changes until you finish",
+        desc: "Requesting a reset does not lock, alter or suspend the account.",
       },
     ],
   },
 
   /** Email confirmation. */
   verify: {
-    eyebrow: 'One step left',
-    title: 'Confirming the address keeps the account yours.',
-    body: 'An unconfirmed address is one somebody could have typed by mistake — or on purpose. The link proves the inbox is yours before the account can be used.',
+    eyebrow: "One step left",
+    title: "Your workspace starts with you.",
+    body: "An unconfirmed address is one somebody could have typed by mistake — or on purpose. The link proves the inbox is yours before the account can be used.",
     points: [
       {
-        title: 'It expires',
-        desc: 'A link left unopened stops working rather than waiting indefinitely.',
+        title: "It expires",
+        desc: "A link left unopened stops working rather than waiting indefinitely.",
       },
       {
-        title: 'You can send another',
-        desc: 'Requesting a new link invalidates the previous one.',
+        title: "You can send another",
+        desc: "Requesting a new link invalidates the previous one.",
       },
       {
-        title: 'Nothing is charged',
-        desc: 'Confirming an address does not start a subscription.',
+        title: "Nothing is charged",
+        desc: "Confirming an address does not start a subscription.",
       },
     ],
   },
 
   /** Invitation acceptance — they already have an organisation. */
   invite: {
-    eyebrow: 'Joining a workspace',
-    title: 'You are being added to an existing organisation.',
-    body: 'Your access is defined by the role you were invited with, and it applies the same way in every module.',
+    eyebrow: "Joining a workspace",
+    title: "Join your team’s workspace.",
+    body: "Your access is defined by the role you were invited with, and it applies the same way in every module.",
     points: [
       {
-        title: 'One permission model',
-        desc: 'The same role governs CRM, finance, projects and everything else.',
+        title: "One permission model",
+        desc: "The same role governs CRM, finance, projects and everything else.",
       },
       {
-        title: 'Scoped to that organisation',
-        desc: 'You see its data and no other tenant’s — enforced at the database.',
+        title: "Scoped to that organisation",
+        desc: "You see its data and no other tenant’s — enforced at the database.",
       },
       {
-        title: 'Actions are attributable',
-        desc: 'Changes are recorded against the person who made them.',
+        title: "Actions are attributable",
+        desc: "Changes are recorded against the person who made them.",
       },
     ],
   },
@@ -192,7 +194,7 @@ export function AuthLoading() {
     <div className={`nm-public ${publicFontVars}`}>
       <div
         className="nm-auth"
-        style={{ placeItems: 'center', gridTemplateColumns: '1fr' }}
+        style={{ placeItems: "center", gridTemplateColumns: "1fr" }}
         role="status"
         aria-label="Loading"
       >
@@ -200,7 +202,7 @@ export function AuthLoading() {
           className="nm-spin"
           size={20}
           aria-hidden="true"
-          style={{ color: 'var(--nm-ink-subtle)' }}
+          style={{ color: "var(--nm-ink-subtle)" }}
         />
       </div>
     </div>
@@ -215,7 +217,7 @@ export function AuthShell({
   eyebrow,
   className,
   aside = DEFAULT_ASIDE,
-  titleSize = 'display',
+  titleSize = "display",
 }: {
   title: ReactNode;
   description?: ReactNode;
@@ -229,7 +231,7 @@ export function AuthShell({
    * `compact` for state screens, whose titles are sentences — see the note on
    * `.nm-auth-title-sm`.
    */
-  titleSize?: 'display' | 'compact';
+  titleSize?: "display" | "compact";
 }) {
   return (
     /*
@@ -251,63 +253,72 @@ export function AuthShell({
       Nesting fixes it without touching a generated stylesheet.
     */
     <div className={`nm-public ${publicFontVars}`}>
-      <div className={`nm-auth ${className ?? ''}`.trim()}>
-      <div className="nm-auth-form-side">
-        <div className="nm-auth-top">
-          <Link href="/" aria-label="NextMav — home">
-            <Logo size={24} />
-          </Link>
+      <div className={`nm-auth ${className ?? ""}`.trim()}>
+        <div className="nm-auth-form-side">
+          <div className="nm-auth-top">
+            <Link href="/" aria-label="NextMav — home">
+              <Logo size={24} />
+            </Link>
+          </div>
+
+          <div className="nm-auth-form-wrap">
+            {eyebrow && <span className="nm-eyebrow">{eyebrow}</span>}
+            <h1
+              className={`nm-auth-title ${titleSize === "compact" ? "nm-auth-title-sm" : ""}`.trim()}
+            >
+              {title}
+            </h1>
+            {description && <p className="nm-auth-subtitle">{description}</p>}
+            {children}
+            {footer && <div className="nm-auth-switch">{footer}</div>}
+          </div>
+
+          <div className="nm-auth-bottom">
+            <Link href="/" className="nm-arrow-link">
+              <ArrowLeft size={14} aria-hidden="true" />
+              Back to home
+            </Link>
+            <nav aria-label="Account policies" className="nm-auth-policy">
+              <Link href="/privacy">Privacy</Link>
+              <Link href="/terms">Terms</Link>
+              <Link href="/help">Help</Link>
+            </nav>
+          </div>
         </div>
 
-        <div className="nm-auth-form-wrap">
-          {eyebrow && <span className="nm-eyebrow">{eyebrow}</span>}
-          <h1
-            className={`nm-auth-title ${titleSize === 'compact' ? 'nm-auth-title-sm' : ''}`.trim()}
-          >
-            {title}
-          </h1>
-          {description && <p className="nm-auth-subtitle">{description}</p>}
-          {children}
-          {footer && <div className="nm-auth-switch">{footer}</div>}
-        </div>
-
-        <div className="nm-auth-bottom">
-          <Link href="/" className="nm-arrow-link">
-            <ArrowLeft size={14} aria-hidden="true" />
-            Back to home
-          </Link>
-        </div>
-      </div>
-
-      {/*
+        {/*
         Decorative in the sense that it repeats nothing the form needs — a
         screen-reader user reaching the form has everything required to complete
         it. It is not `aria-hidden`, because the assurances are real content a
         person may want; it simply sits after the form in the document order.
       */}
-      <aside className="nm-auth-aside nm-dark-surface">
-        <div className="nm-auth-aside-inner">
-          <span className="nm-auth-aside-eyebrow">{aside.eyebrow}</span>
-          <h2 className="nm-auth-aside-title">{aside.title}</h2>
-          <p className="nm-auth-aside-body">{aside.body}</p>
-          <div className="nm-auth-aside-features">
-            {aside.points.map((point) => (
-              <div key={point.title} className="nm-auth-aside-feature">
-                <div className="nm-auth-aside-feature-icon">
-                  <Check size={16} aria-hidden="true" />
+        <aside className="nm-auth-aside nm-dark-surface">
+          <div className="nm-auth-aside-inner">
+            <span className="nm-auth-aside-eyebrow">{aside.eyebrow}</span>
+            <h2 className="nm-auth-aside-title">{aside.title}</h2>
+            <p className="nm-auth-aside-body">{aside.body}</p>
+            <div className="nm-auth-aside-features">
+              {aside.points.map((point) => (
+                <div key={point.title} className="nm-auth-aside-feature">
+                  <div className="nm-auth-aside-feature-icon">
+                    <Check size={16} aria-hidden="true" />
+                  </div>
+                  <div className="nm-auth-aside-feature-text">
+                    <span className="nm-auth-aside-feature-title">
+                      {point.title}
+                    </span>
+                    <span className="nm-auth-aside-feature-desc">
+                      {point.desc}
+                    </span>
+                  </div>
                 </div>
-                <div className="nm-auth-aside-feature-text">
-                  <span className="nm-auth-aside-feature-title">{point.title}</span>
-                  <span className="nm-auth-aside-feature-desc">{point.desc}</span>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="nm-auth-aside-foot nm-mono">
-          NextMav · Business Operating System
-        </div>
-      </aside>
+          <div className="nm-auth-aside-foot nm-mono">
+            NextMav · Business Operating System
+          </div>
+        </aside>
       </div>
     </div>
   );

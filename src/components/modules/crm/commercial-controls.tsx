@@ -1,0 +1,12 @@
+'use client';
+import * as React from 'react';
+import {Input} from '@/components/ui/input';
+import {getOne} from './data';
+export const commercialControl='h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus-visible:outline-2 focus-visible:outline-blue-600 disabled:bg-slate-50';
+export function CommercialField({label,children}:{label:string;children:React.ReactNode}){return <label className="grid min-w-0 gap-1.5 text-xs font-medium text-slate-500">{label}{children}</label>;}
+export function CommercialStatus({status}:{status:string}){return <span className={`inline-flex whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-medium ${['active','accepted','approved','renewed','completed'].includes(status)?'bg-emerald-50 text-emerald-700':['pending_approval','changes_requested','sent_for_signature'].includes(status)?'bg-amber-50 text-amber-800':'bg-slate-100 text-slate-600'}`}>{status.replace(/_/g,' ')}</span>;}
+export function CommercialLookup({type,label,value,onChange,companyId,disabled}:{type:string;label:string;value:string;onChange:(value:string)=>void;companyId?:string;disabled?:boolean}){
+ const[search,setSearch]=React.useState(''),[rows,setRows]=React.useState<{id:string;name:string}[]>([]),[failure,setFailure]=React.useState('');
+ React.useEffect(()=>{const c=new AbortController();const timer=setTimeout(()=>{void getOne<{id:string;name:string}[]>(`/api/crm/commercial/lookups?${new URLSearchParams({type,search,companyId:companyId??''})}`,c.signal).then(x=>{setRows(x);setFailure('');}).catch(e=>{if(!c.signal.aborted)setFailure(e.message);});},200);return()=>{clearTimeout(timer);c.abort();};},[type,search,companyId]);
+ return <div className="min-w-0 space-y-1.5"><CommercialField label={label}><select aria-label={label} className={commercialControl} disabled={disabled} value={value} onChange={e=>onChange(e.target.value)}><option value="">Choose {label.toLowerCase()}</option>{value&&!rows.some(x=>x.id===value)&&<option value={value}>Selected record · {value.slice(0,8)}</option>}{rows.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></CommercialField>{!disabled&&['company','contact','deal','product'].includes(type)&&<Input aria-label={`Search ${label.toLowerCase()}`} placeholder={`Find ${label.toLowerCase()}…`} className="h-8 text-xs" value={search} onChange={e=>setSearch(e.target.value)}/>} {failure&&<p role="alert" className="text-xs text-red-700">{failure}</p>}</div>;
+}

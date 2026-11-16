@@ -1,0 +1,2 @@
+PASS published automation runs from custom-field event and skips a nonmatching real record
+PASS contact import maps explicit value and preserves required field default on a blank cell

@@ -1,0 +1,11 @@
+PASS sequence publishes through existing automation tables
+PASS eligible contact enrollment persists
+PASS conflicting enrollment rejected by unique constraint
+PASS concurrent workers execute first sequence step once
+PASS one persisted CRM activity created by sequence
+PASS paused enrollment is not eligible for execution
+PASS resume preserves durable run and cursor
+PASS opt-out stops enrollment
+PASS opted-out contact cannot re-enroll
+PASS opt-out prevents later sequence task
+10 sequence checks passed; worker connections closed between execution phases.

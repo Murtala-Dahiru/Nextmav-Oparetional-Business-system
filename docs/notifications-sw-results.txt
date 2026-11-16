@@ -1,0 +1,1 @@
+PASS 7 service-worker handler assertions; no provider delivery or OS display simulated as evidence

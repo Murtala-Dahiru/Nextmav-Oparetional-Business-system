@@ -1,0 +1,35 @@
+PASS company activity preview hides restricted opportunity details
+PASS contact activity history hides restricted opportunity details
+PASS paginated account activity hides restricted opportunity details
+PASS sales role cannot read cross-module datasets through account overview
+PASS restricted financial/support facts do not leak through signals
+PASS invoices paginated context denied without source-module permission
+PASS payments paginated context denied without source-module permission
+PASS tickets paginated context denied without source-module permission
+PASS unassigned project records hidden by RLS
+PASS unassigned projects hidden by RLS
+PASS unassigned milestones hidden by RLS
+PASS timeline hides restricted source-module events
+PASS sales scope excludes another owner opportunities and totals
+PASS read-only support cannot modify company
+PASS read-only support cannot modify contact
+PASS read-only support cannot remove documents
+PASS cross-tenant read denied: companies
+PASS cross-tenant read denied: contacts
+PASS cross-tenant read denied: companies
+PASS cross-tenant read denied: companies
+PASS cross-tenant read denied: companies
+PASS cross-tenant read denied: files
+PASS directory aggregation excludes foreign tenant ids
+PASS cross-tenant peer relationship refused
+PASS cross-tenant contact activity endpoint refused
+PASS cross-tenant parent association rejected
+PASS paginated account commitments include contact-linked follow-ups
+PASS authorized paginated contacts works
+PASS authorized paginated deals works
+PASS authorized paginated projects works
+PASS authorized paginated milestones works
+PASS authorized paginated invoices works
+PASS authorized paginated payments works
+PASS authorized paginated tickets works
+34 live security and related-record checks passed.

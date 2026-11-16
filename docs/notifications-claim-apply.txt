@@ -1,0 +1,2 @@
+Validated 0157_notification_claim.sql
+Notification migrations committed

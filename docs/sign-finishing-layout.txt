@@ -1,0 +1,135 @@
+
+> nextjs_tailwind_shadcn_ts@0.2.0 test:layout
+> tsx scripts/stage-layout.test.ts
+
+EVERY ARRANGEMENT FITS THE BOX IT WAS GIVEN
+  PASS | desktop 1440x900 · 1 tile
+  PASS | desktop 1440x900 · 2 tiles
+  PASS | desktop 1440x900 · 3 tiles
+  PASS | desktop 1440x900 · 4 tiles
+  PASS | desktop 1440x900 · 5 tiles
+  PASS | desktop 1440x900 · 6 tiles
+  PASS | desktop 1440x900 · 8 tiles
+  PASS | desktop 1440x900 · 9 tiles
+  PASS | desktop 1440x900 · 12 tiles
+  PASS | desktop, panel open · 1 tile
+  PASS | desktop, panel open · 2 tiles
+  PASS | desktop, panel open · 3 tiles
+  PASS | desktop, panel open · 4 tiles
+  PASS | desktop, panel open · 5 tiles
+  PASS | desktop, panel open · 6 tiles
+  PASS | desktop, panel open · 8 tiles
+  PASS | desktop, panel open · 9 tiles
+  PASS | desktop, panel open · 12 tiles
+  PASS | laptop 1280x800 · 1 tile
+  PASS | laptop 1280x800 · 2 tiles
+  PASS | laptop 1280x800 · 3 tiles
+  PASS | laptop 1280x800 · 4 tiles
+  PASS | laptop 1280x800 · 5 tiles
+  PASS | laptop 1280x800 · 6 tiles
+  PASS | laptop 1280x800 · 8 tiles
+  PASS | laptop 1280x800 · 9 tiles
+  PASS | laptop 1280x800 · 12 tiles
+  PASS | short laptop window · 1 tile
+  PASS | short laptop window · 2 tiles
+  PASS | short laptop window · 3 tiles
+  PASS | short laptop window · 4 tiles
+  PASS | short laptop window · 5 tiles
+  PASS | short laptop window · 6 tiles
+  PASS | short laptop window · 8 tiles
+  PASS | short laptop window · 9 tiles
+  PASS | short laptop window · 12 tiles
+  PASS | tablet portrait · 1 tile
+  PASS | tablet portrait · 2 tiles
+  PASS | tablet portrait · 3 tiles
+  PASS | tablet portrait · 4 tiles
+  PASS | tablet portrait · 5 tiles
+  PASS | tablet portrait · 6 tiles
+  PASS | tablet portrait · 8 tiles
+  PASS | tablet portrait · 9 tiles
+  PASS | tablet portrait · 12 tiles
+  PASS | phone portrait 390x844 · 1 tile
+  PASS | phone portrait 390x844 · 2 tiles
+  PASS | phone portrait 390x844 · 3 tiles
+  PASS | phone portrait 390x844 · 4 tiles
+  PASS | phone portrait 390x844 · 5 tiles
+  PASS | phone portrait 390x844 · 6 tiles
+  PASS | phone portrait 390x844 · 8 tiles
+  PASS | phone portrait 390x844 · 9 tiles
+  PASS | phone portrait 390x844 · 12 tiles
+  PASS | phone landscape · 1 tile
+  PASS | phone landscape · 2 tiles
+  PASS | phone landscape · 3 tiles
+  PASS | phone landscape · 4 tiles
+  PASS | phone landscape · 5 tiles
+  PASS | phone landscape · 6 tiles
+  PASS | phone landscape · 8 tiles
+  PASS | phone landscape · 9 tiles
+  PASS | phone landscape · 12 tiles
+  PASS | ultrawide · 1 tile
+  PASS | ultrawide · 2 tiles
+  PASS | ultrawide · 3 tiles
+  PASS | ultrawide · 4 tiles
+  PASS | ultrawide · 5 tiles
+  PASS | ultrawide · 6 tiles
+  PASS | ultrawide · 8 tiles
+  PASS | ultrawide · 9 tiles
+  PASS | ultrawide · 12 tiles
+
+THE CASE THAT BROKE: ONE PARTICIPANT ON A DESKTOP
+  PASS | a full-width tile would be taller than the stage
+  PASS | the fitted tile is not
+  PASS | because it is bound by the height, not the width
+  PASS | and a lone tile is capped so it does not swallow a wide monitor
+
+ARRANGEMENTS ARE THE ONES A PERSON WOULD CHOOSE
+  PASS | two people on a desktop sit side by side
+  PASS | two people on a phone stack
+  PASS | four people are a 2x2, not a row of four
+  PASS | a short landscape window spreads them across
+
+THE LARGEST TILE WINS, NOT THE FIRST THAT FITS
+  PASS | desktop 1440x900 · 2 tiles picks the largest arrangement
+  PASS | desktop 1440x900 · 3 tiles picks the largest arrangement
+  PASS | desktop 1440x900 · 5 tiles picks the largest arrangement
+  PASS | desktop 1440x900 · 7 tiles picks the largest arrangement
+  PASS | desktop, panel open · 2 tiles picks the largest arrangement
+  PASS | desktop, panel open · 3 tiles picks the largest arrangement
+  PASS | desktop, panel open · 5 tiles picks the largest arrangement
+  PASS | desktop, panel open · 7 tiles picks the largest arrangement
+  PASS | laptop 1280x800 · 2 tiles picks the largest arrangement
+  PASS | laptop 1280x800 · 3 tiles picks the largest arrangement
+  PASS | laptop 1280x800 · 5 tiles picks the largest arrangement
+  PASS | laptop 1280x800 · 7 tiles picks the largest arrangement
+  PASS | short laptop window · 2 tiles picks the largest arrangement
+  PASS | short laptop window · 3 tiles picks the largest arrangement
+  PASS | short laptop window · 5 tiles picks the largest arrangement
+  PASS | short laptop window · 7 tiles picks the largest arrangement
+  PASS | tablet portrait · 2 tiles picks the largest arrangement
+  PASS | tablet portrait · 3 tiles picks the largest arrangement
+  PASS | tablet portrait · 5 tiles picks the largest arrangement
+  PASS | tablet portrait · 7 tiles picks the largest arrangement
+  PASS | phone portrait 390x844 · 2 tiles picks the largest arrangement
+  PASS | phone portrait 390x844 · 3 tiles picks the largest arrangement
+  PASS | phone portrait 390x844 · 5 tiles picks the largest arrangement
+  PASS | phone portrait 390x844 · 7 tiles picks the largest arrangement
+  PASS | phone landscape · 2 tiles picks the largest arrangement
+  PASS | phone landscape · 3 tiles picks the largest arrangement
+  PASS | phone landscape · 5 tiles picks the largest arrangement
+  PASS | phone landscape · 7 tiles picks the largest arrangement
+  PASS | ultrawide · 2 tiles picks the largest arrangement
+  PASS | ultrawide · 3 tiles picks the largest arrangement
+  PASS | ultrawide · 5 tiles picks the largest arrangement
+  PASS | ultrawide · 7 tiles picks the largest arrangement
+
+DEGENERATE INPUTS DO NOT PRODUCE A BROKEN GRID
+  PASS | no tiles -> nothing to size
+  PASS | unmeasured stage -> zero, and the caller falls back
+  PASS | a stage too small to measure -> zero
+  PASS | columns are never zero
+
+A CROWD IS SCROLLED, NOT SHRUNK INTO NOTHING
+  PASS | thirty people on a phone would fall below the readable size
+  PASS | so the stage has a floor to hold them at
+
+118 passed, 0 failed

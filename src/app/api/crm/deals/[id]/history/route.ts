@@ -1,5 +1,6 @@
 import { authorize, pgError } from '@/lib/auth-context';
 import { success } from '@/lib/api-response';
+import { scopeFor } from '@/lib/permissions';
 
 /**
  * Where this deal has been, and how long it spent there.
@@ -27,12 +28,18 @@ export async function GET(_req: Request, { params }: Params) {
 
   const { id } = await params;
 
-  const { data, error: e } = await ctx.supabase
+  let query = ctx.supabase
     .from('deal_stage_events')
-    .select('id, from_stage, to_stage, value_at, created_at, member:organization_members!deal_stage_events_member_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url))')
+    .select('id, from_stage, to_stage, value_at, created_at, deal:deals!inner(id), member:organization_members!deal_stage_events_member_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url))')
     .eq('organization_id', ctx.org.organizationId)
     .eq('deal_id', id)
+    .eq('deal.organization_id', ctx.org.organizationId)
+    .is('deal.deleted_at', null)
     .order('created_at', { ascending: true });
+  if (scopeFor(ctx.org.role, 'crm') === 'own') {
+    query = query.eq('deal.owner_id', ctx.org.memberId);
+  }
+  const { data, error: e } = await query;
 
   if (e) return pgError(e);
 
@@ -48,11 +55,12 @@ export async function GET(_req: Request, { params }: Params) {
    * screen can say "since" rather than "for".
    */
   const events = rows.map((row, i) => {
+    const { deal: _deal, ...event } = row;
     const next = rows[i + 1];
     const from = Date.parse(row.created_at);
     const to = next ? Date.parse(next.created_at) : Date.now();
     return {
-      ...row,
+      ...event,
       days: Math.max(0, Math.round((to - from) / 86_400_000)),
       open: !next,
     };

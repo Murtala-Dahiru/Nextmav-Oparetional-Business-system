@@ -1,0 +1,1 @@
+NextMav Sign migrations 0105–0119 applied (existing schema preserved).

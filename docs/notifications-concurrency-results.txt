@@ -1,0 +1,1 @@
+PASS two independent PostgreSQL sessions claimed distinct jobs concurrently. Active leases prevented another claim.

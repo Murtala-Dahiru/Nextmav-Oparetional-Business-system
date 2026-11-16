@@ -10,13 +10,14 @@ import {
   Building2,
   ShieldCheck,
   BarChart3,
+  Target,
   ShoppingCart,
   Package,
   FileText,
   CheckSquare,
   Sparkles,
   type LucideIcon,
-} from 'lucide-react';
+} from "lucide-react";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -53,7 +54,7 @@ import {
  *  routes behind it are reachable before moving one up.
  */
 
-export type CapabilityStatus = 'live' | 'partial' | 'planned';
+export type CapabilityStatus = "live" | "partial" | "planned";
 
 export type Capability = {
   id: string;
@@ -68,9 +69,9 @@ export type Capability = {
 };
 
 export const STATUS_LABEL: Record<CapabilityStatus, string> = {
-  live: 'Available',
-  partial: 'Partly available',
-  planned: 'In development',
+  live: "Available",
+  partial: "Partly available",
+  planned: "In development",
 };
 
 /**
@@ -79,156 +80,178 @@ export const STATUS_LABEL: Record<CapabilityStatus, string> = {
  */
 export const CAPABILITIES: Capability[] = [
   {
-    id: 'identity',
+    id: "identity",
     icon: ShieldCheck,
-    name: 'Identity & access',
+    name: "Identity & access",
     summary:
-      'Authentication, roles, permissions, session policy, account verification and password management — one model, enforced server-side on every request.',
-    status: 'live',
-    tags: ['Role-based access', 'Session policy', 'Audit trail'],
+      "Authentication, roles, permissions, session policy, account verification and password management — one model, enforced server-side on every request.",
+    status: "live",
+    tags: ["Role-based access", "Session policy", "Audit trail"],
   },
   {
-    id: 'crm',
+    id: "crm",
     icon: Users,
-    name: 'CRM & sales',
+    name: "CRM & sales",
     summary:
-      'Leads, contacts and companies, a pipeline with stages you define, and the activity logged against the record it concerns.',
-    status: 'live',
-    tags: ['Pipeline', 'Contacts', 'Activity'],
+      "Leads, contacts and companies, a pipeline with stages you define, and the activity logged against the record it concerns.",
+    status: "live",
+    tags: ["Pipeline", "Contacts", "Activity"],
   },
   {
-    id: 'projects',
+    id: "projects",
     icon: FolderKanban,
-    name: 'Projects & work',
+    name: "Projects & work",
     summary:
-      'Boards, tasks, milestones, comments, attachments and time — assigned to people, rolled up per project.',
-    status: 'live',
-    tags: ['Boards', 'Milestones', 'Time'],
+      "Boards, tasks, milestones, comments, attachments and time — assigned to people, rolled up per project.",
+    status: "live",
+    tags: ["Boards", "Milestones", "Time"],
   },
   {
-    id: 'people',
+    id: "people",
     icon: UserCog,
-    name: 'People & HR',
+    name: "People & HR",
     summary:
-      'The employee record, departments and reporting lines, leave with balances and approval, attendance, invitations and offboarding.',
-    status: 'live',
-    tags: ['Employee record', 'Leave', 'Attendance'],
+      "The employee record, departments and reporting lines, leave with balances and approval, attendance, invitations and offboarding.",
+    status: "live",
+    tags: ["Employee record", "Leave", "Attendance"],
   },
   {
-    id: 'finance',
+    id: "finance",
     icon: Wallet,
-    name: 'Finance',
+    name: "Finance",
     summary:
-      'Invoices with line items and payment tracking, expenses with categories and approval, tied to the customer and project that caused them.',
-    status: 'live',
-    tags: ['Invoices', 'Expenses', 'Ageing'],
+      "Invoices with line items and payment tracking, expenses with categories and approval, tied to the customer and project that caused them.",
+    status: "live",
+    tags: ["Invoices", "Expenses", "Ageing"],
   },
   {
-    id: 'inventory',
+    id: "inventory",
     icon: Boxes,
-    name: 'Inventory & supply',
+    name: "Inventory & supply",
     summary:
-      'Products, variants and stock per warehouse, movements with a history to read, suppliers, purchase orders and low-stock thresholds.',
-    status: 'live',
-    tags: ['Stock', 'Suppliers', 'Purchase orders'],
+      "Products, variants and stock per warehouse, movements with a history to read, suppliers, purchase orders and low-stock thresholds.",
+    status: "live",
+    tags: ["Stock", "Suppliers", "Purchase orders"],
   },
   {
-    id: 'communication',
+    id: "communication",
     icon: MessagesSquare,
-    name: 'Communication',
+    name: "Communication",
     summary:
-      'Channels and direct messages delivered live, file sharing under workspace retention, and meetings between participants.',
-    status: 'live',
-    tags: ['Channels', 'Files', 'Meetings'],
+      "Channels and direct messages delivered live, file sharing under workspace retention, and meetings between participants.",
+    status: "live",
+    tags: ["Channels", "Files", "Meetings"],
   },
   {
-    id: 'support',
+    id: "support",
     icon: LifeBuoy,
-    name: 'Support & client portal',
+    name: "Support & client portal",
     summary:
-      'Tickets with owners, priority and response targets, and a portal where a customer sees only their own.',
-    status: 'live',
-    tags: ['Tickets', 'Response targets', 'Portal'],
+      "Tickets with owners, priority and response targets, and a portal where a customer sees only their own.",
+    status: "live",
+    tags: ["Tickets", "Response targets", "Portal"],
   },
   {
-    id: 'calendar',
-    icon: CalendarDays,
-    name: 'Calendar',
+    id: "performance",
+    icon: Target,
+    name: "Performance",
     summary:
-      'One schedule drawn from project milestones, meetings, deadlines, leave and holidays, per person and per team.',
-    status: 'live',
-    tags: ['Schedule', 'Deadlines', 'Leave'],
+      "Individual and team performance, targets by period, earnings and readable commission rules, with access based on existing permissions.",
+    status: "live",
+    tags: ["Targets", "Team performance", "Earnings"],
   },
   {
-    id: 'dashboards',
-    icon: BarChart3,
-    name: 'Dashboards & reporting',
-    summary:
-      'Company health, department performance and project status, drawn from the modules rather than typed into a report.',
-    status: 'live',
-    tags: ['Executive view', 'Department metrics'],
-  },
-  {
-    id: 'approvals',
-    icon: CheckSquare,
-    name: 'Approvals & workflows',
-    summary:
-      'Requests route to the person entitled to decide them, and the decision stays attached to the record.',
-    status: 'partial',
-    note: 'Available today for leave, expenses and project sign-off. A configurable multi-step workflow builder is being built.',
-    tags: ['Leave', 'Expenses', 'Sign-off'],
-  },
-  {
-    id: 'organization',
-    icon: Building2,
-    name: 'Organization structure',
-    summary:
-      'Organizations, departments, teams and reporting lines that drive who sees what, rather than a permissions matrix maintained by hand.',
-    status: 'partial',
-    note: 'Organizations, departments and reporting lines are live. Business units, branches and cost centres are in development.',
-    tags: ['Departments', 'Reporting lines'],
-  },
-  {
-    id: 'procurement',
-    icon: ShoppingCart,
-    name: 'Procurement',
-    summary:
-      'Purchase requests through approval to order, with vendor records and contracts against the spend they explain.',
-    status: 'planned',
-    note: 'Purchase orders and suppliers exist today inside Inventory. Requests, vendor management and contracts are in development.',
-    tags: ['Requests', 'Vendors', 'Contracts'],
-  },
-  {
-    id: 'assets',
-    icon: Package,
-    name: 'Assets',
-    summary:
-      'An asset register with allocation, ownership and maintenance history, linked to the person and location holding it.',
-    status: 'planned',
-    note: 'In development. Asset assignment against the employee record is the first piece.',
-    tags: ['Register', 'Allocation', 'Maintenance'],
-  },
-  {
-    id: 'documents',
+    id: "workspace",
     icon: FileText,
-    name: 'Documents',
+    name: "Workspace & knowledge",
     summary:
-      'Company and employee documents with version history, organization-wide search, sharing and the same permission model as everything else.',
-    status: 'planned',
-    note: 'File storage and sharing are live inside Communication and Projects. A document module with version history is in development.',
-    tags: ['Version history', 'Search', 'Permissions'],
+      "Documents, sheets, folders and templates in a shared library, with page visibility and sharing permissions.",
+    status: "live",
+    tags: ["Documents & sheets", "Library", "Templates"],
   },
   {
-    id: 'intelligence',
-    icon: Sparkles,
-    name: 'Operational intelligence',
+    id: "calendar",
+    icon: CalendarDays,
+    name: "Calendar",
     summary:
-      'Summaries, risk signals and search over the operational record — reading the same rows, under the same permissions.',
-    status: 'planned',
-    note: 'In development. Nothing here reads data a person could not already open themselves.',
-    tags: ['Summaries', 'Risk signals', 'Search'],
+      "A monthly calendar for timed and all-day events, with descriptions, locations and event colors.",
+    status: "live",
+    tags: ["Events", "All-day scheduling", "Locations"],
+  },
+  {
+    id: "dashboards",
+    icon: BarChart3,
+    name: "Dashboards & reporting",
+    summary:
+      "Company health, department performance and project status, drawn from the modules rather than typed into a report.",
+    status: "live",
+    tags: ["Executive view", "Department metrics"],
+  },
+  {
+    id: "approvals",
+    icon: CheckSquare,
+    name: "Approvals & workflows",
+    summary:
+      "Requests route to the person entitled to decide them, and the decision stays attached to the record.",
+    status: "partial",
+    note: "Available today for leave, expenses and project sign-off. A configurable multi-step workflow builder is being built.",
+    tags: ["Leave", "Expenses", "Sign-off"],
+  },
+  {
+    id: "organization",
+    icon: Building2,
+    name: "Organization structure",
+    summary:
+      "Organizations, departments, teams and reporting lines that drive who sees what, rather than a permissions matrix maintained by hand.",
+    status: "partial",
+    note: "Organizations, departments and reporting lines are live. Business units, branches and cost centres are in development.",
+    tags: ["Departments", "Reporting lines"],
+  },
+  {
+    id: "procurement",
+    icon: ShoppingCart,
+    name: "Procurement",
+    summary:
+      "Purchase requests through approval to order, with vendor records and contracts against the spend they explain.",
+    status: "planned",
+    note: "Purchase orders and suppliers exist today inside Inventory. Requests, vendor management and contracts are in development.",
+    tags: ["Requests", "Vendors", "Contracts"],
+  },
+  {
+    id: "assets",
+    icon: Package,
+    name: "Assets",
+    summary:
+      "An asset register with allocation, ownership and maintenance history, linked to the person and location holding it.",
+    status: "planned",
+    note: "In development. Asset assignment against the employee record is the first piece.",
+    tags: ["Register", "Allocation", "Maintenance"],
+  },
+  {
+    id: "documents",
+    icon: FileText,
+    name: "Extended document management",
+    summary:
+      "Company and employee documents with version history, organization-wide search, sharing and the same permission model as everything else.",
+    status: "planned",
+    note: "Documents, sheets and templates are available in Workspace; file sharing also exists in Communication and Projects. The broader company and employee document-management suite is in development.",
+    tags: ["Version history", "Search", "Permissions"],
+  },
+  {
+    id: "intelligence",
+    icon: Sparkles,
+    name: "Operational intelligence",
+    summary:
+      "Summaries, risk signals and search over the operational record — reading the same rows, under the same permissions.",
+    status: "planned",
+    note: "In development. Nothing here reads data a person could not already open themselves.",
+    tags: ["Summaries", "Risk signals", "Search"],
   },
 ];
 
-export const LIVE_CAPABILITIES = CAPABILITIES.filter((c) => c.status === 'live');
-export const FORTHCOMING_CAPABILITIES = CAPABILITIES.filter((c) => c.status !== 'live');
+export const LIVE_CAPABILITIES = CAPABILITIES.filter(
+  (c) => c.status === "live",
+);
+export const FORTHCOMING_CAPABILITIES = CAPABILITIES.filter(
+  (c) => c.status !== "live",
+);

@@ -1,0 +1,2 @@
+PASS initial subscription: authorized deal update received
+PASS resubscription after disconnect: authorized deal update received

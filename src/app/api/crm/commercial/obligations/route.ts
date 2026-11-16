@@ -1,0 +1,8 @@
+import {z} from 'zod';
+import {authorize} from '@/lib/auth-context';
+import {success,error,paginated} from '@/lib/api-response';
+import {crmDatabaseError} from '@/lib/crm/database-error';
+export async function GET(req:Request){const ctx=await authorize('crm','view');if(ctx instanceof Response)return ctx;const u=new URL(req.url).searchParams;const page=Math.max(1,Math.min(10000,Number(u.get('page'))||1));let q=ctx.supabase.from('crm_commercial_obligations').select('*,contract:crm_commercial_records(number,title)',{count:'exact'}).eq('organization_id',ctx.org.organizationId);if(u.get('status'))q=q.eq('status',u.get('status'));const r=await q.order('due_on').order('id').range((page-1)*20,page*20-1);return r.error?crmDatabaseError(r.error):paginated(r.data??[],r.count??0,page,20);}
+export async function POST(req:Request){const ctx=await authorize('crm','edit');if(ctx instanceof Response)return ctx;
+const p=z.object({id:z.uuid().nullable(),recordId:z.uuid(),revision:z.number().int().nonnegative(),description:z.string().min(1).max(2000),ownerId:z.uuid(),dueOn:z.iso.date(),priority:z.enum(['low','normal','high','urgent']),status:z.enum(['open','completed','cancelled']).default('open'),evidence:z.string().max(4000).default('')}).safeParse(await req.json().catch(()=>null));if(!p.success)return error(p.error.issues[0]?.message??'Invalid obligation',422);
+const {id,recordId,revision,...data}=p.data;const r=await ctx.supabase.rpc('crm_commercial_obligation',{p_org:ctx.org.organizationId,p_record:recordId,p_id:id,p_revision:revision,p_data:data});return r.error?crmDatabaseError(r.error):success({id:r.data});}

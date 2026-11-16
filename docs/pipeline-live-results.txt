@@ -1,0 +1,25 @@
+PASS create pipeline and configure stages
+PASS opportunity links actual company and contact
+PASS missing next step blocks entry
+PASS valid stage transition
+PASS approval stage rejects bypass
+PASS rejected approval cannot move deal
+PASS approved stage transition
+PASS stale commercial edits rejected
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: stale stage revision rejected (500: The database could not complete this request. Please try again, and contact support if it persists.)
+    at check (file:///C:/Users/murta/Downloads/workspace-1edd18e2-74f6-4329-aee4-9600baa55107/scripts/pipeline-live.mjs:14:36)
+    at file:///C:/Users/murta/Downloads/workspace-1edd18e2-74f6-4329-aee4-9600baa55107/scripts/pipeline-live.mjs:46:43
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v24.16.0

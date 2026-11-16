@@ -81,6 +81,7 @@ const BY_PREFIX: Record<string, ModuleId> = {
   lead: 'crm',
   deal: 'crm',
   crm: 'crm',
+  commercial: 'crm',
   message: 'communication',
   channel: 'communication',
   invoice: 'finance',
@@ -143,6 +144,8 @@ export function typesForModule(moduleId: string): string[] {
  * not listed here would count toward no badge and never be cleared by one.
  */
 export const EMITTED_TYPES = [
+  'task_due', 'task_overdue', 'message_received', 'project_assigned', 'milestone_completed',
+  'commercial_pending_approval', 'commercial_approved', 'commercial_rejected', 'commercial_issued', 'commercial_executed',
   'task_assigned', 'task_completed', 'task_blocked',
   'project_comment', 'project_deadline', 'project_status',
   'deliverable_approved', 'deliverable_rejected',

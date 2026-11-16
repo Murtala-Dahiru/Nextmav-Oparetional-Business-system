@@ -1,0 +1,1 @@
+PASS: source TypeScript check completed with exit code 0.

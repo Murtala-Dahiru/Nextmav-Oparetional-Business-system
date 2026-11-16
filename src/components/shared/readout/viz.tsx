@@ -90,7 +90,7 @@ export function useViz(): VizPalette {
   }));
 
   React.useEffect(() => {
-    const styles = getComputedStyle(document.documentElement);
+    const styles = getComputedStyle(document.querySelector('.nm-app') ?? document.documentElement);
     const read = (name: string, fallback: string) =>
       styles.getPropertyValue(name).trim() || fallback;
 

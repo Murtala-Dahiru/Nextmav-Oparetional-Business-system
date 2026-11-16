@@ -32,9 +32,9 @@ export const SELECTS = {
   leads:
     `*, owner:organization_members!leads_owner_id_fkey(id, ${MEMBER})`,
 
-  contacts: '*, company:companies(id, name)',
+  contacts: `*, company:companies(id, name), owner:organization_members!contacts_owner_id_fkey(id, ${MEMBER})`,
 
-  companies: '*',
+  companies: '*, custom_values:crm_company_values',
 
   deals:
     '*, company:companies(id, name), contact:contacts(id, first_name, last_name), ' +

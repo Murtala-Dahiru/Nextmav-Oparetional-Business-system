@@ -1,3 +1,4 @@
+import { parseCustomFilter } from '@/lib/crm/custom-filter';
 import { isFilterValue } from '@/lib/filters';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ModuleId } from '@/lib/constants';
@@ -63,6 +64,10 @@ export interface ListOptions {
   defaultSortDir?: 'asc' | 'desc';
   /** `?key=value` filters passed straight through as equality matches. */
   filterable?: string[];
+  /** Optional unique tie-breaker for stable pagination of equally sorted rows. */
+  stableOrder?: string;
+  /** Bounded, authorized enrichment after pagination; never changes the count. */
+  enrich?: (rows:any[],ctx:RequestContext,url:URL)=>Promise<any[]>;
   /** Exclude soft-deleted rows. */
   softDelete?: boolean;
   /**
@@ -175,7 +180,7 @@ export function listHandler(opts: ListOptions) {
 
     let q = ctx.supabase
       .from(table)
-      .select(select, { count: 'exact' })
+      .select(module === 'crm' && table === 'companies' && searchParams.has('custom') ? select + ',custom_filter:crm_company_field_values!inner(company_id)' : select, { count: 'exact' })
       .eq('organization_id', ctx.org.organizationId);
 
     if (softDelete) q = q.is('deleted_at', null);
@@ -221,13 +226,26 @@ export function listHandler(opts: ListOptions) {
       }
     }
 
+    const custom = searchParams.get('custom');
+    if (custom && module === 'crm' && ['leads', 'contacts', 'companies', 'deals'].includes(table)) {
+      let values;
+      try { values = parseCustomFilter(custom); } catch { return error('Invalid custom field filter', 422); }
+      const ids = Object.keys(values);
+      if (ids.length) {
+        const metadata = await ctx.supabase.from('crm_field_definitions').select('id').eq('organization_id', ctx.org.organizationId).eq('object', table).in('id', ids);
+        if (metadata.error) return pgError(metadata.error);
+        if (metadata.data.length !== ids.length) return error('Unavailable custom field filter', 422);
+        q = q.contains(table === 'companies' ? 'custom_filter.field_values' : 'custom_values', values);
+      }
+    }
     const from = (page - 1) * pageSize;
-    const { data, count, error: e } = await q
-      .order(sort, { ascending })
-      .range(from, from + pageSize - 1);
+    q=q.order(sort,{ascending});
+    if(opts.stableOrder&&sort!==opts.stableOrder)q=q.order(opts.stableOrder,{ascending:true});
+    const { data, count, error: e } = await q.range(from, from + pageSize - 1);
 
     if (e) return pgError(e);
-    return paginated(data ?? [], count ?? 0, page, pageSize);
+    const rows=opts.enrich?await opts.enrich(data??[],ctx,url):data??[];
+    return paginated(rows, count ?? 0, page, pageSize);
   });
 }
 
@@ -301,6 +319,8 @@ export interface RecordOptions {
   module: ModuleId;
   select?: string;
   softDelete?: boolean;
+  /** Optional record constraints, applied directly to reads and mutations. */
+  scope?: (q: any, ctx: RequestContext) => any;
   prepare?: (body: any, ctx: RequestContext) => Record<string, any>;
   /** Action required to update. Defaults to `edit`. */
   updateAction?: 'edit' | 'approve' | 'manage';
@@ -343,11 +363,12 @@ export function getOneHandler(opts: RecordOptions) {
     if (ctx instanceof Response) return ctx;
     const { id } = await params;
 
-    const { data, error: e } = await ctx.supabase
+    let query = ctx.supabase
       .from(table).select(select)
       .eq('organization_id', ctx.org.organizationId)
-      .eq('id', id)
-      .maybeSingle();
+      .eq('id', id);
+    if (opts.scope) query = opts.scope(query, ctx);
+    const { data, error: e } = await query.maybeSingle();
 
     if (e) return pgError(e);
     // A row hidden by RLS and a row that does not exist are indistinguishable
@@ -408,12 +429,12 @@ export function updateHandler(opts: RecordOptions) {
     delete payload.organization_id;
     delete payload.id;
 
-    const { data, error: e } = await ctx.supabase
+    let query = ctx.supabase
       .from(table).update(payload)
       .eq('organization_id', ctx.org.organizationId)
-      .eq('id', id)
-      .select(select)
-      .maybeSingle();
+      .eq('id', id);
+    if (opts.scope) query = opts.scope(query, ctx);
+    const { data, error: e } = await query.select(select).maybeSingle();
 
     if (e) return pgError(e);
     if (!data) return error('Not found', 404, 'NOT_FOUND');
@@ -446,17 +467,18 @@ export function deleteHandler(opts: RecordOptions) {
      * up afterwards. The representation costs nothing: PostgREST already has
      * the row in hand to delete it.
      */
-    const { data, error: e } = softDelete
-      ? await ctx.supabase.from(table)
+    let query = softDelete
+      ? ctx.supabase.from(table)
           .update({ deleted_at: new Date().toISOString() })
           .eq('organization_id', ctx.org.organizationId).eq('id', id)
-          .select().maybeSingle()
-      : await ctx.supabase.from(table)
+      : ctx.supabase.from(table)
           .delete()
-          .eq('organization_id', ctx.org.organizationId).eq('id', id)
-          .select().maybeSingle();
+          .eq('organization_id', ctx.org.organizationId).eq('id', id);
+    if (opts.scope) query = opts.scope(query, ctx);
+    const { data, error: e } = await query.select().maybeSingle();
 
     if (e) return pgError(e);
+    if (opts.scope && !data) return error('Not found', 404, 'NOT_FOUND');
     recordActivity(ctx, { action: 'delete', table, row: data as any });
     return success({ deleted: true, soft: softDelete });
   });

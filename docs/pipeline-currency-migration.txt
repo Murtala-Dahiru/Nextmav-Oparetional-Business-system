@@ -1,0 +1,15 @@
+Verified application/database project: yecikzliedigggzqzxan; host: aws-0-eu-west-1.pooler.supabase.com
+Validated 0081_crm_pipeline_workspace.sql
+Validated 0082_crm_pipeline_lifecycle.sql
+Validated 0083_crm_opportunity_plans.sql
+Validated 0084_crm_pipeline_conflicts.sql
+Validated 0085_crm_deal_qualification_rules.sql
+Validated 0086_crm_stage_duration_history.sql
+Validated 0087_crm_pipeline_saved_views.sql
+Validated 0088_crm_stage_configuration_integrity.sql
+Validated 0089_crm_pipeline_realtime_indexes.sql
+Validated 0090_crm_deal_card_facts.sql
+Validated 0091_crm_approval_revision_decisions.sql
+Validated 0092_crm_pipeline_evidence_signals.sql
+Validated 0093_crm_deal_currencies.sql
+Applied additive pipeline migrations; no fixture records modified.

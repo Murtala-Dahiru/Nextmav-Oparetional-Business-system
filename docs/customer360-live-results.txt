@@ -1,0 +1,30 @@
+PASS create company and reopen profile
+PASS stale relationship save rejected
+PASS contact role persists with company association
+PASS structured objective and linked action persist
+PASS stale structured plan rejected
+PASS objective progress persists
+PASS notes excluded from meaningful engagement
+PASS contact activity endpoint includes recorded call
+PASS company workspace includes stakeholder role
+PASS associated deal included in customer snapshot
+PASS recorded call updates meaningful engagement
+PASS signals derive from overdue action and explicit stakeholder data
+PASS timeline event-type filter returns actual activities
+PASS timeline date filter excludes older records
+PASS invalid date interval rejected
+PASS directory facts match actual opportunity and engagement
+PASS authorized support context appears
+PASS authorized project context appears
+PASS milestones reachable through paginated customer context
+PASS actual project milestone appears in timeline
+PASS finance source totals retain separate currencies
+PASS stale company form rejected
+PASS stale contact form rejected
+PASS private document authorized download redirects
+PASS private document removal works
+PASS circular parent hierarchy refused
+PASS empty company workspace returns honest empty context
+PASS directory summary aggregates complete tenant data
+PASS structured plan revision history retains progress
+29 Customer 360 HTTP checks passed. Fixture retained for browser verification in OS temporary directory.

@@ -1,0 +1,13 @@
+✔ supports valid bounded workflows and incomplete drafts (69.6263ms)
+✔ rejects unsafe actions, duplicate identities and excessive resources (3.4696ms)
+✔ enforces typed and trigger-compatible conditions (7.9196ms)
+✔ enforces recipients and action compatibility (1.3343ms)
+✔ rejects malformed drafts and unknown executable fields (10.0281ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 350.7957

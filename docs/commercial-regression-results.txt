@@ -1,0 +1,36 @@
+✔ supports valid bounded workflows and incomplete drafts (14.1881ms)
+✔ rejects unsafe actions, duplicate identities and excessive resources (7.7602ms)
+✔ enforces typed and trigger-compatible conditions (4.9442ms)
+✔ enforces recipients and action compatibility (1.7817ms)
+✔ rejects malformed drafts and unknown executable fields (6.4481ms)
+✔ pipeline configuration rejects duplicate stages, foreign transitions and invalid revisions (18.5199ms)
+✔ configured pipelines enforce requirements, approvals, isolation and historical compatibility (12176.5128ms)
+✔ leads GET: deny another owner, tenant, deleted and absent records (146.1328ms)
+✔ leads GET: allow owner and organization administrator (22.2411ms)
+✔ leads PATCH: deny another owner, tenant, deleted and absent records (76.4038ms)
+✔ leads PATCH: allow owner and organization administrator (17.4277ms)
+✔ leads PUT: deny another owner, tenant, deleted and absent records (25.4186ms)
+✔ leads PUT: allow owner and organization administrator (4.037ms)
+✔ leads DELETE: deny another owner, tenant, deleted and absent records (16.0871ms)
+✔ leads DELETE: allow owner and organization administrator (2.1838ms)
+✔ deals GET: deny another owner, tenant, deleted and absent records (7.6491ms)
+✔ deals GET: allow owner and organization administrator (1.6367ms)
+✔ deals PATCH: deny another owner, tenant, deleted and absent records (32.0486ms)
+✔ deals PATCH: allow owner and organization administrator (7.3259ms)
+✔ deals PUT: deny another owner, tenant, deleted and absent records (13.7078ms)
+✔ deals PUT: allow owner and organization administrator (4.2069ms)
+✔ deals DELETE: deny another owner, tenant, deleted and absent records (8.6087ms)
+✔ deals DELETE: allow owner and organization administrator (2.6905ms)
+✔ unscoped shared handler preserves existing organization-wide behavior (2.8106ms)
+✔ conversion endpoint validates before RPC and derives the tenant from the session (29.969ms)
+✔ conversion endpoint returns actionable conflicts and migration errors without fallback writes (5.8498ms)
+✔ currency contracts reject unsupported codes and preserve sparse edits (35.0657ms)
+✔ downstream monetary rollups retain currency boundaries and outcome counts (75.7826ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 28
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15428.6174

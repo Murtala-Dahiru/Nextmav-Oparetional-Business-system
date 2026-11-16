@@ -1,3 +1,4 @@
+import { planDealImport } from '@/lib/import/deals';
 import { after } from 'next/server';
 import { authorize } from '@/lib/auth-context';
 import { success, error, serverError } from '@/lib/api-response';
@@ -78,14 +79,14 @@ export async function POST(req: Request) {
 
   let rows: string[][];
   let mapping: Mapping;
-  let target: 'leads' | 'contacts';
+  let target: 'leads' | 'contacts' | 'companies' | 'deals';
   let decisions: Record<string, RowAction>;
 
   try {
     const body = await req.json();
     rows = body?.rows;
     mapping = (body?.mapping ?? {}) as Mapping;
-    target = body?.target === 'contacts' ? 'contacts' : 'leads';
+    target = body?.target === 'deals' ? 'deals' : body?.target === 'companies' ? 'companies' : body?.target === 'contacts' ? 'contacts' : 'leads';
     decisions = (body?.decisions ?? {}) as Record<string, RowAction>;
 
     if (!Array.isArray(rows) || !rows.length) {
@@ -102,8 +103,25 @@ export async function POST(req: Request) {
   }
 
   try {
+    const metadata = await ctx.supabase.from('crm_field_definitions').select('*').eq('organization_id',ctx.org.organizationId).eq('object',target).eq('archived',false);
+    if (metadata.error) return error('Could not load CRM field definitions',503);
+    const active = new Set(metadata.data.map(f => 'custom:' + f.id));
+    if(Object.keys(mapping).some(k=>k.startsWith('custom:') && !active.has(k))) return error('Custom field mapping is no longer available',422);
+    const fields = metadata.data.map(field => ({ ...field, defaultValue: field.default_value }));
+    if (target === 'deals') {
+      const plan = await planDealImport(ctx,rows,mapping,fields);
+      const result = { dealsCreated:0,companiesCreated:0,companiesUpdated:0,peopleCreated:0,peopleUpdated:0,skipped:0,failed:[] as {row:number;message:string}[] };
+      for (const item of plan.rows) {
+        const deal=item.candidate.deal;
+        if (!deal || item.candidate.problems.some(p=>p.severity==='error') || (decisions[String(item.row)] ?? item.action)!=='create') { result.skipped++; continue; }
+        const saved=await supabase.from('deals').insert({organization_id:orgId,owner_id:org.memberId,name:deal.name,value:deal.value,currency:deal.currency,expected_close:deal.expectedClose,stage:'prospecting',probability:20,custom_values:item.candidate.customValues});
+        if (saved.error) result.failed.push({row:item.row,message:'Could not create deal. Review permissions, required fields and stage rules.'});
+        else result.dealsCreated++;
+      }
+      return success(result);
+    }
     const { index, exhaustive } = await loadIndex(ctx);
-    const plan = planRows(rows, mapping, index, exhaustive, target);
+    const plan = planRows(rows, mapping, index, exhaustive, target, fields);
 
     const result = {
       companiesCreated: 0,
@@ -186,7 +204,7 @@ export async function POST(req: Request) {
             companyId = match.id;
 
             const { data: existing } = await supabase.from('companies')
-              .select('*').eq('organization_id', orgId).eq('id', match.id).maybeSingle();
+              .select('*,custom_values:crm_company_values').eq('organization_id', orgId).eq('id', match.id).maybeSingle();
 
             const patch = mergeInto(existing ?? {}, {
               website: company.website,
@@ -199,16 +217,22 @@ export async function POST(req: Request) {
               annual_revenue: company.annualRevenue,
             });
 
+            if (!existing) throw new Error('The matched company is unavailable.');
+            if (target === 'companies') {
+              const additions = Object.entries(planned.candidate.customValues ?? {}).filter(([id]) => existing.custom_values?.[id] == null);
+              if (additions.length) patch.custom_values = { ...existing.custom_values, ...Object.fromEntries(additions) };
+            }
             if (Object.keys(patch).length) {
-              const { error: e } = await supabase.from('companies').update(patch)
-                .eq('organization_id', orgId).eq('id', match.id);
-              if (e) throw new Error(e.message);
+              const updated = await supabase.from('companies').update(patch)
+                .eq('organization_id', orgId).eq('id', match.id).eq('updated_at',existing.updated_at).is('deleted_at',null).select('id').maybeSingle();
+              if (updated.error || !updated.data) throw new Error('Company changed or could not be updated. Review the row.');
               result.companiesUpdated++;
             }
           } else {
             const { data, error: e } = await supabase.from('companies').insert({
               organization_id: orgId,
               name: company.name,
+              ...(target === 'companies' ? {custom_values:planned.candidate.customValues ?? {}} : {}),
               website: company.website || null,
               industry: company.industry || null,
               email: company.email || null,
@@ -276,7 +300,7 @@ export async function POST(req: Request) {
                 owner_id: org.memberId,
               };
 
-            const { data, error: e } = await supabase.from(table).insert(payload)
+            const { data, error: e } = await supabase.from(table).insert({ ...payload, custom_values: planned.candidate.customValues ?? {} })
               .select('id, first_name, last_name, email, phone').single();
             if (e) throw new Error(e.message);
 
@@ -327,10 +351,13 @@ export async function POST(req: Request) {
                   notes: person.notes,
                 });
 
+              const additions = Object.entries(planned.candidate.customValues ?? {}).filter(([id]) => existing.custom_values?.[id] == null || existing.custom_values[id] === '');
+              if(additions.length) patch.custom_values = {...existing.custom_values, ...Object.fromEntries(additions)};
               if (Object.keys(patch).length) {
-                const { error: e } = await supabase.from(table).update(patch)
-                  .eq('organization_id', orgId).eq('id', match.id);
+                const { data: changed, error: e } = await supabase.from(table).update(patch)
+                  .eq('organization_id', orgId).eq('id', match.id).eq('updated_at',existing.updated_at).select('id').maybeSingle();
                 if (e) throw new Error(e.message);
+                if (!changed) throw new Error('Record changed during import. Review the row again.');
                 result.peopleUpdated++;
               }
             }

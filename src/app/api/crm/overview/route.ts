@@ -1,5 +1,7 @@
 import { authorize, pgError } from '@/lib/auth-context';
-import { success } from '@/lib/api-response';
+import { success, error } from '@/lib/api-response';
+import { readReportRows, activityWeeks, shiftCalendarDay } from '@/lib/crm/reporting';
+import { acquisitionSources, openDealAging, recordedLossReasons } from '@/lib/crm/insights';
 import { can, scopeFor } from '@/lib/permissions';
 import { todayIn, dateIn, daysFromTodayIn } from '@/lib/org-time';
 import type { ModuleId } from '@/lib/constants';
@@ -59,7 +61,7 @@ const OPEN_STAGES = ['prospecting', 'qualification', 'proposal', 'negotiation'];
 const CLOSED_STAGES = ['closed_won', 'closed_lost'];
 
 const DEAL_ROW =
-  'id, name, value, stage, probability, expected_close, closed_at, created_at, updated_at, ' +
+  'id, name, value, currency, stage, probability, expected_close, closed_at, created_at, updated_at, ' +
   'owner_id, company_id, company:companies(id, name), ' +
   'owner:organization_members!deals_owner_id_fkey(id, profiles!organization_members_user_id_fkey(full_name, avatar_url))';
 
@@ -104,6 +106,11 @@ export async function GET() {
   const closingBy = daysFromTodayIn(zone, CLOSING_DAYS);
   const staleBefore = daysFromTodayIn(zone, -STALE_DAYS);
   const windowStart = monthKeys(zone, MONTHS_BACK)[0] + '-01';
+  const activityStart = shiftCalendarDay(today, -55);
+  // Over-read UTC boundaries, then filter using the organization's calendar.
+  const windowQueryStart = shiftCalendarDay(windowStart, -1);
+  const activityQueryStart = shiftCalendarDay(activityStart, -1);
+  const report = (query: () => any) => readReportRows<any>((from, to) => query().range(from, to));
 
   /**
    * The owner filter, applied to a query builder.
@@ -117,10 +124,11 @@ export async function GET() {
   const [
     pipelineRes, funnelRes, closedRes, closingRes, staleRes, topRes,
     followupRes, recentRes, volumeRes, newLeadsRes, membersRes, movementRes, scheduledRes,
+    sourceRes, agingRes, diaryRes,
   ] = await Promise.all([
-    own(supabase.from('v_crm_pipeline_owner').select('*').eq('organization_id', orgId)),
+    report(() => own(supabase.from('v_crm_pipeline_owner').select('*', { count: 'exact' }).eq('organization_id', orgId)).order('owner_id').order('stage')),
 
-    own(supabase.from('v_crm_lead_funnel').select('*').eq('organization_id', orgId)),
+    report(() => own(supabase.from('v_crm_lead_funnel').select('*', { count: 'exact' }).eq('organization_id', orgId)).order('owner_id').order('status')),
 
     /**
      * Closed business inside the window.
@@ -130,19 +138,18 @@ export async function GET() {
      * with the company, and a `limit(100)` on it would quietly become wrong
      * at exactly the point the company got interesting.
      */
-    own(
+    report(() => own(
       supabase.from('deals')
-        .select('id, name, value, stage, closed_at, created_at, owner_id')
-        .eq('organization_id', orgId).is('deleted_at', null)
+        .select('id, name, value, currency, stage, closed_at, created_at, owner_id, lost_reason', { count: 'exact' })
+        .eq('organization_id', orgId).eq('currency', org.currency).is('deleted_at', null)
         .in('stage', CLOSED_STAGES)
-        .gte('closed_at', windowStart)
-        .order('closed_at', { ascending: false })
-        .limit(2000),
-    ),
+        .gte('closed_at', windowQueryStart)
+        .order('closed_at', { ascending: false }).order('id'),
+    )),
 
     own(
-      supabase.from('deals').select(DEAL_ROW)
-        .eq('organization_id', orgId).is('deleted_at', null)
+      supabase.from('deals').select(DEAL_ROW, { count: 'exact' })
+        .eq('organization_id', orgId).eq('currency', org.currency).is('deleted_at', null)
         .in('stage', OPEN_STAGES)
         .not('expected_close', 'is', null)
         .lte('expected_close', closingBy)
@@ -159,8 +166,8 @@ export async function GET() {
      * yesterday is not stale, however long since anybody logged a call.
      */
     own(
-      supabase.from('deals').select(DEAL_ROW)
-        .eq('organization_id', orgId).is('deleted_at', null)
+      supabase.from('deals').select(DEAL_ROW, { count: 'exact' })
+        .eq('organization_id', orgId).eq('currency', org.currency).is('deleted_at', null)
         .in('stage', OPEN_STAGES)
         .lt('updated_at', staleBefore)
         .order('updated_at', { ascending: true })
@@ -169,7 +176,7 @@ export async function GET() {
 
     own(
       supabase.from('deals').select(DEAL_ROW)
-        .eq('organization_id', orgId).is('deleted_at', null)
+        .eq('organization_id', orgId).eq('currency', org.currency).is('deleted_at', null)
         .in('stage', OPEN_STAGES)
         .order('value', { ascending: false })
         .limit(8),
@@ -197,22 +204,22 @@ export async function GET() {
       .limit(12),
 
     // Just the timestamps: this feeds a bar per week and nothing else.
-    supabase.from('crm_activities').select('id, created_at, activity_type')
+    report(() => supabase.from('crm_activities').select('id, created_at, activity_type', { count: 'exact' })
       .eq('organization_id', orgId)
-      .gte('created_at', daysFromTodayIn(zone, -56))
-      .limit(2000),
+      .gte('created_at', activityQueryStart)
+      .order('id')),
 
     own(
-      supabase.from('leads').select(LEAD_ROW)
+      supabase.from('leads').select(LEAD_ROW, { count: 'exact' })
         .eq('organization_id', orgId).is('deleted_at', null)
         .eq('status', 'new')
         .order('created_at', { ascending: true })
         .limit(12),
     ),
 
-    supabase.from('organization_members')
-      .select('id, profiles!organization_members_user_id_fkey(full_name, avatar_url)')
-      .eq('organization_id', orgId).limit(200),
+    report(() => supabase.from('organization_members')
+      .select('id, profiles!organization_members_user_id_fkey(full_name, avatar_url)', { count: 'exact' })
+      .eq('organization_id', orgId).order('id')),
 
     /**
      * Deal movement over the last eight weeks.
@@ -222,12 +229,16 @@ export async function GET() {
      * screen would have to infer movement from `updated_at`, which changes for
      * every edit and would report a corrected typo as pipeline progress.
      */
-    supabase.from('deal_stage_events')
-      .select('id, deal_id, from_stage, to_stage, value_at, created_at')
-      .eq('organization_id', orgId)
-      .gte('created_at', daysFromTodayIn(zone, -56))
-      .order('created_at', { ascending: false })
-      .limit(1000),
+    report(() => {
+      let q = supabase.from('deal_stage_events')
+        .select('id, deal_id, from_stage, to_stage, value_at, created_at, deal:deals!inner(owner_id, deleted_at)', { count: 'exact' })
+        .eq('organization_id', orgId)
+        .is('deal.deleted_at', null)
+        .gte('created_at', activityQueryStart)
+        .order('created_at', { ascending: false }).order('id');
+      if (mine) q = q.eq('deal.owner_id', org.memberId);
+      return q;
+    }),
 
     /**
      * Which deals have an open follow-up against them, from anybody.
@@ -238,16 +249,32 @@ export async function GET() {
      * colleague's follow-up counts. Reading the whole open queue as bare ids
      * is one index scan and a few kilobytes.
      */
-    supabase.from('crm_activities')
-      .select('deal_id, company_id')
+    report(() => supabase.from('crm_activities')
+      .select('id, deal_id, company_id', { count: 'exact' })
       .eq('organization_id', orgId)
       .is('completed_at', null)
       .not('due_at', 'is', null)
-      .limit(2000),
+      .order('id')),
+    report(() => own(supabase.from('leads')
+      .select('id, source, created_at, converted_at', { count: 'exact' })
+      .eq('organization_id', orgId).is('deleted_at', null)).order('id')),
+    report(() => own(supabase.from('deals')
+      .select('id, created_at, value', { count: 'exact' })
+      .eq('organization_id', orgId).eq('currency', org.currency).is('deleted_at', null)
+      .in('stage', OPEN_STAGES)).order('id')),
+    report(() => supabase.from('crm_activities')
+      .select('id, due_at', { count: 'exact' }).eq('organization_id', orgId)
+      .eq('member_id', org.memberId).is('completed_at', null)
+      .not('due_at', 'is', null).order('id')),
   ]);
 
-  const firstError =
-    pipelineRes.error ?? funnelRes.error ?? closedRes.error ?? closingRes.error;
+  const firstError = [pipelineRes, funnelRes, closedRes, closingRes, staleRes, topRes,
+    followupRes, recentRes, volumeRes, newLeadsRes, membersRes, movementRes, scheduledRes,
+    sourceRes, agingRes, diaryRes]
+    .find(result => result.error)?.error;
+  if (firstError?.code === 'CRM_REPORT_INCOMPLETE') {
+    return error('The CRM report could not be read completely. Retry; if this persists, contact your administrator.', 503, 'CRM_REPORT_INCOMPLETE');
+  }
   if (firstError) return pgError(firstError);
 
   /* ── Owners ────────────────────────────────────────────────────────────── */
@@ -309,7 +336,11 @@ export async function GET() {
 
   /* ── Revenue over time, and the cycle ──────────────────────────────────── */
 
-  const closed = (closedRes.data ?? []) as any[];
+  const closed = ((closedRes.data ?? []) as any[]).filter(d => {
+    if (!d.closed_at) return false;
+    const day = dateIn(new Date(d.closed_at), zone);
+    return day >= windowStart && day <= today;
+  });
   const keys = monthKeys(zone, MONTHS_BACK);
   const empty = () => ({ won: 0, wonCount: 0, lost: 0, lostCount: 0 });
   const byMonth = new Map(keys.map(k => [k, empty()]));
@@ -382,24 +413,22 @@ export async function GET() {
       when: day < today ? 'overdue' : day === today ? 'today' : 'upcoming',
     };
   });
+  const diaryCounts = { overdue: 0, today: 0, upcoming: 0 };
+  for (const activity of diaryRes.data ?? []) {
+    const day = dateIn(new Date(activity.due_at), zone);
+    diaryCounts[day < today ? 'overdue' : day === today ? 'today' : 'upcoming']++;
+  }
 
   /* ── Activity volume, by week ──────────────────────────────────────────── */
 
-  const weeks: { week: string; count: number }[] = [];
-  for (let i = 7; i >= 0; i--) {
-    weeks.push({ week: daysFromTodayIn(zone, -i * 7), count: 0 });
-  }
-  for (const a of (volumeRes.data ?? []) as any[]) {
-    const day = dateIn(new Date(a.created_at), zone);
-    // The last bucket whose start is on or before this day.
-    for (let i = weeks.length - 1; i >= 0; i--) {
-      if (day >= weeks[i].week) { weeks[i].count += 1; break; }
-    }
-  }
+  const weeks = activityWeeks((volumeRes.data ?? []).map(a => a.created_at), today, zone);
 
   /* ── Movement ──────────────────────────────────────────────────────────── */
 
-  const moves = (movementRes.data ?? []) as any[];
+  const moves = ((movementRes.data ?? []) as any[]).filter(m => {
+    const day = dateIn(new Date(m.created_at), zone);
+    return day >= activityStart && day <= today;
+  });
   const order = OPEN_STAGES.concat(CLOSED_STAGES);
   const advanced = moves.filter(
     m => m.from_stage && order.indexOf(m.to_stage) > order.indexOf(m.from_stage)
@@ -433,6 +462,17 @@ export async function GET() {
   }));
 
   return success({
+    insights: {
+      sources: acquisitionSources(sourceRes.data ?? []),
+      aging: openDealAging(agingRes.data ?? [], today, zone),
+      lossReasons: recordedLossReasons(closed),
+    },
+    queueCounts: {
+      closing: closingRes.count ?? 0,
+      stale: staleRes.count ?? 0,
+      unworked: newLeadsRes.count ?? 0,
+      ...diaryCounts,
+    },
     scope,
     currency: org.currency,
     /** Which cross-module links CRM Home may offer. */

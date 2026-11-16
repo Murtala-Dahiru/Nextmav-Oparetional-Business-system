@@ -49,3 +49,8 @@ export function ownedScope(q: any, ctx: RequestContext) {
     ? q.eq('owner_id', ctx.org.memberId)
     : q;
 }
+
+/** Record mutations must constrain the same SQL statement, not a prior read. */
+export function activeOwnedScope(q: any, ctx: RequestContext) {
+  return ownedScope(q, ctx).is('deleted_at', null);
+}

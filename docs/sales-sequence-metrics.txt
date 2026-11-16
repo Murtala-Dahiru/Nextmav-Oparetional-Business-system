@@ -1,0 +1,4 @@
+PASS owner metrics match exactly their RLS-visible enrollment outcomes
+PASS employee metrics match exactly their RLS-visible enrollment outcomes
+PASS inaccessible tenant yields no enrollment metrics
+3 sequence metrics database checks passed; transaction rolled back.

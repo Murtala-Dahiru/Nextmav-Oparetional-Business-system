@@ -1,0 +1,31 @@
+PASS decimal-safe line, document discount, tax and charge totals
+PASS invalid monetary precision rejected, not silently rounded
+PASS edit quote and add line item
+PASS remove line item
+PASS stale draft save rejected
+PASS submit quote for immutable revision review
+PASS default self-approval denied
+PASS approval race permits one decision only
+PASS stale approval rejected
+PASS approved quote issued as immutable version
+PASS revision creates new draft preserving original offer
+PASS zero-decimal currency supported
+PASS overview keeps currency totals separate
+PASS proposal references authoritative approved quote snapshot
+PASS proposal section order saved
+PASS execution without private evidence denied
+PASS quote complete PDF generated
+PASS proposal complete PDF generated
+PASS contract complete PDF generated
+PASS private contract upload and authorized byte-identical retrieval
+PASS authorized external execution evidence recorded
+PASS only executed effective contract becomes active
+PASS contract obligation creates real linked CRM follow-up
+PASS obligation completion retains evidence
+PASS renewal created from executed contract
+PASS renewal cannot claim completion without new executed agreement
+PASS commercial workflows do not create Finance revenue or invoices
+PASS RLS hides other tenant commercial records
+PASS authenticated clients cannot overwrite historical snapshots
+PASS restricted role cannot configure approval policy
+30 Commercial Hub live assertions passed.

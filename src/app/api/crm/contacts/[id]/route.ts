@@ -1,3 +1,4 @@
+import { guardedRelationshipUpdate } from '@/lib/crm/guarded-relationship-update';
 import { recordHandlers } from '@/lib/supabase/crud';
 import { SELECTS } from '@/lib/supabase/selects';
 import { updateContactSchema } from '@/lib/validations';
@@ -16,10 +17,14 @@ import { updateContactSchema } from '@/lib/validations';
  * record and a list row come back the same shape. This route was falling back
  * to `select: '*'` and returning no embedded relations at all.
  */
-export const { GET, PATCH, PUT, DELETE } = recordHandlers({
+const handlers = recordHandlers({
   table: 'contacts',
   module: 'crm',
   select: SELECTS.contacts,
   softDelete: true,
   updateSchema: updateContactSchema,
 });
+
+export const { GET, DELETE } = handlers;
+export const PATCH = guardedRelationshipUpdate('contacts',updateContactSchema,SELECTS.contacts,handlers.PATCH);
+export const PUT = guardedRelationshipUpdate('contacts',updateContactSchema,SELECTS.contacts,handlers.PUT);

@@ -189,19 +189,6 @@ export async function POST(req: Request) {
   ]);
   if (memberError) return pgError(memberError);
 
-  if (eligible.length) {
-    await ctx.supabase.rpc('notify_members', {
-      org: ctx.org.organizationId,
-      recipients: eligible,
-      ntype: 'channel',
-      ntitle: `You were added to ${rawName}`,
-      nbody: String(b.description ?? ''),
-      etype: 'channel',
-      eid: channel.id,
-      nlink: '/dashboard?module=communication',
-    });
-  }
-
   await audit(ctx, 'channel_created', { channelId: channel.id, reason: `${type} channel` });
 
   return success(channel, undefined, 201);

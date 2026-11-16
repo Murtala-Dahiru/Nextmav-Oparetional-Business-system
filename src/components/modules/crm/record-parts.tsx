@@ -1,4 +1,5 @@
 'use client';
+import { ActivityDetails } from './activity-details';
 
 import * as React from 'react';
 import { toast } from 'sonner';
@@ -10,7 +11,9 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/format';
 
-import { patch, remove, relativeDay, formatDayShort } from './data';
+import { useOwners } from './forms';
+import { useAppStore } from '@/store/app-store';
+import { post, patch, remove, relativeDay, formatDayShort } from './data';
 import { activityIcon, memberName, Blank } from './ui';
 import type { CrmActivity } from './types';
 
@@ -109,6 +112,21 @@ export function NextActions({
 }) {
   const [busy, setBusy] = React.useState<string | null>(null);
 
+  const mayAssign = useAppStore(s => s.allows('crm', 'manage'));
+  const owners = useOwners(mayAssign && items.length > 0);
+
+  async function assign(activity: CrmActivity, memberId: string) {
+    setBusy(activity.id);
+    try {
+      await post('/api/crm/activities/assign', { id: activity.id, updatedAt: activity.updatedAt, memberId });
+      toast.success('Activity reassigned');
+      onChanged();
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not assign this activity');
+    } finally {
+      setBusy(null);
+    }
+  }
   const complete = async (a: CrmActivity) => {
     setBusy(a.id);
     try {
@@ -173,6 +191,15 @@ export function NextActions({
               </p>
             </div>
 
+            {mayAssign && a.updatedAt && (
+              <select aria-label={`Assign ${a.subject}`} value="" disabled={busy !== null}
+                className="h-8 max-w-24 rounded border px-1 text-xs"
+                onChange={event => void assign(a, event.target.value)}>
+                <option value="" disabled>Assign to…</option>
+                {owners.filter(owner => owner.memberId !== a.memberId).map(owner =>
+                  <option key={owner.memberId} value={owner.memberId}>{owner.fullName}</option>)}
+              </select>
+            )}
             {onEdit && (
               <Button
                 type="button" variant="ghost" size="icon" className="size-7 shrink-0"
@@ -280,6 +307,7 @@ export function Timeline({
                 </span>
               </div>
 
+              <ActivityDetails activity={a}/>
               {a.body && (
                 <p className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed text-muted-foreground">
                   {a.body}

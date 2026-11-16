@@ -1,0 +1,10 @@
+✔ saved views and preferences reject unsupported fields and invalid states (99.9075ms)
+✔ SQL lead metrics, private saved views, stale writes, consent audit, opt-outs and conversion linkage (26125.5584ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 45209.0432

@@ -83,6 +83,7 @@ const permissionsPolicy = (media: string) => ({
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  serverExternalPackages: ['pdfkit'],
 
   /**
    * Normally `.next`. Overridable so two dev servers can run against this
@@ -130,6 +131,7 @@ const nextConfig: NextConfig = {
 
   async headers() {
     return [
+      { source: '/sw.js', headers: [{ key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' }, { key: 'Service-Worker-Allowed', value: '/' }] },
       /**
        * The app shell, and the only document in the product that can hold a
        * meeting: `/dashboard` renders `AppShell`, which lazy-loads the

@@ -1,22 +1,25 @@
 'use client';
+import { CrmNavigation } from './navigation';
 
 import * as React from 'react';
 import {
   LayoutGrid, Target, Users, Building2, Handshake, Columns3, Sparkles, Upload, UserPlus,
 } from 'lucide-react';
 
-import { cn } from '@/lib/utils';
 import { useFocusRequest } from '@/hooks/use-focus-request';
 import { useAppStore } from '@/store/app-store';
 import { ExportButton } from '@/components/shared/export-button';
 
+import { GovernanceSettings } from './governance-settings';
 import { CrmHome } from './home';
+import { AutomationStudio } from './automation-studio';
+import { CommercialHub } from './commercial-hub';
 import { LeadsSection } from './leads';
 import { ContactsSection } from './contacts';
 import { CompaniesSection } from './companies';
 import { DealsSection } from './deals';
 import { PipelineSection } from './pipeline';
-import { ActivitiesSection } from './activities';
+import { ActivitiesSection, type ActivityView } from './activities';
 import { ImportCenter } from './import-center';
 import { PartnerQueue } from './partner-queue';
 import type { CrmSection } from './types';
@@ -53,35 +56,53 @@ import type { CrmSection } from './types';
  */
 
 const SECTIONS: { id: CrmSection; label: string; icon: React.ElementType }[] = [
-  { id: 'home', label: 'Home', icon: LayoutGrid },
+  { id: 'settings', label: 'Settings', icon: Columns3 },
+  { id: 'home', label: 'Overview', icon: LayoutGrid },
   { id: 'leads', label: 'Leads', icon: Target },
   { id: 'contacts', label: 'Contacts', icon: Users },
   { id: 'companies', label: 'Companies', icon: Building2 },
   { id: 'deals', label: 'Deals', icon: Handshake },
   { id: 'pipeline', label: 'Pipeline', icon: Columns3 },
   { id: 'activities', label: 'Activities', icon: Sparkles },
+  { id: 'automations', label: 'Automation', icon: Sparkles },
+  { id: 'commercial', label: 'Commercial Hub', icon: Handshake },
   { id: 'partners', label: 'Partners', icon: UserPlus },
   { id: 'import', label: 'Import', icon: Upload },
 ];
 
 export default function CrmModule() {
+  const identity = useAppStore(s => `${s.organization?.id ?? ''}:${s.user?.id ?? ''}:${s.user?.memberId ?? ''}:${s.user?.role ?? ''}`);
+  return <CrmWorkspace key={identity} />;
+}
+
+function CrmWorkspace() {
   const [section, setSection] = React.useState<CrmSection>('home');
 
   const [focusLead, setFocusLead] = React.useState<string | null>(null);
+  const [leadSource, setLeadSource] = React.useState<string | undefined>();
   const [focusContact, setFocusContact] = React.useState<string | null>(null);
   const [focusCompany, setFocusCompany] = React.useState<string | null>(null);
   const [focusDeal, setFocusDeal] = React.useState<string | null>(null);
+  const [commercialFocus, setCommercialFocus] = React.useState<{type:string;id:string}|null>(null);
+  const [activityView, setActivityView] = React.useState<ActivityView | undefined>();
 
   const allows = useAppStore(s => s.allows);
   const mayImport = allows('crm', 'create');
 
   const go = React.useCallback((next: CrmSection, focus?: { type: string; id: string }) => {
+    if (!window.dispatchEvent(new Event('crm-automation-before-leave', { cancelable: true }))) return;
     setSection(next);
+    if (next === 'leads') setLeadSource(focus?.type === 'lead-source' ? focus.id : undefined);
+    if (next === 'activities') setActivityView(
+      focus?.type === 'activity-view' && ['overdue', 'today', 'upcoming', 'done', 'history'].includes(focus.id)
+        ? focus.id as ActivityView : undefined,
+    );
     if (!focus) return;
     if (focus.type === 'lead') setFocusLead(focus.id);
     if (focus.type === 'contact') setFocusContact(focus.id);
     if (focus.type === 'company') setFocusCompany(focus.id);
     if (focus.type === 'deal') setFocusDeal(focus.id);
+    if (focus.type === 'commercial') setCommercialFocus(focus);
   }, []);
 
   useFocusRequest('crm', ({ type, id }) => {
@@ -90,98 +111,25 @@ export default function CrmModule() {
       case 'contact': go('contacts', { type, id }); break;
       case 'company': go('companies', { type, id }); break;
       case 'deal': go('deals', { type, id }); break;
+      case 'agreement': case 'commercial': case 'commercial-company': case 'commercial-deal': case 'commercial-contact':
+        setCommercialFocus({type,id}); go('commercial'); break;
     }
   });
 
-  const visible = SECTIONS.filter(s => s.id !== 'import' || mayImport);
+  const visible = SECTIONS.filter(s => (s.id !== 'import' || mayImport) && (!['automations', 'settings'].includes(s.id) || allows('crm', 'manage')));
 
   return (
     <div className="flex-1 overflow-auto">
-      {/*
-        The section bar.
-
-        Sticky, because these screens scroll a long way and losing the way back
-        to Home behind a thousand pixels of pipeline is the commonest complaint
-        about a module laid out this way. It sits on the page's own background
-        with a hairline under it, so it reads as part of the frame rather than
-        as another card.
-      */}
-      <div className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="flex items-center gap-3 px-4 md:px-6">
-          {/*
-            The fade is the only thing saying there is more.
-
-            Eight sections do not fit on a phone, and a scroller with a hidden
-            scrollbar that happens to end on a whole word reads as the end of
-            the list. The mask is applied only where the row actually
-            overflows - on a desktop it is off, so nothing is dimmed for no
-            reason.
-          */}
-          <nav
-            aria-label="CRM sections"
-            className={cn(
-              '-mb-px flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto',
-              '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-              '[mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]',
-              'lg:[mask-image:none]',
-            )}
-          >
-            {visible.map(s => {
-              const on = s.id === section;
-              const Icon = s.icon;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setSection(s.id)}
-                  aria-current={on ? 'page' : undefined}
-                  className={cn(
-                    'relative flex shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 py-3 text-[13px] font-medium transition-colors',
-                    on ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                >
-                  <Icon className={cn('size-3.5', on ? 'opacity-100' : 'opacity-70')} />
-                  {s.label}
-                  {/*
-                    The indicator is a child of the button rather than a shared
-                    animated element: a sliding underline has to measure the
-                    row, and this row scrolls horizontally on a phone, where a
-                    measured position is wrong the moment somebody swipes.
-                  */}
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      'absolute inset-x-1.5 bottom-0 h-[2px] rounded-t-full transition-colors',
-                      on ? 'bg-foreground' : 'bg-transparent',
-                    )}
-                  />
-                </button>
-              );
-            })}
-          </nav>
-
-          {/*
-            Export belongs to the data, so it sits with the navigation rather
-            than beside a section heading, where it competed with that
-            section's own primary action.
-          */}
-          <div className="hidden shrink-0 py-2 sm:block">
-            <ExportButton
-              module="crm"
-              datasets={[
-                { key: 'leads', label: 'Leads' },
-                { key: 'deals', label: 'Deals' },
-              ]}
-            />
-          </div>
-        </div>
-      </div>
+      <CrmNavigation sections={visible} active={section} onChange={next => go(next)}>
+        <ExportButton module="crm" datasets={[{ key: 'leads', label: 'Leads' }, { key: 'deals', label: 'Deals' }, { key: 'contacts', label: 'Contacts' }, { key: 'companies', label: 'Companies' }]} />
+      </CrmNavigation>
 
       <div className="p-4 md:p-6">
+        {section === 'settings' && allows('crm', 'manage') && <GovernanceSettings onGo={go} />}
         {section === 'home' && <CrmHome onGo={go} />}
 
         {section === 'leads' && (
-          <LeadsSection focusId={focusLead} onFocusHandled={() => setFocusLead(null)} />
+          <LeadsSection initialSource={leadSource} focusId={focusLead} onFocusHandled={() => setFocusLead(null)} />
         )}
 
         {section === 'contacts' && (
@@ -197,8 +145,10 @@ export default function CrmModule() {
         )}
 
         {section === 'pipeline' && <PipelineSection />}
+        {section === 'commercial' && <CommercialHub initialAgreementId={commercialFocus?.type==='agreement'?commercialFocus.id:undefined} key={`${commercialFocus?.type}:${commercialFocus?.id}`} initialId={commercialFocus?.type==='commercial'?commercialFocus.id:undefined} initialCompanyId={commercialFocus?.type==='commercial-company'?commercialFocus.id:undefined} initialDealId={commercialFocus?.type==='commercial-deal'?commercialFocus.id:undefined} initialContactId={commercialFocus?.type==='commercial-contact'?commercialFocus.id:undefined}/>}
+        {section === 'automations' && allows('crm', 'manage') && <AutomationStudio onGo={go} />}
 
-        {section === 'activities' && <ActivitiesSection />}
+        {section === 'activities' && <ActivitiesSection key={activityView ?? 'auto'} initialView={activityView} />}
 
         {/*
           The partner queue.

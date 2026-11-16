@@ -1,0 +1,3 @@
+PASS additive sales migrations 0121–0124 replay 1 on existing PostgreSQL schema
+PASS additive sales migrations 0121–0124 replay 2 on existing PostgreSQL schema
+Verification transaction rolled back; no customer records changed.

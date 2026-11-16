@@ -1,0 +1,64 @@
+PASS Migration applies and replays
+PASS Organization B cannot see Property Type
+PASS Organization A cannot see Service Category
+PASS Cross-tenant configuration mutation denied
+PASS Valid custom value persists atomically
+PASS Invalid dropdown rejected by database
+PASS Required field enforced
+PASS Foreign field rejected
+PASS Incompatible type change rejected
+PASS Null revision bypass rejected
+PASS Record RLS isolates organizations
+PASS Sales representative cannot configure fields
+PASS Direct table writes denied
+PASS Own-record boundary remains enforced
+PASS Configuration audit restricted to administrators
+PASS Draft does not publish
+PASS Layout stale publication rejected
+PASS Required fields cannot be hidden
+PASS Foreign layout references rejected
+PASS Published layout persists
+PASS Layout dependency blocks archival
+PASS Revert restores prior publication
+PASS Archived values survive unrelated edits
+PASS Archived historical values cannot be destroyed
+PASS Configuration changes audited
+PASS Personal directory view persists
+PASS Personal directory views private from colleagues
+PASS CRM member can read protected company values
+PASS Portal retains company access without internal fields
+PASS Private company values protected by RLS directly
+PASS Pipeline rejects missing custom evidence
+PASS Existing transition accepts completed custom evidence
+PASS Pipeline dependency blocks retirement
+PASS Automation matcher reads typed custom field by stable ID
+PASS Organization view visible to CRM colleague
+PASS Representative cannot publish organization views
+PASS Shared views isolated between organizations
+PASS Invalid typed default rejected
+PASS Cross-tenant member reference rejected
+PASS Typed default applied atomically on create
+PASS Custom numeric maximum enforced by database
+PASS Inverted validation bounds rejected
+PASS Usage reports stored values and pipeline dependencies
+PASS Default presentation persists
+PASS Stale list presentation rejected
+PASS List preferences private to their member
+PASS Field usage restricted to configuration administrators
+PASS List preferences isolated between tenants
+PASS Standard detail layout publishes with custom fields
+PASS Unknown standard layout field rejected
+PASS Manager sees same-department lead through RLS
+PASS Manager cannot read another department lead
+PASS Manager retains own records
+PASS Manager without department cannot read organization records
+PASS Manager without department retains own records
+PASS Personal deal view can be set as default
+PASS Organization administrator cannot read another member personal view
+PASS Default selection rejects another member private view
+PASS Administrator cannot delete another member personal view
+PASS Default selection rejects cross-tenant view
+PASS Removing personal view clears default reference
+PASS Empty array rejected for numeric field
+PASS Whitespace cannot satisfy required text field
+63 checks passed. Entire transaction rolled back, including schema and synthetic tenants.

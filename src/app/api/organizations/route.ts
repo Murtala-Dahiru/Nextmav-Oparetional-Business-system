@@ -17,7 +17,7 @@ export async function GET() {
 
   const { data, error: e } = await supabase
     .from('organization_members')
-    .select('id, role, department_id, joined_at, organizations(id, name, slug, logo_url)')
+    .select('id, role, department_id, joined_at, organizations!organization_members_organization_id_fkey(id, name, slug, logo_url)')
     .eq('user_id', user.id)
     .eq('is_active', true)
     .is('deleted_at', null);

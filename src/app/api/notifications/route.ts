@@ -31,16 +31,20 @@ export async function GET(req: Request) {
   let query = ctx.supabase
     .from('notifications')
     .select('*', { count: 'exact' })
+    .eq('in_app', true)
     .eq('recipient_id', ctx.org.memberId);
 
   if (searchParams.get('unread') === 'true') query = query.eq('is_read', false);
 
   const type = searchParams.get('type');
   if (type) query = query.eq('type', type);
+  const category = searchParams.get('category');
+  if (category) query = query.eq('category', category);
 
   const off = (page - 1) * pageSize;
   const { data, count, error: e } = await query
     .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
     .range(off, off + pageSize - 1);
 
   if (e) return pgError(e);
@@ -55,6 +59,7 @@ export async function GET(req: Request) {
   const { count: unread } = await ctx.supabase
     .from('notifications')
     .select('id', { count: 'exact', head: true })
+    .eq('in_app', true)
     .eq('recipient_id', ctx.org.memberId)
     .eq('is_read', false);
 
@@ -74,6 +79,7 @@ export async function GET(req: Request) {
   const { data: unreadTypes } = await ctx.supabase
     .from('notifications')
     .select('type')
+    .eq('in_app', true)
     .eq('recipient_id', ctx.org.memberId)
     .eq('is_read', false)
     .limit(500);
@@ -128,7 +134,7 @@ export async function GET(req: Request) {
   }
 
   if (unreadMessages > 0) {
-    byModule.communication = (byModule.communication ?? 0) + unreadMessages;
+    byModule.communication = unreadMessages;
   }
 
   return paginated(data ?? [], count ?? 0, page, pageSize, {
@@ -149,17 +155,23 @@ export async function PATCH(req: Request) {
   const ctx = await authenticate();
   if (ctx instanceof Response) return ctx;
 
-  const body = acceptBody(await req.json().catch(() => ({})));
+  const raw = await req.json().catch(() => null);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return error('Expected notification update', 422);
+  const body = acceptBody(raw);
   const ids: string[] = Array.isArray(body?.ids) ? body.ids : [];
+  if (ids.length > 100 || ids.some(id => !/^\d+$/.test(String(id)))) return error('Invalid notification IDs', 422);
+  const isRead = body?.is_read !== false;
+  if (!isRead && !ids.length) return error('Select notifications to mark unread', 422);
   // `moduleId`, not `module`: the latter shadows the CommonJS global and Next
   // rejects it outright.
   const moduleId = typeof body?.module === 'string' ? body.module : null;
 
   let query = ctx.supabase
     .from('notifications')
-    .update({ is_read: true, read_at: new Date().toISOString() })
+    .update({ is_read: isRead, read_at: isRead ? new Date().toISOString() : null })
+    .eq('in_app', true)
     .eq('recipient_id', ctx.org.memberId)
-    .eq('is_read', false);
+    .eq('is_read', !isRead);
 
   if (ids.length) query = query.in('id', ids);
 

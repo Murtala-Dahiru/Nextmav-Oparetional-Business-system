@@ -24,6 +24,14 @@ export interface Member {
 }
 
 export interface Lead {
+  customValues?: import('@/lib/crm/customization').CustomValues;
+  communicationPreferences?: import('@/lib/crm/lead-preferences').CommunicationPreferences;
+  qualification?: Record<string,string|number|boolean|null>;
+  qualificationVersion?: number;
+  territory?: string;
+  industry?: string;
+  serviceInterest?: string;
+  campaign?: string;
   id: string;
   firstName: string; lastName: string;
   email: string; phone: string;
@@ -42,6 +50,10 @@ export interface Lead {
 }
 
 export interface Contact {
+  customValues?: import('@/lib/crm/customization').CustomValues;
+  owner?: Member;
+  ownerId?: string | null;
+  crmProfile?: { emailOptOut?:boolean;phoneOptOut?:boolean; department?: string; relationshipRole?: string; influence?: string; preferredMethod?: string; consent?: string; relationshipNotes?: string };
   id: string;
   firstName: string; lastName: string;
   email: string; phone: string;
@@ -56,6 +68,9 @@ export interface Contact {
 }
 
 export interface Company {
+  customValues?: import('@/lib/crm/customization').CustomValues;
+  owner?: Member;
+  crmProfile?: { segment?: string; tags?: string[] };
   id: string;
   name: string; industry: string; website: string;
   phone: string; email: string;
@@ -67,6 +82,20 @@ export interface Company {
 }
 
 export interface Deal {
+  customValues?: import('@/lib/crm/customization').CustomValues;
+  currency: string;
+  lastActivityAt?:string|null;
+  stageEnteredAt?:string|null;
+  overdueFollowup?:boolean;
+  dealTeamIds?: string[];
+  serviceItems?: {name:string;quantity:number;unitPrice:number}[];
+  pipelineId?: string | null;
+  pipelineStageId?: string | null;
+  pipelineVersion?: number;
+  nextStep?: string;
+  forecastCategory?: 'pipeline'|'best_case'|'commit'|'omitted';
+  competitor?: string;
+  outcomeNotes?: string;
   id: string;
   name: string;
   value: number;
@@ -102,6 +131,8 @@ export interface Deal {
  * 0028 for why they are one table.
  */
 export interface CrmActivity {
+  updatedAt?: string;
+  engagementDetails?: { priority?: 'low' | 'normal' | 'high'; direction?: string; duration?: number; outcome?: string; participants?: string[]; timezone?: string; location?: string; videoUrl?: string; endsAt?: string };
   id: string;
   activityType: string;
   subject: string;
@@ -149,6 +180,12 @@ export interface MonthRow {
 }
 
 export interface CrmOverview {
+  insights?: {
+    sources: { source: string; count: number; converted: number }[];
+    aging: { buckets: { label: string; count: number; value: number }[]; excluded: number };
+    lossReasons: { reason: string; count: number }[];
+  };
+  queueCounts?: { closing: number; stale: number; unworked: number; overdue: number; today: number; upcoming: number };
   /** What the caller's role lets them see. `own` narrows every figure here. */
   scope: 'own' | 'department' | 'organization';
   currency: string;
@@ -217,8 +254,8 @@ export interface CrmAttentionItem {
 }
 
 export type CrmSection =
-  | 'home' | 'leads' | 'contacts' | 'companies'
-  | 'deals' | 'pipeline' | 'activities' | 'partners' | 'import';
+  | 'settings' | 'home' | 'leads' | 'contacts' | 'companies'
+  | 'deals' | 'pipeline' | 'activities' | 'partners' | 'import' | 'automations' | 'commercial';
 
 /* -------------------------------------------------------------------------- */
 /*  Vocabulary                                                                */
@@ -263,6 +300,7 @@ export const CLOSED_STAGES = ['closed_won', 'closed_lost'];
  */
 export const ACTIVITY_TYPES = [
   { value: 'call', label: 'Call' },
+  { value: 'whatsapp', label: 'WhatsApp (manual log)' },
   { value: 'email', label: 'Email' },
   { value: 'meeting', label: 'Meeting' },
   { value: 'video', label: 'Video call' },

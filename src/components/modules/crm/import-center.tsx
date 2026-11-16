@@ -1,4 +1,6 @@
 'use client';
+import type { FieldDefinition } from '@/lib/crm/customization';
+import { getList as loadFieldDefinitions } from './data';
 
 import * as React from 'react';
 import { toast } from 'sonner';
@@ -85,6 +87,7 @@ interface Problem { field: string; message: string; severity: 'error' | 'warning
 interface PlannedRow {
   row: number;
   candidate: {
+    deal?:{name:string};
     company: { name: string; website: string; industry: string } | null;
     person: {
       firstName: string; lastName: string; email: string; phone: string;
@@ -109,6 +112,7 @@ interface Plan {
 }
 
 interface Result {
+  dealsCreated?: number;
   companiesCreated: number; companiesUpdated: number;
   peopleCreated: number; peopleUpdated: number;
   skipped: number;
@@ -149,6 +153,8 @@ const FIELD_GROUPS: { label: string; fields: { value: string; label: string }[] 
   },
 ];
 
+const DEAL_FIELDS = {label:'Deal',fields:[{value:'dealName',label:'Deal name'},{value:'value',label:'Amount'},{value:'currency',label:'Currency'},{value:'expectedClose',label:'Expected close'}]};
+
 const CONFIDENCE_STYLE: Record<Confidence, string> = {
   certain: 'text-success',
   likely: 'text-muted-foreground',
@@ -165,7 +171,9 @@ const CONFIDENCE_WORD: Record<Confidence, string> = {
 
 export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) {
   const [step, setStep] = React.useState<Step>('upload');
-  const [target, setTarget] = React.useState<'leads' | 'contacts'>('leads');
+  const [customFields,setCustomFields]=React.useState<FieldDefinition[]>([]);
+  const [target, setTarget] = React.useState<'leads' | 'contacts' | 'companies' | 'deals'>('leads');
+  React.useEffect(()=>{const c=new AbortController();loadFieldDefinitions<FieldDefinition>('/api/crm/settings/fields?object='+target,c.signal).then(r=>{if(!c.signal.aborted)setCustomFields(r.data.filter(f=>!f.archived))}).catch(()=>{});return()=>c.abort()},[target]);
 
   const [analysis, setAnalysis] = React.useState<Analysis | null>(null);
   const [mapping, setMapping] = React.useState<Record<string, number>>({});
@@ -197,7 +205,7 @@ export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) 
       const data = json.data as Analysis;
       setAnalysis(data);
       setMapping(Object.fromEntries(
-        data.columns.filter(c => c.field).map(c => [c.field as string, c.index]),
+        data.columns.filter(c => target !== 'deals' && c.field && (target !== 'companies' || FIELD_GROUPS[0].fields.some(f=>f.value===c.field))).map(c => [c.field as string, c.index]),
       ));
       setStep('map');
     } catch (e: any) {
@@ -329,10 +337,12 @@ export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) 
               <FilterRow
                 ariaLabel="What kind of records are in this file"
                 value={target}
-                onChange={v => setTarget(v as 'leads' | 'contacts')}
+                onChange={v => setTarget(v as 'leads' | 'contacts' | 'companies' | 'deals')}
                 options={[
                   { value: 'leads', label: 'Leads' },
                   { value: 'contacts', label: 'Contacts' },
+                  { value: 'companies', label: 'Companies' },
+                  { value: 'deals', label: 'Deals' },
                 ]}
               />
             </div>
@@ -500,7 +510,7 @@ export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) 
                         <SelectItem value="__skip" className="text-[13px] text-muted-foreground">
                           Do not import
                         </SelectItem>
-                        {FIELD_GROUPS.map(group => (
+                        {[...(target === 'deals' ? [DEAL_FIELDS] : target === 'companies' ? FIELD_GROUPS.slice(0,1) : FIELD_GROUPS), {label:'Organization fields',fields:customFields.map(f=>({value:'custom:'+f.id,label:f.label}))}].map(group => (
                           <React.Fragment key={group.label}>
                             <div className="px-2 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-muted-foreground/85">
                               {group.label}
@@ -544,7 +554,7 @@ export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) 
             <Count label="Rows read" value={plan.summary.total} />
             {/* Named, so it reads as the promise the receipt then keeps. */}
             <Count
-              label={target === 'leads' ? 'Leads to add' : 'Contacts to add'}
+              label={target === 'deals' ? 'Deals to add' : target === 'companies' ? 'Companies to add' : target === 'leads' ? 'Leads to add' : 'Contacts to add'}
               value={live.create}
               tone="good"
             />
@@ -647,13 +657,13 @@ export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) 
                   <li key={p.row} className="grid grid-cols-1 gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_230px] lg:items-center">
                     <div className="min-w-0">
                       <p className="flex items-center gap-2 text-[13px] font-medium text-foreground">
-                        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/70">
+                        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
                           {p.row + 2}
                         </span>
                         <span className="truncate">
                           {person
                             ? `${person.firstName} ${person.lastName}`.trim() || person.email || 'Unnamed'
-                            : company?.name ?? 'Empty row'}
+                            : p.candidate.deal?.name ?? company?.name ?? 'Empty row'}
                         </span>
                       </p>
                       <p className="mt-0.5 flex flex-wrap items-center gap-x-2.5 truncate text-[11.5px] text-muted-foreground">
@@ -771,23 +781,12 @@ export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) 
                 is a real thing to know about and not a line item.
               */}
               <p className="mt-1 max-w-md text-[12.5px] leading-relaxed text-muted-foreground">
-                {result.peopleCreated} {target === 'leads'
-                  ? (result.peopleCreated === 1 ? 'lead' : 'leads')
-                  : (result.peopleCreated === 1 ? 'contact' : 'contacts')} created,
-                {' '}{result.peopleUpdated + result.companiesUpdated} updated,
-                {' '}{result.skipped} skipped.
-                {result.companiesCreated > 0 && (
-                  <>
-                    {' '}{result.companiesCreated === 1
-                      ? 'One company was created to link them to.'
-                      : `${result.companiesCreated} companies were created to link them to.`}
-                  </>
-                )}
+                {(result.dealsCreated ?? 0) + result.peopleCreated + result.companiesCreated} records created, {result.peopleUpdated + result.companiesUpdated} updated, {result.skipped} skipped.
               </p>
             </div>
 
             <div className="mt-5 grid grid-cols-2 divide-x divide-y divide-border overflow-hidden rounded-lg border border-border sm:grid-cols-4 sm:divide-y-0">
-              <Count label={target === 'leads' ? 'Leads added' : 'Contacts added'} value={result.peopleCreated} tone="good" />
+              <Count label={target === 'deals' ? 'Deals added' : 'People added'} value={result.dealsCreated ?? result.peopleCreated} tone="good" />
               <Count label="Companies added" value={result.companiesCreated} tone="good" />
               <Count label="Records updated" value={result.peopleUpdated + result.companiesUpdated} />
               <Count label="Skipped" value={result.skipped} />
@@ -816,10 +815,10 @@ export function ImportCenter({ onGo }: { onGo: (section: CrmSection) => void }) 
               <Button
                 size="sm"
                 className="gap-1.5"
-                onClick={() => onGo(target === 'leads' ? 'leads' : 'contacts')}
+                onClick={() => onGo(target)}
               >
                 {target === 'leads' ? <Target className="size-4" /> : <User className="size-4" />}
-                Open {target === 'leads' ? 'Leads' : 'Contacts'}
+                Open {target}
               </Button>
               <Button size="sm" variant="outline" className="gap-1.5" onClick={restart}>
                 <Upload className="size-4" /> Import another file
@@ -846,7 +845,7 @@ function Steps({ step }: { step: Step }) {
   const at = order.findIndex(s => s.id === step);
 
   return (
-    <ol className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <ol tabIndex={0} aria-label="Import steps" className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {order.map((s, i) => {
         const done = i < at;
         const here = i === at;
@@ -855,7 +854,7 @@ function Steps({ step }: { step: Step }) {
             <span className={cn(
               'flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium',
               here ? 'bg-foreground text-background'
-                : done ? 'text-foreground' : 'text-muted-foreground/70',
+                : done ? 'text-foreground' : 'text-muted-foreground',
             )}>
               <span className={cn(
                 'flex size-[15px] items-center justify-center rounded-full text-[9.5px] tabular-nums',

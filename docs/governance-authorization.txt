@@ -1,0 +1,7 @@
+PASS Read-only role denied /api/export?dataset=leads
+PASS Read-only role denied /api/crm/settings/fields
+PASS Read-only role denied /api/crm/settings/layouts
+PASS Read-only role denied /api/crm/settings/bulk-fields
+PASS Read-only role denied /api/crm/settings/audit
+PASS Read-only role cannot publish organization view
+6 authorization API checks passed. Synthetic read-only membership retained; no messages sent.

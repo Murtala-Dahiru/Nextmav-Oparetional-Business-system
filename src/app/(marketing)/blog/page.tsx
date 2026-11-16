@@ -64,7 +64,7 @@ const meanwhile = [
   {
     icon: BookOpen,
     title: 'Documentation',
-    body: 'How the modules fit together, the data model, and the API.',
+    body: 'How the modules fit together and the foundations of the platform.',
     href: '/docs',
   },
   {
@@ -93,13 +93,10 @@ export default function BlogPage() {
         <Container className="nm-page-hero-content">
           <Eyebrow>Writing</Eyebrow>
           <h1 className="nm-page-hero-title nm-page-hero-title-dark">
-            Nothing published <span className="nm-serif">yet.</span>
+            Notes on <span className="nm-serif">connected work.</span>
           </h1>
           <p className="nm-page-hero-sub nm-page-hero-sub-dark">
-            When there is something worth reading — how a module is built, why a
-            decision went the way it did, what broke and what we changed — it
-            will be here. Until then this page would rather be empty than
-            padded.
+            Product notes, engineering decisions and perspectives on connected operations. Our first articles are in preparation.
           </p>
         </Container>
       </section>
@@ -114,13 +111,11 @@ export default function BlogPage() {
                   <BookOpen size={22} />
                 </div>
                 <h2 id="empty" className="nm-state-title">
-                  No posts, rather than filler
+                  Our writing is on its way.
                 </h2>
                 <p className="nm-state-desc">
-                  If there is something you would find genuinely useful written
-                  up — a migration you are weighing, a permission model you are
-                  trying to reproduce — tell us and we will write that one
-                  first.
+                  We have not published articles yet. In the meantime, explore
+                  the product overview and the available setup guidance.
                 </p>
                 <Link
                   href="/contact"

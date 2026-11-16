@@ -1,0 +1,10 @@
+PASS authenticated API totals reconcile with monthly history and current-month KPI
+PASS repeated switching, 3/6/12 months, tooltips, resizing, no overflow at 1440
+PASS repeated switching, 3/6/12 months, tooltips, resizing, no overflow at 768
+PASS repeated switching, 3/6/12 months, tooltips, resizing, no overflow at 390
+PASS zero state
+PASS empty state
+PASS partial state
+PASS edge state
+PASS loading skeleton resolves to financial chart
+PASS API unavailable/error states and no unexpected console/runtime errors

@@ -1,0 +1,6 @@
+import {authorize} from '@/lib/auth-context';
+import {crmDatabaseError as pgError} from '@/lib/crm/database-error';
+import {success,error} from '@/lib/api-response';
+import {frameworkSchema} from '@/lib/crm/qualification';
+export async function GET(){const ctx=await authorize('crm','view');if(ctx instanceof Response)return ctx;const result=await ctx.supabase.from('crm_qualification_frameworks').select('*').eq('organization_id',ctx.org.organizationId).maybeSingle();if(result.error)return pgError(result.error);return success(result.data);}
+export async function PUT(req:Request){const ctx=await authorize('crm','manage');if(ctx instanceof Response)return ctx;let raw:unknown;try{raw=await req.json();}catch{return error('Invalid JSON',422);}const parsed=frameworkSchema.safeParse(raw);if(!parsed.success)return error(parsed.error.issues[0]?.message??'Invalid framework',422);const f=parsed.data;const result=await ctx.supabase.rpc('crm_save_qualification_framework',{p_org:ctx.org.organizationId,p_version:f.version,p_name:f.name,p_fields:f.fields});if(result.error?.code==='40001')return error('Qualification framework changed. Reload before saving.',409);if(result.error)return pgError(result.error);return success({saved:true});}

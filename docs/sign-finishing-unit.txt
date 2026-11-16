@@ -1,0 +1,24 @@
+PASS required verification cannot be silently downgraded
+PASS valid draft passes policy and field checks
+PASS out-of-page placement is rejected
+PASS unknown document page is rejected
+PASS duplicate email recipients rejected
+PASS recipient cannot submit another field
+PASS empty required signature rejected
+PASS future recipient is inactive
+PASS JSON canonicalization survives database key reordering
+PASS authenticated evidence verifies
+PASS signature substitution invalidates evidence
+PASS event alteration invalidates evidence
+PASS truncated action event invalidates evidence
+PASS completion binds certificate and final PDF together
+PASS certificate substitution invalidates completion evidence
+PASS completion event truncation cannot hide substitution
+PASS valid PDF parser
+PASS malformed PDF parser rejection
+PASS active PDF content rejection
+PASS unsupported rotated PDF cannot cause misaligned signatures
+PASS unsafe signature image rejected
+PASS manual-link recipient may omit email
+PASS OTP recipient must supply an email
+23 focused assertions passed.

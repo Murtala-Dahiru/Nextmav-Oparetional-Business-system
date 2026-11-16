@@ -1,0 +1,38 @@
+import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
+import {PDFDocument,StandardFonts} from 'pdf-lib';
+import {validateDraft,validateValues,activeRecipient,consentText,type Agreement,type Field} from '../src/lib/sign/model';
+import {drawFieldText} from '../src/lib/sign/text-rendering';
+const recipient={id:randomUUID(),name:'Test Customer',email:'test@example.com',role:'signer' as const,order:1,verification:'possession' as const,generation:0};
+const witness={...recipient,id:randomUUID(),email:'witness@example.com',role:'witness' as const,order:2};
+function field(type:Field['type'],recipientId=recipient.id):Field{return {id:randomUUID(),recipientId,type,page:1,x:.1,y:.2,width:.3,height:.05,required:true,label:type,placeholder:'',inputMode:type==='date'?'auto':'editable'};}
+const fields=[...['signature','name','date'].map(t=>field(t as Field['type'])),...['name','signature','date'].map(t=>field(t as Field['type'],witness.id))];
+const a:Agreement={title:'TEST ONLY customization',sequential:true,expiresAt:new Date(Date.now()+86400000).toISOString(),recipients:[recipient,witness],fields,organizationName:'Test',source:{path:'test.pdf',hash:'test',pages:[{width:595,height:842}]},consent:{version:'1',text:consentText},actions:[],events:[]};
+let count=0;function test(label:string,fn:()=>void){fn();console.log('PASS '+label);count++;}
+test('six independent customer and witness fields',()=>validateDraft(a,true));
+test('signature does not require name or date fields',()=>validateDraft({...a,fields:[fields[0],fields[4]]},true));
+test('name does not force a signature field',()=>validateDraft({...a,fields:[fields[1],fields[3]]},true));
+test('required entered name enforced',()=>assert.throws(()=>validateValues(a,recipient,{[fields[0].id]:'Intentional signature'})));
+test('entered name retained separately from signature',()=>assert.equal(validateValues(a,recipient,{[fields[0].id]:'Mark',[fields[1].id]:'Different legal name'})[fields[1].id],'Different legal name'));
+test('witness cannot submit customer fields',()=>assert.throws(()=>validateValues(a,witness,{[fields[1].id]:'Forgery'})));
+test('customer cannot submit witness fields',()=>assert.throws(()=>validateValues(a,recipient,{[fields[3].id]:'Forgery'})));
+test('client cannot supply actual signing date',()=>assert.equal(validateValues(a,recipient,{[fields[0].id]:'Mark',[fields[1].id]:'Name',[fields[2].id]:'1990-01-01'})[fields[2].id],undefined));
+test('witness waits in sequential workflow',()=>assert.equal(activeRecipient(a,witness.id),false));
+test('parallel witness active',()=>assert.equal(activeRecipient({...a,sequential:false},witness.id),true));
+const manual=field('date_input');
+test('manual calendar date retained',()=>assert.equal(validateValues({...a,fields:[manual]},recipient,{[manual.id]:'2026-12-01'})[manual.id],'2026-12-01'));
+test('invalid calendar date rejected',()=>assert.throws(()=>validateValues({...a,fields:[manual]},recipient,{[manual.id]:'2026-02-30'})));
+const fixed={...field('text'),inputMode:'readonly' as const,defaultValue:'Fixed clause'};
+test('tampered readonly value replaced',()=>assert.equal(validateValues({...a,fields:[fixed]},recipient,{[fixed.id]:'Tampered'})[fixed.id],'Fixed clause'));
+test('unsafe signature defaults rejected',()=>assert.throws(()=>validateDraft({...a,fields:[{...fields[0],defaultValue:'Forged'}]},true)));
+test('cross recipient date linkage rejected',()=>assert.throws(()=>validateDraft({...a,fields:[fields[0],{...fields[5],signatureFieldId:fields[0].id}]},true)));
+test('viewer cannot own fields',()=>assert.throws(()=>validateDraft({...a,recipients:[{...recipient,role:'viewer'},witness]},true)));
+const letters={...field('name'),validation:'letters' as const,maxLength:30};
+test('Unicode name validation',()=>assert.equal(validateValues({...a,fields:[letters]},recipient,{[letters.id]:'Zoë García'})[letters.id],'Zoë García'));
+test('invalid text validation rejected',()=>assert.throws(()=>validateValues({...a,fields:[letters]},recipient,{[letters.id]:'123'})));
+const pdf=await PDFDocument.create(),page=pdf.addPage(),font=await pdf.embedFont(StandardFonts.Helvetica);
+test('multiline text fits without truncation',()=>drawFieldText(page,font,'A long multiline value\nwith a second paragraph',{x:10,y:10,width:130,height:60},{...field('text'),fontSize:18,multiline:true},{scale:1,x:0,y:.5}));
+test('unreadable overflow rejected instead of silently clipping',()=>assert.throws(()=>drawFieldText(page,font,'Very long text'.repeat(100),{x:0,y:0,width:20,height:12},field('text'),{scale:1,x:0,y:.5})));
+test('invalid locked calendar default rejected before issue',()=>assert.throws(()=>validateDraft({...a,fields:[{...manual,inputMode:'readonly',defaultValue:'not-a-date'}]},true)));
+test('optional blank date omitted from PDF values',()=>assert.deepEqual(validateValues({...a,fields:[{...manual,required:false}]},recipient,{[manual.id]:''}),{}));
+console.log(`${count} customization assertions passed.`);

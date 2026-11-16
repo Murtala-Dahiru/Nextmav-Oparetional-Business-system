@@ -1,0 +1,21 @@
+PASS Windows Edge headless recipient history renders real message
+BROWSER {"secure":true,"pushAPI":true,"notificationAPI":true,"permission":"default","serviceWorker":true}
+SERVICE WORKER {"active":true,"subscription":false}
+PUSH subscription unavailable: Browser subscription did not complete
+PASS desktop and phone-width layouts, no horizontal overflow
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+locator.waitFor: Timeout 30000ms exceeded.
+Call log:
+  - waiting for getByText(/No notifications match this view/) to be visible
+
+    at C:\Users\murta\Downloads\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\scripts\notifications-browser.mjs:42:60 {
+  log: [
+    '  - waiting for getByText(/No notifications match this view/) to be visible'
+  ],
+  name: 'TimeoutError'
+}
+
+Node.js v24.16.0

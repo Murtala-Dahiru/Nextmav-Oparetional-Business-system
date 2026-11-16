@@ -1,0 +1,7 @@
+'use client';
+import * as React from 'react';
+import {Button} from '@/components/ui/button';
+import {Input} from '@/components/ui/input';
+import {CommercialField} from './commercial-controls';
+import {post} from './data';
+export function CommercialReminders({id,revision}:{id:string;revision:number}){const[days,setDays]=React.useState('90, 60, 30'),[message,setMessage]=React.useState(''),[busy,setBusy]=React.useState(false);return <div className="space-y-3 border-t pt-4"><h3 className="text-sm font-semibold">Renewal reminders</h3><p className="text-xs leading-relaxed text-slate-500">Choose days before expiration. Include the notice-period offset to create a notice-deadline follow-up. These are CRM tasks; existing activity-overdue automations can send internal notifications. Repeating the same configuration does not duplicate tasks.</p><CommercialField label="Days before expiration"><Input aria-label="Reminder day offsets" value={days} onChange={e=>setDays(e.target.value)}/></CommercialField><Button size="sm" variant="outline" disabled={busy} onClick={async()=>{setBusy(true);try{const offsets=days.split(',').map(s=>s.trim()?Number(s.trim()):NaN);const r=await post<{created:number}>('/api/crm/commercial/reminders',{recordId:id,revision,days:offsets});setMessage(`${r.created} durable renewal follow-ups created.`);}catch(e){setMessage((e as Error).message);}finally{setBusy(false);}}}>Configure reminders</Button>{message&&<p role="status" className="text-xs">{message}</p>}</div>;}

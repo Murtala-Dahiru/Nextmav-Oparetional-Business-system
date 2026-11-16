@@ -1,0 +1,35 @@
+✔ account plan validates calendar dates, lengths and versions (21.4227ms)
+✔ account plans enforce tenant/role/owner boundaries, revisions and stale-write conflict (14264.1908ms)
+✔ leads GET: deny another owner, tenant, deleted and absent records (10284.7688ms)
+✔ leads GET: allow owner and organization administrator (1.603ms)
+✔ leads PATCH: deny another owner, tenant, deleted and absent records (311.0875ms)
+✔ leads PATCH: allow owner and organization administrator (1.4364ms)
+✔ leads PUT: deny another owner, tenant, deleted and absent records (126.3894ms)
+✔ leads PUT: allow owner and organization administrator (1.6929ms)
+✔ leads DELETE: deny another owner, tenant, deleted and absent records (461.2627ms)
+✔ leads DELETE: allow owner and organization administrator (2.5166ms)
+✔ deals GET: deny another owner, tenant, deleted and absent records (2.6007ms)
+✔ deals GET: allow owner and organization administrator (1.2698ms)
+✔ deals PATCH: deny another owner, tenant, deleted and absent records (16.2376ms)
+✔ deals PATCH: allow owner and organization administrator (15.9633ms)
+✔ deals PUT: deny another owner, tenant, deleted and absent records (5.0513ms)
+✔ deals PUT: allow owner and organization administrator (5.6843ms)
+✔ deals DELETE: deny another owner, tenant, deleted and absent records (10.8989ms)
+✔ deals DELETE: allow owner and organization administrator (2.4494ms)
+✔ unscoped shared handler preserves existing organization-wide behavior (6.2716ms)
+✔ conversion endpoint validates before RPC and derives the tenant from the session (43.728ms)
+✔ conversion endpoint returns actionable conflicts and migration errors without fallback writes (3.6963ms)
+✔ account timeline retains actual relationships, module access, owner scope and deterministic pagination (15282.821ms)
+✔ health is explicit, has no fabricated numeric score and requires engagement evidence (8.9612ms)
+✔ unavailable financial and support context creates no signals (1.9768ms)
+✔ buying role is explicit and only relevant when opportunities exist (7.1922ms)
+✔ action and opportunity rules retain traceable explanations and destinations (1.4805ms)
+✔ structured plan rejects invalid progress, dates, identifiers and overlarge arrays (66.8955ms)
+ℹ tests 27
+ℹ suites 0
+ℹ pass 27
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22658.88

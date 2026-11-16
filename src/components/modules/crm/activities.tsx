@@ -44,7 +44,8 @@ import { ACTIVITY_TYPES, type CrmActivity } from './types';
  * save. See `Timeline` in `record-parts.tsx`.
  */
 
-type View = 'overdue' | 'today' | 'upcoming' | 'done' | 'history';
+export type ActivityView = 'overdue' | 'today' | 'upcoming' | 'done' | 'history';
+type View = ActivityView;
 
 /** The footer under a windowed list: what is shown, and how to see more. */
 function More({
@@ -72,8 +73,8 @@ const VIEWS: { value: View; label: string }[] = [
   { value: 'history', label: 'Everything logged' },
 ];
 
-export function ActivitiesSection() {
-  const [view, setView] = React.useState<View>('today');
+export function ActivitiesSection({ initialView }: { initialView?: ActivityView } = {}) {
+  const [view, setView] = React.useState<View>(initialView ?? 'today');
   /**
    * The first view is chosen from what is actually in there.
    *
@@ -86,7 +87,7 @@ export function ActivitiesSection() {
    * It runs once. After that the view is the reader's, and a queue emptying
    * under them must not move the screen.
    */
-  const chosen = React.useRef(false);
+  const chosen = React.useRef(Boolean(initialView));
   const [type, setType] = React.useState('');
   const [search, setSearch] = React.useState('');
   const [mine, setMine] = React.useState(true);
@@ -231,7 +232,7 @@ export function ActivitiesSection() {
             are used constantly.
           */}
           <Select value={type || '__all'} onValueChange={v => setType(v === '__all' ? '' : v)}>
-            <SelectTrigger className="h-9 w-[168px] text-[12.5px]">
+            <SelectTrigger aria-label="Activity type" className="h-9 w-[168px] text-[12.5px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

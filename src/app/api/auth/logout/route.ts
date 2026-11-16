@@ -20,6 +20,12 @@ import { SESSION_COOKIES } from '@/lib/session-policy';
 export async function POST(request: Request) {
   try {
     const supabase = await supabaseServer();
+    // RLS restricts cleanup to this signed-in user's registrations.
+    const pushDevice = (await cookies()).get('nm-push-device')?.value;
+    if (pushDevice) {
+      const { data: device } = await supabase.from('notification_devices').select('endpoint').eq('id', pushDevice).maybeSingle();
+      if (device) await supabase.from('notification_devices').delete().eq('endpoint', device.endpoint);
+    }
     /**
      * `scope: 'global'` ends this person's sessions everywhere, not just in
      * this browser.
@@ -60,6 +66,8 @@ export async function POST(request: Request) {
      */
     store.delete(SESSION_COOKIES.started);
     store.delete(SESSION_COOKIES.seen);
+    store.delete('nm-push-device');
+    store.delete('nm-organization');
   } catch {
     // Cookie store unavailable — `signOut()` above is then the only clearing,
     // and the client still drops its local state.

@@ -1,0 +1,3 @@
+PASS Deployed saved-view conflict contract matches route.
+PASS Deployed preference validation covers inserts and updates.
+PASS Dedicated fixture organization remains retired.

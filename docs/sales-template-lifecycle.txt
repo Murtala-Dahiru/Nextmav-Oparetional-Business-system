@@ -1,0 +1,3 @@
+PASS duplicate template has distinct identity and is searchable
+PASS archived template leaves active library and remains in archive
+PASS duplication and archival preserve the source template

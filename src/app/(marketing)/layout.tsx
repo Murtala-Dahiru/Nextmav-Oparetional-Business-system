@@ -15,6 +15,8 @@ import '@/styles/public/auth-forms.css';
 import '@/styles/public/refinements.css';
 // Last, deliberately: it overrides the font tokens and relies on source order.
 import '@/styles/public-fonts.css';
+import '@/styles/public/premium.css';
+import '@/styles/public/editorial.css';
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════

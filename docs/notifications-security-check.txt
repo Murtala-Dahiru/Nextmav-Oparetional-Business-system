@@ -1,0 +1,85 @@
+
+> nextjs_tailwind_shadcn_ts@0.2.0 security:check
+> node scripts/security-check.mjs
+
+
+  1. Every route handler establishes a request context
+  ────────────────────────────────────────────────────
+    FAIL  all 266 non-public routes establish a context
+    PASS  the pre-authentication exemption list has no stale entries
+    FAIL  proxy.ts and this file agree on which routes are pre-authentication
+    PASS  every route the proxy lets through unauthenticated is one that must be
+
+  2. The service-role client stays out of request handlers
+  ────────────────────────────────────────────────────────
+    FAIL  no route serves user data through the service-role client
+    PASS  public capture uses only the two restricted capture RPCs
+    PASS  public capture validates signed challenges, payloads, body size and database rate-limit outcomes
+
+  2b. Tenant branding stays out of the platform shell
+  ───────────────────────────────────────────────────
+    PASS  the application shell renders no tenant branding (9 files)
+    PASS  the platform identity has a single definition
+    PASS  and every screen reads it rather than restating it (25 files)
+
+  3. Views do not become the hole in RLS
+  ──────────────────────────────────────
+    PASS  every view is security_invoker, so RLS still applies through it
+
+  4. Tenant-scoped tables have RLS enabled and policies to match
+  ──────────────────────────────────────────────────────────────
+    PASS  all 160 tables with policies also have RLS enabled
+    PASS  capture counters and submission command deny ordinary direct access
+    FAIL  no table has RLS enabled with no policy at all
+
+  5. Organization scoping is explicit in the shared handlers
+  ──────────────────────────────────────────────────────────
+    PASS  the shared list/record handlers filter on the caller's organization
+    PASS  and refuse to let a client move a record between tenants
+
+  6. The identity lifecycle cannot be walked around
+  ─────────────────────────────────────────────────
+    PASS  no DELETE policy on organization_members — deletion goes through the RPC
+    PASS  create_organization() refuses accounts whose access has been withdrawn
+    PASS  every route that withdraws access also revokes the sessions
+    PASS  background polling does not hold the idle timeout open
+
+  7. Security headers are set
+  ───────────────────────────
+    PASS  the response headers that cost nothing are all present
+    PASS  authenticated API responses are marked no-store
+
+  8. Endpoints that accept or issue credentials are rate limited
+  ──────────────────────────────────────────────────────────────
+    PASS  all 8 credential endpoints call enforceRateLimit()
+    PASS  the rate-limit list has no stale entries
+    PASS  a failing rate-limit store permits the request rather than refusing it
+    PASS  the limiter can be switched off by configuration, without a deployment
+
+  9. Failures are recorded, and are not described to the caller
+  ─────────────────────────────────────────────────────────────
+    PASS  no route returns an exception message to the caller with a 5xx
+    PASS  application code logs through the structured logger, not console
+    PASS  unhandled server errors are captured framework-wide, without per-route opt-in
+    PASS  every request is given a correlation id in the proxy
+    PASS  the application error boundary reports the error rather than discarding it
+    PASS  the health endpoint is not the placeholder
+    PASS  and liveness checks no dependency, so a database blip cannot empty the fleet
+    PASS  readiness detail is gated, since the endpoint is pre-authentication
+
+  10. The meeting may use the devices a meeting needs
+  ───────────────────────────────────────────────────
+    PASS  the app shell is permitted the camera, microphone and screen share
+    PASS  and every other route still refuses them by default
+    PASS  no media feature is opened to every origin
+    PASS  and it is scoped to the route that actually renders the meeting
+    PASS  a participant with no camera or microphone still negotiates, rather than offering nothing
+
+  Findings
+  ────────
+    · all 266 non-public routes establish a context — api/sign-portal/route.ts
+    · proxy.ts and this file agree on which routes are pre-authentication — /api/sign-portal is exempt in proxy.ts and unknown here
+    · no route serves user data through the service-role client — api/sign/route.ts, api/sign/settings/route.ts, api/sign/templates/route.ts, api/sign/[id]/route.ts, api/sign-portal/route.ts
+    · no table has RLS enabled with no policy at all — sign_credentials, sign_limits, sign_reminders, crm_mail_credentials, crm_mail_oauth_states, notification_deliveries, notification_delivery_attempts
+
+  4 check(s) failed

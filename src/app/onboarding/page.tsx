@@ -1,15 +1,12 @@
-'use client';
+"use client";
 
-import { useEffect, useState, type FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
-import { Hexagon, Loader2, Building2, MailCheck, ShieldAlert } from 'lucide-react';
-import { PLATFORM } from '@/lib/platform';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAppStore } from '@/store/app-store';
-import { toast } from 'sonner';
+import { useEffect, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { AuthShell, AuthLoading } from "@/components/auth/auth-shell";
+import { AuthField, AuthInput, AuthSubmit } from "@/components/auth/fields";
+import { Notice } from "@/components/auth/notice";
+import { useAppStore } from "@/store/app-store";
+import { toast } from "sonner";
 
 /**
  * The step between having an account and having somewhere to work.
@@ -40,7 +37,8 @@ import { toast } from 'sonner';
 export default function OnboardingPage() {
   const router = useRouter();
   const { logout } = useAppStore();
-  const [name, setName] = useState('');
+  const [name, setName] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checking, setChecking] = useState(true);
   const [blocked, setBlocked] = useState<string | null>(null);
@@ -52,7 +50,7 @@ export default function OnboardingPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/auth/session');
+        const res = await fetch("/api/auth/session");
         const json = await res.json();
         if (cancelled) return;
 
@@ -72,11 +70,11 @@ export default function OnboardingPage() {
         }
 
         if (!user) {
-          router.replace('/login');
+          router.replace("/login");
           return;
         }
         if (!payload.needsOrganization) {
-          router.replace('/dashboard');
+          router.replace("/dashboard");
           return;
         }
         if (payload.pendingInvitations > 0) setInvitationWaiting(true);
@@ -84,7 +82,7 @@ export default function OnboardingPage() {
           setBlocked(
             payload.pendingInvitations > 0
               ? null
-              : 'This account cannot create a workspace. Ask an administrator at your organization to invite you.',
+              : "This account cannot create a workspace. Ask an administrator at your organization to invite you.",
           );
         }
         // The organization name typed during signup, carried through the
@@ -102,23 +100,28 @@ export default function OnboardingPage() {
         if (!cancelled) setChecking(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setFormError(null);
     setIsSubmitting(true);
 
     try {
-      const res = await fetch('/api/organizations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/organizations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error?.message || 'Could not create the organization.');
+        setFormError(
+          data.error?.message || "Could not create the organization.",
+        );
         return;
       }
 
@@ -126,154 +129,120 @@ export default function OnboardingPage() {
       // Full document navigation so the dashboard loads with a fresh request:
       // the membership this call just created changes what every subsequent
       // query is permitted to return.
-      window.location.assign('/dashboard');
+      window.location.assign("/dashboard");
     } catch {
-      toast.error('Network error. Please try again.');
+      setFormError("Network error. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  if (checking) {
-    return (
-      <div className="bg-background flex min-h-screen items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-emerald-500" />
-      </div>
-    );
-  }
+  if (checking) return <AuthLoading />;
 
-  /**
-   * No form at all when this account may not found a workspace.
-   *
-   * Rendering it disabled would be worse than not rendering it: a person whose
-   * employment ended would be looking at the create-a-workspace screen, which
-   * is precisely the invitation this page used to extend them.
-   */
-  if (blocked) {
+  const workspaceAside = {
+    eyebrow: "Your shared foundation",
+    title: "A place for your team to work together.",
+    body: "Name your organization to create the existing workspace. You can start organizing your work and invite your team once inside.",
+    points: [
+      {
+        title: "One organization",
+        desc: "Customer records, people and work share the same workspace.",
+      },
+      {
+        title: "You are the owner",
+        desc: "Invite your team and manage access from the platform.",
+      },
+      {
+        title: "Start with existing capabilities",
+        desc: "Industry configuration is planned; this step does not provision an industry preset.",
+      },
+    ],
+  };
+
+  if (blocked)
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4">
-        <div className="w-full max-w-md">
-          <div className="flex flex-col items-center mb-8">
-            <div className="flex items-center gap-2 mb-2">
-              <Hexagon className="size-8 text-emerald-500" />
-              <span className="text-2xl font-bold tracking-tight">{PLATFORM.name}</span>
-            </div>
-          </div>
-          <Card className="border-gray-200 dark:border-gray-800 shadow-lg">
-            <CardHeader className="space-y-1">
-              <div className="flex items-center gap-2">
-                <ShieldAlert className="size-5 text-amber-500" />
-                <CardTitle className="text-xl">No workspace access</CardTitle>
-              </div>
-              <CardDescription>{blocked}</CardDescription>
-            </CardHeader>
-            <CardFooter>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-10 w-full"
-                onClick={() => logout()}
-              >
-                Sign out
-              </Button>
-            </CardFooter>
-          </Card>
+      <AuthShell
+        title="No workspace access"
+        titleSize="compact"
+        description={blocked}
+        aside={workspaceAside}
+      >
+        <div className="nm-auth-form">
+          <AuthSubmit type="button" onClick={() => logout()}>
+            Sign out
+          </AuthSubmit>
         </div>
-      </div>
+      </AuthShell>
     );
-  }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 p-4">
-      <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-8">
-          <div className="flex items-center gap-2 mb-2">
-            <Hexagon className="size-8 text-emerald-500" />
-            <span className="text-2xl font-bold tracking-tight">{PLATFORM.name}</span>
-          </div>
-          <p className="text-sm text-muted-foreground">One more step</p>
+    <AuthShell
+      title="Name your workspace"
+      description="Your account is ready. Give your organization a name to finish setting up."
+      aside={workspaceAside}
+      eyebrow="Workspace setup"
+      footer={
+        <button
+          type="button"
+          className="nm-link nm-auth-standalone-link"
+          onClick={() => logout()}
+          disabled={isSubmitting}
+        >
+          Sign out
+        </button>
+      }
+    >
+      <div className="nm-auth-form">
+        <div className="nm-onboarding-progress" aria-label="Setup progress">
+          <span>01 Account ready</span>
+          <span aria-current="step">02 Workspace</span>
         </div>
-
-        <Card className="border-gray-200 dark:border-gray-800 shadow-lg">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-xl">Create your organization</CardTitle>
-            <CardDescription>
-              Your account is confirmed, but it isn&apos;t attached to a workspace
-              yet. Name your organization to finish setting up.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/*
-              An invitation changes what this screen is for.
-              Someone who was invited and then filled in this form ended up
-              owning a workspace nobody asked for, and joined the real one
-              afterwards — two organizations, one of them meaningless, for a
-              person who only ever wanted to accept an invitation.
-            */}
-            {invitationWaiting && (
-              <div className="mb-4 flex gap-3 rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-950/40 dark:text-emerald-200">
-                <MailCheck className="mt-0.5 size-4 shrink-0" />
-                <p>
-                  You have an invitation waiting. Open the link in your
-                  invitation email to join that workspace — you do not need to
-                  create one of your own.
-                </p>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Organization name</Label>
-                <div className="relative">
-                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-                  <Input
-                    id="name"
-                    placeholder="Acme Inc."
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    autoFocus
-                    disabled={isSubmitting}
-                    className="h-11 pl-9"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  You&apos;ll be the owner, and can invite your team once inside.
-                </p>
-              </div>
-              <Button
-                type="submit"
-                className="w-full h-11 bg-emerald-500 hover:bg-emerald-600 text-white"
-                disabled={isSubmitting || !name.trim()}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" />
-                    Creating…
-                  </>
-                ) : (
-                  'Create organization'
-                )}
-              </Button>
-            </form>
-          </CardContent>
-          <CardFooter className="flex flex-col gap-3">
-            <p className="text-xs text-center text-muted-foreground">
-              Joining a company that already uses {PLATFORM.name}? Open the invitation
-              link from your email instead — it will add you to their workspace.
-            </p>
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-9 w-full text-muted-foreground"
-              onClick={() => logout()}
+        {invitationWaiting && (
+          <Notice title="You have an invitation waiting">
+            Open the link in your invitation email to join that workspace. You
+            do not need to create one of your own.
+          </Notice>
+        )}
+        {formError && (
+          <Notice tone="warning" title="Workspace could not be created">
+            {formError}
+          </Notice>
+        )}
+        <form
+          onSubmit={handleSubmit}
+          className="nm-auth-form"
+          style={{ marginTop: 0 }}
+        >
+          <AuthField
+            id="name"
+            label="Organization name"
+            hint="Use the name your team knows. You can change it later."
+          >
+            <AuthInput
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoComplete="organization"
+              placeholder="Your organization"
+              required
+              autoFocus
               disabled={isSubmitting}
-            >
-              Sign out
-            </Button>
-          </CardFooter>
-        </Card>
+            />
+          </AuthField>
+          <AuthSubmit
+            type="submit"
+            busy={isSubmitting}
+            busyLabel="Creating workspace…"
+            disabled={!name.trim()}
+          >
+            Create workspace
+          </AuthSubmit>
+        </form>
+        <p className="nm-auth-legal">
+          Joining an existing company? Use the invitation link from your email
+          to join its workspace.
+        </p>
       </div>
-    </div>
+    </AuthShell>
   );
 }

@@ -1,0 +1,23 @@
+PASS real persisted overdue work appears in priority queue
+PASS untouched owned lead appears in first-contact queue
+PASS queued lead opens via existing record API
+PASS stale completion cannot overwrite snooze
+PASS concurrent completion commits once
+PASS completed follow-up leaves active queue
+PASS completed work remains traceable
+PASS structured manual call outcome persists
+PASS recorded call clears first-contact signal
+PASS meeting details survive create and edit case conversion
+PASS customer timeline reflects persisted meeting
+PASS personalization uses selected CRM customer
+PASS missing deal context is explicit
+PASS template stale revision rejected
+PASS disconnected mailbox state is truthful
+PASS unconfigured send fails without false success
+PASS existing Automation Studio receives completion and meeting events
+PASS another employee cannot read private templates
+PASS another employee cannot mutate private templates
+PASS restricted lead communications do not leak to another employee
+PASS preview cannot read another employee restricted lead
+PASS my queue excludes another employee activities and leads
+22 live checks passed. Synthetic fixture retained for browser acceptance; no customer emails sent.

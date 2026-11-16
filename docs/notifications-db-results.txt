@@ -1,0 +1,49 @@
+PASS Message targets channel member; sender and outsider mention excluded
+PASS Message preview is generic
+PASS One durable job per registered device
+MEASURE transaction message insert + durable fanout + query 520ms (one sample, not p95 realtime)
+PASS Repeated stable event key suppressed
+PASS Recipient can read notification
+PASS Recipient message access checked with RLS
+PASS Read state persists inside transaction
+PASS Unrelated member cannot read notification
+PASS Unrelated member cannot remove device
+PASS Private conversation inaccessible to unrelated member
+PASS Arbitrary notification creation denied
+PASS Generic fanout RPC denied
+PASS Recipient content mutation denied
+PASS Claim isolates one delivery per device
+PASS Active leases prevent repeat claims
+PASS Expired worker lease recovered with new fencing token
+PASS Abandoned attempt remains observable
+PASS Muted conversation suppresses routine message
+PASS Conversation revocation blocks queued delivery
+PASS Existing task assignment producer reused
+PASS Repeated reminder sweep deduplicated
+PASS Completed task blocks queued reminder
+PASS HR leave request reaches authorized approver
+PASS HR leave approval reaches employee
+PASS Finance expense review reaches approver
+PASS Finance approval returns to submitter
+PASS Support assignment at creation
+PASS Support reassignment targets new owner
+PASS Support requester reply targets assignee
+PASS CRM lead assignment captured
+PASS CRM stage approval reaches decision maker
+PASS HR case routed to assigned member
+PASS Commercial proposal review targets independent approver
+PASS Commercial proposal acceptance reaches owner
+PASS Contract execution reaches owner
+PASS Signing request sent reaches internal owner
+PASS Witness signature notifies internal owner
+PASS Existing signing completion reaches internal owner
+PASS CRM activity assignment captured
+PASS Scheduled CRM follow-up delivered
+PASS SLA scheduler emits one reminder in two sweeps
+PASS Dismissed SLA reminder stays dismissed
+PASS Overdue rescheduled task reaches new assignee
+PASS Reassignment cancels prior recipient dispatch
+PASS Cross-tenant membership denied
+PASS Removed membership loses notification access
+PASS Unauthorized device deletion preserved both devices
+PASS 47 live PostgreSQL checks; all fixtures and DDL rolled back

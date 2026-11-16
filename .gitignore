@@ -72,3 +72,9 @@ dev.out.log
 
 # Isolated dist dir for verification builds — see scripts/dev-preview.mjs
 /.next-build/
+
+# Isolated Leads acceptance build output
+/.next-leads-build/
+
+# Next.js verification caches are generated output, never Tailwind source.
+/.next-*/

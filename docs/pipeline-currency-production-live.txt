@@ -1,0 +1,15 @@
+PASS create deals with independent native currencies
+PASS USD forecast contains only its native amount and probability
+PASS USD drill-down matches its forecast
+PASS EUR forecast contains only its native amount and probability
+PASS EUR drill-down matches its forecast
+PASS Customer 360 keeps amounts in separate currency groups
+PASS unsupported currency edit rejected
+PASS explicit currency and negotiated amount edit persists without conversion
+PASS stale currency edit rejected
+PASS currency edits invalidate stale approval evidence
+PASS currency changes appear in opportunity audit
+PASS won reporting keeps the deal native currency
+PASS won event freezes the opportunity currency for downstream reporting
+PASS direct database writes cannot bypass supported currency validation
+14 multicurrency assertions passed.

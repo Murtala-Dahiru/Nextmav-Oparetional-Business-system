@@ -350,24 +350,17 @@ export function Restricted({ what, className }: { what: string; className?: stri
 /*  Small formatters used on more than one screen                             */
 /* -------------------------------------------------------------------------- */
 
-/** "Engineering · Full time · 2y 3m" - the line under a person's name. */
-export function personLine(p: {
-  jobTitle?: string | null;
-  departmentName?: string | null;
-  employmentType?: string | null;
-  tenureMonths?: number | null;
-}): string {
-  return [
-    p.jobTitle,
-    p.departmentName,
-    p.employmentType && p.employmentType !== 'full_time'
-      ? labelOf(EMPLOYMENT_TYPE_LABELS, p.employmentType)
-      : null,
-    p.tenureMonths !== undefined && p.tenureMonths !== null
-      ? tenureLabel(p.tenureMonths)
-      : null,
-  ].filter(Boolean).join(' · ');
-}
+/*
+  `personLine()` lived here — "Engineering · Full time · 2y 3m", the line under
+  a person's name — and nothing in the repository ever called it. Every screen
+  that wants that line composes it inline, because each wants a slightly
+  different subset of the four parts.
+
+  Removed rather than kept for a future caller: a helper nobody uses is a
+  helper nobody has checked, and this one silently omitted `full_time` on the
+  assumption that the reader would infer it. Whichever screen needs it next
+  should decide that for itself.
+*/
 
 /** A date, or an em dash. `formatDay` because a bare `date` is not an instant. */
 export function day(value: string | null | undefined): string {

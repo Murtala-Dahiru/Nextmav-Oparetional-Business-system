@@ -105,7 +105,7 @@ export async function GET(request: Request) {
     /* Open pipeline: the live rows, because nothing has happened to them yet. */
     supabase
       .from('deals')
-      .select('id, name, value, stage, probability, expected_close, company:companies(id, name)')
+      .select('id, name, value, currency, stage, probability, expected_close, company:companies(id, name)')
       .eq('organization_id', orgId).is('deleted_at', null)
       .eq('owner_id', subject)
       .in('stage', OPEN_STAGES)
@@ -155,14 +155,14 @@ export async function GET(request: Request) {
     payload: e.payload ?? {},
   }));
 
-  const achievement = rollUp(rawEvents);
+  const achievement = rollUp(rawEvents,org.currency);
   const activitiesLogged = activityRes.count ?? 0;
 
   /* Pipeline, live. */
   const pipeline = (pipelineRes.data ?? []) as any[];
-  const openValue = pipeline.reduce((sum, d) => sum + Number(d.value ?? 0), 0);
+  const openValue = pipeline.reduce((sum, d) => sum + (d.currency===org.currency?Number(d.value??0):0), 0);
   const weightedValue = pipeline.reduce(
-    (sum, d) => sum + (Number(d.value ?? 0) * Number(d.probability ?? 0)) / 100, 0,
+    (sum, d) => sum + ((d.currency===org.currency?Number(d.value??0):0) * Number(d.probability ?? 0)) / 100, 0,
   );
 
   const byStage = OPEN_STAGES.map(stage => {
@@ -170,7 +170,7 @@ export async function GET(request: Request) {
     return {
       stage,
       count: rows.length,
-      value: rows.reduce((s, d) => s + Number(d.value ?? 0), 0),
+      value: rows.reduce((s, d) => s + (d.currency===org.currency?Number(d.value??0):0), 0),
     };
   });
 
@@ -179,7 +179,7 @@ export async function GET(request: Request) {
   const targets = (targetsRes.data ?? []).map((t: any) => {
     const metric = t.metric as TargetMetric;
     const target = Number(t.target_value ?? 0);
-    const achieved = achievedFor(metric, achievement, activitiesLogged);
+    const achieved = achievedFor(metric, rollUp(rawEvents,t.currency??org.currency), activitiesLogged);
     return {
       id: t.id,
       metric,
@@ -213,10 +213,10 @@ export async function GET(request: Request) {
     const bucket = wonByMonth.get(key);
     if (!bucket) continue;
     if (e.eventType === 'deal.won') {
-      bucket.won += Number(e.payload?.value ?? 0);
+      if(e.payload?.currency===org.currency)bucket.won += Number(e.payload?.value ?? 0);
       bucket.count += 1;
     } else if (e.eventType === 'deal.lost') {
-      bucket.lost += Number(e.payload?.value ?? 0);
+      if(e.payload?.currency===org.currency)bucket.lost += Number(e.payload?.value ?? 0);
     }
   }
 
@@ -282,7 +282,7 @@ export async function GET(request: Request) {
       count: pipeline.length,
       byStage,
       top: pipeline.slice(0, 8).map((d: any) => ({
-        id: d.id, name: d.name, value: Number(d.value ?? 0), stage: d.stage,
+        id: d.id, name: d.name, value: Number(d.value??0), currency:d.currency, stage: d.stage,
         probability: d.probability, expectedClose: d.expected_close,
         company: d.company?.name ?? null,
       })),
@@ -291,6 +291,7 @@ export async function GET(request: Request) {
     months: months.map(m => ({ month: m, ...wonByMonth.get(m)! })),
     recent: rawEvents.slice(0, RECENT_LIMIT).map(e => ({
       type: e.eventType,
+      currency:e.payload?.currency??org.currency,
       at: e.occurredAt,
       entityId: e.entityId,
       title: e.payload?.deal_name ?? e.payload?.lead_name ?? e.payload?.invoice_number ?? 'Record',

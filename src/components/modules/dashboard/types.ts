@@ -169,6 +169,8 @@ export interface DashboardWork {
 }
 
 export interface DashboardFinance {
+  currency?: string;
+  expenseCategories?: { amount: number; category: string; expenseDate: string }[];
   revenue: number;
   revenueThisMonth: number;
   /** Real month-on-month change, or null when there is no prior month. */
@@ -193,6 +195,7 @@ export interface DashboardFinance {
    * without saying so; see the note in `/api/dashboard`.
    */
   revenueByMonth: {
+    period?: string;
     month: string;
     revenue: number;
     expenses: number;
@@ -243,6 +246,8 @@ export interface DashboardTicket {
 }
 
 export interface DashboardSupport {
+  withoutDeadline?: number;
+  trend?: { month: string; opened: number; resolved: number }[];
   open: number;
   breached: number;
   critical: number;
@@ -304,6 +309,7 @@ export interface DashboardActivity {
 }
 
 export interface DashboardData {
+  unavailable?: string[];
   generatedAt: string;
   viewer?: DashboardViewer;
   company?: DashboardCompany;

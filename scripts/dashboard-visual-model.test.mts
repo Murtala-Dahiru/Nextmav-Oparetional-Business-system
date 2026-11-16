@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import { projectBand, expenseDistribution } from '../src/components/modules/dashboard/visual-model';
+import type { DashboardProject, DashboardFinance } from '../src/components/modules/dashboard/types';
+const project = {daysLeft:10,atRisk:false} as DashboardProject;
+assert.equal(projectBand(project),'On track');
+assert.equal(projectBand({...project,atRisk:true}),'At risk');
+assert.equal(projectBand({...project,daysLeft:-1,atRisk:true}),'Delayed','late and at-risk must not be double counted');
+assert.equal(projectBand({...project,daysLeft:0}),'On track','due today is not delayed');
+assert.equal(projectBand({...project,daysLeft:null}),'On track','missing deadline is not invented delay');
+const finance = {revenueByMonth:[{period:'2026-08-01'},{period:'2026-09-01'},{period:'2026-10-01'}],expenseCategories:[{category:'Old',amount:100,expenseDate:'2026-08-01'},...['A','B','C','D','E','F'].map((category,i)=>({category,amount:10+i,expenseDate:'2026-10-10'}))]} as DashboardFinance;
+const grouped=expenseDistribution(finance,1);
+assert.equal(grouped.length,5);
+assert.equal(grouped.reduce((s,e)=>s+e.value,0),75,'top four plus Other preserves the selected-period total');
+assert.equal(grouped.at(-1)?.name,'Other categories');
+assert.equal(grouped.some(e=>e.name==='Old'),false,'range applies to expense distribution');
+assert.equal(expenseDistribution(finance,3).reduce((s,e)=>s+e.value,0),175);
+assert.deepEqual(expenseDistribution({...finance,revenueByMonth:[]},3),[],'missing time bounds must not fabricate a distribution');
+console.log('PASS: disjoint project bands, due-date boundary, selected-period expense totals and remainder grouping');

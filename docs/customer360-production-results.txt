@@ -1,0 +1,11 @@
+PASS production /dashboard
+PASS production /api/crm/companies
+PASS production /api/crm/contacts
+PASS production /api/crm/companies/<fixture-account>/overview
+PASS production /api/crm/companies/<fixture-account>/activities?due=open
+PASS production /api/crm/companies/<fixture-account>/relationships
+PASS production /api/crm/companies/<fixture-account>/plan
+PASS production /api/crm/companies/<fixture-account>/plan/history
+PASS production /api/crm/companies/<fixture-account>/timeline
+PASS production /api/crm/companies/<fixture-account>/related?kind=projects
+10 built-production HTTP smoke checks passed. No browser rendering claim.

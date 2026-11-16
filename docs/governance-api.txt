@@ -1,0 +1,22 @@
+PASS contacts create and reload typed field
+PASS contacts bounded custom filter
+PASS contacts guarded edit
+PASS contacts bulk field update rejects stale retry and preserves value
+PASS companies create and reload typed field
+PASS companies bounded custom filter
+PASS companies guarded edit
+PASS companies bulk field update rejects stale retry and preserves value
+PASS deals create and reload typed field
+PASS deals bounded custom filter
+PASS deals guarded edit
+PASS deals bulk field update rejects stale retry and preserves value
+PASS import previews invalid options and commits mapped values
+PASS selected-record CSV includes custom field and value
+PASS current-view CSV applies search and custom filters together
+PASS empty current view exports headers only
+PASS authenticated module smoke /api/crm/companies/[id]/overview
+PASS authenticated module smoke /api/crm/engagement
+PASS authenticated module smoke /api/crm/commercial
+PASS authenticated module smoke /api/sign
+PASS companies custom import preview, validation, commit, persistence and duplicate check
+PASS deals custom import preview, validation, commit, persistence and duplicate check

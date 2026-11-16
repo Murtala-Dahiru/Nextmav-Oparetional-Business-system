@@ -1,0 +1,2 @@
+Validated 0155_notification_preferences.sql
+Notification migrations committed

@@ -103,6 +103,7 @@ section('1. Every route handler establishes a request context');
  * not be reachable anonymously.
  */
 const PUBLIC_ROUTES = new Set([
+  'api/crm-capture/route.ts',             // restricted form metadata and signed, rate-limited submission only
   'api/route.ts',                          // liveness; checks nothing by design
   /**
    * Readiness. Pre-authentication because a load balancer and an uptime
@@ -130,6 +131,7 @@ const PUBLIC_ROUTES = new Set([
  * runs on the edge and importing TypeScript into this script is not worth it.
  */
 const PROXY_PUBLIC_PATHS = [
+  '/api/crm-capture',
   '/api',
   '/api/health',
   '/api/auth/login',
@@ -247,6 +249,7 @@ section('2. The service-role client stays out of request handlers');
  * every isolation guarantee the schema provides at once.
  */
 const ADMIN_ALLOWED = new Set([
+  'api/crm-capture/route.ts',             // two restricted RPCs; separately checked below
   'api/auth/signup/route.ts',              // creates the first membership
   'api/auth/invite/route.ts',              // creates an auth user for an invitee
   'api/auth/accept-invite/route.ts',
@@ -280,6 +283,16 @@ for (const file of routes) {
 check(adminMisuse.length === 0,
   'no route serves user data through the service-role client',
   adminMisuse.join(', '));
+
+const captureRoute = readFileSync('src/app/api/crm-capture/route.ts', 'utf8');
+const captureCalls = [...captureRoute.matchAll(/supabaseAdmin\(\)\.rpc\('([^']+)'/g)].map(m=>m[1]).sort();
+check(JSON.stringify(captureCalls) === JSON.stringify(['crm_public_capture_form','crm_submit_capture'])
+  && !/\.from\s*\(|\.auth\s*\.|\.storage\s*\./.test(captureRoute),
+  'public capture uses only the two restricted capture RPCs');
+check(captureRoute.includes('verifyCaptureChallenge(secret,p.challenge,p.formId)')
+  && captureRoute.includes('captureSubmissionSchema.safeParse(raw)')
+  && captureRoute.includes('size>24000') && captureRoute.includes("r.data==='limited'"),
+  'public capture validates signed challenges, payloads, body size and database rate-limit outcomes');
 
 // ───────────────────────────────────────────────────────────────────────────
 section('2b. Tenant branding stays out of the platform shell');
@@ -328,7 +341,10 @@ for (const file of shellFiles) {
   const code = src
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
-  const found = TENANT_BRANDING.filter(t => code.includes(t));
+  const found = TENANT_BRANDING.filter(t => code.includes(t) &&
+    // Displaying the workspace name does not replace NextMav branding.
+    !(rel === 'components/layout/workspace-identity.tsx' && t === 'organizationName'));
+
   if (found.length) leaks.push(`${rel}: ${found.join(', ')}`);
 }
 
@@ -433,8 +449,15 @@ for (const block of joined.matchAll(
  * of alarming.
  */
 const withPolicies = new Set(
-  [...joined.matchAll(/CREATE POLICY \w+ ON (?:public\.)?(\w+)/g)].map(m => m[1]),
+  // Require whitespace after the whole table identifier: public.%I and
+  // storage.objects must not be misclassified as tables named public/storage.
+  [...joined.matchAll(/CREATE POLICY \w+ ON (?:public\.)?(\w+)(?=\s)/g)].map(m => m[1]),
 );
+// Literal table lists whose policies are created by the same bounded DO loop.
+for (const block of joined.matchAll(/FOREACH\s+\w+\s+IN ARRAY ARRAY\[([\s\S]*?)\]\s*LOOP([\s\S]{0,1200}?)END LOOP/g)) {
+  if (!/CREATE POLICY \w+ ON (?:public\.)?%I/.test(block[2])) continue;
+  for (const name of block[1].matchAll(/'(\w+)'/g)) withPolicies.add(name[1]);
+}
 
 for (const block of joined.matchAll(
   /SELECT \* FROM \(VALUES([\s\S]*?)\) AS t\(tbl, module\)([\s\S]{0,2000}?)END LOOP/g,
@@ -454,7 +477,13 @@ check(inertPolicies.length === 0,
   `all ${withPolicies.size} tables with policies also have RLS enabled`,
   inertPolicies.join(', '));
 
-const lockedOut = [...rlsEnabled].filter(t => !withPolicies.has(t));
+// Internal counters intentionally deny every ordinary caller. Only the
+// service-only capture command accesses them through its definer boundary.
+const captureSql = readFileSync('supabase/migrations/0057_crm_capture.sql','utf8');
+check(/REVOKE ALL ON [^;]*public\.crm_capture_limits FROM anon,authenticated;/.test(captureSql)
+  && /REVOKE ALL ON FUNCTION public\.crm_submit_capture[^;]*FROM PUBLIC,anon,authenticated;/.test(captureSql),
+  'capture counters and submission command deny ordinary direct access');
+const lockedOut = [...rlsEnabled].filter(t => !withPolicies.has(t) && t!=='crm_capture_limits');
 check(lockedOut.length === 0,
   'no table has RLS enabled with no policy at all',
   lockedOut.join(', '));

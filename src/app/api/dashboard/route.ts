@@ -1,6 +1,7 @@
+import { financialHistory, ageInvoices } from '@/components/modules/dashboard/calculations';
 import { authorize, pgError } from '@/lib/auth-context';
 import { success } from '@/lib/api-response';
-import { todayIn, startOfMonthIn, daysFromTodayIn } from '@/lib/org-time';
+import { todayIn, startOfMonthIn, daysFromTodayIn, dateIn } from '@/lib/org-time';
 import { can, scopeFor } from '@/lib/permissions';
 import { visibleModuleFilter } from '@/lib/activity';
 import type { ModuleId } from '@/lib/constants';
@@ -54,12 +55,18 @@ export async function GET() {
     return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
   })();
 
+  const historyStart = new Date(`${monthStart}T00:00:00Z`);
+  historyStart.setUTCMonth(historyStart.getUTCMonth() - 11);
+  const historyDate = historyStart.toISOString().slice(0, 10);
+  // One extra day covers timezone offsets; aggregation applies exact local dates.
+  const paymentStart = new Date(historyStart.getTime() - 86400000).toISOString();
+  const financeAccess = sees('finance') && orgWide('finance');
   const none = Promise.resolve({ data: null, error: null } as any);
 
   const [
     statsRes, myTasksRes, notifsRes, eventsRes, activityRes, projectsRes,
-    pipelineRes, financeRes, alertsRes, leaveRes, ticketsRes, teamRes,
-    leadsRes, dealsRes, productsRes, attendanceRes, ageingRes, doneTasksRes,
+    pipelineRes, alertsRes, leaveRes, ticketsRes, teamRes,
+    leadsRes, dealsRes, productsRes, attendanceRes, ageingRes, doneTasksRes, paymentsRes, expensesRes,
   ] = await Promise.all([
     supabase.from('v_dashboard_stats').select('*').eq('organization_id', orgId).maybeSingle(),
 
@@ -121,9 +128,9 @@ export async function GET() {
      * describe one population.
      */
     sees('projects')
-      ? supabase.from('v_project_health').select('*').eq('organization_id', orgId)
+      ? supabase.from('v_project_health').select('*', { count: 'exact' }).eq('organization_id', orgId)
           .eq('status', 'active')
-          .order('days_remaining', { ascending: true, nullsFirst: false }).limit(8)
+          .order('days_remaining', { ascending: true, nullsFirst: false }).limit(1000)
       : none,
 
     sees('crm')
@@ -149,10 +156,6 @@ export async function GET() {
      * ladder the data can fill, and a year is the span an executive view is
      * actually asked for.
      */
-    sees('finance')
-      ? supabase.from('v_finance_monthly').select('*').eq('organization_id', orgId)
-          .order('period', { ascending: false }).limit(12)
-      : none,
 
     sees('inventory')
       ? supabase.from('v_inventory_alerts').select('*').eq('organization_id', orgId).limit(6)
@@ -167,9 +170,9 @@ export async function GET() {
 
     sees('support')
       ? supabase.from('support_tickets')
-          .select('id, ticket_number, subject, status, priority, due_at, created_at, resolved_at')
+          .select('id, ticket_number, subject, status, priority, due_at, created_at, resolved_at', { count: 'exact' })
           .eq('organization_id', orgId).is('deleted_at', null)
-          .order('created_at', { ascending: false }).limit(50)
+          .order('created_at', { ascending: false }).limit(1000)
       : none,
 
     sees('hr') && orgWide('hr')
@@ -179,7 +182,7 @@ export async function GET() {
       : none,
 
     sees('crm')
-      ? supabase.from('leads').select('id, created_at, status')
+      ? supabase.from('leads').select('id, created_at, status', { count: 'exact' })
           .eq('organization_id', orgId).is('deleted_at', null)
       : none,
 
@@ -194,12 +197,12 @@ export async function GET() {
      */
     sees('crm')
       ? supabase.from('deals')
-          .select('id, name, stage, value, probability, updated_at, expected_close, closed_at')
-          .eq('organization_id', orgId).is('deleted_at', null)
+          .select('id, name, stage, value, probability, updated_at, expected_close, closed_at', { count: 'exact' })
+          .eq('organization_id', orgId).eq('currency', org.currency).is('deleted_at', null)
       : none,
 
     sees('inventory')
-      ? supabase.from('products').select('id, stock, cost, reorder_level, is_active')
+      ? supabase.from('products').select('id, stock, cost, reorder_level, is_active', { count: 'exact' })
           .eq('organization_id', orgId).is('deleted_at', null)
       : none,
 
@@ -218,11 +221,11 @@ export async function GET() {
      * which have been hard-coded zeros telling every organisation on the
      * platform that it had nothing overdue.
      */
-    sees('finance') && orgWide('finance')
-      ? supabase.from('v_receivables_ageing')
-          .select('invoice_id, invoice_number, company_name, balance, due_date, days_overdue, ageing_bucket')
-          .eq('organization_id', orgId)
-          .order('days_overdue', { ascending: false })
+    financeAccess
+      ? supabase.from('invoices')
+          .select('id, invoice_number, total, amount_paid, currency, status, issue_date, due_date, company:companies(name)', { count: 'exact' })
+          .eq('organization_id', orgId).eq('currency', org.currency).is('deleted_at', null)
+          .not('status', 'in', '(draft,cancelled)').limit(1000)
       : none,
 
     /**
@@ -235,39 +238,36 @@ export async function GET() {
      * aggregates them in the database.
      */
     sees('projects')
-      ? supabase.from('tasks').select('completed_at')
+      ? supabase.from('tasks').select('completed_at', { count: 'exact' })
           .eq('organization_id', orgId).is('deleted_at', null)
           .not('completed_at', 'is', null)
           .gte('completed_at', daysFromTodayIn(ctx.org.timezone, -56))
       : none,
+    financeAccess ? supabase.from('payments')
+      .select('amount, paid_at, invoice:invoices!inner(currency)', { count: 'exact' })
+      .eq('organization_id', orgId).eq('invoice.currency', org.currency)
+      .gte('paid_at', paymentStart).lte('paid_at', new Date().toISOString()).limit(1000) : none,
+    financeAccess ? supabase.from('expenses')
+      .select('amount, category, expense_date, currency', { count: 'exact' })
+      .eq('organization_id', orgId).eq('currency', org.currency).is('deleted_at', null)
+      .in('status', ['approved', 'reimbursed']).gte('expense_date', historyDate).lte('expense_date', today).limit(1000) : none,
   ]);
 
+  const incomplete = (r: any) => !!r.error || (r.count != null && r.count > (r.data?.length ?? 0));
+  const unavailable: string[] = [];
+  const ready = (name: string, results: any[]) => {
+    if (results.some(incomplete)) { unavailable.push(name); return false; }
+    return true;
+  };
   if (statsRes.error) return pgError(statsRes.error);
   const s: any = statsRes.data ?? {};
 
   // ── derived figures ──────────────────────────────────────────────────────
 
-  /**
-   * Back into chronological order.
-   *
-   * The query asks for the *latest* twelve months, which means it has to sort
-   * descending — but every consumer below, and the chart itself, reads this
-   * array left to right as time moving forwards. `.reverse()` on the copy the
-   * client already owns is the whole cost of that.
-   *
-   * `slice()` first: `financeRes.data` is the response object's own array and
-   * reversing it in place would mutate what other readers see.
-   */
-  const monthly = ((financeRes.data ?? []) as any[]).slice().reverse();
+  const monthly = financialHistory(today, org.timezone, org.currency, ageingRes.data ?? [], paymentsRes.data ?? [], expensesRes.data ?? []);
   const thisMonth = monthly[monthly.length - 1];
-  const prevMonth = monthly[monthly.length - 2];
   const revenueThisMonth = Number(thisMonth?.revenue ?? 0);
-  const revenuePrev = Number(prevMonth?.revenue ?? 0);
-  // Null rather than 0 when there is no prior month: "no comparison" and
-  // "flat" are different statements and the tile renders them differently.
-  const revenueTrend = revenuePrev
-    ? Math.round(((revenueThisMonth - revenuePrev) / revenuePrev) * 1000) / 10
-    : null;
+  const revenueTrend = null; // Never compare an incomplete month with a complete one.
 
   const deals = (dealsRes.data ?? []) as any[];
   const closed = deals.filter(d => d.stage === 'closed_won' || d.stage === 'closed_lost');
@@ -293,8 +293,8 @@ export async function GET() {
     // Orientation strip. Financial figures are added below only for roles
     // entitled to them.
     company: {
-      headcount: s.headcount ?? 0,
-      departments: s.department_count ?? 0,
+      headcount: sees('hr') && orgWide('hr') ? s.headcount ?? 0 : 0,
+      departments: sees('hr') && orgWide('hr') ? s.department_count ?? 0 : 0,
       onlineNow: s.online_now ?? 0,
       newHires: 0,
       activeProjects: s.active_projects ?? 0,
@@ -354,7 +354,7 @@ export async function GET() {
     });
   }
 
-  if (sees('crm')) {
+  if (sees('crm') && ready('Sales intelligence', [leadsRes, dealsRes, pipelineRes])) {
     const leads = (leadsRes.data ?? []) as any[];
     const open = deals.filter(d => !['closed_won', 'closed_lost'].includes(d.stage));
     const pipelineValue = open.reduce((sum, d) => sum + Number(d.value ?? 0), 0);
@@ -420,7 +420,7 @@ export async function GET() {
   }
 
   // Revenue is limited to roles with organisation-wide sight of finance.
-  if (sees('finance') && orgWide('finance')) {
+  if (financeAccess && ready('Financial intelligence', [ageingRes, paymentsRes, expensesRes])) {
     const revenue = monthly.reduce((sum, m) => sum + Number(m.revenue ?? 0), 0);
     const expenses = monthly.reduce((sum, m) => sum + Number(m.expenses ?? 0), 0);
 
@@ -432,7 +432,7 @@ export async function GET() {
      * which is `total - amount_paid`, so a part-paid invoice contributes only
      * what is still owed.
      */
-    const ageing = (ageingRes.data ?? []) as any[];
+    const ageing = ageInvoices(ageingRes.data ?? [], today, org.currency);
     const overdue = ageing.filter(r => r.ageing_bucket !== 'current');
     const sumBalance = (rows: any[]) => rows.reduce((sum, r) => sum + Number(r.balance ?? 0), 0);
 
@@ -442,7 +442,9 @@ export async function GET() {
       revenue,
       revenueThisMonth,
       revenueTrend,
-      outstanding: Number(s.receivables ?? 0),
+      outstanding: sumBalance(ageing),
+      currency: org.currency,
+      expenseCategories: expensesRes.data ?? [],
       overdueCount: overdue.length,
       overdueValue: sumBalance(overdue),
       totalExpenses: expenses,
@@ -475,7 +477,8 @@ export async function GET() {
        * month's first day, so the year-and-month prefix is the whole test.
        */
       revenueByMonth: monthly.map(m => ({
-        month: new Date(m.period).toLocaleString('en-US', { month: 'short' }),
+        period: m.period,
+        month: new Date(m.period).toLocaleString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
         revenue: Number(m.revenue ?? 0),
         expenses: Number(m.expenses ?? 0),
         invoiced: Number(m.invoiced ?? 0),
@@ -522,7 +525,7 @@ export async function GET() {
     (payload.company as any).revenueTrend = revenueTrend;
   }
 
-  if (sees('projects')) {
+  if (sees('projects') && ready('Project intelligence', [projectsRes, doneTasksRes])) {
     /**
      * `v_project_health` computes eleven columns and this endpoint used to map
      * five of them. Blocked tasks, overdue tasks and the milestone counts were
@@ -598,7 +601,7 @@ export async function GET() {
         week: start.toLocaleString('en-US', { day: 'numeric', month: 'short', timeZone: 'UTC' }),
         start: iso,
         count: completions.filter(c => {
-          const t = new Date(c).getTime();
+          const t = Date.parse(dateIn(new Date(c), org.timezone));
           return t >= start.getTime() && t < end.getTime();
         }).length,
       });
@@ -607,14 +610,16 @@ export async function GET() {
     payload.work = {
       openTasks: s.open_tasks ?? 0,
       overdueTasks: s.overdue_tasks ?? 0,
-      completedLast8Weeks: completions.length,
+      completedLast8Weeks: weeks.reduce((sum, w) => sum + w.count, 0),
       completionByWeek: weeks,
     };
   }
 
-  if (sees('support')) {
+  if (sees('support') && ready('Service intelligence', [ticketsRes])) {
     payload.support = {
       open: openTickets.length,
+      withoutDeadline: openTickets.filter(t => !t.due_at).length,
+      trend: monthly.map(m => ({ month: m.period, opened: tickets.filter(t => dateIn(new Date(t.created_at), org.timezone).slice(0, 7) === m.period.slice(0, 7)).length, resolved: tickets.filter(t => t.resolved_at && dateIn(new Date(t.resolved_at), org.timezone).slice(0, 7) === m.period.slice(0, 7)).length })),
       breached: openTickets.filter(t => t.due_at && new Date(t.due_at) < new Date()).length,
       critical: openTickets.filter(t => t.priority === 'critical').length,
       resolvedThisMonth: tickets.filter(
@@ -635,7 +640,7 @@ export async function GET() {
     };
   }
 
-  if (sees('inventory')) {
+  if (sees('inventory') && ready('Inventory intelligence', [productsRes, alertsRes])) {
     payload.inventory = {
       products: activeProducts.length,
       lowStockCount: activeProducts.filter(p => p.stock <= p.reorder_level).length,
@@ -653,7 +658,7 @@ export async function GET() {
     };
   }
 
-  if (sees('hr')) {
+  if (sees('hr') && orgWide('hr') && ready('Workforce intelligence', [leaveRes, teamRes])) {
     payload.hr = {
       headcount: orgWide('hr') ? s.headcount ?? 0 : 0,
       departments: s.department_count ?? 0,
@@ -717,5 +722,9 @@ export async function GET() {
     }));
   }
 
+  ready('Personal tasks', [myTasksRes]);
+  ready('Calendar', [eventsRes]);
+  ready('Activity', [activityRes]);
+  payload.unavailable = unavailable;
   return success(payload);
 }

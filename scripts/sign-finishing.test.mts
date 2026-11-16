@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import sharp from 'sharp';
+import {cleanSignature} from '../src/lib/sign/image';
+import {fitSignature,signingDate,signatureAppearance,encodeAppearance} from '../src/lib/sign/appearance';
+const svg=Buffer.from('<svg width="800" height="500"><rect width="800" height="500" fill="white"/><path d="M300 240 Q350 180 400 240 T500 240" fill="none" stroke="#234466" stroke-width="5"/></svg>');
+const png=await sharp(svg).png().toBuffer();const cleaned=await cleanSignature('data:image/png;base64,'+png.toString('base64'));const bytes=Buffer.from(cleaned.split(',')[1],'base64');const meta=await sharp(bytes).metadata();assert.ok(meta.width!<220&&meta.height!<100);console.log('PASS excessive white margins trimmed');const raw=await sharp(bytes).ensureAlpha().raw().toBuffer();assert.equal(raw[3],0);console.log('PASS edge-connected white background transparent');
+const pale=await sharp({create:{width:30,height:10,channels:4,background:'#f0f8ff'}}).png().toBuffer();const paleClean=await cleanSignature('data:image/png;base64,'+pale.toString('base64'));assert.equal((await sharp(Buffer.from(paleClean.split(',')[1],'base64')).metadata()).width,30);console.log('PASS light coloured content preserved');
+const fit=fitSignature(400,100,120,80,.6,1,1);assert.equal(fit.width/fit.height,4);assert.ok(fit.x+fit.width<=120&&fit.y+fit.height<=80);console.log('PASS proportional size and position remain within field');
+assert.equal(signingDate('2026-01-01T00:30:00Z','America/Los_Angeles'),'2025-12-31');assert.equal(signingDate('2026-01-01T00:30:00Z','Asia/Tokyo'),'2026-01-01');console.log('PASS server timestamp formatted in configured timezone');
+assert.throws(()=>signatureAppearance(encodeAppearance({mark:'Alex',scale:1,x:.5,y:.5}).replace('"scale":1','"scale":2')));console.log('PASS oversized signature appearance rejected');const gray=await sharp(svg).greyscale().png().toBuffer();assert.ok((await cleanSignature('data:image/png;base64,'+gray.toString('base64'))).startsWith('data:image/png;'));console.log('PASS grayscale signatures normalize safely to RGBA');console.log('7 finishing assertions passed.');

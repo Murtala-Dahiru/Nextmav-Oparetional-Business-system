@@ -1,0 +1,3 @@
+Validated 0150_notification_delivery.sql
+Validated 0151_notification_visibility.sql
+Notification migrations committed

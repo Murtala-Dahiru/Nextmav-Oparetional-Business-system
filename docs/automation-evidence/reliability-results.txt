@@ -1,0 +1,27 @@
+PASS all four scheduled triggers capture actual due records
+PASS scheduled sweep idempotency
+PASS overdue timer rechecks completion before action
+PASS transient error schedules bounded exponential backoff
+PASS failed action rolls back side effect
+PASS transient retry recovers
+PASS successful retry has exactly one notification
+PASS direct RPC publish denied for restricted role
+PASS interrupted transaction retains pending cursor
+PASS interrupted worker recovers with one committed action
+PASS explicit unmatched branch executes correctly
+PASS database rejects non-allowlisted condition fields
+PASS real foreign tenant RPC mutation denied
+PASS foreign organization automation rows invisible
+PASS relationship trigger, profile condition and tag action execute together
+PASS tag update cannot recursively trigger relationship workflow
+PASS meeting scheduled event has a real execution path
+PASS numeric equality uses numeric semantics
+PASS account-plan action uses existing versioned domain command
+PASS relationship inactivity and structured account-plan overdue timers enqueue
+PASS recorded customer engagement invalidates stale inactivity timer
+PASS structured overdue account action executes
+PASS event snapshots exclude private free text and contact details
+PASS each committed branch step preserves its condition explanation
+PASS directory trigger stays on immutable published version during draft edits
+PASS republishing updates the indexed directory trigger
+26 database reliability assertions passed; all fixtures rolled back.

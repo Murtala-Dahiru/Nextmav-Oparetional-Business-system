@@ -135,6 +135,17 @@ export function ActivityDialog({
   const [remind, setRemind] = React.useState(false);
   const [preset, setPreset] = React.useState<Preset>('morning');
   const [custom, setCustom] = React.useState('');
+  const [time, setTime] = React.useState('09:00');
+  const [duration, setDuration] = React.useState('30');
+  const [participants, setParticipants] = React.useState('');
+  const [location, setLocation] = React.useState('');
+  const [videoUrl, setVideoUrl] = React.useState('');
+  const [direction, setDirection] = React.useState<'inbound' | 'outbound'>('outbound');
+  const [priority, setPriority] = React.useState<'low' | 'normal' | 'high'>('normal');
+  const [outcome, setOutcome] = React.useState('');
+  const [occurredAt, setOccurredAt] = React.useState(toLocalInput(new Date().toISOString()));
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 
   /**
    * Reset when the dialog opens, not when it closes.
@@ -145,13 +156,22 @@ export function ActivityDialog({
    */
   React.useEffect(() => {
     if (!open) return;
+    setTime(editing?.dueAt ? toLocalInput(editing.dueAt).slice(11) : '09:00');
+    setDuration(String(editing?.engagementDetails?.duration ?? 30));
+    setParticipants(editing?.engagementDetails?.participants?.join(', ') ?? '');
+    setLocation(editing?.engagementDetails?.location ?? '');
+    setVideoUrl(editing?.engagementDetails?.videoUrl ?? '');
+    setDirection(editing?.engagementDetails?.direction === 'inbound' ? 'inbound' : 'outbound');
+    setOutcome(editing?.engagementDetails?.outcome ?? '');
+    setPriority(editing?.engagementDetails?.priority ?? 'normal');
+    setOccurredAt(toLocalInput(editing?.completedAt ?? new Date().toISOString()));
 
     if (editing) {
       setType(editing.activityType);
       setSubject(editing.subject);
       setBody(editing.body);
       setWithNext(false);
-      setDueOn(editing.dueAt ? new Date(editing.dueAt).toISOString().slice(0, 10) : today());
+      setDueOn(editing.dueAt ? toLocalInput(editing.dueAt).slice(0, 10) : today());
       setRemind(Boolean(editing.remindAt));
       if (editing.remindAt) { setPreset('custom'); setCustom(toLocalInput(editing.remindAt)); }
       setAbout(
@@ -187,24 +207,34 @@ export function ActivityDialog({
     setSaving(true);
     try {
       const links = linkBody(about);
+      const meeting = type === 'meeting';
+      const start = meeting && (scheduling || editing?.dueAt) ? new Date(`${dueOn}T${time}`).toISOString() : undefined;
+      const engagementDetails = { priority, ...(meeting ? {
+        participants: participants.split(',').map(v => v.trim()).filter(Boolean), timezone,
+        location, videoUrl, duration: Number(duration), outcome,
+        ...(start ? { endsAt: new Date(Date.parse(start) + Number(duration) * 60000).toISOString() } : {}),
+      } : type === 'call' ? { direction, duration: Number(duration), outcome } : {}) };
+      const scheduledAt = start ?? dueInstant(dueOn);
 
       if (editing) {
         await patch(`/api/crm/activities/${editing.id}`, {
           activityType: type,
+          engagementDetails,
           subject: subject.trim(),
           body: body.trim(),
           ...links,
-          dueAt: editing.dueAt || scheduling ? dueInstant(dueOn) : null,
+          dueAt: editing.dueAt || scheduling ? scheduledAt : null,
           remindAt: remind ? remindInstant(dueOn, preset, custom) : null,
         });
         toast.success('Saved');
       } else if (scheduling) {
         await post('/api/crm/activities', {
           activityType: type,
+          engagementDetails,
           subject: subject.trim(),
           body: body.trim(),
           ...links,
-          dueAt: dueInstant(dueOn),
+          dueAt: scheduledAt,
           remindAt: remind ? remindInstant(dueOn, preset, custom) : null,
         });
         toast.success('Follow-up scheduled');
@@ -218,21 +248,23 @@ export function ActivityDialog({
          */
         await post('/api/crm/activities', {
           activityType: type,
+          engagementDetails,
           subject: subject.trim(),
           body: body.trim(),
           ...links,
-          completedAt: new Date().toISOString(),
+          completedAt: new Date(occurredAt).toISOString(),
         });
 
         if (withNext && nextSubject.trim()) {
-          await post('/api/crm/activities', {
-            activityType: 'followup',
-            subject: nextSubject.trim(),
-            body: '',
-            ...links,
-            dueAt: dueInstant(dueOn),
-            remindAt: remind ? remindInstant(dueOn, preset, custom) : null,
-          });
+          try {
+            await post('/api/crm/activities', {
+              activityType: 'followup', subject: nextSubject.trim(), body: '', engagementDetails: { priority }, ...links,
+              dueAt: dueInstant(dueOn), remindAt: remind ? remindInstant(dueOn, preset, custom) : null,
+            });
+          } catch (cause) {
+            toast.error(`Interaction saved, but the follow-up was not: ${cause instanceof Error ? cause.message : 'Please schedule it separately.'}`);
+            onOpenChange(false); onSaved(); return;
+          }
           toast.success('Logged, and the follow-up is scheduled');
         } else {
           toast.success('Logged');
@@ -268,7 +300,7 @@ export function ActivityDialog({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-[130px_1fr]">
             <Field label="Type">
               <Select value={type} onValueChange={setType}>
-                <SelectTrigger className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="Activity type" className="h-9 text-[13px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {ACTIVITY_TYPES.map(t => (
                     <SelectItem key={t.value} value={t.value} className="text-[13px]">{t.label}</SelectItem>
@@ -279,6 +311,7 @@ export function ActivityDialog({
 
             <Field label={scheduling ? 'Next action' : 'Subject'}>
               <Input
+                aria-label={scheduling ? 'Next action' : 'Subject'}
                 value={subject}
                 onChange={e => setSubject(e.target.value)}
                 placeholder={scheduling ? 'Follow up with Ahmed on the proposal' : 'Discovery call'}
@@ -292,8 +325,11 @@ export function ActivityDialog({
             <LinkPicker value={about} onChange={setAbout} allowNone={false} placeholder="Customer, contact or deal" />
           </Field>
 
+          {!scheduling && !editing && <label className="space-y-1 text-xs">Interaction date and time · {timezone}<Input type="datetime-local" required value={occurredAt} onChange={e => setOccurredAt(e.target.value)}/></label>}
+          {type === 'whatsapp' && <p className="text-xs text-muted-foreground">Manual WhatsApp record. Messages are not synchronized from WhatsApp.</p>}
           <Field label={scheduling ? 'Notes' : 'What happened'}>
             <Textarea
+              aria-label={scheduling ? 'Notes' : 'What happened'}
               value={body}
               onChange={e => setBody(e.target.value)}
               rows={3}
@@ -301,6 +337,21 @@ export function ActivityDialog({
               className="resize-none text-[13px]"
             />
           </Field>
+
+          <label className="block space-y-1 text-xs">Priority<select className="h-10 w-full rounded-md border px-2" value={priority} onChange={e => setPriority(e.target.value as 'low' | 'normal' | 'high')}><option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option></select></label>
+          {(type === 'meeting' || type === 'call') && <div className="space-y-3 rounded-lg border p-3">
+            <p className="text-xs text-muted-foreground">{type === 'meeting' ? 'Internal meeting record. No calendar invitation is sent.' : 'Manually logged call. No telephone call is placed or recorded.'}</p>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="space-y-1 text-xs">Duration (minutes)<Input type="number" min={0} max={1440} required value={duration} onChange={e => setDuration(e.target.value)}/></label>
+              {type === 'call' ? <label className="space-y-1 text-xs">Direction<select className="h-10 w-full rounded-md border px-2" value={direction} onChange={e => setDirection(e.target.value as 'inbound' | 'outbound')}><option value="outbound">Outbound</option><option value="inbound">Inbound</option></select></label> : (scheduling || editing?.dueAt) && <label className="space-y-1 text-xs">Start time · {timezone}<Input type="time" required value={time} onChange={e => setTime(e.target.value)}/></label>}
+            </div>
+            {type === 'meeting' && <>
+              <label className="block space-y-1 text-xs">Participants (email addresses, separated by commas)<Input value={participants} onChange={e => setParticipants(e.target.value)}/></label>
+              <label className="block space-y-1 text-xs">Location<Input value={location} maxLength={500} onChange={e => setLocation(e.target.value)}/></label>
+              <label className="block space-y-1 text-xs">Video meeting link (HTTPS)<Input type="url" value={videoUrl} onChange={e => setVideoUrl(e.target.value)}/></label>
+            </>}
+            <label className="block space-y-1 text-xs">Outcome<Input value={outcome} maxLength={500} onChange={e => setOutcome(e.target.value)}/></label>
+          </div>}
 
           {/* ── The next step ───────────────────────────────────────────────
               In log mode this is a fold; in follow-up mode it is the point of
@@ -317,6 +368,7 @@ export function ActivityDialog({
               {!scheduling && !editing && (
                 <Field label="Next action">
                   <Input
+                    aria-label="Follow-up next action"
                     value={nextSubject}
                     onChange={e => setNextSubject(e.target.value)}
                     placeholder="Send the revised quote"
@@ -329,6 +381,7 @@ export function ActivityDialog({
                 <Field label="Follow up on">
                   <Input
                     type="date"
+                    aria-label="Follow up on"
                     value={dueOn}
                     onChange={e => setDueOn(e.target.value)}
                     className="h-9 bg-card text-[13px]"

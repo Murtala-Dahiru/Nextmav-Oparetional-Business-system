@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Mail, LifeBuoy, Clock, MapPin, Check, ArrowRight } from 'lucide-react';
+import { Mail, LifeBuoy, Check, ArrowRight } from 'lucide-react';
 import { Container, Section, Eyebrow, Input, Textarea, buttonClass } from '@/components/public/ui';
 import { ScrollReveal } from '@/components/public/client';
-import { CONTACT_EMAIL } from '@/lib/public-contact';
+// Only publish a mailbox that the deployment owner has explicitly configured.
+const CONTACT_EMAIL = process.env.NEXT_PUBLIC_CONTACT_EMAIL?.trim() || '';
+const CONTACT_CONFIGURED = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(CONTACT_EMAIL) && !CONTACT_EMAIL.endsWith('@example.com');
 
 /**
  * The uploaded project's Contact page, ported — dark hero, a channel column
@@ -37,27 +39,16 @@ const CHANNELS = [
   {
     icon: Mail,
     label: 'Sales',
-    val: CONTACT_EMAIL,
-    desc: 'For pricing, demos and platform evaluation.',
+    val: CONTACT_CONFIGURED ? CONTACT_EMAIL : 'Sales enquiries',
+    desc: 'Review product capabilities and provisional pricing before you choose a workspace.',
   },
   {
     icon: LifeBuoy,
     label: 'Support',
-    val: CONTACT_EMAIL,
+    val: CONTACT_CONFIGURED ? CONTACT_EMAIL : 'Use your workspace support module',
     desc: 'For existing customers needing technical assistance.',
   },
-  {
-    icon: Clock,
-    label: 'How we reply',
-    val: 'A person, not a queue',
-    desc: 'Every enquiry is read by someone who works on the product.',
-  },
-  {
-    icon: MapPin,
-    label: 'Presence',
-    val: 'Remote-first',
-    desc: 'We work with organizations across time zones.',
-  },
+  { icon: Mail, label: 'Partnerships & general enquiries', val: 'Tell us what you have in mind', desc: 'Use the form for a product demonstration, partnership or general question when the contact channel is available.' },
 ];
 
 type Errors = Partial<Record<'name' | 'email' | 'org' | 'message', string>>;
@@ -97,7 +88,7 @@ export default function ContactPage() {
     // Validation surfaces on submit as well as on blur, so a keyboard user who
     // tabs straight to the button is not met with silence.
     setTouched({ name: true, email: true, org: true, message: true });
-    if (!valid) return;
+    if (!valid || !CONTACT_CONFIGURED) return;
 
     const body = [
       form.message.trim(),
@@ -120,7 +111,7 @@ export default function ContactPage() {
 
   return (
     <>
-      <section className="nm-page-hero nm-page-hero-dark">
+      <section className="nm-page-hero nm-page-hero-dark nm-contact-hero">
         <div className="nm-page-hero-bg">
           <div className="nm-grid-bg nm-grid-bg-dark" />
           <div className="nm-hero-glow nm-hero-glow-1" />
@@ -129,8 +120,8 @@ export default function ContactPage() {
         <Container className="nm-page-hero-content">
           <Eyebrow>Contact</Eyebrow>
           <h1 className="nm-page-hero-title nm-page-hero-title-dark">
-            Talk to us about running your{' '}
-            <span className="nm-serif">organization on NextMav.</span>
+            Let’s talk about{' '}
+            <span className="nm-serif">your business.</span>
           </h1>
           <p className="nm-page-hero-sub nm-page-hero-sub-dark">
             Whether you&rsquo;re evaluating platforms or ready to get started,
@@ -147,7 +138,7 @@ export default function ContactPage() {
           </h2>
           <div className="nm-contact-grid">
             <ScrollReveal className="nm-contact-info">
-              <div className="nm-contact-channels">
+              <div className="nm-contact-channels"><Eyebrow>A useful first conversation</Eyebrow><h2 className="nm-heading-lg">Start with what<br />your team needs.</h2><p className="nm-lead">Your current tools, the handoffs that slow you down, and the capabilities you need. These are the right starting points for evaluating NextMav.</p>
                 {CHANNELS.map((channel) => (
                   <div key={channel.label} className="nm-contact-channel">
                     <div className="nm-contact-channel-icon">
@@ -169,19 +160,18 @@ export default function ContactPage() {
                   <div className="nm-contact-success-icon">
                     <Check size={28} aria-hidden="true" />
                   </div>
-                  <h3 className="nm-heading-sm">Your email app should be open.</h3>
+                  <h3 className="nm-heading-sm">Continue in your email app.</h3>
                   <p className="nm-lead" style={{ fontSize: 'var(--nm-text-sm)' }}>
-                    Send the message it has drafted and it will reach us. If
+                    Your message has not been sent by this website. Review and send the draft in your email app. If
                     nothing opened, write to {CONTACT_EMAIL} directly.
                   </p>
                 </div>
               ) : (
                 <form className="nm-contact-form" onSubmit={onSubmit} noValidate>
                   <div className="nm-contact-form-head">
-                    <h3 className="nm-contact-form-title">Send us a message</h3>
+                    <h3 className="nm-contact-form-title">Start a conversation</h3>
                     <p className="nm-contact-form-sub">
-                      This opens in your email app — we have no server-side form
-                      yet, and would rather say so than lose your message.
+                      {CONTACT_CONFIGURED ? 'Prepare a draft in your email app. You review and send it there.' : 'The public contact channel is not connected yet. This form cannot send a message.'}
                     </p>
                   </div>
                   <div className="nm-contact-form-row">
@@ -237,8 +227,9 @@ export default function ContactPage() {
                     onBlur={() => setTouched((t) => ({ ...t, message: true }))}
                     error={touched.message ? errors.message : undefined}
                   />
-                  <button type="submit" className={buttonClass('primary', 'lg', 'nm-contact-submit')}>
-                    Open this in your email app
+                  {!CONTACT_CONFIGURED && <div className="nm-contact-unconfigured" role="status"><strong>Contact is not configured</strong><p>A verified contact mailbox is required before this form can open an email draft. No message will be sent or stored here.</p></div>}
+                  <button type="submit" disabled={!CONTACT_CONFIGURED} className={buttonClass('primary', 'lg', 'nm-contact-submit')}>
+                    {CONTACT_CONFIGURED ? 'Open email draft' : 'Contact channel unavailable'}
                     <ArrowRight size={16} aria-hidden="true" />
                   </button>
                 </form>

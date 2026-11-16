@@ -10,7 +10,7 @@ import {
 import { Container, Eyebrow, Section } from '@/components/public/ui';
 import { ScrollReveal } from '@/components/public/client';
 import { LIVE_CAPABILITIES } from '@/components/marketing/capabilities';
-import { SUPPORT_EMAIL } from '@/lib/public-contact';
+
 
 export const metadata: Metadata = {
   title: 'Help centre — NextMav',
@@ -74,8 +74,8 @@ const routes = [
   {
     icon: Mail,
     label: 'Email support',
-    value: SUPPORT_EMAIL,
-    href: `mailto:${SUPPORT_EMAIL}`,
+    value: 'Contact channel configuration',
+    href: '/contact',
     desc: 'For customers with a technical problem. Include your organisation name and, if you have one, the request id shown on the error.',
   },
   {
@@ -109,9 +109,8 @@ export default function HelpCenterPage() {
             How to get an <span className="nm-serif">answer.</span>
           </h1>
           <p className="nm-page-hero-sub nm-page-hero-sub-dark">
-            The written guides are still being put together. Until they are
-            here, these are the three routes that will actually get you a reply
-            — and below them, what the platform covers today.
+            Find the product guidance available today, check contact-channel
+            availability, and understand which capabilities your workspace supports.
           </p>
         </Container>
       </section>

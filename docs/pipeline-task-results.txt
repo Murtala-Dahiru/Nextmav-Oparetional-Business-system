@@ -1,0 +1,4 @@
+PASS personal task links to the actual opportunity
+PASS repeat intake does not duplicate the opportunity task
+PASS personal task intake preserves opportunity stage and revision
+3 task integration assertions passed.

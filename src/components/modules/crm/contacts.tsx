@@ -1,4 +1,9 @@
 'use client';
+import { ExportButton } from '@/components/shared/export-button';
+import { BulkFields } from './bulk-fields';
+import { useListPresentation } from './list-presentation';
+import { SharedViews } from './shared-views';
+import { CustomFieldFilter } from './custom-field-filter';
 
 import * as React from 'react';
 import { toast } from 'sonner';
@@ -7,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { AddToMyWorkItem } from '@/components/shared/add-to-my-work';
@@ -15,11 +21,15 @@ import { useAppStore } from '@/store/app-store';
 
 import { useCrmList } from './use-list';
 import { RecordTable, type Column } from '@/components/shared/record-table';
-import { SectionHead, SearchField, FilterRow, Monogram, Blank, Broken, personName } from './ui';
+import { SectionHead, FilterRow, Monogram, Blank, Broken, personName } from './ui';
 import { remove } from './data';
 import { ContactDialog } from './forms';
 import { ActivityDialog } from './activity-dialog';
-import { RecordSheet } from './record-sheet';
+import { ContactWorkspace } from './contact-workspace';
+import { useDirectoryFacts } from './use-directory-facts';
+import { DirectoryTools, useDirectoryTools } from './directory-tools';
+import { DirectorySummary } from './directory-summary';
+import { DirectoryFilters } from './directory-filters';
 import type { Contact } from './types';
 
 /**
@@ -54,13 +64,18 @@ export function ContactsSection({
   onFocusHandled?: () => void;
 }) {
   const openRecord = useAppStore(s => s.openRecord);
+  const mayCreate = useAppStore(s => s.allows('crm', 'create'));
+  const mayEdit = useAppStore(s => s.allows('crm', 'edit'));
+  const mayDelete = useAppStore(s => s.allows('crm', 'delete'));
 
   const list = useCrmList<Contact>('/api/crm/contacts', {
     channel: 'crm-contacts',
-    watch: ['contacts'],
+    watch: ['contacts','crm_activities','deals'],
     defaultSort: 'updatedAt',
   });
 
+  const {facts,error:factsError}=useDirectoryFacts('contact',list.rows);
+  const directoryTools=useDirectoryTools('contact',list);
   const [open, setOpen] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<Contact | null>(null);
   const [formOpen, setFormOpen] = React.useState(false);
@@ -101,7 +116,7 @@ export function ContactsSection({
               {personName(c) || c.email || 'Unnamed contact'}
             </span>
             <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
-              {c.jobTitle || 'No job title'}
+              {[c.jobTitle, c.crmProfile?.department].filter(Boolean).join(' · ') || 'No job title'}
               {!c.isActive && <span className="ml-1.5">· no longer here</span>}
             </span>
           </span>
@@ -125,7 +140,7 @@ export function ContactsSection({
     },
     {
       key: 'email', header: 'Email', width: '24%', hide: 'lg', card: 'meta',
-      cell: c => (c.email
+      cell: c => (c.email && !c.crmProfile?.emailOptOut
         ? (
           <a
             href={`mailto:${c.email}`}
@@ -138,37 +153,36 @@ export function ContactsSection({
         : <span className="text-muted-foreground/70">-</span>),
     },
     {
-      header: 'Phone', width: '16%', hide: 'xl', card: 'meta',
-      cell: c => (c.phone
-        ? (
-          <a
-            href={`tel:${c.phone}`}
-            onClick={e => e.stopPropagation()}
-            className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-foreground hover:underline"
-          >
-            <Phone className="size-3.5 shrink-0" />{c.phone}
-          </a>
-        )
-        : <span className="text-muted-foreground/70">-</span>),
+      header: 'Relationship role', width: '16%', hide: 'xl', card: 'meta',
+      cell: c => <span className="text-muted-foreground">{c.crmProfile?.relationshipRole || 'Not recorded'}</span>,
     },
     {
-      key: 'updatedAt', header: 'Last touched', width: '14%', align: 'right', hide: 'md', card: 'meta',
-      cell: c => <span className="text-muted-foreground">{formatRelativeTime(c.updatedAt)}</span>,
+      header: 'Last engagement', width: '14%', align: 'right', hide: 'md', card: 'meta',
+      cell: c => <span className="text-muted-foreground">{facts[c.id] ? facts[c.id].lastEngagement ? formatRelativeTime(facts[c.id].lastEngagement!) : 'Not recorded' : '—'}</span>,
     },
-  ], [openRecord]);
+  ], [openRecord,facts]);
 
+  const presentation=useListPresentation('contacts',columns);
   return (
-    <div className="flex flex-col gap-4">
+    <div className={`flex flex-col gap-4 ${presentation.className}`}>
+      {presentation.controls}
+      <ExportButton module="crm" datasets={[{key:"contacts",label:"Contacts",filters:{...list.filters,search:list.search,sort:list.sort,sortDir:list.sortDir,currentView:"true"}}]} />
+      <BulkFields object="contacts" rows={list.rows} onChanged={list.reload} />
+      <SharedViews object="contacts" presentation={presentation.settings} onPresentation={presentation.applyView} list={list} />
+      <CustomFieldFilter object="contacts" value={list.filters.custom} onChange={value => list.setFilter('custom', value)} />
       <SectionHead title="Contacts" count={list.meta.total} note="People at your customers">
-        <Button size="sm" className="h-9 gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
+        <Button disabled={!mayCreate} size="sm" className="h-9 gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
           <Plus className="size-4" /> Add contact
         </Button>
       </SectionHead>
+      <DirectorySummary kind="contact"/>
 
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-        <SearchField
+      <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 lg:flex-row lg:items-center">
+        <Input
+          aria-label="Search contacts"
           placeholder="Search by name, email or job title"
-          onChange={list.setSearch}
+          value={list.search}
+          onChange={event => list.setSearch(event.target.value)}
           className="lg:w-80"
         />
         <FilterRow
@@ -184,11 +198,15 @@ export function ContactsSection({
         />
       </div>
 
+      <DirectoryFilters kind="contact" filters={list.filters} setFilter={list.setFilter} />
+
+      {factsError&&<p role="status" className="text-xs text-muted-foreground">Engagement context unavailable: {factsError}</p>}
+      <DirectoryTools kind="contact" list={list} columns={presentation.columns} tools={directoryTools}/>
       {list.error ? (
         <Broken message={list.error} onRetry={list.reload} />
       ) : (
         <RecordTable
-          columns={columns}
+          columns={[...(mayEdit?[directoryTools.selection]:[]),...presentation.columns.filter(c=>!directoryTools.hidden.includes(c.header))]}
           rows={list.rows}
           rowKey={c => c.id}
           loading={list.loading}
@@ -207,10 +225,10 @@ export function ContactsSection({
               <DropdownMenuItem onClick={() => setOpen(c.id)}>
                 <ExternalLink className="mr-2 size-4" /> Open
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setLogging(c)}>
+              <DropdownMenuItem disabled={!mayCreate} onClick={() => setLogging(c)}>
                 <Plus className="mr-2 size-4" /> Log activity
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setScheduling(c)}>
+              <DropdownMenuItem disabled={!mayCreate} onClick={() => setScheduling(c)}>
                 <CornerUpRight className="mr-2 size-4" /> Schedule follow-up
               </DropdownMenuItem>
               {c.company?.id && (
@@ -226,10 +244,11 @@ export function ContactsSection({
                 title={`Follow up with ${personName(c) || 'this contact'}`}
               />
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => { setEditing(c); setFormOpen(true); }}>
+              <DropdownMenuItem disabled={!mayEdit} onClick={() => { setEditing(c); setFormOpen(true); }}>
                 <Pencil className="mr-2 size-4" /> Edit
               </DropdownMenuItem>
               <DropdownMenuItem
+                disabled={!mayDelete}
                 onClick={() => setDeleting(c)}
                 className="text-destructive focus:text-destructive"
               >
@@ -255,7 +274,7 @@ export function ContactsSection({
                 title="No contacts yet"
                 body="Contacts appear here when you add one, convert a lead, or import a list."
                 action={
-                  <Button size="sm" className="gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
+                  <Button disabled={!mayCreate} size="sm" className="gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
                     <Plus className="size-4" /> Add contact
                   </Button>
                 }
@@ -304,8 +323,7 @@ export function ContactsSection({
         isLoading={removing}
       />
 
-      <RecordSheet
-        kind="contact"
+      <ContactWorkspace
         id={open}
         open={open !== null}
         onOpenChange={o => { if (!o) setOpen(null); }}

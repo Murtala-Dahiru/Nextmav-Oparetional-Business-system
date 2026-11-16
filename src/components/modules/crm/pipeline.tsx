@@ -18,6 +18,8 @@ import { getList, getOne, patch, listQuery, exact, money, formatDayShort, daysUn
 import { SectionHead, SearchField, OwnerTag, Blank, Broken, personName, Spinner } from './ui';
 import { CloseDealDialog, DealDialog } from './forms';
 import { RecordSheet } from './record-sheet';
+import { PipelineSettings } from './pipeline-settings';
+import { ConfiguredPipelines } from './configured-pipelines';
 import { STAGE_LABELS, CLOSED_STAGES, type Deal, type CrmOverview } from './types';
 
 /**
@@ -129,7 +131,7 @@ function DealCard({
 
       <div className="mt-2.5 flex items-baseline justify-between gap-2">
         <span className="text-[14px] font-semibold tabular-nums text-foreground">
-          {exact(deal.value)}
+          {exact(deal.value,deal.currency)}
         </span>
         <span className="text-[11.5px] tabular-nums text-muted-foreground">{deal.probability}%</span>
       </div>
@@ -311,6 +313,11 @@ function Column({
 /* -------------------------------------------------------------------------- */
 
 export function PipelineSection({ onOpenDeals }: { onOpenDeals?: (stage: string) => void }) {
+  const [configured,setConfigured]=React.useState(true);
+  const [configurationRevision,setConfigurationRevision]=React.useState(0);
+  return <div className="space-y-4"><div className="flex gap-2"><Button size="sm" variant={configured?'outline':'default'} onClick={()=>setConfigured(false)}>Sales overview</Button><Button size="sm" variant={configured?'default':'outline'} onClick={()=>setConfigured(true)}>Configured pipelines</Button></div>{configured?<ConfiguredPipelines configurationRevision={configurationRevision}/>:<><p className="text-xs text-muted-foreground">Stage amounts below include organization-currency deals only. Cards show each deal’s native currency. Use configured pipelines for currency-specific forecasts.</p><LegacyPipelineSection onOpenDeals={onOpenDeals}/></>}<PipelineSettings onSaved={()=>setConfigurationRevision(r=>r+1)}/></div>;
+}
+function LegacyPipelineSection({ onOpenDeals }: { onOpenDeals?: (stage: string) => void }) {
   const [byStage, setByStage] = React.useState<Record<string, { deals: Deal[]; total: number }>>({});
   const [totals, setTotals] = React.useState<CrmOverview['stages']>([]);
   const [loading, setLoading] = React.useState(true);
@@ -433,7 +440,8 @@ export function PipelineSection({ onOpenDeals }: { onOpenDeals?: (stage: string)
     setByStage(prev => shift(prev, deal, from, stage, probability));
 
     try {
-      await patch(`/api/crm/deals/${deal.id}`, { stage, probability });
+      const saved=await patch<Deal>(`/api/crm/deals/${deal.id}`, { stage, probability, pipelineVersion:deal.pipelineVersion });
+      setByStage(prev=>Object.fromEntries(Object.entries(prev).map(([key,lane])=>[key,{...lane,deals:lane.deals.map(row=>row.id===saved.id?saved:row)}])));
       void loadTotals();
 
       if (!silent) {
@@ -441,7 +449,7 @@ export function PipelineSection({ onOpenDeals }: { onOpenDeals?: (stage: string)
           description: deal.name,
           action: {
             label: 'Undo',
-            onClick: () => { void move({ ...deal, stage }, from, true); },
+            onClick: () => { void move(saved, from, true); },
           },
         });
       }
@@ -479,6 +487,7 @@ export function PipelineSection({ onOpenDeals }: { onOpenDeals?: (stage: string)
         onChange={setSearch}
         className="lg:w-80"
       />
+
 
       {error ? (
         <Broken message={error} onRetry={load} />

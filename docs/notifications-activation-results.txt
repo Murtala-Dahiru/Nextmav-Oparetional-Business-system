@@ -1,0 +1,20 @@
+{"headed":true,"normalProfile":true,"keyIsUncompressedP256":true,"secure":true,"scope":"/","pushSupported":true,"preexistingSubscription":false}
+{"result":"connected","permission":"granted","worker":true,"subscription":true}
+PASS real test notification queued
+Recipient tab visibility: visible
+{"examined":1,"accepted":1,"skipped":0,"deferred":0,"failed":0,"retried":0}
+{ receipt: true, backgroundVerified: false }
+Open NextMav tabs: 0
+{"examined":5,"accepted":5,"skipped":0,"deferred":0,"failed":0,"retried":0}
+{ closedReceipt: true }
+{"examined":8,"accepted":8,"skipped":0,"deferred":0,"failed":0,"retried":0}
+{"type":"task_assigned","state":"accepted","providerCode":201,"receipt":true,"authorized":true,"module":"projects","recordInLink":true}
+{"type":"task_due","state":"accepted","providerCode":201,"receipt":true,"authorized":true,"module":"projects","recordInLink":true}
+{"type":"leave_requested","state":"accepted","providerCode":201,"receipt":true,"authorized":true,"module":"hr","recordInLink":false}
+{"type":"lead_assigned","state":"accepted","providerCode":201,"receipt":true,"authorized":true,"module":"crm","recordInLink":true}
+{"type":"commercial_approved","state":"accepted","providerCode":201,"receipt":true,"authorized":true,"module":"crm","recordInLink":true}
+{"type":"crm_automation","state":"accepted","providerCode":201,"receipt":true,"authorized":true,"module":"crm","recordInLink":true}
+{"type":"ticket_assigned","state":"accepted","providerCode":201,"receipt":true,"authorized":true,"module":"support","recordInLink":true}
+{ installedPWA: false }
+{"examined":1,"accepted":1,"skipped":0,"deferred":0,"failed":0,"retried":0}
+{ installedReceipt: true }

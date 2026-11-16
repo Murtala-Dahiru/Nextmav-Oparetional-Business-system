@@ -1,0 +1,2 @@
+Validated 0153_notification_business_events.sql
+Notification migrations committed

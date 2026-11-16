@@ -1,0 +1,20 @@
+PASS missing provider blocks mandatory verification without downgrade
+PASS Unicode recipient name accepted
+PASS expired invitation denied
+PASS rotation invalidates prior session as well as links
+PASS recipient correction invalidates old identity access
+PASS corrected recipient receives new scoped access
+PASS cross-origin completion blocked
+PASS database rejects direct premature completion
+PASS all eight field types complete and generate Unicode PDF
+PASS completed action cannot be transferred to a different identity
+PASS recipient completion replay is idempotent
+PASS decline records a terminal recipient decision
+PASS terminal decision denies later signing
+PASS changes records a terminal recipient decision
+PASS terminal decision denies later signing
+PASS template reuse creates an independent unsigned draft
+PASS archived template is removed from reuse directory
+PASS private storage has no public document URL
+RECOVERY_ENVELOPE 0994ab42-5b6a-491d-9896-3d0b6f34917f
+18 extended security assertions passed; synthetic recovery queued for maintenance worker.

@@ -1,0 +1,13 @@
+✔ conversion rejects invalid money, dates, identities and malformed options (36.9001ms)
+✔ conversion preserves optional defaults and valid leap dates (20.5274ms)
+✔ pipeline configuration rejects duplicate stages, foreign transitions and invalid revisions (185.0997ms)
+✔ configured pipelines enforce requirements, approvals, isolation and historical compatibility (31963.5803ms)
+✔ pipeline filters reject reversed periods, invalid identifiers and unsupported amounts (36.0023ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 44380.5397

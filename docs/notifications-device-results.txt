@@ -1,0 +1,2 @@
+{"result":"registration failed","permission":"granted","worker":true,"subscription":false}
+Registration failed - permission deniedRetry

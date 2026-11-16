@@ -1,0 +1,16 @@
+PASS issued replacement supersedes prior offer without deleting its versions
+PASS superseded historical offer remains available
+PASS authorized customer acceptance is recorded with evidence
+PASS organization proposal template persists
+PASS stale template update rejected
+PASS contact/customer mismatch rejected
+PASS cross-tenant customer association rejected
+PASS concurrent draft saves preserve one revision winner
+PASS file content masquerading as PDF rejected
+PASS unauthenticated export denied
+PASS historical quote PDF remains downloadable
+PASS sales staff cannot read another owner commercial record
+PASS restricted record PDF export denied
+PASS three-decimal currency uses explicit half-up rounding
+PASS company-linked commercial directory returns authorized records
+15 final acceptance assertions passed.

@@ -1,0 +1,4 @@
+[standalone] copied .\node_modules\@img\sharp-win32-x64 -> .\.next-sign-hardened\standalone\node_modules\@img\sharp-win32-x64
+[standalone] copied .\.next-sign-hardened\static -> .\.next-sign-hardened\standalone\.next-sign-hardened\static
+[standalone] copied .\public -> .\.next-sign-hardened\standalone\public
+[standalone] ready — run: node .next-sign-hardened/standalone/server.js

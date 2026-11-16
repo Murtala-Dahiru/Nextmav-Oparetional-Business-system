@@ -1,0 +1,20 @@
+PASS create pipeline and configure stages
+PASS opportunity links actual company and contact
+PASS missing next step blocks entry
+PASS valid stage transition
+PASS approval stage rejects bypass
+PASS rejected approval cannot move deal
+PASS approved stage transition
+PASS stale commercial edits rejected
+PASS stale stage revision rejected (409: The deal changed. Refresh before moving it.)
+PASS call and scheduled follow-up linked to opportunity
+PASS configured stages and amount audit visible
+PASS close opportunity won
+PASS won/lost expected-close cohort totals
+PASS known-amount weighted forecast
+PASS value filters constrain aggregate
+PASS server sorting and bounded pagination
+PASS Customer 360 retains linked opportunity
+PASS inactive pipeline rejects new deals
+PASS occupied pipeline archive rejected
+Completed 19 live API assertions in isolated organization bfe9ea17-3b3f-4a5e-ad4d-47e99130d7fc. Fixtures retained for browser acceptance.

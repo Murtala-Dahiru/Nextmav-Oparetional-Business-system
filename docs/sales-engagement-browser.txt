@@ -1,0 +1,36 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+locator.click: Timeout 90000ms exceeded.
+Call log:
+  - waiting for getByRole('button', { name: 'Customers & revenue', exact: true })
+    34 × waiting for "http://localhost:3022/dashboard" navigation to finish...
+       - navigated to "http://localhost:3022/dashboard"
+    - waiting for navigation to finish...
+    18 × navigated to "http://localhost:3022/dashboard"
+       - waiting for "http://localhost:3022/dashboard" navigation to finish...
+    - navigated to "http://localhost:3022/dashboard"
+    - waiting for navigation to finish...
+    10 × navigated to "http://localhost:3022/dashboard"
+       - waiting for "http://localhost:3022/dashboard" navigation to finish...
+    - navigated to "http://localhost:3022/dashboard"
+
+    at C:\Users\murta\Downloads\workspace-1edd18e2-74f6-4329-aee4-9600baa55107\scripts\sales-engagement-browser.mjs:16:79 {
+  log: [
+    "  - waiting for getByRole('button', { name: 'Customers & revenue', exact: true })",
+    '    34 × waiting for "http://localhost:3022/dashboard" navigation to finish...',
+    '       - navigated to "http://localhost:3022/dashboard"',
+    '    - waiting for navigation to finish...',
+    '    18 × navigated to "http://localhost:3022/dashboard"',
+    '       - waiting for "http://localhost:3022/dashboard" navigation to finish...',
+    '    - navigated to "http://localhost:3022/dashboard"',
+    '    - waiting for navigation to finish...',
+    '    10 × navigated to "http://localhost:3022/dashboard"',
+    '       - waiting for "http://localhost:3022/dashboard" navigation to finish...',
+    '    - navigated to "http://localhost:3022/dashboard"'
+  ],
+  name: 'TimeoutError'
+}
+
+Node.js v24.16.0

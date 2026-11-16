@@ -12,6 +12,10 @@ import type { ApiMeta } from './types';
  * a bare status code.
  */
 
+export class CrmApiError extends Error {
+  constructor(message: string, public code?: string, public details?: unknown) { super(message); }
+}
+
 async function unwrap(res: Response) {
   const json = await res.json().catch(() => null);
   if (!res.ok) {
@@ -22,18 +26,18 @@ async function unwrap(res: Response) {
      * a person - "A lead needs at least a name or a company". Showing "Error
      * 422" instead throws that away and leaves the user with nothing to act on.
      */
-    throw new Error(json?.error?.message ?? `That did not work (${res.status})`);
+    throw new CrmApiError(json?.error?.message ?? `That did not work (${res.status})`, json?.error?.code, json?.error?.details);
   }
   return json;
 }
 
-export async function getList<T>(url: string): Promise<{ data: T[]; meta: ApiMeta }> {
-  const json = await unwrap(await fetch(url));
+export async function getList<T>(url: string, signal?: AbortSignal): Promise<{ data: T[]; meta: ApiMeta }> {
+  const json = await unwrap(await fetch(url, { signal }));
   return { data: json.data ?? [], meta: json.meta ?? { total: 0, page: 1, pageSize: 20, totalPages: 0 } };
 }
 
-export async function getOne<T>(url: string): Promise<T> {
-  const json = await unwrap(await fetch(url));
+export async function getOne<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const json = await unwrap(await fetch(url, { signal }));
   return json.data as T;
 }
 

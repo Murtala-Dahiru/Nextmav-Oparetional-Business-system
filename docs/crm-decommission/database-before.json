@@ -1,0 +1,101 @@
+{
+  "counts": {
+    "crm_mail_associations": 0,
+    "crm_mail_credentials": 0,
+    "crm_mail_messages": 0,
+    "crm_mail_oauth_states": 0,
+    "crm_mail_outbox": 0,
+    "crm_mailboxes": 0,
+    "crm_sales_enrollments": 3,
+    "crm_sales_sequences": 3,
+    "crm_sales_templates": 4
+  },
+  "functions": [
+    {
+      "signature": "crm_mail_acquire(uuid,uuid,uuid,uuid)"
+    },
+    {
+      "signature": "crm_mail_activate(uuid,uuid,uuid,text,text,text,text)"
+    },
+    {
+      "signature": "crm_mail_associate(uuid,uuid,text,uuid)"
+    },
+    {
+      "signature": "crm_mail_association_disconnect()"
+    },
+    {
+      "signature": "crm_mail_association_guard()"
+    },
+    {
+      "signature": "crm_mail_association_reconcile()"
+    },
+    {
+      "signature": "crm_mail_commit_sync(uuid,uuid,jsonb,text[],jsonb)"
+    },
+    {
+      "signature": "crm_mail_disconnect(uuid,uuid)"
+    },
+    {
+      "signature": "crm_mail_reply_stop()"
+    },
+    {
+      "signature": "crm_sales_activity_action(uuid,uuid,timestamp with time zone,text,timestamp with time zone,uuid)"
+    },
+    {
+      "signature": "crm_sales_enrollment_action(uuid,uuid,text)"
+    },
+    {
+      "signature": "crm_sales_insights(uuid,date,date,text)"
+    },
+    {
+      "signature": "crm_sales_meeting_integrity()"
+    },
+    {
+      "signature": "crm_sales_queue(uuid,text,text,integer)"
+    },
+    {
+      "signature": "crm_sales_recipient_eligible(uuid,text,uuid)"
+    },
+    {
+      "signature": "crm_sales_sequence_enroll(uuid,uuid,uuid,text)"
+    },
+    {
+      "signature": "crm_sales_sequence_immutable()"
+    },
+    {
+      "signature": "crm_sales_sequence_metrics(uuid)"
+    },
+    {
+      "signature": "crm_sales_sequence_run_state()"
+    },
+    {
+      "signature": "crm_sales_sequence_save(uuid,text,text,jsonb)"
+    },
+    {
+      "signature": "crm_sales_sequence_task_guard()"
+    },
+    {
+      "signature": "crm_sales_targets(uuid,date,date,text)"
+    },
+    {
+      "signature": "crm_sales_template_save(uuid,uuid,integer,jsonb)"
+    }
+  ],
+  "workflows": [
+    {
+      "status": "published",
+      "n": 3
+    }
+  ],
+  "runs": [
+    {
+      "status": "succeeded",
+      "n": 2
+    },
+    {
+      "status": "cancelled",
+      "n": 1
+    }
+  ],
+  "schedules": []
+}

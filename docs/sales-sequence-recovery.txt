@@ -1,0 +1,3 @@
+PASS real one-minute wait persisted before connection interruption
+PASS delayed sequence recovers after closed connection and creates exactly one next action
+PASS enrollment records completed outcome after durable recovery

@@ -2,7 +2,6 @@ import { authorize, pgError } from '@/lib/auth-context';
 import { success, error, serverError } from '@/lib/api-response';
 import { acceptBody } from '@/lib/case';
 import { ROADMAP_STAGES } from '@/lib/constants';
-import { log, serializeError } from '@/lib/logger';
 
 const SELECT =
   '*, project:projects(id, name, status), ' +
@@ -99,13 +98,6 @@ export async function PATCH(req: Request, { params }: Params) {
 
     if (!Object.keys(update).length) return error('Nothing to update', 422, 'VALIDATION_ERROR');
 
-    // Read first, so the notification can tell a genuine transition from a
-    // repeated save of an already-complete milestone.
-    const { data: before } = await ctx.supabase
-      .from('milestones').select('id, name, project_id, completed_at')
-      .eq('organization_id', ctx.org.organizationId).eq('id', id).maybeSingle();
-    if (!before) return error('Not found', 404, 'NOT_FOUND');
-
     const { data, error: e } = await ctx.supabase
       .from('milestones').update(update)
       .eq('organization_id', ctx.org.organizationId).eq('id', id)
@@ -114,61 +106,9 @@ export async function PATCH(req: Request, { params }: Params) {
     if (e) return pgError(e);
     if (!data) return error('Not found', 404, 'NOT_FOUND');
 
-    const justCompleted = !before.completed_at && !!update.completed_at;
-    if (justCompleted) await notifyMilestoneCompleted(ctx, before);
-
     return success(data);
   } catch (e: any) {
     return serverError(e, 'Update failed');
-  }
-}
-
-/**
- * Tell the project's owner and team that a phase closed.
- *
- * Written here rather than as a database trigger, unlike task assignment,
- * because the recipient list is the project's team - a set this function can
- * read cheaply, where a trigger would need its own query per row and would
- * fire for bulk corrections too.
- *
- * Failures are logged, never surfaced: the milestone is genuinely complete by
- * this point, and reporting an error would invite the user to click again and
- * complete it twice.
- */
-async function notifyMilestoneCompleted(
-  ctx: { supabase: any; org: { organizationId: string; memberId: string } },
-  milestone: { id: string; name: string; project_id: string },
-) {
-  try {
-    const { data: project } = await ctx.supabase
-      .from('projects').select('id, name, owner_id')
-      .eq('id', milestone.project_id).maybeSingle();
-
-    const { data: team } = await ctx.supabase
-      .from('project_members').select('member_id')
-      .eq('project_id', milestone.project_id);
-
-    const recipients = new Set<string>();
-    if (project?.owner_id) recipients.add(project.owner_id);
-    for (const m of team ?? []) recipients.add(m.member_id);
-    // Announcing your own action back to you is noise.
-    recipients.delete(ctx.org.memberId);
-
-    if (!recipients.size) return;
-
-    await ctx.supabase.from('notifications').insert(
-      [...recipients].map(recipient_id => ({
-        organization_id: ctx.org.organizationId,
-        recipient_id,
-        type: 'milestone_completed',
-        title: `Milestone complete: ${milestone.name}`,
-        body: project?.name ? `${project.name} has reached a milestone.` : '',
-        entity_type: 'milestone',
-        entity_id: milestone.id,
-      })),
-    );
-  } catch (e: any) {
-    log.warn('milestone notification failed', { err: serializeError(e) });
   }
 }
 

@@ -1,0 +1,47 @@
+✔ supports valid bounded workflows and incomplete drafts (19.4645ms)
+✔ rejects unsafe actions, duplicate identities and excessive resources (5.2182ms)
+✔ enforces typed and trigger-compatible conditions (5.3869ms)
+✔ enforces recipients and action compatibility (1.6086ms)
+✔ rejects malformed drafts and unknown executable fields (2.4028ms)
+✔ round robin and workload use different deterministic priorities (5.1671ms)
+✔ territory, industry and service matching is normalized and exact (1.2649ms)
+✔ known account ownership is used only when eligible in the rule pool (0.7798ms)
+✔ cross-tenant, inactive and ineligible members and rules cannot receive leads (0.8599ms)
+✔ manual assignments survive, retries remain stable and mismatched keys fail (6.4249ms)
+✔ fallback, rule precedence, disabled rules, missing matches and invalid workload are explicit (1.1083ms)
+✔ pipeline configuration rejects duplicate stages, foreign transitions and invalid revisions (18.9164ms)
+✔ configured pipelines enforce requirements, approvals, isolation and historical compatibility (8598.0287ms)
+✔ leads GET: deny another owner, tenant, deleted and absent records (125.254ms)
+✔ leads GET: allow owner and organization administrator (3.0647ms)
+✔ leads PATCH: deny another owner, tenant, deleted and absent records (19.2167ms)
+✔ leads PATCH: allow owner and organization administrator (12.03ms)
+✔ leads PUT: deny another owner, tenant, deleted and absent records (9.7815ms)
+✔ leads PUT: allow owner and organization administrator (4.4345ms)
+✔ leads DELETE: deny another owner, tenant, deleted and absent records (7.2865ms)
+✔ leads DELETE: allow owner and organization administrator (2.0073ms)
+✔ deals GET: deny another owner, tenant, deleted and absent records (3.6892ms)
+✔ deals GET: allow owner and organization administrator (2.2512ms)
+✔ deals PATCH: deny another owner, tenant, deleted and absent records (12.422ms)
+✔ deals PATCH: allow owner and organization administrator (2.7081ms)
+✔ deals PUT: deny another owner, tenant, deleted and absent records (4.9697ms)
+✔ deals PUT: allow owner and organization administrator (2.6314ms)
+✔ deals DELETE: deny another owner, tenant, deleted and absent records (4.4261ms)
+✔ deals DELETE: allow owner and organization administrator (1.706ms)
+✔ unscoped shared handler preserves existing organization-wide behavior (0.9466ms)
+✔ conversion endpoint validates before RPC and derives the tenant from the session (9.3786ms)
+✔ conversion endpoint returns actionable conflicts and migration errors without fallback writes (4.033ms)
+✔ health is explicit, has no fabricated numeric score and requires engagement evidence (4.5233ms)
+✔ unavailable financial and support context creates no signals (0.9121ms)
+✔ buying role is explicit and only relevant when opportunities exist (0.8534ms)
+✔ action and opportunity rules retain traceable explanations and destinations (1.1852ms)
+✔ structured plan rejects invalid progress, dates, identifiers and overlarge arrays (29.5841ms)
+✔ currency contracts reject unsupported codes and preserve sparse edits (63.5557ms)
+✔ downstream monetary rollups retain currency boundaries and outcome counts (27.4336ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10964.8516

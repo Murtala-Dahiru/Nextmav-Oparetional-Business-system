@@ -1,6 +1,6 @@
 import { collectionHandlers } from '@/lib/supabase/crud';
 import { createCrmActivitySchema } from '@/lib/validations';
-import { toSnake } from '@/lib/case';
+import { toSnake, toCamel } from '@/lib/case';
 import { startOfDayIn } from '@/lib/org-time';
 
 /**
@@ -118,6 +118,7 @@ export const { GET, POST } = collectionHandlers(
     prepare: (b, ctx) => {
       const parsed = createCrmActivitySchema.safeParse({
         activityType: b.activity_type ?? b.activityType,
+        engagementDetails: toCamel(b.engagement_details ?? b.engagementDetails),
         subject: b.subject,
         body: b.body,
         leadId: b.lead_id ?? b.leadId,

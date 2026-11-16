@@ -1,0 +1,2 @@
+Validated 0159_notification_scope.sql
+Notification migrations committed

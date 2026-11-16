@@ -1,0 +1,18 @@
+[Unit]
+Description=Dispatch pending NextMav notifications
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/nextmav
+User=nextmav
+Group=nextmav
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/nextmav/notifications.env
+ExecStart=/usr/bin/env node --import tsx scripts/notifications-worker.mts
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+UMask=0077

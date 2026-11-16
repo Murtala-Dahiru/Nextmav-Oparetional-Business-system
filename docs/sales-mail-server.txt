@@ -1,0 +1,6 @@
+▲ Next.js 16.4.3
+- Local:         http://127.0.0.1:3025
+- Network:       http://127.0.0.1:3025
+✓ Ready in 0ms
+✓ Running next.config took 39ms
+{"level":"info","time":"2026-11-05T09:36:44.088Z","message":"application starting","environment":"production","runtime":"nodejs","logging":{"environment":"production","level":"info","format":"json"}}

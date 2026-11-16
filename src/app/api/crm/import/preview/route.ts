@@ -1,5 +1,6 @@
 import { authorize } from '@/lib/auth-context';
 import { success, error, serverError } from '@/lib/api-response';
+import { planDealImport } from '@/lib/import/deals';
 import { loadIndex, planRows } from '@/lib/import/plan';
 import { MAX_ROWS } from '@/lib/import/sheet';
 import type { Mapping } from '@/lib/import/records';
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const rows = body?.rows;
     const mapping = (body?.mapping ?? {}) as Mapping;
-    const target = body?.target === 'contacts' ? 'contacts' : 'leads';
+    const target = body?.target === 'deals' ? 'deals' : body?.target === 'companies' ? 'companies' : body?.target === 'contacts' ? 'contacts' : 'leads';
 
     if (!Array.isArray(rows) || !rows.length) {
       return error('There are no rows to preview.', 422, 'VALIDATION_ERROR');
@@ -50,8 +51,17 @@ export async function POST(req: Request) {
       return error('Choose what at least one column means before previewing.', 422, 'VALIDATION_ERROR');
     }
 
+    const metadata = await ctx.supabase.from('crm_field_definitions').select('*').eq('organization_id',ctx.org.organizationId).eq('object',target).eq('archived',false);
+    if (metadata.error) return error('Could not load CRM field definitions',503);
+    const active = new Set(metadata.data.map(f => 'custom:' + f.id));
+    if(Object.keys(mapping).some(k=>k.startsWith('custom:') && !active.has(k))) return error('Custom field mapping is no longer available',422);
+    const fields = metadata.data.map(field => ({ ...field, defaultValue: field.default_value }));
+    if (target === 'deals') {
+      const plan = await planDealImport(ctx,rows,mapping,fields);
+      return success(plan);
+    }
     const { index, exhaustive } = await loadIndex(ctx);
-    const plan = planRows(rows as string[][], mapping, index, exhaustive, target);
+    const plan = planRows(rows as string[][], mapping, index, exhaustive, target, fields);
 
     return success(plan);
   } catch (e: any) {

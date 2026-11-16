@@ -252,7 +252,7 @@ function SignupForm() {
       description={
         joining
           ? 'Create an account to join. Use the email address the invitation was sent to.'
-          : 'Free for 14 days. Every module included, and no card required.'
+          : 'Bring your team and your everyday work into one connected workspace.'
       }
       // An invitee is joining an organisation that already exists, so the
       // trial pitch — which is for somebody founding one — is the wrong panel

@@ -1,0 +1,13 @@
+PASS save and reopen account view with pipeline, presentation and filters
+PASS concurrent saved-view revision rejected
+PASS custom stage durations and closed-state aging
+PASS forecast period and category filters agree
+PASS forecast drill-down list matches contributing opportunities
+PASS stage progression and aging use recorded histories
+PASS reversed value range rejected
+PASS reversed date range rejected
+PASS unsupported deal currency is rejected rather than silently combined
+PASS simultaneous stage moves have exactly one winner
+PASS deal cards expose actual recorded engagement
+PASS approver cannot decide stale commercial evidence
+12 final live assertions passed.

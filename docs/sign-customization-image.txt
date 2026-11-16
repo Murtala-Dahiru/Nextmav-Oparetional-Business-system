@@ -1,0 +1,8 @@
+PASS excessive white margins trimmed
+PASS edge-connected white background transparent
+PASS light coloured content preserved
+PASS proportional size and position remain within field
+PASS server timestamp formatted in configured timezone
+PASS oversized signature appearance rejected
+PASS grayscale signatures normalize safely to RGBA
+7 finishing assertions passed.

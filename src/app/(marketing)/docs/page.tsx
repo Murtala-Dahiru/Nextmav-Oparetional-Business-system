@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Container, Eyebrow, Section } from '@/components/public/ui';
 import { ScrollReveal } from '@/components/public/client';
-import { SUPPORT_EMAIL } from '@/lib/public-contact';
+
 
 export const metadata: Metadata = {
   title: 'Documentation — NextMav',
@@ -101,14 +101,14 @@ const routes = [
     label: 'Help centre',
     value: 'Getting an answer',
     href: '/help',
-    desc: 'The three routes that will get you a reply today, and what the platform covers.',
+    desc: 'Available guidance, contact-channel availability and what the platform covers.',
   },
   {
     icon: MessageSquare,
     label: 'Technical questions',
-    value: SUPPORT_EMAIL,
-    href: `mailto:${SUPPORT_EMAIL}`,
-    desc: 'Architecture, data handling, or what an integration would involve. A person answers, which is currently better than the reference would be.',
+    value: 'Contact channel configuration',
+    href: '/contact',
+    desc: 'Architecture, data handling, or what an integration would involve. Public contact requires a verified mailbox; check the contact page for availability.',
   },
 ];
 

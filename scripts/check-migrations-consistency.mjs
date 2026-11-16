@@ -19,7 +19,7 @@ let problems=0;
 const fail=(msg)=>{problems++;console.log('  ✗ '+msg);};
 
 // ── 1. every table named in a policy exists ──
-for(const m of joined.matchAll(/CREATE POLICY \w+ ON (?:public\.)?(\w+)/g)){
+for(const m of joined.matchAll(/CREATE POLICY \w+ ON (?:public\.)?(\w+)(?=\s)/g)){
   if(!tables.has(m[1])) fail(`policy references undefined table: ${m[1]}`);
 }
 // tables listed in the RLS-enable / trigger DO blocks
@@ -36,7 +36,7 @@ if(genBlock) for(const m of genBlock[0].matchAll(/\('(\w+)',\s*'(\w+)'\)/g)){
 
 // ── 2. every public.fn() called is defined ──
 // `INSERT INTO public.tbl (cols…)` is a column list, not a function call.
-const called=new Set([...joined.matchAll(/(?<!INTO\s)public\.(\w+)\s*\(/g)].map(m=>m[1]));
+const called=new Set([...joined.matchAll(/(?<!INTO\s)(?<!ON\s)public\.(\w+)\s*\(/g)].map(m=>m[1]));
 for(const fn of called){
   if(!funcs.has(fn) && !views.has(fn) && !['storage_org_id'].includes(fn)){
     if(!funcs.has(fn)) fail(`calls undefined function: public.${fn}()`);
@@ -82,8 +82,10 @@ const exempt=new Set(['profiles','team_members','project_members','task_dependen
 for(const m of joined.matchAll(/CREATE TABLE IF NOT EXISTS (\w+) \(([\s\S]*?)\n\);/g)){
   const [,name,body]=m;
   if(exempt.has(name)) continue;
-  if(!/organization_id\s+uuid\s+NOT NULL/.test(body))
+  const tenantAdded = new RegExp(`ALTER TABLE ${name} ADD COLUMN IF NOT EXISTS organization_id uuid`).test(joined) && new RegExp(`ALTER TABLE ${name} ALTER COLUMN organization_id SET NOT NULL`).test(joined);
+  if(!/organization_id\s+uuid\s+NOT NULL/.test(body) && !tenantAdded)
     fail(`table ${name} has no organization_id NOT NULL (cross-tenant leak risk)`);
 }
 
 console.log(problems?`\n${problems} PROBLEM(S)`:'\n  ✓ all cross-file checks passed');
+if (problems) process.exitCode = 1;

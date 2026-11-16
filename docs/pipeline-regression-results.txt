@@ -1,0 +1,21 @@
+✔ conversion rejects invalid money, dates, identities and malformed options (43.5518ms)
+✔ conversion preserves optional defaults and valid leap dates (9.9689ms)
+✔ account segment narrows the existing JSON profile with a parameterized equality (4.9852ms)
+✔ manual campaign attribution is bounded and partial updates preserve omitted attribution (13.919ms)
+✔ unassigned inbox narrows rather than replaces sales ownership restrictions (1.6933ms)
+✔ pipeline configuration rejects duplicate stages, foreign transitions and invalid revisions (14.9043ms)
+✔ configured pipelines enforce requirements, approvals, isolation and historical compatibility (9928.572ms)
+✔ health is explicit, has no fabricated numeric score and requires engagement evidence (24.8878ms)
+✔ unavailable financial and support context creates no signals (41.6419ms)
+✔ buying role is explicit and only relevant when opportunities exist (5.1853ms)
+✔ action and opportunity rules retain traceable explanations and destinations (2.9904ms)
+✔ structured plan rejects invalid progress, dates, identifiers and overlarge arrays (27.2536ms)
+✔ pipeline filters reject reversed periods, invalid identifiers and unsupported amounts (61.5221ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21193.6174

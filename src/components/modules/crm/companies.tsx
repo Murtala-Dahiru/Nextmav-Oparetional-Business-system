@@ -1,4 +1,9 @@
 'use client';
+import { ExportButton } from '@/components/shared/export-button';
+import { BulkFields } from './bulk-fields';
+import { useListPresentation } from './list-presentation';
+import { SharedViews } from './shared-views';
+import { CustomFieldFilter } from './custom-field-filter';
 
 import * as React from 'react';
 import { toast } from 'sonner';
@@ -7,15 +12,21 @@ import {
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { AddToMyWorkItem } from '@/components/shared/add-to-my-work';
-import { formatNumber } from '@/lib/format';
+import { formatRelativeTime, formatNumber } from '@/lib/format';
+import { useAppStore } from '@/store/app-store';
 
 import { useCrmList } from './use-list';
 import { RecordTable, type Column } from '@/components/shared/record-table';
-import { SectionHead, SearchField, Blank, Broken } from './ui';
+import { SectionHead, Blank, Broken } from './ui';
 import { exact, remove } from './data';
+import { useDirectoryFacts } from './use-directory-facts';
+import { DirectoryTools, useDirectoryTools } from './directory-tools';
+import { DirectorySummary } from './directory-summary';
+import { DirectoryFilters } from './directory-filters';
 import { CompanyDialog } from './forms';
 import { ActivityDialog } from './activity-dialog';
 import { CompanyDetail } from './company-detail';
@@ -50,13 +61,18 @@ export function CompaniesSection({
   focusId?: string | null;
   onFocusHandled?: () => void;
 }) {
+  const mayCreate = useAppStore(s => s.allows('crm', 'create'));
+  const mayEdit = useAppStore(s => s.allows('crm', 'edit'));
+  const mayDelete = useAppStore(s => s.allows('crm', 'delete'));
   const list = useCrmList<Company>('/api/crm/companies', {
     channel: 'crm-companies',
-    watch: ['companies'],
+    watch: ['companies','contacts','deals','crm_activities'],
     defaultSort: 'name',
     defaultSortDir: 'asc',
   });
 
+  const { facts, error: factsError } = useDirectoryFacts('company',list.rows);
+  const directoryTools=useDirectoryTools('company',list);
   const [open, setOpen] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<Company | null>(null);
   const [formOpen, setFormOpen] = React.useState(false);
@@ -100,28 +116,15 @@ export function CompaniesSection({
           <span className="min-w-0">
             <span className="block truncate font-medium text-foreground">{c.name}</span>
             <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
-              {c.industry || 'No industry recorded'}
+              {[c.industry, c.crmProfile?.segment].filter(Boolean).join(' · ') || 'No industry recorded'}
             </span>
           </span>
         </span>
       ),
     },
-    {
-      header: 'Website', width: '21%', hide: 'lg', card: 'meta',
-      cell: c => (c.website
-        ? (
-          <a
-            href={c.website.startsWith('http') ? c.website : `https://${c.website}`}
-            target="_blank" rel="noreferrer noopener"
-            onClick={e => e.stopPropagation()}
-            className="inline-flex min-w-0 items-center gap-1.5 truncate text-muted-foreground hover:text-foreground hover:underline"
-          >
-            <Globe className="size-3.5 shrink-0" />
-            <span className="truncate">{c.website.replace(/^https?:\/\//, '')}</span>
-          </a>
-        )
-        : <span className="text-muted-foreground/70">-</span>),
-    },
+    { header: 'Open opportunities', width: '15%', hide: 'lg', card: 'meta', cell: c => <span className="tabular-nums">{facts[c.id]?.openOpportunities ?? '—'}</span> },
+    { header: 'Last engagement', width: '17%', hide: 'lg', card: 'meta', cell: c => <span className="text-muted-foreground">{facts[c.id] ? facts[c.id].lastEngagement ? formatRelativeTime(facts[c.id].lastEngagement!) : 'Not recorded' : '—'}</span> },
+    { header: 'Next action', width: '16%', hide: 'xl', card: 'meta', cell: c => <span className="text-muted-foreground">{facts[c.id] ? facts[c.id].nextAction ? formatRelativeTime(facts[c.id].nextAction!) : 'Not scheduled' : '—'}</span> },
     {
       header: 'Location', width: '18%', hide: 'md', card: 'subtitle',
       cell: c => {
@@ -136,38 +139,45 @@ export function CompaniesSection({
       },
     },
     {
-      key: 'employeeCount', header: 'People', width: '11%', align: 'right', hide: 'xl',
-      cell: c => (c.employeeCount
-        ? <span className="text-muted-foreground">{formatNumber(c.employeeCount)}</span>
-        : <span className="text-muted-foreground/70">-</span>),
+      header: 'Account owner', width: '18%', hide: 'md', card: 'meta',
+      cell: c => <span className="text-muted-foreground">{c.owner?.profiles?.fullName || 'Unassigned'}</span>,
     },
-    {
-      key: 'annualRevenue', header: 'Revenue', width: '18%', align: 'right', card: 'figure',
-      cell: c => (c.annualRevenue
-        ? <span className="font-medium">{exact(c.annualRevenue)}</span>
-        : <span className="text-muted-foreground/70">-</span>),
-    },
-  ], []);
+    { header: 'Relationship', width: '18%', card: 'figure', cell: c => {
+      const fact=facts[c.id];
+      const status=!fact?'Unavailable':!c.ownerId?'Owner needed':!fact.lastEngagement?'Not established':Date.now()-Date.parse(fact.lastEngagement)>=30*86400000?'Follow-up needed':'Recently engaged';
+      return <span title="Directory status uses assigned ownership and recorded calls, emails or meetings within 30 days. Open the account for full intelligence." className="inline-flex rounded-full border bg-slate-50 px-2 py-1 text-[10px] font-medium text-slate-600">{status}</span>;
+    }},
+  ], [facts]);
 
+  const presentation=useListPresentation('companies',columns);
   return (
-    <div className="flex flex-col gap-4">
+    <div className={`flex flex-col gap-4 ${presentation.className}`}>
+      {presentation.controls}
+      <ExportButton module="crm" datasets={[{key:"companies",label:"Companies",filters:{...list.filters,search:list.search,sort:list.sort,sortDir:list.sortDir,currentView:"true"}}]} />
+      <BulkFields object="companies" rows={list.rows} onChanged={list.reload} />
+      <SharedViews object="companies" presentation={presentation.settings} onPresentation={presentation.applyView} list={list} />
+      <CustomFieldFilter object="companies" value={list.filters.custom} onChange={value => list.setFilter('custom', value)} />
       <SectionHead title="Companies" count={list.meta.total} note="Open one to see the whole relationship">
-        <Button size="sm" className="h-9 gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
+        <Button disabled={!mayCreate} size="sm" className="h-9 gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
           <Plus className="size-4" /> Add company
         </Button>
       </SectionHead>
+      <DirectorySummary kind="company"/>
 
-      <SearchField
-        placeholder="Search by name, industry, city or email"
-        onChange={list.setSearch}
-        className="lg:w-96"
-      />
+      <DirectoryFilters kind="company" filters={list.filters} setFilter={list.setFilter} />
+      <section aria-label="Find customer accounts" className="space-y-3 rounded-xl border bg-card p-4 shadow-sm">
+        <div><h3 className="text-sm font-semibold">Customer relationships</h3><p className="mt-1 text-xs text-muted-foreground">Open an account to review its people, opportunities, delivery and financial history.</p></div>
+        <div className="grid gap-2 md:grid-cols-3"><Input className="md:col-span-2" aria-label="Search companies" placeholder="Search by name, industry, city or email" value={list.search} onChange={e=>list.setSearch(e.target.value)}/><Input aria-label="Filter companies by segment" placeholder="Exact account segment" value={list.filters.segment??''} onChange={e=>list.setFilter('segment',e.target.value)}/></div>
+        {(list.search||list.filters.segment)&&<Button size="sm" variant="ghost" onClick={()=>{list.setSearch('');list.setFilter('segment','');}}>Clear search and segment</Button>}
+      </section>
 
+      {factsError && <p role="status" className="text-xs text-muted-foreground">Relationship context unavailable: {factsError}</p>}
+      <DirectoryTools kind="company" list={list} columns={presentation.columns} tools={directoryTools}/>
       {list.error ? (
         <Broken message={list.error} onRetry={list.reload} />
       ) : (
         <RecordTable
-          columns={columns}
+          columns={[...(mayEdit?[directoryTools.selection]:[]),...presentation.columns.filter(c=>!directoryTools.hidden.includes(c.header))]}
           rows={list.rows}
           rowKey={c => c.id}
           loading={list.loading}
@@ -186,10 +196,10 @@ export function CompaniesSection({
               <DropdownMenuItem onClick={() => setOpen(c.id)}>
                 <ExternalLink className="mr-2 size-4" /> Open customer
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setLogging(c)}>
+              <DropdownMenuItem disabled={!mayCreate} onClick={() => setLogging(c)}>
                 <Plus className="mr-2 size-4" /> Log activity
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setScheduling(c)}>
+              <DropdownMenuItem disabled={!mayCreate} onClick={() => setScheduling(c)}>
                 <CornerUpRight className="mr-2 size-4" /> Schedule follow-up
               </DropdownMenuItem>
               <AddToMyWorkItem
@@ -197,11 +207,11 @@ export function CompaniesSection({
                 title={`Check in with ${c.name}`}
               />
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => { setEditing(c); setFormOpen(true); }}>
+              <DropdownMenuItem disabled={!mayEdit} onClick={() => { setEditing(c); setFormOpen(true); }}>
                 <Pencil className="mr-2 size-4" /> Edit
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => setDeleting(c)}
+                disabled={!mayDelete} onClick={() => setDeleting(c)}
                 className="text-destructive focus:text-destructive"
               >
                 <Trash2 className="mr-2 size-4" /> Delete
@@ -209,14 +219,14 @@ export function CompaniesSection({
             </>
           )}
           empty={
-            list.search ? (
+            list.search || list.filters.segment ? (
               <Blank
                 icon={Building2}
                 title="Nothing matches"
-                body={`No company matches "${list.search}".`}
+                body="No company matches this search and account segment."
                 action={
-                  <Button variant="outline" size="sm" onClick={() => list.setSearch('')}>
-                    Clear search
+                  <Button variant="outline" size="sm" onClick={() => { list.setSearch(''); list.setFilter('segment', ''); }}>
+                    Clear filters
                   </Button>
                 }
               />
@@ -226,7 +236,7 @@ export function CompaniesSection({
                 title="No companies yet"
                 body="A company is where contacts, deals, projects and invoices come together. Add one, or import a list."
                 action={
-                  <Button size="sm" className="gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
+                  <Button disabled={!mayCreate} size="sm" className="gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
                     <Plus className="size-4" /> Add company
                   </Button>
                 }
@@ -280,8 +290,7 @@ export function CompaniesSection({
         open={open !== null}
         onOpenChange={o => { if (!o) setOpen(null); }}
         onEdit={id => {
-          const found = list.rows.find(c => c.id === id);
-          if (found) { setEditing(found); setFormOpen(true); }
+          void import('./data').then(({ getOne }) => getOne<Company>(`/api/crm/companies/${id}`)).then(found => { setEditing(found); setFormOpen(true); }).catch(e => toast.error(e.message));
         }}
         onChanged={list.reload}
       />

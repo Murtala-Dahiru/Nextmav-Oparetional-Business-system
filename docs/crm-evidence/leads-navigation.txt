@@ -1,0 +1,123 @@
+
+  Navigation, per role
+  ────────────────────
+
+  Company Owner (owner)
+      Executive Overview Executive Overview
+      My Work         My Work
+      Customers & revenue CRM · Support · Client Portal
+      Operations      Projects · Inventory · Workspace · Calendar
+      People & finance HR · Performance · Finance
+      Collaboration   Communication
+      Platform        Admin
+    PASS  every permitted module is reachable
+    PASS  nothing is offered that the role cannot open
+    PASS  no module is listed twice
+    PASS  no group renders with an empty body
+
+  Administrator (administrator)
+      Executive Overview Executive Overview
+      My Work         My Work
+      Customers & revenue CRM · Support · Client Portal
+      Operations      Projects · Inventory · Workspace · Calendar
+      People & finance HR · Performance · Finance
+      Collaboration   Communication
+      Platform        Admin
+    PASS  every permitted module is reachable
+    PASS  nothing is offered that the role cannot open
+    PASS  no module is listed twice
+    PASS  no group renders with an empty body
+
+  Department Manager (manager)
+      Executive Overview Executive Overview
+      My Work         My Work
+      Customers & revenue CRM · Support · Client Portal
+      Operations      Projects · Inventory · Workspace · Calendar
+      People & finance HR · Performance · Finance
+      Collaboration   Communication
+    PASS  every permitted module is reachable
+    PASS  nothing is offered that the role cannot open
+    PASS  no module is listed twice
+    PASS  no group renders with an empty body
+
+  Employee (employee)
+      Executive Overview Executive Overview
+      My Work         My Work
+      Operations      Projects · Workspace · Calendar
+      People & finance HR · Performance
+      Collaboration   Communication
+    PASS  every permitted module is reachable
+    PASS  nothing is offered that the role cannot open
+    PASS  no module is listed twice
+    PASS  no group renders with an empty body
+
+  HR Staff (hr_staff)
+      Executive Overview Executive Overview
+      My Work         My Work
+      Operations      Projects · Workspace · Calendar
+      People & finance HR · Performance
+      Collaboration   Communication
+    PASS  every permitted module is reachable
+    PASS  nothing is offered that the role cannot open
+    PASS  no module is listed twice
+    PASS  no group renders with an empty body
+
+  Finance Staff (finance_staff)
+      Executive Overview Executive Overview
+      My Work         My Work
+      Customers & revenue CRM
+      Operations      Projects · Inventory · Workspace · Calendar
+      People & finance HR · Performance · Finance
+      Collaboration   Communication
+    PASS  every permitted module is reachable
+    PASS  nothing is offered that the role cannot open
+    PASS  no module is listed twice
+    PASS  no group renders with an empty body
+
+  Sales Staff (sales_staff)
+      Executive Overview Executive Overview
+      My Work         My Work
+      Customers & revenue CRM · Client Portal
+      Operations      Projects · Inventory · Workspace · Calendar
+      People & finance HR · Performance
+      Collaboration   Communication
+    PASS  every permitted module is reachable
+    PASS  nothing is offered that the role cannot open
+    PASS  no module is listed twice
+    PASS  no group renders with an empty body
+
+  Support Staff (support_staff)
+      Executive Overview Executive Overview
+      My Work         My Work
+      Customers & revenue CRM · Support
+      Operations      Projects · Workspace · Calendar
+      People & finance HR · Performance
+      Collaboration   Communication
+    PASS  every permitted module is reachable
+    PASS  nothing is offered that the role cannot open
+    PASS  no module is listed twice
+    PASS  no group renders with an empty body
+
+  Client Portal User (client)
+      —               Projects · Support · Client Portal
+    PASS  every permitted module is reachable
+    PASS  nothing is offered that the role cannot open
+    PASS  no module is listed twice
+    PASS  no group renders with an empty body
+
+  External Partner (partner)
+      —               Client Portal
+    PASS  every permitted module is reachable
+    PASS  nothing is offered that the role cannot open
+    PASS  no module is listed twice
+    PASS  no group renders with an empty body
+
+  Metadata
+  ────────
+    PASS  an owner sees all thirteen modules
+    PASS  every module resolves to an icon component
+    PASS  every module carries a one-line summary
+    PASS  no two modules share a mark
+
+  44 passed, 0 failed
+

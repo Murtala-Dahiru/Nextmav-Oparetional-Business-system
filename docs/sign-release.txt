@@ -1,0 +1,16 @@
+PASS new envelopes snapshot organization branding and additional disclosure
+PASS template duplicate has independent identity
+PASS template edit preserves both immutable version snapshots
+PASS template change does not mutate prior agreement
+PASS issued field layout and consent receive authenticated preparation digest
+PASS organization external-access disable blocks existing sessions
+PASS locally computed completed file digest can be verified
+PASS substituted downloaded PDF digest rejected
+PASS completed recipient session can be revoked without changing evidence
+PASS completed recipient invitation also revoked
+PASS revocation retains completed evidence and records independent access audit
+PASS archived agreement is excluded from active directory
+PASS archived agreement remains available in archive
+PASS archive retains verifiable original and completed evidence
+PASS archived agreement can be restored without resetting signatures
+15 final-release assertions passed.

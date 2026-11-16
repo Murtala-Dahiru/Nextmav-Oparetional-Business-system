@@ -1,0 +1,23 @@
+▲ Next.js 16.4.3 (webpack)
+- Environments: .env
+✓ Running next.config.ts took 83ms
+
+  Creating an optimized production build ...
+Client network socket disconnected before secure TLS connection was established
+
+Retrying 1/3...
+Client network socket disconnected before secure TLS connection was established
+
+Retrying 1/3...
+Client network socket disconnected before secure TLS connection was established
+
+Retrying 1/3...
+Client network socket disconnected before secure TLS connection was established
+
+Retrying 1/3...
+Client network socket disconnected before secure TLS connection was established
+
+Retrying 1/3...
+socket hang up
+
+Retrying 2/3...

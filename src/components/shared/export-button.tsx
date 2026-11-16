@@ -38,6 +38,7 @@ export interface ExportDataset {
   key: string;
   /** What the menu calls it. */
   label: string;
+  filters?: Record<string,string>;
 }
 
 export function ExportButton({
@@ -68,7 +69,8 @@ export function ExportButton({
   const run = async (dataset: ExportDataset) => {
     setBusy(dataset.key);
     try {
-      const res = await fetch(`/api/export?dataset=${encodeURIComponent(dataset.key)}`);
+      const params = new URLSearchParams({ ...dataset.filters, dataset: dataset.key });
+      const res = await fetch(`/api/export?${params}`);
 
       if (!res.ok) {
         const body = await res.json().catch(() => null);
@@ -109,7 +111,7 @@ export function ExportButton({
         disabled={!!busy} onClick={() => run(datasets[0])}
       >
         {icon}
-        <span className="ml-1.5">Export</span>
+        <span className="ml-1.5">{datasets[0].filters ? 'Export current view' : 'Export'}</span>
       </Button>
     );
   }
@@ -119,7 +121,7 @@ export function ExportButton({
       <DropdownMenuTrigger asChild>
         <Button variant={variant} size={size} className={className} disabled={!!busy}>
           {icon}
-          <span className="ml-1.5">Export</span>
+          <span className="ml-1.5">{datasets[0].filters ? 'Export current view' : 'Export'}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

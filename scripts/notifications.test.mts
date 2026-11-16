@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import { defaultPreferences, preferencesSchema, isQuiet, safeDestination, retryDelay, permanentFailure, categoryOf } from '../src/lib/notifications/model';
+assert.equal(isQuiet(new Date('2026-11-15T23:00:00Z'), { ...defaultPreferences, quietEnabled: true }), true);
+assert.equal(isQuiet(new Date('2026-11-15T12:00:00Z'), { ...defaultPreferences, quietEnabled: true }), false);
+assert.equal(isQuiet(new Date('2026-11-15T21:30:00Z'), { ...defaultPreferences, quietEnabled: true, timezone: 'Africa/Lagos' }), true);
+assert.equal(isQuiet(new Date('2026-11-15T12:00:00Z'), { ...defaultPreferences, quietEnabled: true, quietStart: 9, quietEnd: 17 }), true);
+assert.equal(preferencesSchema.safeParse({ timezone: 'not/a-zone' }).success, false);
+assert.equal(preferencesSchema.safeParse({ push: 'true' }).success, false);
+assert.equal(safeDestination('https://evil.example/dashboard'), '/dashboard');
+assert.equal(safeDestination('//evil.example'), '/dashboard');
+assert.equal(safeDestination('/dashboard-evil'), '/dashboard');
+assert.equal(safeDestination('/dashboard?module=crm&token=secret&lead=123'), '/dashboard?module=crm&lead=123');
+assert.equal(retryDelay(1, 0), 15); assert.equal(retryDelay(3, 0), 60); assert.equal(retryDelay(20, 0), 3600);
+assert.equal(permanentFailure(410), true); assert.equal(permanentFailure(429), false); assert.equal(permanentFailure(503), false);
+assert.equal(categoryOf('crm_automation', 'agreement'), 'sign');
+assert.equal(categoryOf('leave_approved'), 'hr');
+console.log('PASS 18 notification policy assertions (quiet hours, timezone, validation, URLs, retry, privacy category)');

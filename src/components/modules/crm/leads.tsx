@@ -1,12 +1,22 @@
 'use client';
+import { ExportButton } from '@/components/shared/export-button';
+import { BulkFields } from './bulk-fields';
+import { useListPresentation } from './list-presentation';
+import { SharedViews } from './shared-views';
+import { CustomFieldFilter } from './custom-field-filter';
 
 import * as React from 'react';
 import { toast } from 'sonner';
 import {
-  Plus, Target, Pencil, Trash2, ArrowRight, CornerUpRight, ListPlus, ExternalLink,
+  Plus, Target, Pencil, Trash2, ArrowRight, CornerUpRight, ExternalLink,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { LeadInboxTools } from './lead-inbox-tools';
+import { useLeadEngagement } from './use-lead-engagement';
+import { LeadSummary } from './lead-summary';
+import { LeadCards } from './lead-cards';
 import { DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { AddToMyWorkItem } from '@/components/shared/add-to-my-work';
@@ -18,56 +28,37 @@ import { useAppStore } from '@/store/app-store';
 import { useCrmList } from './use-list';
 import { RecordTable, type Column } from '@/components/shared/record-table';
 import {
-  SectionHead, SearchField, FilterRow, FilterToggle, Monogram, LeadStatusTag, Gauge, OwnerTag,
+  SectionHead, FilterRow, FilterToggle, Monogram, LeadStatusTag, OwnerTag,
   Blank, Broken, personName,
 } from './ui';
 import { exact, remove } from './data';
 import { LeadDialog } from './forms';
+import { CaptureSettings } from './capture-settings';
 import { ConvertLeadDialog } from './convert-dialog';
 import { ActivityDialog } from './activity-dialog';
 import { RecordSheet } from './record-sheet';
 import { LEAD_STATUS_LABELS, type Lead } from './types';
 
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- *  Leads
- * ═══════════════════════════════════════════════════════════════════════════
- *
- * ── What this screen is for ──────────────────────────────────────────────
- *
- * Working a list. Everything on it serves one loop: see who is next, see
- * enough to decide, act, move on. So the row carries the four things that
- * decide - who, where in the lifecycle, how warm, how much - and everything
- * else is one click away in the panel.
- *
- * ── What was removed ─────────────────────────────────────────────────────
- *
- * Four stat cards across the top reading Total, New, Qualified, Won. They were
- * computed from `?pageSize=100`, so they were wrong in any workspace with more
- * than a hundred leads, and they answered a question - "what is the shape of
- * the funnel" - that CRM Home now answers properly. What replaced them is the
- * status filter, which shows the same counts *and* does something when you
- * press it.
- *
- * ── The defect this screen shipped with ──────────────────────────────────
- *
- * A column headed Company bound to `company`. The field is `companyName`, so
- * the column rendered blank for every lead in the product.
- */
-
 export function LeadsSection({
-  focusId, onFocusHandled,
+  focusId, onFocusHandled, initialSource,
 }: {
   focusId?: string | null;
   onFocusHandled?: () => void;
+  initialSource?: string;
 }) {
   const memberId = useAppStore(s => s.user?.memberId ?? null);
+  const canCreateActivity = useAppStore(s => s.allows('crm', 'create'));
+  const mayEdit = useAppStore(s => s.allows('crm', 'edit'));
+  const mayDelete = useAppStore(s => s.allows('crm', 'delete'));
+  const [view, setView] = React.useState<'table' | 'cards'>('table');
 
   const list = useCrmList<Lead>('/api/crm/leads', {
     channel: 'crm-leads',
-    watch: ['leads'],
+    watch: ['leads', 'crm_activities'],
     defaultSort: 'updatedAt',
   });
+
+  const engagement = useLeadEngagement(list.rows);
 
   const [open, setOpen] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<Lead | null>(null);
@@ -77,6 +68,10 @@ export function LeadsSection({
   const [scheduling, setScheduling] = React.useState<Lead | null>(null);
   const [deleting, setDeleting] = React.useState<Lead | null>(null);
   const [removing, setRemoving] = React.useState(false);
+  const setSourceFilter = list.setFilter;
+  React.useEffect(() => {
+    if (initialSource !== undefined) setSourceFilter('source', initialSource);
+  }, [initialSource, setSourceFilter]);
 
   /** A lead another surface asked this module to open. */
   React.useEffect(() => {
@@ -102,13 +97,13 @@ export function LeadsSection({
 
   const columns: Column<Lead>[] = React.useMemo(() => [
     {
-      key: 'lastName', header: 'Lead', width: '31%', card: 'title',
+      key: 'lastName', header: 'Lead', width: '24%', card: 'title',
       cell: l => (
         <span className="flex min-w-0 items-center gap-2.5">
           <Monogram name={personName(l)} />
           <span className="min-w-0">
             <span className="block truncate font-medium text-foreground">
-              {personName(l) || l.email || 'Unnamed lead'}
+              {personName(l) || l.email || 'Unnamed lead'}{l.communicationPreferences?.doNotContact && <span className="ml-1.5 text-[10px] font-normal text-amber-700">Do not contact</span>}
             </span>
             <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">
               {[l.jobTitle, l.companyName].filter(Boolean).join(' · ') || 'No company recorded'}
@@ -122,8 +117,12 @@ export function LeadsSection({
       cell: l => <LeadStatusTag status={l.status} />,
     },
     {
-      key: 'score', header: 'Score', width: '12%', hide: 'lg', card: 'meta',
-      cell: l => <Gauge value={l.score ?? 0} label="Score" />,
+      header: 'Qualification', width: '12%', hide: 'lg', card: 'meta',
+      cell: l => <span className="text-xs text-muted-foreground">{l.status === 'qualified' ? 'Qualified' : Object.keys(l.qualification ?? {}).length ? 'In progress' : 'Not started'}</span>,
+    },
+    {
+      header: 'Source / campaign', width: '13%', hide: 'lg', card: 'subtitle',
+      cell: l => <span className="block min-w-0"><span className="block truncate text-xs">{l.source || 'Not recorded'}</span><span className="mt-1 block truncate text-[11px] text-muted-foreground" title={l.campaign}>{l.campaign || 'No campaign'}</span></span>,
     },
     {
       key: 'estimatedValue', header: 'Value', width: '13%', align: 'right', card: 'figure',
@@ -132,14 +131,14 @@ export function LeadsSection({
         : <span className="text-muted-foreground/70">-</span>),
     },
     {
-      header: 'Owner', width: '17%', hide: 'xl',
+      header: 'Owner', width: '16%', card: 'meta',
       cell: l => <OwnerTag member={l.owner} />,
     },
     {
-      key: 'updatedAt', header: 'Last touched', width: '13%', align: 'right', hide: 'md', card: 'meta',
-      cell: l => <span className="text-muted-foreground">{formatRelativeTime(l.updatedAt)}</span>,
+      header: 'Next step', width: '16%', card: 'meta',
+      cell: l => { const e = engagement.data[l.id]; return <span className="block text-xs"><span className={e?.overdueCount ? 'font-medium text-amber-700' : 'text-muted-foreground'}>{!e ? engagement.error ? 'Unavailable' : 'Loading…' : e.nextFollowUpAt ? (e.overdueCount ? 'Overdue · ' : '') + formatRelativeTime(e.nextFollowUpAt) : 'No next step'}</span><span className="mt-1 block text-[10px] text-muted-foreground">{e?.lastActivityAt ? 'Activity ' + formatRelativeTime(e.lastActivityAt) : e ? 'No activity recorded' : ''}</span></span>; },
     },
-  ], []);
+  ], [engagement.data, engagement.error]);
 
   /** Any narrowing at all, so the empty state says the right thing. */
   const filtered = Boolean(list.search || Object.keys(list.filters).length);
@@ -153,26 +152,44 @@ export function LeadsSection({
     ...LEAD_STATUSES.map(s => ({ value: s, label: LEAD_STATUS_LABELS[s] ?? s })),
   ], []);
 
+  const presentation=useListPresentation('leads',columns);
   return (
-    <div className="flex flex-col gap-4">
-      <SectionHead title="Leads" count={list.meta.total} note="People who might buy">
-        <Button size="sm" className="h-9 gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
+    <div className={`flex flex-col gap-4 ${presentation.className}`}>
+      {presentation.controls}
+      <ExportButton module="crm" datasets={[{key:"leads",label:"Leads",filters:{...list.filters,search:list.search,sort:list.sort,sortDir:list.sortDir,currentView:"true"}}]} />
+      <BulkFields object="leads" rows={list.rows} onChanged={list.reload} />
+      <SharedViews object="leads" presentation={presentation.settings} onPresentation={presentation.applyView} list={list} />
+      <CustomFieldFilter object="leads" value={list.filters.custom} onChange={value => list.setFilter('custom', value)} />
+      <SectionHead title="Leads" count={list.meta.total} note="Build relationships. Keep every next step in view.">
+        <Button disabled={!canCreateActivity} size="sm" className="h-9 gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
           <Plus className="size-4" /> Add lead
         </Button>
       </SectionHead>
+      <LeadSummary refreshKey={list.rows} onFilter={filters => {
+        list.setSearch('');
+        for (const key of new Set([...Object.keys(list.filters), ...Object.keys(filters)])) list.setFilter(key, filters[key] ?? '');
+      }} />
 
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-        <SearchField
+      <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-sm font-semibold">Your lead workspace</h3><p className="mt-1 text-xs text-muted-foreground">Find the right relationship, then choose its next action.</p></div><div role="group" aria-label="Lead view" className="flex gap-1 rounded-lg bg-muted/60 p-1"><Button size="sm" variant={view === 'table' ? 'secondary' : 'ghost'} aria-pressed={view === 'table'} onClick={() => setView('table')}>Table</Button><Button size="sm" variant={view === 'cards' ? 'secondary' : 'ghost'} aria-pressed={view === 'cards'} onClick={() => setView('cards')}>Cards</Button></div></div>
+        <div className="grid gap-2 md:grid-cols-4">
+        <Input
+          aria-label="Search leads"
+          value={list.search}
           placeholder="Search by name, email or company"
-          onChange={list.setSearch}
-          className="lg:w-80"
+          onChange={e => list.setSearch(e.target.value)}
+          className="min-w-0 md:col-span-2"
         />
-        <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
+        <Input aria-label="Filter leads by source" placeholder="Source, e.g. website" value={list.filters.source ?? ''} onChange={e => list.setFilter('source', e.target.value)} />
+        <Input aria-label="Filter leads by campaign" placeholder="Campaign" value={list.filters.campaign ?? ''} onChange={e => list.setFilter('campaign', e.target.value)} />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterToggle label="Unassigned" active={list.filters.unassigned === 'true'} onChange={on => { list.setFilter('unassigned', on ? 'true' : ''); if (on) list.setFilter('ownerId', ''); }} />
           {memberId && (
             <FilterToggle
               label="Mine"
               active={list.filters.ownerId === memberId}
-              onChange={on => list.setFilter('ownerId', on ? memberId : '')}
+              onChange={on => { list.setFilter('ownerId', on ? memberId : ''); if (on) list.setFilter('unassigned', ''); }}
             />
           )}
           <FilterRow
@@ -184,11 +201,16 @@ export function LeadsSection({
         </div>
       </div>
 
+      {filtered && <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span>{list.meta.total} matching leads</span>{Object.entries(list.filters).map(([key, value]) => <button key={key} className="rounded-full border bg-card px-2.5 py-1 hover:bg-muted" onClick={() => list.setFilter(key, '')}>{key === 'awaitingResponse' ? 'Awaiting response' : key === 'overdueFollowUp' ? 'Overdue follow-up' : key === 'createdSince' ? 'New in 30 days' : key === 'active' ? 'Active leads' : key === 'unconverted' ? 'Not converted' : key + ': ' + value} ×</button>)}<Button size="sm" variant="ghost" onClick={clearFilters}>Clear all</Button></div>}
+      <LeadInboxTools list={list} />
+
       {list.error ? (
         <Broken message={list.error} onRetry={list.reload} />
+      ) : view === 'cards' && list.rows.length > 0 ? (
+        <LeadCards list={list} engagement={engagement.data} onOpen={lead => setOpen(lead.id)} onLog={setLogging} onFollowUp={setScheduling} canCreateActivity={canCreateActivity}/>
       ) : (
         <RecordTable
-          columns={columns}
+          columns={presentation.columns}
           rows={list.rows}
           rowKey={l => l.id}
           loading={list.loading}
@@ -207,14 +229,14 @@ export function LeadsSection({
               <DropdownMenuItem onClick={() => setOpen(l.id)}>
                 <ExternalLink className="mr-2 size-4" /> Open
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setLogging(l)}>
+              <DropdownMenuItem disabled={!canCreateActivity} onClick={() => setLogging(l)}>
                 <Plus className="mr-2 size-4" /> Log activity
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setScheduling(l)}>
+              <DropdownMenuItem disabled={!canCreateActivity} onClick={() => setScheduling(l)}>
                 <CornerUpRight className="mr-2 size-4" /> Schedule follow-up
               </DropdownMenuItem>
               {!l.convertedContactId && (
-                <DropdownMenuItem onClick={() => setConverting(l)}>
+                <DropdownMenuItem disabled={!canCreateActivity} onClick={() => setConverting(l)}>
                   <ArrowRight className="mr-2 size-4" /> Convert
                 </DropdownMenuItem>
               )}
@@ -226,11 +248,11 @@ export function LeadsSection({
                 title={`Follow up with ${personName(l) || 'this lead'}`}
               />
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => { setEditing(l); setFormOpen(true); }}>
+              <DropdownMenuItem disabled={!mayEdit} onClick={() => { setEditing(l); setFormOpen(true); }}>
                 <Pencil className="mr-2 size-4" /> Edit
               </DropdownMenuItem>
               <DropdownMenuItem
-                onClick={() => setDeleting(l)}
+                disabled={!mayDelete} onClick={() => setDeleting(l)}
                 className="text-destructive focus:text-destructive"
               >
                 <Trash2 className="mr-2 size-4" /> Delete
@@ -255,7 +277,7 @@ export function LeadsSection({
                 title="No leads yet"
                 body="Add one by hand, or bring a list in from a spreadsheet in the Import Center."
                 action={
-                  <Button size="sm" className="gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
+                  <Button disabled={!canCreateActivity} size="sm" className="gap-1.5" onClick={() => { setEditing(null); setFormOpen(true); }}>
                     <Plus className="size-4" /> Add lead
                   </Button>
                 }
@@ -264,6 +286,9 @@ export function LeadsSection({
           }
         />
       )}
+
+      {engagement.error && <p role="status" className="text-xs text-muted-foreground">Engagement details are unavailable. Open a lead to review its activity or refresh the list.</p>}
+      <CaptureSettings />
 
       <LeadDialog
         open={formOpen}

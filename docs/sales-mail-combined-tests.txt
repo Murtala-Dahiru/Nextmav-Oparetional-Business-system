@@ -1,0 +1,23 @@
+PASS OAuth redirect binds configured origin and PKCE challenge
+PASS refresh response retains rotated refresh token
+PASS connection without refresh token fails closed
+PASS MIME reply headers and header injection prevention
+PASS Gmail send includes MIME and provider thread
+PASS Graph 202 is acceptance without invented provider message ID or delivery
+PASS server failure after send is uncertain and never retried
+PASS Gmail bounded initial sync preserves starting history until pagination completes
+PASS Gmail incremental duplicate prevention and deletions
+PASS expired Gmail history requests explicit reset
+PASS Graph cursor cannot redirect credentials to another host
+11 provider-contract checks passed with isolated fetch doubles; no live provider access or email delivery tested.
+✔ scripts\sales-mail-adapters.test.mts (1911.7455ms)
+PASS mailbox credential binding, OAuth entropy, provider URL restrictions, ambiguous matching, rate limits and unknown-send outcome contracts. No provider connection or delivery was tested.
+✔ scripts\sales-mail-contract.test.mts (1160.9727ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1950.5135

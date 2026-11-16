@@ -73,7 +73,7 @@ interface Overview {
   pipeline: {
     openValue: number; weightedValue: number; count: number;
     byStage: { stage: string; count: number; value: number }[];
-    top: { id: string; name: string; value: number; stage: string; probability: number; expectedClose: string | null; company: string | null }[];
+    top: { id: string; name: string; value: number; currency?:string; stage: string; probability: number; expectedClose: string | null; company: string | null }[];
   };
   targets: {
     id: string; metric: string; label: string; unit: 'money' | 'count'; note: string;
@@ -81,7 +81,7 @@ interface Overview {
     projected: number | null; periodLabel: string; periodStart: string; periodEnd: string; notes: string;
   }[];
   months: { month: string; won: number; lost: number; count: number }[];
-  recent: { type: string; at: string; entityId: string; title: string; value: number }[];
+  recent: { type: string; at: string; entityId: string; title: string; value: number; currency?:string }[];
 }
 
 export function MyPerformance({ memberId }: { memberId?: string | null }) {
@@ -398,7 +398,7 @@ export function MyPerformance({ memberId }: { memberId?: string | null }) {
                       </span>
                       <span className="shrink-0 text-right">
                         <span className="block text-[13px] font-medium tabular-nums text-foreground">
-                          {money(d.value, currency)}
+                          {money(d.value, d.currency??currency)}
                         </span>
                         <span className="block text-[11px] tabular-nums text-muted-foreground">
                           {d.probability}%

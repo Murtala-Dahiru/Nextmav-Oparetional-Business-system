@@ -1,0 +1,17 @@
+PASS desktop overview has no page horizontal overflow
+PASS laptop overview has no page horizontal overflow
+PASS tablet overview has no page horizontal overflow
+PASS mobile overview has no page horizontal overflow
+PASS browser quote saves authoritative decimal total
+PASS desktop editor has no page horizontal overflow
+PASS laptop editor has no page horizontal overflow
+PASS tablet editor has no page horizontal overflow
+PASS mobile editor has no page horizontal overflow
+PASS browser reopen preserves quote items
+PASS browser review, approve and issue flow works
+PASS browser template section reorder works
+PASS browser proposal template, editing, save and preview work
+PASS browser configures durable renewal reminders
+PASS existing Leads destination remains accessible
+PASS no uncaught browser errors: 
+16 browser assertions passed.

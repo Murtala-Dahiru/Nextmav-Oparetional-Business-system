@@ -1,0 +1,142 @@
+✔ round robin and workload use different deterministic priorities (35.3101ms)
+✔ territory, industry and service matching is normalized and exact (1.7859ms)
+✔ known account ownership is used only when eligible in the rule pool (9.1566ms)
+✔ cross-tenant, inactive and ineligible members and rules cannot receive leads (1.3285ms)
+✔ manual assignments survive, retries remain stable and mismatched keys fail (184.1032ms)
+✔ fallback, rule precedence, disabled rules, missing matches and invalid workload are explicit (1.3561ms)
+✔ capture challenges bind form, expiry and signature; field maps cannot overwrite destinations (179.7397ms)
+✔ capture applies durable assignment, preserves duplicate records and consent, limits abuse, and denies direct public writes (18795.9649ms)
+SQL assertions passed; fixtures use local embedded Postgres only.
+✔ CRM SQL: atomic conversion, matching, retries, rollback and direct-access restrictions (23161.66ms)
+✔ conversion rejects invalid money, dates, identities and malformed options (212.1358ms)
+✔ conversion preserves optional defaults and valid leap dates (14.7687ms)
+✔ saved views and preferences reject unsupported fields and invalid states (4.3974ms)
+✔ SQL lead metrics, private saved views, stale writes, consent audit, opt-outs and conversion linkage (22885.3708ms)
+✔ account segment narrows the existing JSON profile with a parameterized equality (62.6206ms)
+✔ manual campaign attribution is bounded and partial updates preserve omitted attribution (49.7633ms)
+✔ unassigned inbox narrows rather than replaces sales ownership restrictions (2.3788ms)
+✔ lead intake accepts company-only leads and rejects malformed contact, ownership, status and value (97.0375ms)
+✔ summary drill-downs preserve ownership and reject invalid date predicates (4.4402ms)
+✔ engagement distinguishes notes, scheduled work and completed contact; excludes foreign, deleted and unowned leads (16053.4987ms)
+✔ merge validation requires each conflict choice, current timestamps and request identity (544.193ms)
+✔ merge transaction preserves references and notes, audits choices, rejects stale/foreign/converted records and retries safely (14900.9768ms)
+✔ qualification validates unique stable fields and typed finite answers (185.3935ms)
+✔ qualification preserves legacy leads, enforces required answers, versions edits and isolates tenants (17569.6947ms)
+✔ leads GET: deny another owner, tenant, deleted and absent records (283.961ms)
+✔ leads GET: allow owner and organization administrator (5.6563ms)
+✔ leads PATCH: deny another owner, tenant, deleted and absent records (45.0506ms)
+✔ leads PATCH: allow owner and organization administrator (11.7832ms)
+✔ leads PUT: deny another owner, tenant, deleted and absent records (21.5572ms)
+✔ leads PUT: allow owner and organization administrator (3.796ms)
+✔ leads DELETE: deny another owner, tenant, deleted and absent records (31.5842ms)
+✔ leads DELETE: allow owner and organization administrator (2.7321ms)
+✔ deals GET: deny another owner, tenant, deleted and absent records (7.4388ms)
+✔ deals GET: allow owner and organization administrator (2.4579ms)
+✔ deals PATCH: deny another owner, tenant, deleted and absent records (62.2727ms)
+✔ deals PATCH: allow owner and organization administrator (19.1612ms)
+✔ deals PUT: deny another owner, tenant, deleted and absent records (8.6964ms)
+✔ deals PUT: allow owner and organization administrator (1.9566ms)
+✔ deals DELETE: deny another owner, tenant, deleted and absent records (2.5321ms)
+✔ deals DELETE: allow owner and organization administrator (0.913ms)
+✔ unscoped shared handler preserves existing organization-wide behavior (1.0056ms)
+✔ conversion endpoint validates before RPC and derives the tenant from the session (12.8633ms)
+✔ conversion endpoint returns actionable conflicts and migration errors without fallback writes (3.6046ms)
+
+  Import: spreadsheet reading and field mapping
+  ═════════════════════════════════════════════
+
+  1. CSV
+  ──────
+    PASS  columns are the header row
+    PASS  two data rows
+    PASS  values land in order
+    PASS  a semicolon file is not one column
+    PASS  tab-delimited is read
+    PASS  quoted commas stay inside the field
+    PASS  doubled quotes unescape
+    PASS  a byte-order mark does not become part of the first heading
+    PASS  blank lines are not records
+    PASS  an empty file is refused with a sentence
+    PASS  and it is a SheetError
+
+  2. XLSX
+  ───────
+    PASS  shared strings resolve
+    PASS  the data row reads
+    PASS  the format is reported
+    PASS  the workbook decides which sheet is first, not the file name
+    PASS  the sheet name comes back
+    PASS  an omitted cell keeps its column
+    PASS  a plain number stays a number
+    PASS  a date-formatted number becomes a date
+    PASS  inline strings are read and unescaped
+    PASS  an .xls is refused with the fix, not a stack trace
+
+  3. Column mapping
+  ─────────────────
+    PASS  Business Name is the company
+    PASS  Contact Person is the person
+    PASS  Email Address is the email
+    PASS  Mobile is the phone
+    PASS  Web Address is the website
+    PASS  Sector is the industry
+    PASS  a heading the values agree with is certain
+    PASS  a column of addresses is recognised without a heading
+    PASS  and it is not claimed as certain
+    PASS  a column of names with no heading is left alone
+    PASS  the exact heading wins the field
+    PASS  and the runner-up is not mapped to the same field
+    PASS  split name columns beat a combined one
+    PASS  first name is mapped
+    PASS  last name is mapped
+
+  4. Reading values
+  ─────────────────
+    PASS  plain integer
+    PASS  thousand separators
+    PASS  a currency symbol is ignored
+    PASS  European decimal comma
+    PASS  a bare comma with three digits is grouping
+    PASS  a bare comma with two digits is a decimal
+    PASS  a magnitude suffix
+    PASS  parentheses are negative
+    PASS  unreadable is null, not zero
+    PASS  empty is null
+    PASS  a two-part name splits
+    PASS  a surname-first name splits
+    PASS  a single word is a first name
+    PASS  a three-part name keeps the tail together
+    PASS  Ltd and Limited normalise together
+    PASS  punctuation does not matter
+    PASS  an ampersand spells out
+    PASS  a suffix alone survives
+    PASS  a bare host is a domain
+    PASS  www is dropped
+    PASS  nonsense is no domain
+
+  5. Shaping a row
+  ────────────────
+    PASS  the company is shaped
+    PASS  the name is split
+    PASS  the value is read
+    PASS  nothing is wrong with it
+    PASS  a bad address is not saved
+    PASS  and it is reported as a warning
+    PASS  an empty row is an error, not a silent skip
+    PASS  a company known only by its site is named from the domain
+    PASS  and no person is invented
+    PASS  a status is matched case-insensitively
+    PASS  an unknown status falls back to new
+    PASS  and says so
+
+  69 passed, 0 failed
+
+✔ scripts\import-sheet.test.mts (5543.0278ms)
+ℹ tests 43
+ℹ suites 0
+ℹ pass 43
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 54278.4361

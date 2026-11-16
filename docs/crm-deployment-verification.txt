@@ -1,0 +1,164 @@
+{
+  "checkedMigrations": [
+    "0050_crm_conversion_and_access.sql",
+    "0051_crm_account_summary.sql",
+    "0052_crm_account_plans.sql",
+    "0053_crm_lead_merge.sql",
+    "0054_crm_configurable_pipelines.sql",
+    "0055_crm_lead_qualification.sql",
+    "0056_crm_assignment.sql",
+    "0057_crm_capture.sql",
+    "0058_crm_relationship_profiles.sql",
+    "0059_crm_intelligence.sql",
+    "0060_crm_relationship_timeline.sql",
+    "0061_crm_files.sql",
+    "0062_crm_merge_extensions.sql",
+    "0063_crm_sales_targets.sql",
+    "0064_crm_deal_execution.sql",
+    "0065_crm_priority_completeness.sql",
+    "0066_crm_pipeline_forecast.sql"
+  ],
+  "functions": [
+    {
+      "function": "crm_account_summary(uuid,uuid,date)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_assign_lead_internal(uuid,uuid,uuid,boolean)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_assign_lead(uuid,uuid,uuid,boolean)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_check_relationships()",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_company_match_key(text)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_convert_lead(uuid,uuid,boolean,text,numeric,date,uuid,uuid)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_decide_stage_approval(uuid,uuid,boolean,text)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_enforce_pipeline_stage()",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_entity_visible(uuid,text,uuid)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_file_record_visible(uuid,text,uuid)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_guard_deal_execution()",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_guard_merge_pointer()",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_guard_qualification()",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_guard_relationship_profile()",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_lead_duplicates(uuid,uuid)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_merge_leads(uuid,uuid,uuid,timestamp with time zone,timestamp with time zone,jsonb,uuid)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_move_deal(uuid,uuid,uuid,integer,jsonb)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_pipeline_forecast(uuid,uuid,text,uuid,date,date)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_pipeline_summary(uuid,uuid,text,uuid,date,date)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_public_capture_form(uuid)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_record_pipeline_event()",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_record_visible(uuid,uuid)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_relationship_timeline(uuid,uuid,integer,integer)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_request_stage_approval(uuid,uuid,uuid)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_sales_insights(uuid,date,date,text)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_sales_targets(uuid,date,date,text)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_save_account_plan(uuid,uuid,integer,jsonb)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_save_assignment_settings(uuid,integer,jsonb,uuid)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_save_capture_form(uuid,uuid,integer,jsonb)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_save_deal_execution(uuid,uuid,integer,jsonb)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_save_lead_qualification(uuid,uuid,integer,integer,jsonb,jsonb)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_save_pipeline(uuid,uuid,integer,text,text,jsonb)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_save_qualification_framework(uuid,integer,text,jsonb)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_save_relationship_profile(uuid,text,uuid,integer,jsonb,uuid,uuid[],text,uuid)",
+      "status": "MATCH"
+    },
+    {
+      "function": "crm_submit_capture(uuid,integer,uuid,jsonb,boolean,text)",
+      "status": "MATCH"
+    }
+  ]
+}
+Audit rolled back. No schema or business data committed.
