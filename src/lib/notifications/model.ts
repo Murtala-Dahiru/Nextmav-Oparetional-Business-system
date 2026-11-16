@@ -86,10 +86,20 @@ export function pushPresentation(row: { type: string; entity_type?: string; titl
     task_assigned: 'New task assigned', task_due: 'Task deadline approaching', task_overdue: 'Task overdue',
     leave_requested: 'Leave request awaiting review', leave_approved: 'Leave request approved', leave_rejected: 'Leave request rejected',
     lead_assigned: 'New lead assigned', ticket_assigned: 'New support ticket assigned',
-    commercial_approved: 'Proposal approved', commercial_executed: 'Contract executed',
+    commercial_approved: 'Proposal approved', commercial_accepted: 'Proposal accepted', commercial_executed: 'Contract executed',
+    commercial_pending_approval: 'Commercial approval requested', commercial_rejected: 'Commercial request rejected',
+    deal_approval_pending: 'Deal approval requested', crm_followup_due: 'CRM follow-up due', crm_activity_assigned: 'CRM activity assigned',
+    expense_approved: 'Expense approved', expense_rejected: 'Expense rejected',
+    sign_sent: 'Document ready for signing', sign_deadline: 'Signing deadline approaching',
+    sign_witness_signed: 'Witness signature received', hr_case_assigned: 'HR request assigned',
+    ticket_deadline: 'Support deadline approaching', project_assigned: 'Project assignment',
     expense_submitted: 'Expense approval requested', access_changed: 'Workspace access changed',
     push_test: 'NextMav push test',
   };
+  if (row.entity_type === 'agreement' && row.type === 'crm_automation') {
+    const statusTitles: Record<string, string> = { 'Agreement completed': 'Contract fully signed', 'Agreement declined': 'Signing request declined', 'Agreement voided': 'Signing request voided' };
+    if (statusTitles[row.title ?? '']) safeTitles[row.type] = statusTitles[row.title ?? ''];
+  }
   return {
     title: rich ? plainPreview(row.title, 100) || safeTitles[row.type] || 'Workspace update'
       : safeTitles[row.type] || `${category[0].toUpperCase() + category.slice(1)} update`,

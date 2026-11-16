@@ -15,7 +15,7 @@ async function asUser(user, fn) {
 }
 try {
   await q('BEGIN');
-  for (const file of ['0150_notification_delivery.sql', '0151_notification_visibility.sql', '0152_notification_lifecycle.sql', '0153_notification_business_events.sql', '0154_notification_deadlines.sql', '0155_notification_preferences.sql', '0156_notification_delivery_guards.sql', '0157_notification_claim.sql', '0158_notification_business_api.sql', '0159_notification_scope.sql', '0160_notification_dispatch.sql', '0161_notification_serverless.sql']) await q(readFileSync('supabase/migrations/' + file, 'utf8'));
+  for (const file of ['0150_notification_delivery.sql', '0151_notification_visibility.sql', '0152_notification_lifecycle.sql', '0153_notification_business_events.sql', '0154_notification_deadlines.sql', '0155_notification_preferences.sql', '0156_notification_delivery_guards.sql', '0157_notification_claim.sql', '0158_notification_business_api.sql', '0159_notification_scope.sql', '0160_notification_dispatch.sql', '0161_notification_serverless.sql', '0162_notification_descriptions.sql']) await q(readFileSync('supabase/migrations/' + file, 'utf8'));
   const users = await q('SELECT id FROM profiles WHERE is_active AND auth_deleted_at IS NULL LIMIT 3');
   assert.equal(users.length, 3, 'Three existing profiles required for rollback-only authorization tests');
   const org = (await q("INSERT INTO organizations(name,slug) VALUES('Notification rollback acceptance',$1) RETURNING id", ['notification-test-' + randomUUID()]))[0].id;

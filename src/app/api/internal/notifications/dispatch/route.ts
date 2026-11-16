@@ -12,7 +12,7 @@ export const maxDuration = 300;
 export async function POST(req: Request) {
   const denied = authenticate(req);
   if (denied) return denied;
-  const connectionString = process.env.DIRECT_URL || process.env.DATABASE_URL;
+  const connectionString = process.env.NOTIFICATION_DATABASE_URL || process.env.DIRECT_URL || process.env.DATABASE_URL;
   if (!connectionString) return Response.json({ error: 'Dispatch configuration unavailable' }, { status: 503 });
   // Never accept organization IDs, SQL, or destinations from the HTTP caller.
   const url = new URL(connectionString);
@@ -26,10 +26,11 @@ export async function POST(req: Request) {
   try {
     await client.connect();
     return Response.json(await dispatchNotifications(client, undefined, 180_000, false));
-  } catch {
+  } catch (cause) {
     await client.end().catch(() => {});
     // Provider codes and attempt states are stored in the administrator-only queue tables.
-    log.error('notification_dispatch_failed');
+    const code = String((cause as { code?: unknown }).code ?? 'UNKNOWN');
+    log.error('notification_dispatch_failed', { code: /^[A-Z0-9_]{1,60}$/.test(code) ? code : 'UNKNOWN' });
     return Response.json({ error: 'Dispatch failed; inspect notification health' }, { status: 503 });
   }
 }

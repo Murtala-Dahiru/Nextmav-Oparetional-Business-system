@@ -5,7 +5,7 @@
 PASS Message targets channel member; sender and outsider mention excluded
 PASS Authorized inbox includes source message and actor
 PASS One durable job per registered device
-MEASURE transaction message insert + durable fanout + query 915ms (one sample, not p95 realtime)
+MEASURE transaction message insert + durable fanout + query 1087ms (one sample, not p95 realtime)
 PASS Repeated stable event key suppressed
 PASS Recipient can read notification
 PASS Recipient message access checked with RLS

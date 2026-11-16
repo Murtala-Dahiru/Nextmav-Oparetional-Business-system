@@ -163,6 +163,7 @@
   OK    0159_notification_scope.sql  (4 statements)
   OK    0160_notification_dispatch.sql  (14 statements)
   OK    0161_notification_serverless.sql  (17 statements)
+  OK    0162_notification_descriptions.sql  (2 statements)
 DEFINED: 171 tables, 24 views, 363 functions, 51 enums
 
 

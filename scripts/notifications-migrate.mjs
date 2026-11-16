@@ -11,7 +11,7 @@ try {
   const files = [
     '0150_notification_delivery.sql', '0151_notification_visibility.sql', '0152_notification_lifecycle.sql',
     '0153_notification_business_events.sql', '0154_notification_deadlines.sql', '0155_notification_preferences.sql',
-    '0156_notification_delivery_guards.sql', '0157_notification_claim.sql', '0158_notification_business_api.sql', '0159_notification_scope.sql', '0160_notification_dispatch.sql', '0161_notification_serverless.sql',
+    '0156_notification_delivery_guards.sql', '0157_notification_claim.sql', '0158_notification_business_api.sql', '0159_notification_scope.sql', '0160_notification_dispatch.sql', '0161_notification_serverless.sql', '0162_notification_descriptions.sql',
   ];
   const from = process.argv.find(arg => arg.startsWith('--from='))?.slice(7) ?? '0150';
   if (!files.some(file => file.startsWith(from + '_'))) throw Error('Unknown starting migration');

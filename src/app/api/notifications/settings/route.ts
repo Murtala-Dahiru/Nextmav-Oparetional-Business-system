@@ -9,7 +9,7 @@ export async function GET() {
   if (failure) return pgError(failure);
   const parsed = preferencesSchema.safeParse({ timezone: ctx.org.timezone, ...data.notification_prefs });
   const configuration = pushConfiguration();
-  const ready = configuration.ready && !!(process.env.DIRECT_URL || process.env.DATABASE_URL) && (process.env.NOTIFICATION_DISPATCH_SECRET?.length ?? 0) >= 32;
+  const ready = configuration.ready && !!(process.env.NOTIFICATION_DATABASE_URL || process.env.DIRECT_URL || process.env.DATABASE_URL) && (process.env.NOTIFICATION_DISPATCH_SECRET?.length ?? 0) >= 32;
   return success({ pushReady: ready, preferences: parsed.success ? parsed.data : defaultPreferences, publicKey: (process.env.VAPID_PUBLIC_KEY || process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) ?? null });
 }
 export async function PUT(req: Request) {
