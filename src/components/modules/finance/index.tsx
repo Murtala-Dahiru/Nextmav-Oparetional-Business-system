@@ -1062,7 +1062,20 @@ const EXPENSE_DEFAULTS: ExpenseFormData = {
   expenseDate: new Date().toISOString().split('T')[0], notes: '',
 };
 
-function ExpensesTab() {
+function ExpensesTab({ focusId }: { focusId: string | null }) {
+  const [opened, setOpened] = useState<ExpenseRecord | null>(null);
+  useEffect(() => {
+    if (!focusId) return;
+    const controller = new AbortController();
+    fetch('/api/finance/expenses/' + encodeURIComponent(focusId), { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error('This expense is unavailable in your workspace.');
+        const result = await response.json();
+        if (!controller.signal.aborted) setOpened(result.data);
+      }).catch(error => { if (!controller.signal.aborted) toast.error(error.message); });
+    return () => controller.abort();
+  }, [focusId]);
+
   // Table state
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [meta, setMeta] = useState<ApiMeta>({ total: 0, page: 1, pageSize: 10, totalPages: 0 });
@@ -1270,6 +1283,10 @@ function ExpensesTab() {
         </Button>
       </PageHeader>
 
+      {opened && <section aria-label="Selected expense" className="mb-4 rounded-xl border p-4">
+        <h2 className="font-semibold">{opened.title}</h2>
+        <p>{formatCurrency(opened.amount)} · {opened.status}</p>
+      </section>}
       <DataTable
         columns={columns}
         data={expenses}
@@ -1433,7 +1450,13 @@ export default function FinanceModule() {
    */
   const [focusInvoiceId, setFocusInvoiceId] = useState<string | null>(null);
 
+  const [focusExpenseId, setFocusExpenseId] = useState<string | null>(null);
   useFocusRequest('finance', ({ type, id }) => {
+    if (type === 'expense') {
+      setActiveTab('expenses');
+      setFocusExpenseId(id);
+      return;
+    }
     if (type !== 'invoice') return;
     setActiveTab('invoices');
     setFocusInvoiceId(id);
@@ -1471,7 +1494,7 @@ export default function FinanceModule() {
         )}
         {activeTab === 'expenses' && (
           <motion.div key="expenses" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
-            <ExpensesTab />
+            <ExpensesTab focusId={focusExpenseId} />
           </motion.div>
         )}
         {activeTab === 'approvals' && (

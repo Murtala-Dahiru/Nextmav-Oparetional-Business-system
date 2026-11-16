@@ -42,9 +42,9 @@ async function resolveNotification(req: Request, confirmation?: { account: strin
   if (data.entity_type === 'leave_request' && data.entity_id) {
     destination.search = new URLSearchParams({ module: 'hr', tab: 'leave', leave: data.entity_id }).toString();
   }
-  const module = MODULES.find(m => m.id === destination.searchParams.get('module'));
-  if (module && !canAccessModule(target.org.role, module.id)) return denied();
-  if (isExternalRole(target.org.role) && module?.id === 'projects') {
+  const destinationModule = MODULES.find(m => m.id === destination.searchParams.get('module'));
+  if (destinationModule && !canAccessModule(target.org.role, destinationModule.id)) return denied();
+  if (isExternalRole(target.org.role) && destinationModule?.id === 'projects') {
     destination.searchParams.set('module', 'portal');
   }
   if (switching && !confirmation) {
