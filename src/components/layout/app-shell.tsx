@@ -25,6 +25,36 @@ export function AppShell() {
   const isAuthenticated = useAppStore(s => s.isAuthenticated);
   usePresence(isAuthenticated);
   useEffect(() => {
+    // Another tab can sign out, change accounts or explicitly select a workspace.
+    // Discard the old record URL and component data when this tab resumes.
+    let disposed = false;
+    let checking = false;
+    async function verifyContext() {
+      if (checking || document.visibilityState !== 'visible') return;
+      const current = useAppStore.getState().user;
+      if (!current) return;
+      checking = true;
+      try {
+        const response = await fetch('/api/auth/session', { cache: 'no-store' });
+        if (!response.ok || disposed) return;
+        const session = (await response.json()).data?.user;
+        if (!disposed && (session?.id !== current.id || session?.organizationId !== current.organizationId || session?.role !== current.role)) {
+          window.location.replace('/dashboard');
+        }
+      } catch {
+        // A network interruption does not establish a change of identity.
+      } finally { checking = false; }
+    }
+    const restored = (event: PageTransitionEvent) => { if (event.persisted) void verifyContext(); };
+    document.addEventListener('visibilitychange', verifyContext);
+    window.addEventListener('pageshow', restored);
+    return () => {
+      disposed = true;
+      document.removeEventListener('visibilitychange', verifyContext);
+      window.removeEventListener('pageshow', restored);
+    };
+  }, []);
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const moduleId = params.get('module');
     const target = MODULES.find(m => m.id === moduleId);
