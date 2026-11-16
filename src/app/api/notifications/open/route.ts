@@ -42,6 +42,21 @@ async function resolveNotification(req: Request, confirmation?: { account: strin
   if (data.entity_type === 'leave_request' && data.entity_id) {
     destination.search = new URLSearchParams({ module: 'hr', tab: 'leave', leave: data.entity_id }).toString();
   }
+  // Historic notices can carry only a module or tab, even when the row
+  // contains the authorized record ID. Preserve message-to-channel links.
+  const recordModules: Record<string, string> = {
+    expense: 'finance', invoice: 'finance', lead: 'crm', deal: 'crm', commercial: 'crm',
+    agreement: 'crm', task: 'projects', project: 'projects', ticket: 'support',
+  };
+  const recordModule = Object.hasOwn(recordModules, data.entity_type) ? recordModules[data.entity_type] : null;
+  if (recordModule && data.entity_id) {
+    destination.searchParams.set('module', recordModule);
+    destination.searchParams.set(data.entity_type, data.entity_id);
+  }
+  if (data.entity_type === 'expense' && data.entity_id && !canAccessModule(target.org.role, 'finance') && canAccessModule(target.org.role, 'hr')) {
+    destination.pathname = '/settings/notifications/expense/' + data.entity_id;
+    destination.search = '';
+  }
   const destinationModule = MODULES.find(m => m.id === destination.searchParams.get('module'));
   if (destinationModule && !canAccessModule(target.org.role, destinationModule.id)) return denied();
   if (isExternalRole(target.org.role) && destinationModule?.id === 'projects') {
