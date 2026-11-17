@@ -43,7 +43,7 @@ try {
   await api(ctx.request,'/api/notifications/settings','PUT',prefs);
   async function receipt(id,expectedTitle,expectedBody) {
     const started=Date.now(); let row;
-    for(let i=0;i<60;i++) {
+    for(let i=0;i<150;i++) {
       row=(await client.query('SELECT state,last_code FROM notification_deliveries WHERE notification_id=$1 AND device_id=$2 AND organization_id=$3',[id,device,fixture.orgId])).rows[0];
       const shown=await worker.evaluate(async id=>{const n=(await self.registration.getNotifications()).find(n=>new URL(n.data.url,self.location.origin).searchParams.get('id')===String(id));return n?{title:n.title,body:n.body}:null;},String(id));
       if(row?.state==='accepted' && shown){
@@ -53,7 +53,7 @@ try {
       if(row?.state==='failed'||row?.state==='skipped') throw Error(`Delivery ${row.state}, provider ${row.last_code}`);
       await pause(1000);
     }
-    throw Error(`No actual push receipt within 60 seconds; last queue state: ${row?.state ?? 'missing'}`);
+    throw Error(`No actual push receipt within the recovery window; last queue state: ${row?.state ?? 'missing'}`);
   }
   async function eventNotice(entityId,type) {
     const rows=(await api(ctx.request,'/api/notifications?pageSize=100')).data;

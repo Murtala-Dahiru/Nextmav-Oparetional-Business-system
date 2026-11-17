@@ -45,7 +45,7 @@ async function resolveNotification(req: Request, confirmation?: { account: strin
   // Historic notices can carry only a module or tab, even when the row
   // contains the authorized record ID. Preserve message-to-channel links.
   const recordModules: Record<string, string> = {
-    expense: 'finance', invoice: 'finance', lead: 'crm', deal: 'crm', commercial: 'crm',
+    channel: 'communication', expense: 'finance', invoice: 'finance', lead: 'crm', deal: 'crm', commercial: 'crm',
     agreement: 'crm', task: 'projects', project: 'projects', ticket: 'support',
   };
   const recordModule = Object.hasOwn(recordModules, data.entity_type) ? recordModules[data.entity_type] : null;
