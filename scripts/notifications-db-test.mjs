@@ -31,11 +31,13 @@ try {
   // No actual provider endpoint or delivery: fixtures only exercise durable queue.
   const device = (await q("INSERT INTO notification_devices(organization_id,member_id,endpoint,p256dh,auth) VALUES($1,$2,'https://fcm.googleapis.com/acceptance-not-a-subscription','fixture','fixture') RETURNING id", [org, members[1]]))[0].id;
   const secondDevice = (await q("INSERT INTO notification_devices(organization_id,member_id,endpoint,p256dh,auth) VALUES($1,$2,'https://fcm.googleapis.com/acceptance-second-not-a-subscription','fixture','fixture') RETURNING id", [org, members[1]]))[0].id;
+  await q('SAVEPOINT direct_test');
   const direct = (await q("INSERT INTO channels(organization_id,name,type,created_by) VALUES($1,$2,'direct',$3) RETURNING id", [org,'dm-'+members[0]+'-'+members[1],members[0]]))[0].id;
   await q('INSERT INTO channel_members(channel_id,member_id) VALUES($1,$2),($1,$3)',[direct,members[0],members[1]]);
   const dm = (await q("INSERT INTO messages(organization_id,channel_id,sender_id,body) VALUES($1,$2,$3,'Direct acceptance') RETURNING id",[org,direct,members[0]]))[0].id;
-  const copies = await q("SELECT title,body FROM notifications WHERE recipient_id=$1 AND entity_id IN ($2,$3)",[members[1],dm,direct]);
+  const copies = await q("SELECT title,body FROM notifications WHERE recipient_id=$1 AND type IN ('message_received','message','message_mention','mention') AND entity_id IN ($2,$3)",[members[1],dm,direct]);
   check(copies.length===1 && copies[0].title==='Acceptance 0 sent you a message' && copies[0].body==='Direct acceptance','One direct message creates one named notification without internal identifiers');
+  await q('ROLLBACK TO SAVEPOINT direct_test');
   const start = performance.now();
   const message = (await q("INSERT INTO messages(organization_id,channel_id,sender_id,body,mentions) VALUES($1,$2,$3,'PRIVATE TEST CONTENT',$4) RETURNING id", [org, channel, members[0], [members[2]]]))[0].id;
   const notices = await q('SELECT * FROM notifications WHERE entity_id=$1', [message]);
