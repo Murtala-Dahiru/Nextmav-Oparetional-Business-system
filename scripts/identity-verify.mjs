@@ -777,17 +777,13 @@ try {
 } finally {
   console.log('\n  Cleaning up…');
   try {
-    // Organizations first: everything else cascades from them.
-    await sql.query(
-      `DELETE FROM organizations WHERE name LIKE $1`, [`%${runId}%`]).catch(() => {});
-    for (const id of created) await deleteAccount(id);
-    // Tombstoned profiles are no longer cascaded by auth deletion — that is the
-    // point of 0025 — so they are removed explicitly here.
-    await sql.query(
-      `DELETE FROM profiles WHERE email LIKE $1 OR deleted_email LIKE $1`,
-      [`idv-${runId}-%`]).catch(() => {});
-    await sql.query(
-      `DELETE FROM profiles WHERE email LIKE $1`, [`deleted+%@account.invalid`]).catch(() => {});
+    // Only this run's disposable organization names and recorded account IDs.
+    await sql.query('DELETE FROM organizations WHERE name = ANY($1::text[])', [[
+      'Identity Verify '+runId, 'Escape Hatch '+runId, 'Second Workspace '+runId,
+    ]]);
+    const testIds = [...new Set(created.filter(Boolean))];
+    for (const id of testIds) await deleteAccount(id);
+    await sql.query('DELETE FROM profiles WHERE id = ANY($1::uuid[])', [testIds]);
   } catch (e) {
     console.log(`  (cleanup: ${e.message})`);
   }
