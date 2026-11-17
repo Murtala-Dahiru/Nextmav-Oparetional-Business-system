@@ -4,6 +4,7 @@ export const categories = ['communication', 'projects', 'hr', 'crm', 'commercial
 export type Category = typeof categories[number];
 export const preferencesSchema = z.object({
   push: z.boolean().default(false),
+  senderNames: z.boolean().default(false),
   messagePreviews: z.boolean().default(false),
   businessPreviews: z.boolean().default(false),
   categories: z.record(z.enum(categories), z.boolean()).default(Object.fromEntries(categories.map(c => [c, true])) as Record<Category, boolean>),
@@ -101,7 +102,7 @@ export function pushPresentation(row: { type: string; entity_type?: string; titl
     if (statusTitles[row.title ?? '']) safeTitles[row.type] = statusTitles[row.title ?? ''];
   }
   return {
-    title: rich ? plainPreview(row.title, 100) || safeTitles[row.type] || 'Workspace update'
+    title: (rich || (prefs.senderNames && category === 'communication' && row.entity_type === 'message')) ? plainPreview(row.title, 100) || safeTitles[row.type] || 'Workspace update'
       : safeTitles[row.type] || `${category[0].toUpperCase() + category.slice(1)} update`,
     body: row.type === 'push_test' ? 'This notification travelled through the server push pipeline.'
       : rich ? plainPreview(row.body, 240) || 'Open NextMav to view the details.' : 'Open NextMav to view the details.',

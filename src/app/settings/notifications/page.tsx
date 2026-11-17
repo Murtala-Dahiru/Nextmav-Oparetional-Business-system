@@ -81,7 +81,14 @@ export default function NotificationSettings() {
     </section>
     <section className="rounded-xl border p-5"><h2 className="font-semibold">Delivery preferences</h2><p className="mt-1 text-xs text-slate-500">Preview text may be visible on a locked screen. HR, Finance, signing and commercial details remain hidden.</p>
       <label className="mt-4 flex items-center gap-2 text-sm"><input type="checkbox" checked={prefs.push} onChange={e => setPrefs({ ...prefs, push: e.target.checked })} /> Push notifications</label>
-      <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={prefs.messagePreviews} onChange={e => setPrefs({ ...prefs, messagePreviews: e.target.checked })} /> Show message previews (sender, conversation and message text)</label>
+      <label className="mt-4 block text-sm font-medium">Message previews on connected devices
+        <select className="mt-1 block w-full max-w-sm rounded-md border px-3 py-2" value={prefs.messagePreviews ? 'preview' : prefs.senderNames ? 'sender' : 'private'}
+          onChange={e => setPrefs({ ...prefs, messagePreviews: e.target.value === 'preview', senderNames: e.target.value === 'sender' })}>
+          <option value="private">Hide sender and message</option>
+          <option value="sender">Show sender name only</option>
+          <option value="preview">Show sender and message preview</option>
+        </select>
+      </label>
       <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={prefs.businessPreviews} onChange={e => setPrefs({ ...prefs, businessPreviews: e.target.checked })} /> Show task, CRM and support details</label>
       <table className="my-4 w-full text-sm"><thead><tr className="border-b text-left"><th>Category</th><th>In app</th><th>Push</th></tr></thead><tbody>{categories.map(category => <tr key={category} className="border-b"><td className="py-2 capitalize">{category}</td>{(['inAppCategories', 'categories'] as const).map(channel => <td key={channel}><input aria-label={category + (channel === 'categories' ? ' push' : ' in app')} type="checkbox" checked={prefs[channel][category]} onChange={e => setPrefs({ ...prefs, [channel]: { ...prefs[channel], [category]: e.target.checked } })} /></td>)}</tr>)}</tbody></table>
       <div className="space-y-3 border-t pt-4"><label className="block text-sm">Deadline reminder <select value={prefs.reminderMinutes} onChange={e => setPrefs({ ...prefs, reminderMinutes: Number(e.target.value) as NotificationPreferences['reminderMinutes'] })}><option value={0}>At the due time</option><option value={15}>15 minutes before</option><option value={60}>1 hour before</option><option value={1440}>1 day before</option></select></label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={prefs.silent} onChange={e => setPrefs({ ...prefs, silent: e.target.checked })} /> Deliver silently where supported</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={prefs.quietEnabled} onChange={e => setPrefs({ ...prefs, quietEnabled: e.target.checked })} /> Quiet hours</label><div className="flex flex-wrap gap-3">

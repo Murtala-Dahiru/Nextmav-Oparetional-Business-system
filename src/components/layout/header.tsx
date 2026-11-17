@@ -253,7 +253,7 @@ export function Header() {
           </TooltipTrigger>
           <TooltipContent>Notifications</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent align="end" sideOffset={8} className="w-[min(24rem,calc(100vw-24px))] p-0">
+        <DropdownMenuContent align="end" sideOffset={8} className="max-h-[min(76dvh,var(--radix-dropdown-menu-content-available-height))] w-[min(25rem,calc(100vw-24px))] overflow-y-auto overscroll-contain p-0">
           <DropdownMenuLabel className="flex items-center justify-between px-3 py-2.5">
             <span className="flex items-center gap-2 text-[13px]">
               Notifications
@@ -279,7 +279,7 @@ export function Header() {
               </Button>
             )}
           </DropdownMenuLabel>
-          <DropdownMenuItem asChild><a href="/settings/notifications" className="text-xs">Notification settings</a></DropdownMenuItem>
+          <DropdownMenuItem asChild><a href="/settings/notifications" className="min-h-11 px-3 text-sm font-medium">Notification settings</a></DropdownMenuItem>
           <DropdownMenuSeparator className="my-0" />
 
           {notifications.length === 0 ? (
@@ -312,11 +312,11 @@ export function Header() {
                       )}
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="text-[13px] font-medium leading-snug text-foreground">
+                      <p className={cn("break-words text-sm leading-snug text-foreground", notification.isRead ? "font-medium" : "font-semibold")}>
                         {notification.title}
                       </p>
                       {notification.body && (
-                        <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-muted-foreground">
+                        <p className="mt-1 line-clamp-2 break-words text-sm leading-snug text-muted-foreground">
                           {notification.body}
                         </p>
                       )}

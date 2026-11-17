@@ -27,3 +27,5 @@ for (const [type, entity_type] of [['leave_approved','leave_request'],['expense_
 assert.equal(plainPreview('x'.repeat(300),240).length,240);
 assert.equal(categoryOf('sign_deadline'), 'sign');
 console.log('PASS 9 preview policy assertions (opt-in, sensitive categories, truncation)');
+
+assert.deepEqual(pushPresentation(message, { ...defaultPreferences, senderNames: true }), { title: message.title, body: 'Open NextMav to view the details.' });

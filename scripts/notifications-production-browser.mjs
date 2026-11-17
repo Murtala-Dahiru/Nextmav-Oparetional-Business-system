@@ -20,8 +20,9 @@ const sender = await request.newContext();
 const { client } = await connect(readEnv('DIRECT_URL')||readEnv('DATABASE_URL'),{statement_timeout:15000});
 async function api(who,path,method='GET',data) {
   const response = await who.fetch(base+path,{method,data});
-  assert.ok(response.ok(),`${method} ${path}: ${response.status()}`);
-  return await response.json();
+  const result = await response.json();
+  if (!response.ok()) throw Error(method+' '+path.split('?')[0]+': '+response.status()+' '+(result.error?.code ?? '')+' request '+(result.error?.requestId ?? 'unavailable'));
+  return result;
 }
 try {
   await api(sender,'/api/auth/login','POST',fixture.users[0]);
@@ -72,6 +73,18 @@ try {
     assert.equal(opened.status(),303);assert.ok(opened.headers().location.includes(fixture.channelId));
     return n;
   }
+  const direct = (await api(sender,'/api/communication/direct','POST',{memberId:fixture.memberB})).data;
+  const directText = 'Direct conversation preview acceptance';
+  const dm = (await api(sender,'/api/communication/messages','POST',{channelId:direct.id,body:directText})).data;
+  const directNotice = await eventNotice(dm.id,'message_received');
+  assert.equal(directNotice.body,directText);
+  assert.equal(directNotice.title,'Notification Sender sent you a message');
+  await receipt(directNotice.id,/^Notification Sender sent you a message$/, /^Direct conversation preview acceptance$/);
+  await api(ctx.request,'/api/notifications/settings','PUT',{...prefs,messagePreviews:false,senderNames:true});
+  const privateDm=(await api(sender,'/api/communication/messages','POST',{channelId:direct.id,body:'Private sender-only acceptance'})).data;
+  await receipt((await eventNotice(privateDm.id)).id,/^Notification Sender sent you a message$/,/^Open NextMav to view the details\.$/);
+  await api(ctx.request,'/api/notifications/settings','PUT',prefs);
+  console.log('PASS direct push with actual sender name, no internal channel label, and sender-only privacy');
   await message('Please review the project proposal before 3 PM.');
   const background=await ctx.newPage();await background.goto('about:blank');await background.bringToFront();
   console.log('BACKGROUND '+JSON.stringify({visibility:await page.evaluate(()=>document.visibilityState)}));

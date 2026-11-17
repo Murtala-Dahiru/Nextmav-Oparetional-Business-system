@@ -1,7 +1,6 @@
-// Live PostgreSQL integration tests. All fixtures and migrations roll back.
+// Test the deployed schema using transaction-local fixtures.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { connect, readEnv } from './db-connect.mjs';
 const { client } = await connect(readEnv('DIRECT_URL') || readEnv('DATABASE_URL'), { statement_timeout: 20000 });
 const q = async (sql, values = []) => (await client.query(sql, values)).rows;
@@ -15,9 +14,15 @@ async function asUser(user, fn) {
 }
 try {
   await q('BEGIN');
-  for (const file of ['0150_notification_delivery.sql', '0151_notification_visibility.sql', '0152_notification_lifecycle.sql', '0153_notification_business_events.sql', '0154_notification_deadlines.sql', '0155_notification_preferences.sql', '0156_notification_delivery_guards.sql', '0157_notification_claim.sql', '0158_notification_business_api.sql', '0159_notification_scope.sql', '0160_notification_dispatch.sql', '0161_notification_serverless.sql', '0162_notification_descriptions.sql']) await q(readFileSync('supabase/migrations/' + file, 'utf8'));
-  const users = await q('SELECT id FROM profiles WHERE is_active AND auth_deleted_at IS NULL LIMIT 3');
-  assert.equal(users.length, 3, 'Three existing profiles required for rollback-only authorization tests');
+  await q("SET LOCAL lock_timeout='2s'");
+  const users = [];
+  for (let i = 0; i < 3; i++) {
+    const id = randomUUID();
+    await q("INSERT INTO auth.users(id,email,raw_user_meta_data) VALUES ($1,$2,$3)", [
+      id, 'rollback-'+id+'@example.com', JSON.stringify({ first_name: 'Acceptance', last_name: String(i) }),
+    ]);
+    users.push({ id });
+  }
   const org = (await q("INSERT INTO organizations(name,slug) VALUES('Notification rollback acceptance',$1) RETURNING id", ['notification-test-' + randomUUID()]))[0].id;
   const members = [];
   for (let i = 0; i < 3; i++) members.push((await q("INSERT INTO organization_members(organization_id,user_id,role,notification_prefs) VALUES($1,$2,$3,$4) RETURNING id", [org, users[i].id, i === 0 ? 'owner' : 'employee', JSON.stringify({ push: true })]))[0].id);
@@ -79,6 +84,12 @@ try {
   await asUser(users[1].id, async () => check(!(await q('SELECT notification_record_visible($1,$2,$3,$4) allowed', [org, 'message_received', 'message', message]))[0].allowed, 'Conversation revocation blocks queued delivery'));
   const task = (await q("INSERT INTO tasks(organization_id,title,assignee_id,due_date) VALUES($1,'Rollback task',$2,current_date) RETURNING id", [org, members[1]]))[0].id;
   check((await q("SELECT * FROM notifications WHERE entity_id=$1 AND type='task_assigned'", [task])).length === 1, 'Existing task assignment producer reused');
+  await q('SAVEPOINT actor_test');
+  await q("SELECT set_config('request.jwt.claim.sub',$1,true),set_config('request.jwt.claims',$2,true)", [users[0].id,JSON.stringify({sub:users[0].id,role:'authenticated'})]);
+  const assigned = (await q("INSERT INTO tasks(organization_id,title,reporter_id,assignee_id) VALUES($1,'Actual assigner',$2,$3) RETURNING id", [org,members[2],members[1]]))[0];
+  const description = (await q("SELECT actor_id, body FROM notifications WHERE entity_id=$1 AND type='task_assigned'", [assigned.id]))[0];
+  check(description?.actor_id === members[0] && description.body.includes('Assigned by Acceptance 0'), 'Task description names the transaction actor rather than the original reporter');
+  await q('ROLLBACK TO SAVEPOINT actor_test');
   await q('SELECT notification_sweep_tasks(500)'); await q('SELECT notification_sweep_tasks(500)');
   check((await q("SELECT * FROM notifications WHERE entity_id=$1 AND type='task_due'", [task])).length === 1, 'Repeated reminder sweep deduplicated');
   await q("UPDATE tasks SET status='done',completed_at=now() WHERE id=$1", [task]);
@@ -148,5 +159,5 @@ try {
   await q('UPDATE organization_members SET is_active=false WHERE id=$1', [members[1]]);
   await asUser(users[1].id, async () => check((await q('SELECT * FROM notifications WHERE id=$1', [notices[0].id])).length === 0, 'Removed membership loses notification access'));
   check((await q('SELECT count(*)::int n FROM notification_devices WHERE id=ANY($1)', [[device, secondDevice]]))[0].n === 2, 'Unauthorized device deletion preserved both devices');
-  console.log(`PASS ${checks} live PostgreSQL checks; all fixtures and DDL rolled back`);
+  console.log(`PASS ${checks} live PostgreSQL checks; all temporary fixtures rolled back`);
 } finally { await q('ROLLBACK'); await client.end(); }
